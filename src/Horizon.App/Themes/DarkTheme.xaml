@@ -1,0 +1,24 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Horizon Theme Palette (VS2013 Dark) -->
+    <Color x:Key="Theme.Background">#FF1E1E1E</Color>
+    <Color x:Key="Theme.BackgroundAlt">#FF252526</Color>
+    <Color x:Key="Theme.MenuBar">#FF2D2D30</Color>
+    <Color x:Key="Theme.MenuPopup">#FF1B1B1C</Color>
+    <Color x:Key="Theme.Border">#FF333337</Color>
+    <Color x:Key="Theme.Highlight">#FF3E3E40</Color>
+    <Color x:Key="Theme.Foreground">#FFF1F1F1</Color>
+    <Color x:Key="Theme.ForegroundDisabled">#FF656565</Color>
+
+    <!-- Brushes derived from palette -->
+    <SolidColorBrush x:Key="Theme.BackgroundBrush" Color="{StaticResource Theme.Background}"/>
+    <SolidColorBrush x:Key="Theme.BackgroundAltBrush" Color="{StaticResource Theme.BackgroundAlt}"/>
+    <SolidColorBrush x:Key="Theme.MenuBarBrush" Color="{StaticResource Theme.MenuBar}"/>
+    <SolidColorBrush x:Key="Theme.MenuPopupBrush" Color="{StaticResource Theme.MenuPopup}"/>
+    <SolidColorBrush x:Key="Theme.BorderBrush" Color="{StaticResource Theme.Border}"/>
+    <SolidColorBrush x:Key="Theme.HighlightBrush" Color="{StaticResource Theme.Highlight}"/>
+    <SolidColorBrush x:Key="Theme.ForegroundBrush" Color="{StaticResource Theme.Foreground}"/>
+    <SolidColorBrush x:Key="Theme.ForegroundDisabledBrush" Color="{StaticResource Theme.ForegroundDisabled}"/>
+
+</ResourceDictionary>

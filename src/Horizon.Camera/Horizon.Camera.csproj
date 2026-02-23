@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Platforms>x64</Platforms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Basler.Pylon.NET.x64" Version="*" />
+  </ItemGroup>
+
+  <!-- IDS peak .NET SDK references from install directory -->
+  <ItemGroup>
+    <Reference Include="ids_peak_dotnet">
+      <HintPath>C:\Program Files\IDS\ids_peak\generic_sdk\api\binding\dotnet\x86_64\ids_peak_dotnet.dll</HintPath>
+    </Reference>
+    <Reference Include="ids_peak_ipl_dotnet">
+      <HintPath>C:\Program Files\IDS\ids_peak\generic_sdk\ipl\binding\dotnet\x86_64\ids_peak_ipl_dotnet.dll</HintPath>
+    </Reference>
+    <Reference Include="ids_peak_afl_dotnet">
+      <HintPath>C:\Program Files\IDS\ids_peak\generic_sdk\afl\binding\dotnet\x86_64\ids_peak_afl_dotnet.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>
