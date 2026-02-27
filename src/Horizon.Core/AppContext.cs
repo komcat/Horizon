@@ -1,19 +1,48 @@
 using Horizon.Camera;
+using Horizon.Common;
+using Horizon.IO;
+using Horizon.Motion;
+using Horizon.Pneumatic;
+using Horizon.Process;
+using Horizon.Safety;
 
 namespace Horizon.Core;
 
 public sealed class AppContext : IAppContext, IDisposable
 {
     private CameraManager? _cameraManager;
+    private UnifiedMotionManager? _motionManager;
+    private EziIOManager? _ioManager;
+    private PneumaticManager? _pneumaticManager;
+    private ProcessEngine? _processEngine;
+    private SafetyEventLog? _safetyEventLog;
+    private SafetyWatchManager? _safetyWatchManager;
+
     private readonly CameraConfigStore _configStore = new();
     private bool _disposed;
 
     public CameraManager CameraManager =>
         _cameraManager ?? throw new InvalidOperationException("AppContext is not initialized.");
 
+    public UnifiedMotionManager MotionManager =>
+        _motionManager ?? throw new InvalidOperationException("AppContext is not initialized.");
+
+    public EziIOManager IOManager =>
+        _ioManager ?? throw new InvalidOperationException("AppContext is not initialized.");
+
+    public PneumaticManager PneumaticManager =>
+        _pneumaticManager ?? throw new InvalidOperationException("AppContext is not initialized.");
+
+    public ProcessEngine ProcessEngine =>
+        _processEngine ?? throw new InvalidOperationException("AppContext is not initialized.");
+
+    public SafetyWatchManager? SafetyWatchManager => _safetyWatchManager;
+
     public CameraConfigStore ConfigStore => _configStore;
 
     public bool IsInitialized => _cameraManager != null;
+
+    public bool SimulationMode { get; set; }
 
     public ILogSink? LogSink { get; set; }
 
@@ -23,10 +52,12 @@ public sealed class AppContext : IAppContext, IDisposable
 
         Shutdown();
 
+        var configDir = ConfigLoader.GetConfigDirectory();
+
+        // --- Camera subsystem (existing) ---
         _cameraManager = new CameraManager();
         Log("Camera manager created");
 
-        // Discover Pylon cameras
         try
         {
             var pylonCameras = Horizon.Camera.CameraManager.DiscoverPylonCameras();
@@ -39,7 +70,6 @@ public sealed class AppContext : IAppContext, IDisposable
             Log($"Pylon discovery error: {ex.Message}");
         }
 
-        // Discover IDS cameras
         try
         {
             var idsCameras = Horizon.Camera.CameraManager.DiscoverIDSCameras();
@@ -52,7 +82,6 @@ public sealed class AppContext : IAppContext, IDisposable
             Log($"IDS discovery error: {ex.Message}");
         }
 
-        // Load registered cameras and filter discovery
         var registered = _configStore.Load();
         if (registered.Count > 0)
         {
@@ -61,16 +90,83 @@ public sealed class AppContext : IAppContext, IDisposable
         }
         else
         {
-            Log("No registered cameras — discovery will add nothing. Use Camera > Config to register cameras.");
+            Log("No registered cameras — use Camera > Config to register cameras.");
         }
         Log($"Total cameras added: {_cameraManager.CameraCount}");
+
+        // --- IO subsystem ---
+        _ioManager = new EziIOManager();
+        try
+        {
+            var ioCount = EziIOJsonLoader.LoadDevices(_ioManager, configDir);
+            Log($"IO devices loaded: {ioCount}");
+        }
+        catch (Exception ex)
+        {
+            Log($"IO config load error: {ex.Message}");
+        }
+
+        // --- Motion subsystem ---
+        _motionManager = new UnifiedMotionManager();
+        try
+        {
+            var motionCount = MotionJsonLoader.LoadDevices(_motionManager, configDir);
+            Log($"Motion devices loaded: {motionCount}");
+        }
+        catch (Exception ex)
+        {
+            Log($"Motion config load error: {ex.Message}");
+        }
+
+        // --- Pneumatic subsystem (depends on IO) ---
+        _pneumaticManager = new PneumaticManager();
+        try
+        {
+            var pneumaticCount = PneumaticJsonLoader.LoadSlides(_pneumaticManager, _ioManager, configDir);
+            Log($"Pneumatic slides loaded: {pneumaticCount}");
+        }
+        catch (Exception ex)
+        {
+            Log($"Pneumatic config load error: {ex.Message}");
+        }
+
+        // --- Safety subsystem (depends on IO) ---
+        _safetyEventLog = new SafetyEventLog();
+        _safetyWatchManager = new SafetyWatchManager(_ioManager, _safetyEventLog);
+        try
+        {
+            var watchCount = _safetyWatchManager.LoadConfig(configDir);
+            Log($"Safety watch inputs loaded: {watchCount}");
+        }
+        catch (Exception ex)
+        {
+            Log($"Safety config load error: {ex.Message}");
+        }
+
+        // --- Process engine ---
+        _processEngine = new ProcessEngine();
+        _processEngine.BuildDeviceRegistry(this);
+        Log("Process engine initialized");
     }
 
     public void Shutdown()
     {
+        _safetyWatchManager?.Dispose();
+        _safetyWatchManager = null;
+        _safetyEventLog = null;
+
+        _processEngine = null;
+
+        _pneumaticManager = null;
+
+        _motionManager?.DisconnectAll();
+        _motionManager = null;
+
+        _ioManager?.Dispose();
+        _ioManager = null;
+
         if (_cameraManager != null)
         {
-            // Stop all grabbing before disposing
             foreach (var id in _cameraManager.GetCameraIds())
             {
                 try { _cameraManager.StopGrabbing(id); } catch { }

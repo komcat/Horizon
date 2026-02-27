@@ -519,9 +519,81 @@ public partial class MainWindow : Window
         ToggleAnchorable("cameras");
     }
 
+    private void ViewMotion_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleAnchorable("motion");
+        RefreshMotionStatus();
+    }
+
+    private void ViewIO_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleAnchorable("io");
+        RefreshIOStatus();
+    }
+
+    private void ViewPneumatic_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleAnchorable("pneumatic");
+        RefreshPneumaticStatus();
+    }
+
     private void ViewOutput_Click(object sender, RoutedEventArgs e)
     {
         ToggleAnchorable("output");
+    }
+
+    private void RefreshMotionStatus()
+    {
+        if (!_context.IsInitialized) return;
+        var lines = new System.Text.StringBuilder("Motion Controllers:\n");
+        foreach (var name in _context.MotionManager.GetAllDeviceNames())
+        {
+            var ctrl = _context.MotionManager.GetController(name);
+            if (ctrl != null)
+            {
+                lines.AppendLine($"  {name}: {(ctrl.IsConnected ? "Connected" : "Disconnected")} [{ctrl.ControllerType}]");
+                if (ctrl.IsConnected)
+                {
+                    var pos = ctrl.GetCurrentPosition();
+                    lines.AppendLine($"    Position: X={pos.X:F3} Y={pos.Y:F3} Z={pos.Z:F3}");
+                    lines.AppendLine($"    Moving: {ctrl.IsDeviceInMotion()}");
+                }
+            }
+        }
+        MotionStatusText.Text = lines.ToString();
+    }
+
+    private void RefreshIOStatus()
+    {
+        if (!_context.IsInitialized) return;
+        var lines = new System.Text.StringBuilder("IO Devices:\n");
+        foreach (var name in _context.IOManager.GetAllDeviceNames())
+        {
+            var device = _context.IOManager.GetDevice(name);
+            if (device != null)
+            {
+                lines.AppendLine($"  {name}: {(device.IsConnected ? "Connected" : "Disconnected")}");
+                lines.AppendLine($"    Inputs: {device.InputCount}, Outputs: {device.OutputCount}");
+            }
+        }
+        IOStatusText.Text = lines.ToString();
+    }
+
+    private void RefreshPneumaticStatus()
+    {
+        if (!_context.IsInitialized) return;
+        var lines = new System.Text.StringBuilder("Pneumatic Slides:\n");
+        foreach (var name in _context.PneumaticManager.GetAllSlideNames())
+        {
+            var slide = _context.PneumaticManager.GetSlide(name);
+            if (slide != null)
+            {
+                var status = slide.GetStatus();
+                lines.AppendLine($"  {name}: {status.Position}");
+                lines.AppendLine($"    Output: {(status.OutputActive ? "ON" : "OFF")}");
+            }
+        }
+        PneumaticStatusText.Text = lines.ToString();
     }
 
     private void ToggleAnchorable(string contentId)

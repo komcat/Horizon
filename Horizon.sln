@@ -3,11 +3,23 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.Common", "src\Horizon.Common\Horizon.Common.csproj", "{A1B2C3D4-1111-2222-3333-444455550000}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.Camera", "src\Horizon.Camera\Horizon.Camera.csproj", "{A1B2C3D4-1111-2222-3333-444455556666}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.App", "src\Horizon.App\Horizon.App.csproj", "{A1B2C3D4-1111-2222-3333-444455557777}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.Core", "src\Horizon.Core\Horizon.Core.csproj", "{A1B2C3D4-1111-2222-3333-444455558888}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.IO", "src\Horizon.IO\Horizon.IO.csproj", "{A1B2C3D4-1111-2222-3333-444455551111}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.Motion", "src\Horizon.Motion\Horizon.Motion.csproj", "{A1B2C3D4-1111-2222-3333-444455552222}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.Pneumatic", "src\Horizon.Pneumatic\Horizon.Pneumatic.csproj", "{A1B2C3D4-1111-2222-3333-444455553333}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.Process", "src\Horizon.Process\Horizon.Process.csproj", "{A1B2C3D4-1111-2222-3333-444455555555}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.Safety", "src\Horizon.Safety\Horizon.Safety.csproj", "{A1B2C3D4-1111-2222-3333-444455554444}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -18,6 +30,10 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A1B2C3D4-1111-2222-3333-444455550000}.Debug|x64.ActiveCfg = Debug|x64
+		{A1B2C3D4-1111-2222-3333-444455550000}.Debug|x64.Build.0 = Debug|x64
+		{A1B2C3D4-1111-2222-3333-444455550000}.Release|x64.ActiveCfg = Release|x64
+		{A1B2C3D4-1111-2222-3333-444455550000}.Release|x64.Build.0 = Release|x64
 		{A1B2C3D4-1111-2222-3333-444455556666}.Debug|x64.ActiveCfg = Debug|x64
 		{A1B2C3D4-1111-2222-3333-444455556666}.Debug|x64.Build.0 = Debug|x64
 		{A1B2C3D4-1111-2222-3333-444455556666}.Release|x64.ActiveCfg = Release|x64
@@ -30,5 +46,25 @@ Global
 		{A1B2C3D4-1111-2222-3333-444455558888}.Debug|x64.Build.0 = Debug|x64
 		{A1B2C3D4-1111-2222-3333-444455558888}.Release|x64.ActiveCfg = Release|x64
 		{A1B2C3D4-1111-2222-3333-444455558888}.Release|x64.Build.0 = Release|x64
+		{A1B2C3D4-1111-2222-3333-444455551111}.Debug|x64.ActiveCfg = Debug|x64
+		{A1B2C3D4-1111-2222-3333-444455551111}.Debug|x64.Build.0 = Debug|x64
+		{A1B2C3D4-1111-2222-3333-444455551111}.Release|x64.ActiveCfg = Release|x64
+		{A1B2C3D4-1111-2222-3333-444455551111}.Release|x64.Build.0 = Release|x64
+		{A1B2C3D4-1111-2222-3333-444455552222}.Debug|x64.ActiveCfg = Debug|x64
+		{A1B2C3D4-1111-2222-3333-444455552222}.Debug|x64.Build.0 = Debug|x64
+		{A1B2C3D4-1111-2222-3333-444455552222}.Release|x64.ActiveCfg = Release|x64
+		{A1B2C3D4-1111-2222-3333-444455552222}.Release|x64.Build.0 = Release|x64
+		{A1B2C3D4-1111-2222-3333-444455553333}.Debug|x64.ActiveCfg = Debug|x64
+		{A1B2C3D4-1111-2222-3333-444455553333}.Debug|x64.Build.0 = Debug|x64
+		{A1B2C3D4-1111-2222-3333-444455553333}.Release|x64.ActiveCfg = Release|x64
+		{A1B2C3D4-1111-2222-3333-444455553333}.Release|x64.Build.0 = Release|x64
+		{A1B2C3D4-1111-2222-3333-444455555555}.Debug|x64.ActiveCfg = Debug|x64
+		{A1B2C3D4-1111-2222-3333-444455555555}.Debug|x64.Build.0 = Debug|x64
+		{A1B2C3D4-1111-2222-3333-444455555555}.Release|x64.ActiveCfg = Release|x64
+		{A1B2C3D4-1111-2222-3333-444455555555}.Release|x64.Build.0 = Release|x64
+		{A1B2C3D4-1111-2222-3333-444455554444}.Debug|x64.ActiveCfg = Debug|x64
+		{A1B2C3D4-1111-2222-3333-444455554444}.Debug|x64.Build.0 = Debug|x64
+		{A1B2C3D4-1111-2222-3333-444455554444}.Release|x64.ActiveCfg = Release|x64
+		{A1B2C3D4-1111-2222-3333-444455554444}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 EndGlobal

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Platforms>x64</Platforms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Horizon.Common\Horizon.Common.csproj" />
+  </ItemGroup>
+  <!-- ACS SPiiPlus .NET 6 managed wrapper -->
+  <ItemGroup>
+    <Reference Include="ACS.SPiiPlusNET6">
+      <HintPath>C:\Program Files (x86)\ACS Motion Control\SPiiPlus Runtime Kit\Redist\x64\ACS.SPiiPlusNET6.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+  <!-- PI GCS2 native DLL copied to output -->
+  <ItemGroup>
+    <None Include="C:\Program Files (x86)\Physik Instrumente (PI)\Software Suite\Development\C#\API\PI_GCS2_DLL_x64.dll" CopyToOutputDirectory="PreserveNewest" Link="PI_GCS2_DLL_x64.dll" Condition="Exists('C:\Program Files (x86)\Physik Instrumente (PI)\Software Suite\Development\C#\API\PI_GCS2_DLL_x64.dll')" />
+  </ItemGroup>
+</Project>

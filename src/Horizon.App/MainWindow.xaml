@@ -132,6 +132,9 @@
             <MenuItem Header="_View" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
                 <MenuItem Header="_Hardware" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuHeaderTemplate}">
                     <MenuItem Header="_Cameras" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ViewCameras_Click"/>
+                    <MenuItem Header="_Motion" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ViewMotion_Click"/>
+                    <MenuItem Header="_IO" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ViewIO_Click"/>
+                    <MenuItem Header="_Pneumatic" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ViewPneumatic_Click"/>
                 </MenuItem>
                 <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="_Output" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ViewOutput_Click"/>
@@ -333,6 +336,50 @@
                         </avalonDock:LayoutAnchorablePane>
                     </avalonDock:LayoutAnchorablePaneGroup>
                 </avalonDock:LayoutPanel>
+
+                <!-- Right side: Hardware status panels (hidden by default) -->
+                <avalonDock:LayoutRoot.RightSide>
+                    <avalonDock:LayoutAnchorSide>
+                        <avalonDock:LayoutAnchorGroup>
+                            <avalonDock:LayoutAnchorable Title="Motion" ContentId="motion" AutoHideWidth="300" AutoHideHeight="300">
+                                <Border Background="{DynamicResource Theme.BackgroundAltBrush}">
+                                    <TextBox x:Name="MotionStatusText"
+                                             Background="{DynamicResource Theme.BackgroundBrush}"
+                                             Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                             FontFamily="Consolas" FontSize="11"
+                                             IsReadOnly="True" AcceptsReturn="True"
+                                             VerticalScrollBarVisibility="Auto"
+                                             BorderThickness="0"
+                                             Text="Motion status"/>
+                                </Border>
+                            </avalonDock:LayoutAnchorable>
+                            <avalonDock:LayoutAnchorable Title="IO" ContentId="io" AutoHideWidth="300" AutoHideHeight="300">
+                                <Border Background="{DynamicResource Theme.BackgroundAltBrush}">
+                                    <TextBox x:Name="IOStatusText"
+                                             Background="{DynamicResource Theme.BackgroundBrush}"
+                                             Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                             FontFamily="Consolas" FontSize="11"
+                                             IsReadOnly="True" AcceptsReturn="True"
+                                             VerticalScrollBarVisibility="Auto"
+                                             BorderThickness="0"
+                                             Text="IO status"/>
+                                </Border>
+                            </avalonDock:LayoutAnchorable>
+                            <avalonDock:LayoutAnchorable Title="Pneumatic" ContentId="pneumatic" AutoHideWidth="300" AutoHideHeight="300">
+                                <Border Background="{DynamicResource Theme.BackgroundAltBrush}">
+                                    <TextBox x:Name="PneumaticStatusText"
+                                             Background="{DynamicResource Theme.BackgroundBrush}"
+                                             Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                             FontFamily="Consolas" FontSize="11"
+                                             IsReadOnly="True" AcceptsReturn="True"
+                                             VerticalScrollBarVisibility="Auto"
+                                             BorderThickness="0"
+                                             Text="Pneumatic status"/>
+                                </Border>
+                            </avalonDock:LayoutAnchorable>
+                        </avalonDock:LayoutAnchorGroup>
+                    </avalonDock:LayoutAnchorSide>
+                </avalonDock:LayoutRoot.RightSide>
 
                 <!-- Bottom: Output panel -->
                 <avalonDock:LayoutRoot.BottomSide>

@@ -7,6 +7,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Horizon.Common\Horizon.Common.csproj" />
+  </ItemGroup>
+
   <!-- Basler Pylon .NET wrapper from local Pylon 8 installation (must match native runtime) -->
   <ItemGroup>
     <Reference Include="Basler.Pylon">
