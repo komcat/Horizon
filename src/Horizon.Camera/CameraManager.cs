@@ -210,6 +210,53 @@ public sealed class CameraManager : IDisposable
         return cameras.Count > 0;
     }
 
+    public bool DiscoverAndAddRegisteredCameras(List<Models.RegisteredCamera> registered)
+    {
+        if (registered == null || registered.Count == 0)
+            return false;
+
+        int added = 0;
+
+        // IP cameras — create CameraInfo directly, no discovery needed
+        var ipCameras = registered.Where(r =>
+            r.ConnectionType == "IP" && !string.IsNullOrWhiteSpace(r.IpAddress)).ToList();
+
+        foreach (var reg in ipCameras)
+        {
+            var info = new CameraInfo
+            {
+                Id = reg.SerialNumber,
+                SerialNumber = reg.SerialNumber,
+                IpAddress = reg.IpAddress,
+                ConnectionMethod = ConnectionMethod.IPAddress,
+                Type = reg.SdkType,
+                ModelName = reg.Name,
+                VendorName = reg.SdkType == CameraType.Pylon ? "Basler" : "IDS",
+                DeviceInfo = $"{reg.Name} ({reg.SerialNumber}) [{reg.IpAddress}]"
+            };
+            if (AddCamera(info))
+                added++;
+        }
+
+        // USB cameras — discover hardware and filter by serial
+        var usbCameras = registered.Where(r => r.ConnectionType != "IP").ToList();
+        if (usbCameras.Count > 0)
+        {
+            var allCameras = DiscoverAllCameras();
+            var usbSerials = new HashSet<string>(
+                usbCameras.Select(r => r.SerialNumber),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var info in allCameras.Where(c => usbSerials.Contains(c.SerialNumber)))
+            {
+                if (AddCamera(info))
+                    added++;
+            }
+        }
+
+        return added > 0;
+    }
+
     // --- Image Capture ---
 
     public bool CaptureImage(string cameraId)

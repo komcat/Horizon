@@ -7,8 +7,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Basler Pylon .NET wrapper from local Pylon 8 installation (must match native runtime) -->
   <ItemGroup>
-    <PackageReference Include="Basler.Pylon.NET.x64" Version="*" />
+    <Reference Include="Basler.Pylon">
+      <HintPath>C:\Program Files\Basler\pylon 8\Development\Assemblies\Basler.Pylon\x64\Basler.Pylon.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
 
   <!-- IDS peak .NET SDK references from install directory -->

@@ -5,10 +5,13 @@ namespace Horizon.Core;
 public sealed class AppContext : IAppContext, IDisposable
 {
     private CameraManager? _cameraManager;
+    private readonly CameraConfigStore _configStore = new();
     private bool _disposed;
 
     public CameraManager CameraManager =>
         _cameraManager ?? throw new InvalidOperationException("AppContext is not initialized.");
+
+    public CameraConfigStore ConfigStore => _configStore;
 
     public bool IsInitialized => _cameraManager != null;
 
@@ -49,7 +52,17 @@ public sealed class AppContext : IAppContext, IDisposable
             Log($"IDS discovery error: {ex.Message}");
         }
 
-        _cameraManager.DiscoverAndAddAllCameras();
+        // Load registered cameras and filter discovery
+        var registered = _configStore.Load();
+        if (registered.Count > 0)
+        {
+            Log($"Registered cameras: {registered.Count}");
+            _cameraManager.DiscoverAndAddRegisteredCameras(registered);
+        }
+        else
+        {
+            Log("No registered cameras — discovery will add nothing. Use Camera > Config to register cameras.");
+        }
         Log($"Total cameras added: {_cameraManager.CameraCount}");
     }
 

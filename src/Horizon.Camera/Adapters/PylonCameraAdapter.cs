@@ -13,13 +13,12 @@ public sealed class PylonCameraAdapter : ICameraHardware
     private volatile bool _isDeviceRemoved;
     private volatile bool _hasNewFrame;
     private string _lastError = string.Empty;
-    private readonly PixelDataConverter _converter = new();
+    private PixelDataConverter? _converter;
     private bool _disposed;
 
     public PylonCameraAdapter(CameraInfo info)
     {
         _info = info;
-        _converter.OutputPixelFormat = PixelType.RGB8packed;
     }
 
     public bool IsConnected => _isConnected;
@@ -58,6 +57,14 @@ public sealed class PylonCameraAdapter : ICameraHardware
             _camera!.Open();
             _isConnected = true;
             _isDeviceRemoved = false;
+
+            // Create pixel converter after successful connection
+            if (_converter == null)
+            {
+                _converter = new PixelDataConverter();
+                _converter.OutputPixelFormat = PixelType.RGB8packed;
+            }
+
             return true;
         }
         catch (Exception ex)
@@ -227,7 +234,8 @@ public sealed class PylonCameraAdapter : ICameraHardware
         _camera?.Close();
         _camera?.Dispose();
         _camera = null;
-        _converter.Dispose();
+        _converter?.Dispose();
+        _converter = null;
     }
 
     // --- Private helpers ---
@@ -239,9 +247,7 @@ public sealed class PylonCameraAdapter : ICameraHardware
             ConnectionMethod.SerialNumber =>
                 new Basler.Pylon.Camera(_info.SerialNumber),
             ConnectionMethod.IPAddress =>
-                new Basler.Pylon.Camera(
-                    CameraFinder.Enumerate().FirstOrDefault(d =>
-                        d[CameraInfoKey.DeviceIpAddress] == _info.IpAddress) ?? throw new InvalidOperationException($"No camera at IP {_info.IpAddress}")),
+                CreateCameraByIp(),
             ConnectionMethod.DeviceIndex =>
                 new Basler.Pylon.Camera(
                     CameraFinder.Enumerate().ElementAtOrDefault(_info.DeviceIndex) ?? throw new InvalidOperationException($"No camera at index {_info.DeviceIndex}")),
@@ -253,6 +259,36 @@ public sealed class PylonCameraAdapter : ICameraHardware
                             d[CameraInfoKey.SerialNumber] == _info.Id ||
                             d[CameraInfoKey.FriendlyName] == _info.Id) ?? throw new InvalidOperationException($"Camera '{_info.Id}' not found"))
         };
+    }
+
+    private Basler.Pylon.Camera CreateCameraByIp()
+    {
+        // Try enumeration-based lookup by IP
+        var devices = CameraFinder.Enumerate();
+        var match = devices.FirstOrDefault(d =>
+            d.ContainsKey(CameraInfoKey.DeviceIpAddress) &&
+            d[CameraInfoKey.DeviceIpAddress] == _info.IpAddress);
+
+        if (match != null)
+            return new Basler.Pylon.Camera(match);
+
+        // Try enumeration-based lookup by serial number
+        if (!string.IsNullOrEmpty(_info.SerialNumber))
+        {
+            var serialMatch = devices.FirstOrDefault(d =>
+                d[CameraInfoKey.SerialNumber] == _info.SerialNumber);
+
+            if (serialMatch != null)
+                return new Basler.Pylon.Camera(serialMatch);
+
+            // Last resort: let Pylon SDK resolve the serial internally
+            return new Basler.Pylon.Camera(_info.SerialNumber);
+        }
+
+        throw new InvalidOperationException(
+            $"Camera at IP {_info.IpAddress} not found by Pylon SDK. " +
+            $"Enumerated {devices.Count} device(s). " +
+            "Check that the PC has a network adapter on the same subnet as the camera.");
     }
 
     private void OnImageGrabbed(object? sender, ImageGrabbedEventArgs e)
@@ -278,7 +314,7 @@ public sealed class PylonCameraAdapter : ICameraHardware
 
         var size = frame.Width * frame.Height * 3;
         frame.ImageData = new byte[size];
-        _converter.Convert(frame.ImageData, grabResult);
+        _converter?.Convert(frame.ImageData, grabResult);
 
         callback(frame);
     }
@@ -295,7 +331,7 @@ public sealed class PylonCameraAdapter : ICameraHardware
         var size = frameData.Width * frameData.Height * 3;
         if (frameData.ImageData.Length < size)
             frameData.ImageData = new byte[size];
-        _converter.Convert(frameData.ImageData, grabResult);
+        _converter?.Convert(frameData.ImageData, grabResult);
     }
 
     private void SetError(string error) => _lastError = error;

@@ -7,6 +7,7 @@ using System.Windows.Threading;
 using AvalonDock.Layout;
 using AvalonDock.Layout.Serialization;
 using Horizon.Camera;
+using Horizon.Camera.Models;
 using Horizon.Core;
 
 namespace Horizon.App;
@@ -19,6 +20,8 @@ public partial class MainWindow : Window
     private WriteableBitmap? _writeableBitmap;
     private string? _liveFeedCameraId;
     private byte[]? _rgbBuffer;
+
+    private List<RegisteredCamera> _registeredCameras = new();
 
     private static readonly string SettingsDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon");
@@ -38,6 +41,12 @@ public partial class MainWindow : Window
         RestoreWindowState();
         RestoreDockLayout();
 
+        // Populate SDK and Connection combos
+        MountSdkCombo.ItemsSource = new[] { CameraType.Pylon, CameraType.IDS };
+        MountSdkCombo.SelectedIndex = 0;
+        MountConnCombo.ItemsSource = new[] { "USB", "IP" };
+        MountConnCombo.SelectedIndex = 0;
+
         // Wire up logging to the output panel
         if (_context is Horizon.Core.AppContext appCtx)
             appCtx.LogSink = new OutputPanelLogSink(this);
@@ -45,7 +54,9 @@ public partial class MainWindow : Window
         try
         {
             _context.Initialize();
+            LoadRegisteredCameras();
             RefreshCameraTree();
+            AutoConnectCameras();
         }
         catch (Exception ex)
         {
@@ -127,8 +138,18 @@ public partial class MainWindow : Window
     {
         if (!_context.IsInitialized) return;
         var result = _context.CameraManager.ConnectCamera(cameraId);
-        LogOutput($"Connect '{cameraId}': {(result ? "OK" : "FAILED")}");
+        if (result)
+        {
+            LogOutput($"Connect '{cameraId}': OK");
+        }
+        else
+        {
+            var hw = _context.CameraManager.GetCameraHardware(cameraId);
+            var error = hw?.LastError ?? "unknown error";
+            LogOutput($"Connect '{cameraId}': FAILED — {error}");
+        }
         RefreshCameraTree();
+        RefreshConfigGrid();
     }
 
     private void CameraDisconnect_Click(string cameraId)
@@ -276,13 +297,198 @@ public partial class MainWindow : Window
         }
     }
 
+    // --- Camera Config helpers ---
+
+    private CameraConfigStore? GetConfigStore()
+    {
+        return (_context as Horizon.Core.AppContext)?.ConfigStore;
+    }
+
+    private void LoadRegisteredCameras()
+    {
+        var store = GetConfigStore();
+        if (store == null) return;
+        _registeredCameras = store.Load();
+        RefreshConfigGrid();
+    }
+
+    private void RefreshConfigGrid()
+    {
+        var connectedSerials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (_context.IsInitialized)
+        {
+            foreach (var status in _context.CameraManager.GetAllCameraStatus())
+            {
+                if (status.Connected)
+                    connectedSerials.Add(status.SerialNumber);
+            }
+        }
+
+        // Check which serials are present in CameraManager (discovered/added)
+        var knownSerials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (_context.IsInitialized)
+        {
+            foreach (var status in _context.CameraManager.GetAllCameraStatus())
+                knownSerials.Add(status.SerialNumber);
+        }
+
+        var rows = _registeredCameras.Select(r => new
+        {
+            r.Name,
+            r.SerialNumber,
+            r.SdkType,
+            r.ConnectionType,
+            r.IpAddress,
+            Status = connectedSerials.Contains(r.SerialNumber) ? "Online"
+                   : knownSerials.Contains(r.SerialNumber) ? "Found"
+                   : "Offline"
+        }).ToList();
+
+        ConfigDataGrid.ItemsSource = rows;
+    }
+
+    private void AutoConnectCameras()
+    {
+        if (!_context.IsInitialized) return;
+
+        var ids = _context.CameraManager.GetCameraIds();
+        if (ids.Count == 0) return;
+
+        LogOutput($"Auto-connecting {ids.Count} camera(s)...");
+        foreach (var id in ids)
+        {
+            var result = _context.CameraManager.ConnectCamera(id);
+            if (result)
+            {
+                LogOutput($"Auto-connect '{id}': OK");
+            }
+            else
+            {
+                var hw = _context.CameraManager.GetCameraHardware(id);
+                var error = hw?.LastError ?? "unknown error";
+                LogOutput($"Auto-connect '{id}': FAILED — {error}");
+            }
+        }
+        RefreshCameraTree();
+        RefreshConfigGrid();
+    }
+
+    private void CameraConfig_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleAnchorable("cameraConfig");
+    }
+
+    private void MountCamera_Click(object sender, RoutedEventArgs e)
+    {
+        var name = MountNameBox.Text.Trim();
+        var serial = MountSerialBox.Text.Trim();
+        var connType = MountConnCombo.SelectedItem as string ?? "USB";
+        var ipAddress = MountIpBox.Text.Trim();
+
+        if (string.IsNullOrEmpty(serial))
+        {
+            LogOutput("Mount: Serial number is required.");
+            return;
+        }
+
+        if (connType == "IP" && string.IsNullOrEmpty(ipAddress))
+        {
+            LogOutput("Mount: IP address is required for IP connection.");
+            return;
+        }
+
+        if (_registeredCameras.Any(r => r.SerialNumber.Equals(serial, StringComparison.OrdinalIgnoreCase)))
+        {
+            LogOutput($"Mount: Serial '{serial}' is already registered.");
+            return;
+        }
+
+        var sdkType = MountSdkCombo.SelectedItem is CameraType ct ? ct : CameraType.Pylon;
+
+        if (string.IsNullOrEmpty(name))
+            name = $"{sdkType} {serial}";
+
+        var entry = new RegisteredCamera
+        {
+            Name = name,
+            SerialNumber = serial,
+            SdkType = sdkType,
+            ConnectionType = connType,
+            IpAddress = connType == "IP" ? ipAddress : string.Empty
+        };
+
+        _registeredCameras.Add(entry);
+        GetConfigStore()?.Save(_registeredCameras);
+
+        MountNameBox.Clear();
+        MountSerialBox.Clear();
+        MountIpBox.Clear();
+
+        LogOutput($"Mounted camera: {entry.Name} ({entry.SerialNumber}) [{entry.SdkType}] {connType}{(connType == "IP" ? $" {ipAddress}" : "")}");
+        RefreshConfigGrid();
+
+        // Re-discover with updated list
+        PerformRediscovery();
+    }
+
+    private void UnmountCamera_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = ConfigDataGrid.SelectedItem;
+        if (selected == null)
+        {
+            LogOutput("Unmount: No camera selected.");
+            return;
+        }
+
+        // Get serial from the anonymous type via reflection
+        var serialProp = selected.GetType().GetProperty("SerialNumber");
+        var serial = serialProp?.GetValue(selected) as string;
+        if (string.IsNullOrEmpty(serial)) return;
+
+        var entry = _registeredCameras.FirstOrDefault(
+            r => r.SerialNumber.Equals(serial, StringComparison.OrdinalIgnoreCase));
+        if (entry == null) return;
+
+        _registeredCameras.Remove(entry);
+        GetConfigStore()?.Save(_registeredCameras);
+
+        // Disconnect and remove from CameraManager if present
+        if (_context.IsInitialized)
+        {
+            var cam = _context.CameraManager.GetAllCameraStatus()
+                .FirstOrDefault(s => s.SerialNumber.Equals(serial, StringComparison.OrdinalIgnoreCase));
+            if (cam != null)
+            {
+                if (_liveFeedCameraId == cam.Id)
+                    StopLiveFeed();
+                _context.CameraManager.DisconnectCamera(cam.Id);
+                _context.CameraManager.RemoveCamera(cam.Id);
+            }
+        }
+
+        LogOutput($"Unmounted camera: {entry.Name} ({entry.SerialNumber})");
+        RefreshConfigGrid();
+        RefreshCameraTree();
+    }
+
+    private void RediscoverCameras_Click(object sender, RoutedEventArgs e)
+    {
+        PerformRediscovery();
+    }
+
+    private void PerformRediscovery()
+    {
+        StopLiveFeed();
+        _context.Reinitialize();
+        LoadRegisteredCameras();
+        RefreshCameraTree();
+    }
+
     // --- Menu event handlers ---
 
     private void CameraDiscover_Click(object sender, RoutedEventArgs e)
     {
-        StopLiveFeed();
-        _context.Reinitialize();
-        RefreshCameraTree();
+        PerformRediscovery();
     }
 
     private void CameraConnectAll_Click(object sender, RoutedEventArgs e)
