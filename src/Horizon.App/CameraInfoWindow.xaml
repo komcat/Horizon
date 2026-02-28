@@ -1,0 +1,137 @@
+<UserControl x:Class="Horizon.App.CameraInfoPanel"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Background="{DynamicResource Theme.BackgroundBrush}"
+        Foreground="{DynamicResource Theme.ForegroundBrush}">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Border Padding="12" MinWidth="300">
+            <StackPanel>
+                <!-- Camera Information -->
+                <TextBlock Text="Camera Information" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,8"/>
+                <Border Background="{DynamicResource Theme.BackgroundAltBrush}"
+                        BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                        CornerRadius="2" Padding="10" Margin="0,0,0,16">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Model:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="0,0,0,3"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="ModelText" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,3"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Serial:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="0,0,0,3"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="SerialText" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,3"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="ID:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="0,0,0,3"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="IdText" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,3"/>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="SDK Type:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="0,0,0,3"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="SdkTypeText" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,3"/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Connected:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="0,0,0,3"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" x:Name="ConnectedText" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,3"/>
+
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Grabbing:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="0,0,0,3"/>
+                        <TextBlock Grid.Row="5" Grid.Column="1" x:Name="GrabbingText" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,3"/>
+
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="DeviceInfo:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="0,0,0,0"/>
+                        <TextBlock Grid.Row="6" Grid.Column="1" x:Name="DeviceInfoText" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" TextWrapping="Wrap" Margin="0,0,0,0"/>
+
+                        <!-- Connect / Disconnect / Live Feed buttons -->
+                        <StackPanel Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                            <Button x:Name="ConnectButton" Content="Connect" Padding="10,3" Margin="0,0,6,0" Click="Connect_Click"/>
+                            <Button x:Name="DisconnectButton" Content="Disconnect" Padding="10,3" Margin="0,0,6,0" Click="Disconnect_Click"/>
+                            <Button x:Name="StartFeedButton" Content="Start Feed" Padding="10,3" Margin="0,0,6,0" Click="StartFeed_Click"/>
+                            <Button x:Name="StopFeedButton" Content="Stop Feed" Padding="10,3" Click="StopFeed_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Exposure Settings -->
+                <TextBlock Text="Exposure Settings" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,8"/>
+                <Border Background="{DynamicResource Theme.BackgroundAltBrush}"
+                        BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                        CornerRadius="2" Padding="10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="8"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Exposure:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="0,0,0,3"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="ExposureText" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,3"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Gain:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="0,0,0,3"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="GainText" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,3"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="FrameRate:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="0,0,0,3"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="FrameRateText" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,3"/>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="AutoExpose:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" VerticalAlignment="Center" Margin="0,0,0,3"/>
+                        <CheckBox Grid.Row="3" Grid.Column="1" x:Name="AutoExposureCheck"
+                                  FontFamily="Consolas" FontSize="11"
+                                  Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                  VerticalAlignment="Center" Margin="0,0,0,3"
+                                  Checked="AutoExposure_Changed" Unchecked="AutoExposure_Changed"/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="AutoGain:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" VerticalAlignment="Center" Margin="0,0,0,0"/>
+                        <CheckBox Grid.Row="4" Grid.Column="1" x:Name="AutoGainCheck"
+                                  FontFamily="Consolas" FontSize="11"
+                                  Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                  VerticalAlignment="Center" Margin="0,0,0,0"
+                                  Checked="AutoGain_Changed" Unchecked="AutoGain_Changed"/>
+
+                        <!-- Editable exposure input -->
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Set (µs):" FontFamily="Consolas" FontSize="11"
+                                   Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" VerticalAlignment="Center"/>
+                        <TextBox Grid.Row="6" Grid.Column="1" x:Name="ExposureInput"
+                                 FontFamily="Consolas" FontSize="11"
+                                 Background="{DynamicResource Theme.BackgroundBrush}"
+                                 Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                 BorderBrush="{DynamicResource Theme.BorderBrush}"
+                                 Padding="3,2"/>
+
+                        <!-- Editable gain input -->
+                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Set Gain:" FontFamily="Consolas" FontSize="11"
+                                   Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" VerticalAlignment="Center" Margin="0,3,0,0"/>
+                        <TextBox Grid.Row="7" Grid.Column="1" x:Name="GainInput"
+                                 FontFamily="Consolas" FontSize="11"
+                                 Background="{DynamicResource Theme.BackgroundBrush}"
+                                 Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                 BorderBrush="{DynamicResource Theme.BorderBrush}"
+                                 Padding="3,2" Margin="0,3,0,0"/>
+
+                        <Button Grid.Row="8" Grid.Column="1" Content="Apply" x:Name="ApplyButton"
+                                HorizontalAlignment="Right" Padding="12,3" Margin="0,6,0,0"
+                                Click="Apply_Click"/>
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </Border>
+    </ScrollViewer>
+</UserControl>

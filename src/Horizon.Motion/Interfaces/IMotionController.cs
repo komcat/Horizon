@@ -11,6 +11,7 @@ public interface IMotionController
     bool MoveToPosition(string axis, double position, bool blocking);
     bool MoveRelative(string axis, double distance, bool blocking);
     bool IsMoving(string axis);
+    bool IsOnTarget(string axis);
     bool IsDeviceInMotion();
     PositionStruct GetCurrentPosition();
 

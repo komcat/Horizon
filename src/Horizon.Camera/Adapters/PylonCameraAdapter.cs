@@ -156,11 +156,21 @@ public sealed class PylonCameraAdapter : ICameraHardware
             if (_camera == null || !_isConnected)
                 return false;
 
-            // Handle ACE vs ACE2 parameter naming
+            // Disable auto modes BEFORE setting manual values,
+            // otherwise Pylon rejects manual writes while auto is active.
+            if (!settings.AutoExposure)
+                SetAutoExposure(false);
+            if (!settings.AutoGain)
+                SetAutoGain(false);
+
             SetExposureTime(settings.ExposureTimeUs);
             SetGain(settings.Gain);
-            SetAutoExposure(settings.AutoExposure);
-            SetAutoGain(settings.AutoGain);
+
+            // Enable auto modes AFTER setting manual values (as base values)
+            if (settings.AutoExposure)
+                SetAutoExposure(true);
+            if (settings.AutoGain)
+                SetAutoGain(true);
 
             if (settings.FrameRate > 0)
                 SetFrameRate(settings.FrameRate);

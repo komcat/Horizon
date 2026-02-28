@@ -33,6 +33,10 @@ internal static class PIGcs2
     internal static extern int IsMoving(int iId,
         [MarshalAs(UnmanagedType.LPStr)] string szAxes, [MarshalAs(UnmanagedType.LPArray)] int[] pbValarray);
 
+    [DllImport(DllName, EntryPoint = "PI_qONT")]
+    internal static extern int qONT(int iId,
+        [MarshalAs(UnmanagedType.LPStr)] string szAxes, [MarshalAs(UnmanagedType.LPArray)] int[] pbValarray);
+
     [DllImport(DllName, EntryPoint = "PI_STP")]
     internal static extern int STP(int iId);
 

@@ -1,25 +1,20 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Threading;
 using AvalonDock.Layout;
 using AvalonDock.Layout.Serialization;
 using Horizon.Camera;
 using Horizon.Camera.Models;
+using System.Windows.Input;
 using Horizon.Core;
+using Horizon.Motion;
+using Horizon.Pneumatic;
 
 namespace Horizon.App;
 
 public partial class MainWindow : Window
 {
     private readonly IAppContext _context;
-    private LiveVideoSubscriber? _liveSubscriber;
-    private DispatcherTimer? _liveFeedTimer;
-    private WriteableBitmap? _writeableBitmap;
-    private string? _liveFeedCameraId;
-    private byte[]? _rgbBuffer;
 
     private List<RegisteredCamera> _registeredCameras = new();
 
@@ -51,24 +46,64 @@ public partial class MainWindow : Window
         if (_context is Horizon.Core.AppContext appCtx)
             appCtx.LogSink = new OutputPanelLogSink(this);
 
-        try
-        {
-            _context.Initialize();
-            LoadRegisteredCameras();
-            RefreshCameraTree();
-            AutoConnectCameras();
-        }
-        catch (Exception ex)
-        {
-            OutputTextBox.Text = $"Initialization error: {ex.GetType().Name}: {ex.Message}\n\n{ex.StackTrace}";
-        }
+        // Initialize and auto-connect are handled by SplashWindow before MainWindow is shown
+        LoadRegisteredCameras();
+        RefreshHardwareTree();
     }
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         StopLiveFeed();
+        StopAllIOPanels();
+        StopAllMotionPanels();
+        StopAllPneumaticPanels();
         SaveWindowState();
         SaveDockLayout();
+    }
+
+    private void StopAllIOPanels()
+    {
+        var ioDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId != null && d.ContentId.StartsWith("io_"))
+            .ToList();
+
+        foreach (var doc in ioDocs)
+        {
+            if (doc.Content is IOPanel panel)
+                panel.StopPolling();
+        }
+    }
+
+    private void StopAllMotionPanels()
+    {
+        var motionDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId != null && d.ContentId.StartsWith("motion_"))
+            .ToList();
+
+        foreach (var doc in motionDocs)
+        {
+            if (doc.Content is MotionPanel panel)
+                panel.StopPolling();
+        }
+    }
+
+    private void StopAllPneumaticPanels()
+    {
+        var pneuDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId != null && d.ContentId.StartsWith("pneu_"))
+            .ToList();
+
+        foreach (var doc in pneuDocs)
+        {
+            if (doc.Content is PneumaticPanel panel)
+                panel.StopPolling();
+        }
     }
 
     private void RefreshCameraTree()
@@ -89,7 +124,54 @@ public partial class MainWindow : Window
 
             var item = new TreeViewItem { Header = label, Tag = status.Id };
             item.ContextMenu = CreateCameraContextMenu(status.Id);
+            item.MouseDoubleClick += CameraItem_MouseDoubleClick;
             CamerasTreeItem.Items.Add(item);
+        }
+    }
+
+    private void CameraItem_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not TreeViewItem item || item.Tag is not string cameraId)
+            return;
+        if (!_context.IsInitialized) return;
+
+        e.Handled = true;
+
+        var contentId = $"camInfo_{cameraId}";
+
+        // If a tab for this camera already exists, activate it
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var status = _context.CameraManager.GetCameraStatus(cameraId);
+        var panel = new CameraInfoPanel(status, _context.CameraManager);
+        panel.ConnectionChanged += () => { RefreshCameraTree(); RefreshConfigGrid(); };
+        panel.StartFeedRequested += id => StartLiveFeed(id);
+        panel.StopFeedRequested += id => StopLiveFeed(id);
+
+        var doc = new LayoutDocument
+        {
+            Title = $"Camera: {status.ModelName} ({cameraId})",
+            ContentId = contentId,
+            Content = panel
+        };
+
+        // Add to the first document pane
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
         }
     }
 
@@ -118,7 +200,7 @@ public partial class MainWindow : Window
         menu.Items.Add(liveFeed);
 
         var stopFeed = new MenuItem { Header = "Stop Feed" };
-        stopFeed.Click += (s, e) => StopLiveFeed();
+        stopFeed.Click += (s, e) => StopLiveFeed(cameraId);
         menu.Items.Add(stopFeed);
 
         menu.Items.Add(new Separator());
@@ -193,108 +275,84 @@ public partial class MainWindow : Window
     {
         if (!_context.IsInitialized) return;
 
-        StopLiveFeed();
+        var contentId = $"liveFeed_{cameraId}";
 
-        // Start grabbing with broadcast
-        var result = _context.CameraManager.StartGrabbingWithBroadcast(cameraId);
-        if (!result)
+        // If a feed tab for this camera already exists, just activate it
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var status = _context.CameraManager.GetCameraStatus(cameraId);
+        var panel = new LiveFeedPanel(cameraId, _context.CameraManager);
+
+        if (!panel.Start())
         {
             LogOutput($"Live Feed: Failed to start grabbing for '{cameraId}'");
             return;
         }
 
-        // Create subscriber and register
-        _liveSubscriber = new LiveVideoSubscriber(cameraId);
-        _context.CameraManager.SubscribeToFrames(_liveSubscriber);
-        _liveSubscriber.InitializeStatusFromManager(_context.CameraManager);
-        _liveFeedCameraId = cameraId;
-
-        // Start polling timer at ~30fps
-        _liveFeedTimer = new DispatcherTimer
+        var doc = new LayoutDocument
         {
-            Interval = TimeSpan.FromMilliseconds(33)
+            Title = $"Feed: {status.ModelName} ({cameraId})",
+            ContentId = contentId,
+            Content = panel
         };
-        _liveFeedTimer.Tick += LiveFeedTimer_Tick;
-        _liveFeedTimer.Start();
 
-        LiveFeedStatus.Text = $"Live: {cameraId}";
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+
         LogOutput($"Live Feed: Started for '{cameraId}'");
     }
 
     private void StopLiveFeed()
     {
-        if (_liveFeedTimer != null)
-        {
-            _liveFeedTimer.Stop();
-            _liveFeedTimer.Tick -= LiveFeedTimer_Tick;
-            _liveFeedTimer = null;
-        }
+        // Stop ALL live feed tabs
+        var feedDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId != null && d.ContentId.StartsWith("liveFeed_"))
+            .ToList();
 
-        if (_context.IsInitialized && _liveSubscriber != null)
+        foreach (var doc in feedDocs)
         {
-            _context.CameraManager.UnsubscribeFromFrames(_liveSubscriber.SubscriberId);
+            if (doc.Content is LiveFeedPanel panel)
+            {
+                panel.Stop();
+                LogOutput($"Live Feed: Stopped for '{panel.CameraId}'");
+            }
+            doc.Close();
         }
-
-        if (_context.IsInitialized && _liveFeedCameraId != null)
-        {
-            _context.CameraManager.StopGrabbing(_liveFeedCameraId);
-            LogOutput($"Live Feed: Stopped for '{_liveFeedCameraId}'");
-        }
-
-        _liveSubscriber = null;
-        _writeableBitmap = null;
-        _rgbBuffer = null;
-        _liveFeedCameraId = null;
-        LiveFeedStatus.Text = "No feed active";
     }
 
-    private unsafe void LiveFeedTimer_Tick(object? sender, EventArgs e)
+    private void StopLiveFeed(string cameraId)
     {
-        if (_liveSubscriber == null || !_liveSubscriber.HasNewFrame)
-            return;
+        var contentId = $"liveFeed_{cameraId}";
+        var doc = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
 
-        // Allocate RGB buffer once (max 4096x4096x3 = ~50MB), reuse across frames
-        _rgbBuffer ??= new byte[4096 * 4096 * 3];
+        if (doc == null) return;
 
-        if (!_liveSubscriber.GetLatestFrameInto(_rgbBuffer, out int width, out int height, out int channels))
-            return;
-
-        // Create or resize WriteableBitmap if needed
-        if (_writeableBitmap == null ||
-            _writeableBitmap.PixelWidth != width ||
-            _writeableBitmap.PixelHeight != height)
+        if (doc.Content is LiveFeedPanel panel)
         {
-            _writeableBitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgr32, null);
-            LiveFeedImage.Source = _writeableBitmap;
+            panel.Stop();
+            LogOutput($"Live Feed: Stopped for '{cameraId}'");
         }
-
-        // Convert RGB8 -> BGR32 directly into WriteableBitmap BackBuffer
-        int pixelCount = width * height;
-
-        _writeableBitmap.Lock();
-        try
-        {
-            byte* dst = (byte*)_writeableBitmap.BackBuffer;
-            fixed (byte* src = _rgbBuffer)
-            {
-                int srcIdx = 0;
-                int dstIdx = 0;
-                for (int i = 0; i < pixelCount; i++)
-                {
-                    dst[dstIdx + 0] = src[srcIdx + 2]; // B <- R
-                    dst[dstIdx + 1] = src[srcIdx + 1]; // G <- G
-                    dst[dstIdx + 2] = src[srcIdx + 0]; // R <- B
-                    dst[dstIdx + 3] = 255;              // A
-                    srcIdx += channels;
-                    dstIdx += 4;
-                }
-            }
-            _writeableBitmap.AddDirtyRect(new Int32Rect(0, 0, width, height));
-        }
-        finally
-        {
-            _writeableBitmap.Unlock();
-        }
+        doc.Close();
     }
 
     // --- Camera Config helpers ---
@@ -459,8 +517,7 @@ public partial class MainWindow : Window
                 .FirstOrDefault(s => s.SerialNumber.Equals(serial, StringComparison.OrdinalIgnoreCase));
             if (cam != null)
             {
-                if (_liveFeedCameraId == cam.Id)
-                    StopLiveFeed();
+                StopLiveFeed(cam.Id);
                 _context.CameraManager.DisconnectCamera(cam.Id);
                 _context.CameraManager.RemoveCamera(cam.Id);
             }
@@ -514,27 +571,9 @@ public partial class MainWindow : Window
         RefreshCameraTree();
     }
 
-    private void ViewCameras_Click(object sender, RoutedEventArgs e)
+    private void ViewHardware_Click(object sender, RoutedEventArgs e)
     {
-        ToggleAnchorable("cameras");
-    }
-
-    private void ViewMotion_Click(object sender, RoutedEventArgs e)
-    {
-        ToggleAnchorable("motion");
-        RefreshMotionStatus();
-    }
-
-    private void ViewIO_Click(object sender, RoutedEventArgs e)
-    {
-        ToggleAnchorable("io");
-        RefreshIOStatus();
-    }
-
-    private void ViewPneumatic_Click(object sender, RoutedEventArgs e)
-    {
-        ToggleAnchorable("pneumatic");
-        RefreshPneumaticStatus();
+        ToggleAnchorable("hardware");
     }
 
     private void ViewOutput_Click(object sender, RoutedEventArgs e)
@@ -542,58 +581,201 @@ public partial class MainWindow : Window
         ToggleAnchorable("output");
     }
 
-    private void RefreshMotionStatus()
+    private void RefreshHardwareTree()
     {
+        RefreshCameraTree();
+        RefreshMotionTree();
+        RefreshIOTree();
+        RefreshPneumaticTree();
+    }
+
+    private void RefreshMotionTree()
+    {
+        MotionTreeItem.Items.Clear();
         if (!_context.IsInitialized) return;
-        var lines = new System.Text.StringBuilder("Motion Controllers:\n");
+
         foreach (var name in _context.MotionManager.GetAllDeviceNames())
         {
             var ctrl = _context.MotionManager.GetController(name);
-            if (ctrl != null)
-            {
-                lines.AppendLine($"  {name}: {(ctrl.IsConnected ? "Connected" : "Disconnected")} [{ctrl.ControllerType}]");
-                if (ctrl.IsConnected)
-                {
-                    var pos = ctrl.GetCurrentPosition();
-                    lines.AppendLine($"    Position: X={pos.X:F3} Y={pos.Y:F3} Z={pos.Z:F3}");
-                    lines.AppendLine($"    Moving: {ctrl.IsDeviceInMotion()}");
-                }
-            }
+            if (ctrl == null) continue;
+
+            var status = ctrl.IsConnected ? "Connected" : "Disconnected";
+            var label = $"{name} [{status}] {ctrl.ControllerType}";
+            var item = new TreeViewItem { Header = label, Tag = name };
+            item.MouseDoubleClick += MotionItem_MouseDoubleClick;
+            MotionTreeItem.Items.Add(item);
         }
-        MotionStatusText.Text = lines.ToString();
     }
 
-    private void RefreshIOStatus()
+    private void MotionItem_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
+        if (sender is not TreeViewItem item || item.Tag is not string deviceName)
+            return;
         if (!_context.IsInitialized) return;
-        var lines = new System.Text.StringBuilder("IO Devices:\n");
+
+        e.Handled = true;
+
+        var contentId = $"motion_{deviceName}";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var ctrl = _context.MotionManager.GetController(deviceName);
+        if (ctrl == null) return;
+
+        var panel = new MotionPanel(deviceName, _context.MotionManager);
+        panel.ConnectionChanged += () => RefreshMotionTree();
+        panel.LogMessage += msg => LogOutput(msg);
+
+        var doc = new LayoutDocument
+        {
+            Title = $"Motion: {deviceName}",
+            ContentId = contentId,
+            Content = panel
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+    }
+
+    private void RefreshIOTree()
+    {
+        IOTreeItem.Items.Clear();
+        if (!_context.IsInitialized) return;
+
         foreach (var name in _context.IOManager.GetAllDeviceNames())
         {
             var device = _context.IOManager.GetDevice(name);
-            if (device != null)
-            {
-                lines.AppendLine($"  {name}: {(device.IsConnected ? "Connected" : "Disconnected")}");
-                lines.AppendLine($"    Inputs: {device.InputCount}, Outputs: {device.OutputCount}");
-            }
+            if (device == null) continue;
+
+            var status = device.IsConnected ? "Connected" : "Disconnected";
+            var label = $"{name} [{status}] {device.InputCount}in/{device.OutputCount}out";
+            var item = new TreeViewItem { Header = label, Tag = name };
+            item.MouseDoubleClick += IOItem_MouseDoubleClick;
+            IOTreeItem.Items.Add(item);
         }
-        IOStatusText.Text = lines.ToString();
     }
 
-    private void RefreshPneumaticStatus()
+    private void IOItem_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
+        if (sender is not TreeViewItem item || item.Tag is not string deviceName)
+            return;
         if (!_context.IsInitialized) return;
-        var lines = new System.Text.StringBuilder("Pneumatic Slides:\n");
+
+        e.Handled = true;
+
+        var contentId = $"io_{deviceName}";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var device = _context.IOManager.GetDevice(deviceName);
+        if (device == null) return;
+
+        var panel = new IOPanel(deviceName, _context.IOManager);
+        panel.ConnectionChanged += () => RefreshIOTree();
+        panel.LogMessage += msg => LogOutput(msg);
+
+        var doc = new LayoutDocument
+        {
+            Title = $"IO: {deviceName}",
+            ContentId = contentId,
+            Content = panel
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+    }
+
+    private void RefreshPneumaticTree()
+    {
+        PneumaticTreeItem.Items.Clear();
+        if (!_context.IsInitialized) return;
+
         foreach (var name in _context.PneumaticManager.GetAllSlideNames())
         {
             var slide = _context.PneumaticManager.GetSlide(name);
-            if (slide != null)
-            {
-                var status = slide.GetStatus();
-                lines.AppendLine($"  {name}: {status.Position}");
-                lines.AppendLine($"    Output: {(status.OutputActive ? "ON" : "OFF")}");
-            }
+            if (slide == null) continue;
+
+            var status = slide.GetStatus();
+            var label = $"{name} — {status.Position}";
+            var item = new TreeViewItem { Header = label, Tag = name };
+            item.MouseDoubleClick += PneumaticItem_MouseDoubleClick;
+            PneumaticTreeItem.Items.Add(item);
         }
-        PneumaticStatusText.Text = lines.ToString();
+    }
+
+    private void PneumaticItem_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not TreeViewItem item || item.Tag is not string slideName)
+            return;
+        if (!_context.IsInitialized) return;
+
+        e.Handled = true;
+
+        var contentId = $"pneu_{slideName}";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var slide = _context.PneumaticManager.GetSlide(slideName);
+        if (slide == null) return;
+
+        var panel = new PneumaticPanel(slideName, _context.PneumaticManager);
+        panel.StatusChanged += () => RefreshPneumaticTree();
+        panel.LogMessage += msg => LogOutput(msg);
+
+        var doc = new LayoutDocument
+        {
+            Title = $"Pneumatic: {slideName}",
+            ContentId = contentId,
+            Content = panel
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
     }
 
     private void ToggleAnchorable(string contentId)
@@ -631,10 +813,52 @@ public partial class MainWindow : Window
         try
         {
             if (!File.Exists(DockLayoutPath)) return;
+
+            // If the saved layout is from before the unified Hardware panel,
+            // discard it so the XAML-defined layout takes effect.
+            var xml = File.ReadAllText(DockLayoutPath);
+            if (!xml.Contains("\"hardware\""))
+            {
+                File.Delete(DockLayoutPath);
+                return;
+            }
+
+            // Snapshot existing anchorable content by ContentId before deserialization
+            var contentMap = new Dictionary<string, object>();
+            foreach (var anc in DockManager.Layout.Descendents().OfType<LayoutAnchorable>())
+            {
+                if (anc.ContentId != null && anc.Content != null)
+                    contentMap[anc.ContentId] = anc.Content;
+            }
+            foreach (var doc in DockManager.Layout.Descendents().OfType<LayoutDocument>())
+            {
+                if (doc.ContentId != null && doc.Content != null)
+                    contentMap[doc.ContentId] = doc.Content;
+            }
+
             var serializer = new XmlLayoutSerializer(DockManager);
             serializer.LayoutSerializationCallback += (s, args) =>
             {
-                args.Content = args.Content ?? args.Model.Content;
+                var id = args.Model.ContentId;
+
+                // Discard saved feed/IO/motion/pneumatic tabs — they need runtime state
+                if (id == "liveFeed"
+                    || (id != null && id.StartsWith("liveFeed_"))
+                    || (id != null && id.StartsWith("io_"))
+                    || (id != null && id.StartsWith("motion_"))
+                    || (id != null && id.StartsWith("pneu_")))
+                {
+                    args.Cancel = true;
+                    return;
+                }
+
+                if (args.Content != null) return;
+
+                // Restore content from pre-deserialization snapshot
+                if (id != null && contentMap.TryGetValue(id, out var content))
+                    args.Content = content;
+                else
+                    args.Content = args.Model.Content;
             };
             serializer.Deserialize(DockLayoutPath);
         }

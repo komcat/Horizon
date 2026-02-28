@@ -92,6 +92,17 @@ public sealed class ACSMotionController : IMotionController
         catch { return false; }
     }
 
+    public bool IsOnTarget(string axis)
+    {
+        if (!_connected || !_axisMap.TryGetValue(axis, out var acsAxis)) return false;
+        try
+        {
+            var state = _api.GetMotorState(acsAxis);
+            return (state & MotorStates.ACSC_MST_INPOS) != 0;
+        }
+        catch { return false; }
+    }
+
     public bool IsDeviceInMotion()
     {
         return AxisNames.Any(IsMoving);

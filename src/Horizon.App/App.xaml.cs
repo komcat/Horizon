@@ -17,7 +17,7 @@ public partial class App : Application
 
     private const uint LOAD_LIBRARY_SEARCH_DEFAULT_DIRS = 0x00001000;
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
@@ -25,8 +25,16 @@ public partial class App : Application
 
         _appContext = new Horizon.Core.AppContext();
 
+        // Show splash screen and connect all hardware
+        var splash = new SplashWindow(_appContext);
+        splash.Show();
+
+        await splash.RunConnectionsAsync();
+
+        // Show main window, then close splash
         var mainWindow = new MainWindow(_appContext);
         mainWindow.Show();
+        splash.Close();
     }
 
     private static void InitializePylonEnvironment()

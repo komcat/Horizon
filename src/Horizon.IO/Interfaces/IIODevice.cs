@@ -20,4 +20,5 @@ public interface IIODevice
 
     void SetPinName(bool isInput, int pin, string name);
     int? GetPinByName(string name);
+    string? GetPinName(bool isInput, int pin);
 }

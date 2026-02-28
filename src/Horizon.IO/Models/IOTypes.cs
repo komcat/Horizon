@@ -10,6 +10,16 @@ public enum IOError
     NotInitialized
 }
 
+/// <summary>
+/// "IOModule" = standalone Ezi-IO expansion module (uses FAS_GetInput/FAS_SetOutput).
+/// "MotorIO" = EziMOTION Plus-E motor controller built-in IO (uses FAS_GetIOInput/FAS_SetIOOutput).
+/// </summary>
+public enum EziDeviceType
+{
+    IOModule,
+    MotorIO
+}
+
 public record EziIODeviceConfig
 {
     public int DeviceId { get; init; }
@@ -18,6 +28,7 @@ public record EziIODeviceConfig
     public int InputCount { get; init; }
     public int OutputCount { get; init; }
     public bool Enabled { get; init; } = true;
+    public EziDeviceType DeviceType { get; init; } = EziDeviceType.IOModule;
 }
 
 public record IOPinConfig

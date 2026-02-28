@@ -109,6 +109,12 @@ public sealed class UnifiedMotionManager
         return _managers.Values.SelectMany(m => m.GetDeviceNames()).ToList();
     }
 
+    public List<string> GetNamedPositionNames(string device)
+    {
+        if (!_namedPositions.TryGetValue(device, out var positions)) return new();
+        return positions.Keys.ToList();
+    }
+
     public PositionStruct? GetNamedPosition(string device, string positionName)
     {
         if (!_namedPositions.TryGetValue(device, out var positions)) return null;

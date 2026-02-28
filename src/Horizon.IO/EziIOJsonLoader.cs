@@ -19,6 +19,7 @@ public static class EziIOJsonLoader
         public int InputCount { get; init; }
         public int OutputCount { get; init; }
         public bool Enabled { get; init; } = true;
+        public string DeviceType { get; init; } = "IOModule";
         public List<IOPinConfig> InputPins { get; init; } = new();
         public List<IOPinConfig> OutputPins { get; init; } = new();
     }
@@ -32,6 +33,9 @@ public static class EziIOJsonLoader
         int count = 0;
         foreach (var entry in config.Devices)
         {
+            var devType = Enum.TryParse<EziDeviceType>(entry.DeviceType, true, out var dt)
+                ? dt : EziDeviceType.MotorIO;
+
             var deviceConfig = new IODeviceConfig
             {
                 Device = new EziIODeviceConfig
@@ -41,7 +45,8 @@ public static class EziIOJsonLoader
                     IpAddress = entry.IpAddress,
                     InputCount = entry.InputCount,
                     OutputCount = entry.OutputCount,
-                    Enabled = entry.Enabled
+                    Enabled = entry.Enabled,
+                    DeviceType = devType
                 },
                 InputPins = entry.InputPins,
                 OutputPins = entry.OutputPins

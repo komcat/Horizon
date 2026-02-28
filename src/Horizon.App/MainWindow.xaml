@@ -130,12 +130,7 @@
                 <MenuItem Header="Disconnect A_ll" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="CameraDisconnectAll_Click"/>
             </MenuItem>
             <MenuItem Header="_View" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
-                <MenuItem Header="_Hardware" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuHeaderTemplate}">
-                    <MenuItem Header="_Cameras" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ViewCameras_Click"/>
-                    <MenuItem Header="_Motion" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ViewMotion_Click"/>
-                    <MenuItem Header="_IO" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ViewIO_Click"/>
-                    <MenuItem Header="_Pneumatic" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ViewPneumatic_Click"/>
-                </MenuItem>
+                <MenuItem Header="_Hardware Panel" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ViewHardware_Click"/>
                 <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="_Output" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ViewOutput_Click"/>
             </MenuItem>
@@ -152,23 +147,6 @@
 
             <avalonDock:LayoutRoot>
                 <avalonDock:LayoutPanel Orientation="Horizontal">
-                    <!-- Left: Live Feed panel -->
-                    <avalonDock:LayoutAnchorablePane DockWidth="400">
-                        <avalonDock:LayoutAnchorable Title="Live Feed" ContentId="liveFeed" CanClose="False">
-                            <Grid Background="{DynamicResource Theme.BackgroundAltBrush}">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <Image x:Name="LiveFeedImage" Grid.Row="0" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
-                                <TextBlock x:Name="LiveFeedStatus" Grid.Row="1"
-                                           Text="No feed active"
-                                           Foreground="{DynamicResource Theme.ForegroundBrush}"
-                                           Padding="4,2" FontSize="11" FontFamily="Consolas"/>
-                            </Grid>
-                        </avalonDock:LayoutAnchorable>
-                    </avalonDock:LayoutAnchorablePane>
-
                     <!-- Center: Document area -->
                     <avalonDock:LayoutDocumentPane>
                         <avalonDock:LayoutDocument Title="Welcome" ContentId="welcome">
@@ -180,12 +158,12 @@
                         </avalonDock:LayoutDocument>
                     </avalonDock:LayoutDocumentPane>
 
-                    <!-- Right: Camera tree + Config -->
+                    <!-- Right: Hardware tree + Camera Config -->
                     <avalonDock:LayoutAnchorablePaneGroup DockWidth="300" Orientation="Vertical">
                         <avalonDock:LayoutAnchorablePane>
-                            <avalonDock:LayoutAnchorable Title="Cameras" ContentId="cameras" CanClose="False">
+                            <avalonDock:LayoutAnchorable Title="Hardware" ContentId="hardware" CanClose="False">
                             <Border Background="{DynamicResource Theme.BackgroundAltBrush}">
-                                <TreeView x:Name="CamerasTree"
+                                <TreeView x:Name="HardwareTree"
                                           Background="{DynamicResource Theme.BackgroundAltBrush}"
                                           Foreground="{DynamicResource Theme.ForegroundBrush}"
                                           BorderThickness="0">
@@ -195,6 +173,9 @@
                                         </Style>
                                     </TreeView.Resources>
                                     <TreeViewItem x:Name="CamerasTreeItem" Header="Cameras" IsExpanded="True"/>
+                                    <TreeViewItem x:Name="MotionTreeItem" Header="Motion" IsExpanded="True"/>
+                                    <TreeViewItem x:Name="IOTreeItem" Header="IO" IsExpanded="True"/>
+                                    <TreeViewItem x:Name="PneumaticTreeItem" Header="Pneumatic" IsExpanded="True"/>
                                 </TreeView>
                             </Border>
                         </avalonDock:LayoutAnchorable>
@@ -336,50 +317,6 @@
                         </avalonDock:LayoutAnchorablePane>
                     </avalonDock:LayoutAnchorablePaneGroup>
                 </avalonDock:LayoutPanel>
-
-                <!-- Right side: Hardware status panels (hidden by default) -->
-                <avalonDock:LayoutRoot.RightSide>
-                    <avalonDock:LayoutAnchorSide>
-                        <avalonDock:LayoutAnchorGroup>
-                            <avalonDock:LayoutAnchorable Title="Motion" ContentId="motion" AutoHideWidth="300" AutoHideHeight="300">
-                                <Border Background="{DynamicResource Theme.BackgroundAltBrush}">
-                                    <TextBox x:Name="MotionStatusText"
-                                             Background="{DynamicResource Theme.BackgroundBrush}"
-                                             Foreground="{DynamicResource Theme.ForegroundBrush}"
-                                             FontFamily="Consolas" FontSize="11"
-                                             IsReadOnly="True" AcceptsReturn="True"
-                                             VerticalScrollBarVisibility="Auto"
-                                             BorderThickness="0"
-                                             Text="Motion status"/>
-                                </Border>
-                            </avalonDock:LayoutAnchorable>
-                            <avalonDock:LayoutAnchorable Title="IO" ContentId="io" AutoHideWidth="300" AutoHideHeight="300">
-                                <Border Background="{DynamicResource Theme.BackgroundAltBrush}">
-                                    <TextBox x:Name="IOStatusText"
-                                             Background="{DynamicResource Theme.BackgroundBrush}"
-                                             Foreground="{DynamicResource Theme.ForegroundBrush}"
-                                             FontFamily="Consolas" FontSize="11"
-                                             IsReadOnly="True" AcceptsReturn="True"
-                                             VerticalScrollBarVisibility="Auto"
-                                             BorderThickness="0"
-                                             Text="IO status"/>
-                                </Border>
-                            </avalonDock:LayoutAnchorable>
-                            <avalonDock:LayoutAnchorable Title="Pneumatic" ContentId="pneumatic" AutoHideWidth="300" AutoHideHeight="300">
-                                <Border Background="{DynamicResource Theme.BackgroundAltBrush}">
-                                    <TextBox x:Name="PneumaticStatusText"
-                                             Background="{DynamicResource Theme.BackgroundBrush}"
-                                             Foreground="{DynamicResource Theme.ForegroundBrush}"
-                                             FontFamily="Consolas" FontSize="11"
-                                             IsReadOnly="True" AcceptsReturn="True"
-                                             VerticalScrollBarVisibility="Auto"
-                                             BorderThickness="0"
-                                             Text="Pneumatic status"/>
-                                </Border>
-                            </avalonDock:LayoutAnchorable>
-                        </avalonDock:LayoutAnchorGroup>
-                    </avalonDock:LayoutAnchorSide>
-                </avalonDock:LayoutRoot.RightSide>
 
                 <!-- Bottom: Output panel -->
                 <avalonDock:LayoutRoot.BottomSide>

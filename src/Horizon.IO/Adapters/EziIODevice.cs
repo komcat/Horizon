@@ -9,6 +9,7 @@ public sealed class EziIODevice : IIODevice
 {
     private readonly int _boardId;
     private readonly IPAddress _ipAddress;
+    private readonly EziDeviceType _deviceType;
     private readonly object _lock = new();
     private bool _connected;
 
@@ -24,6 +25,7 @@ public sealed class EziIODevice : IIODevice
     {
         _boardId = config.DeviceId;
         _ipAddress = IPAddress.Parse(config.IpAddress);
+        _deviceType = config.DeviceType;
         DeviceName = config.Name;
         InputCount = config.InputCount;
         OutputCount = config.OutputCount;
@@ -64,7 +66,19 @@ public sealed class EziIODevice : IIODevice
         lock (_lock)
         {
             if (!_connected) return IOError.Disconnected;
-            var result = EziNative.FAS_GetInput(_boardId, ref inputs, ref latch);
+
+            int result;
+            if (_deviceType == EziDeviceType.MotorIO)
+            {
+                // Motor controller built-in IO
+                result = EziNative.FAS_GetIOInput(_boardId, ref inputs);
+                // No latch concept for motor IO
+            }
+            else
+            {
+                // Standalone IO module
+                result = EziNative.FAS_GetInput(_boardId, ref inputs, ref latch);
+            }
             return result == EziNative.FMM_OK ? IOError.Success : IOError.OperationFailed;
         }
     }
@@ -76,9 +90,23 @@ public sealed class EziIODevice : IIODevice
             if (!_connected) return IOError.Disconnected;
             if (pin < 0 || pin >= OutputCount) return IOError.InvalidPin;
 
-            uint setMask = state ? (1u << pin) : 0u;
-            uint clearMask = state ? 0u : (1u << pin);
-            var result = EziNative.FAS_SetOutput(_boardId, setMask, clearMask);
+            int result;
+            if (_deviceType == EziDeviceType.MotorIO)
+            {
+                uint setMask = state ? (1u << pin) : 0u;
+                uint clearMask = state ? 0u : (1u << pin);
+                result = EziNative.FAS_SetIOOutput(_boardId, setMask, clearMask);
+            }
+            else
+            {
+                // Ezi-IO uses combined register: bits [0..InputCount-1] = inputs,
+                // bits [InputCount..InputCount+OutputCount-1] = outputs
+                int bitPos = pin + InputCount;
+                uint setMask = state ? (1u << bitPos) : 0u;
+                uint clearMask = state ? 0u : (1u << bitPos);
+                result = EziNative.FAS_SetOutput(_boardId, setMask, clearMask);
+            }
+
             return result == EziNative.FMM_OK ? IOError.Success : IOError.OperationFailed;
         }
     }
@@ -96,12 +124,31 @@ public sealed class EziIODevice : IIODevice
 
     public IOError ReadAllOutputs(out uint outputs)
     {
+        return ReadAllOutputs(out outputs, out _);
+    }
+
+    public IOError ReadAllOutputs(out uint outputs, out uint status)
+    {
         outputs = 0;
-        uint status = 0;
+        status = 0;
         lock (_lock)
         {
             if (!_connected) return IOError.Disconnected;
-            var result = EziNative.FAS_GetOutput(_boardId, ref outputs, ref status);
+
+            int result;
+            if (_deviceType == EziDeviceType.MotorIO)
+            {
+                // Motor controller built-in IO
+                result = EziNative.FAS_GetIOOutput(_boardId, ref outputs);
+                status = outputs;
+            }
+            else
+            {
+                // Standalone IO module — combined register, shift outputs down to bit 0
+                result = EziNative.FAS_GetOutput(_boardId, ref outputs, ref status);
+                outputs >>= InputCount;
+                status >>= InputCount;
+            }
             return result == EziNative.FMM_OK ? IOError.Success : IOError.OperationFailed;
         }
     }
@@ -116,6 +163,17 @@ public sealed class EziIODevice : IIODevice
     {
         if (_inputPinNames.TryGetValue(name, out var pin)) return pin;
         if (_outputPinNames.TryGetValue(name, out pin)) return pin;
+        return null;
+    }
+
+    public string? GetPinName(bool isInput, int pin)
+    {
+        var dict = isInput ? _inputPinNames : _outputPinNames;
+        foreach (var kvp in dict)
+        {
+            if (kvp.Value == pin)
+                return kvp.Key;
+        }
         return null;
     }
 }

@@ -71,6 +71,13 @@ public sealed class PIMotionController : IMotionController
         return moving[0] != 0;
     }
 
+    public bool IsOnTarget(string axis)
+    {
+        if (!IsConnected) return false;
+        var onTarget = new int[1];
+        return PIGcs2.qONT(_connectionId, axis, onTarget) != 0 && onTarget[0] != 0;
+    }
+
     public bool IsDeviceInMotion()
     {
         return AxisNames.Any(IsMoving);
