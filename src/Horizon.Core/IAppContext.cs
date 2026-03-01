@@ -1,6 +1,7 @@
 using Horizon.Camera;
 using Horizon.CurrentMeasurement;
 using Horizon.IO;
+using Horizon.LaserController;
 using Horizon.Motion;
 using Horizon.Pneumatic;
 using Horizon.Process;
@@ -15,6 +16,7 @@ public interface IAppContext
     EziIOManager IOManager { get; }
     PneumaticManager PneumaticManager { get; }
     CurrentMeasurementManager CurrentMeasurementManager { get; }
+    LaserControllerManager LaserControllerManager { get; }
     ProcessEngine ProcessEngine { get; }
     SafetyWatchManager? SafetyWatchManager { get; }
     MeasurementHub MeasurementHub { get; }

@@ -8,6 +8,7 @@ public enum ErrorCategory : byte
     Pneumatic          = 0x03,
     Camera             = 0x04,
     CurrentMeasurement = 0x05,
+    LaserController    = 0x06,
     Process            = 0x09,
     Safety             = 0x0F
 }

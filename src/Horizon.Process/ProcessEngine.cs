@@ -26,6 +26,7 @@ public sealed class ProcessEngine
         _dispatcher.RegisterHandler(new SystemCommandHandler());
         _dispatcher.RegisterHandler(new ContextCommandHandler());
         _dispatcher.RegisterHandler(new CurrentMeasurementCommandHandler());
+        _dispatcher.RegisterHandler(new LaserControllerCommandHandler());
     }
 
     public void RegisterDevice(string deviceName, object? manager, string managerType)
@@ -98,6 +99,18 @@ public sealed class ProcessEngine
             {
                 foreach (var name in names)
                     RegisterDevice(name, cmeasMgr, "currentmeasurement");
+            }
+        }
+
+        // Register laser controller devices
+        var laserMgr = contextType.GetProperty("LaserControllerManager")?.GetValue(context);
+        if (laserMgr != null)
+        {
+            var getNames = laserMgr.GetType().GetMethod("GetAllDeviceNames");
+            if (getNames?.Invoke(laserMgr, null) is List<string> names)
+            {
+                foreach (var name in names)
+                    RegisterDevice(name, laserMgr, "lasercontroller");
             }
         }
 

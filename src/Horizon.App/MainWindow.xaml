@@ -180,6 +180,7 @@
                                     <TreeViewItem x:Name="IOTreeItem" Header="IO" IsExpanded="True"/>
                                     <TreeViewItem x:Name="PneumaticTreeItem" Header="Pneumatic" IsExpanded="True"/>
                                     <TreeViewItem x:Name="CurrentMeasTreeItem" Header="Current Measurement" IsExpanded="True"/>
+                                    <TreeViewItem x:Name="LaserControllerTreeItem" Header="Laser Controller" IsExpanded="True"/>
                                 </TreeView>
                             </Border>
                         </avalonDock:LayoutAnchorable>

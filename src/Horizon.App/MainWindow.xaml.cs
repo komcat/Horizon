@@ -9,6 +9,7 @@ using System.Windows.Input;
 using Horizon.Core;
 using Horizon.CurrentMeasurement;
 using Horizon.CurrentMeasurement.Interfaces;
+using Horizon.LaserController;
 using Horizon.Motion;
 using Horizon.Pneumatic;
 
@@ -62,6 +63,7 @@ public partial class MainWindow : Window
         StopAllPneumaticPanels();
         StopAllCurrentMeasPanels();
         StopAllCurrentChartPanels();
+        StopAllLaserControllerPanels();
         _overlayWindow?.Close();
         SaveWindowState();
         SaveDockLayout();
@@ -622,6 +624,7 @@ public partial class MainWindow : Window
         RefreshIOTree();
         RefreshPneumaticTree();
         RefreshCurrentMeasTree();
+        RefreshLaserControllerTree();
     }
 
     private void RefreshMotionTree()
@@ -878,6 +881,84 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RefreshLaserControllerTree()
+    {
+        LaserControllerTreeItem.Items.Clear();
+        if (!_context.IsInitialized) return;
+
+        foreach (var name in _context.LaserControllerManager.GetAllDeviceNames())
+        {
+            var device = _context.LaserControllerManager.GetDevice(name);
+            if (device == null) continue;
+
+            var status = device.IsConnected ? "Connected" : "Disconnected";
+            var label = $"{name} [{status}] {device.ControllerType}";
+            var item = new TreeViewItem { Header = label, Tag = name };
+            item.MouseDoubleClick += LaserControllerItem_MouseDoubleClick;
+            LaserControllerTreeItem.Items.Add(item);
+        }
+    }
+
+    private void LaserControllerItem_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not TreeViewItem item || item.Tag is not string deviceName)
+            return;
+        if (!_context.IsInitialized) return;
+
+        e.Handled = true;
+
+        var contentId = $"laser_{deviceName}";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var device = _context.LaserControllerManager.GetDevice(deviceName);
+        if (device == null) return;
+
+        var panel = new LaserControllerPanel(deviceName, _context.LaserControllerManager);
+        panel.ConnectionChanged += () => RefreshLaserControllerTree();
+        panel.LogMessage += msg => LogOutput(msg);
+
+        var doc = new LayoutDocument
+        {
+            Title = $"Laser: {deviceName}",
+            ContentId = contentId,
+            Content = panel
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+    }
+
+    private void StopAllLaserControllerPanels()
+    {
+        var laserDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId != null && d.ContentId.StartsWith("laser_"))
+            .ToList();
+
+        foreach (var doc in laserDocs)
+        {
+            if (doc.Content is LaserControllerPanel panel)
+                panel.StopPolling();
+        }
+    }
+
     private void TopViewChart_Click(object sender, RoutedEventArgs e)
     {
         if (_overlayWindow != null)
@@ -1035,7 +1116,8 @@ public partial class MainWindow : Window
                     || (id != null && id.StartsWith("motion_"))
                     || (id != null && id.StartsWith("pneu_"))
                     || (id != null && id.StartsWith("cmeas_"))
-                    || (id != null && id.StartsWith("chart_")))
+                    || (id != null && id.StartsWith("chart_"))
+                    || (id != null && id.StartsWith("laser_")))
                 {
                     args.Cancel = true;
                     return;

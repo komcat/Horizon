@@ -2,6 +2,7 @@ using Horizon.Camera;
 using Horizon.Common;
 using Horizon.CurrentMeasurement;
 using Horizon.IO;
+using Horizon.LaserController;
 using Horizon.Motion;
 using Horizon.Pneumatic;
 using Horizon.Process;
@@ -16,6 +17,7 @@ public sealed class AppContext : IAppContext, IDisposable
     private EziIOManager? _ioManager;
     private PneumaticManager? _pneumaticManager;
     private CurrentMeasurementManager? _currentMeasurementManager;
+    private LaserControllerManager? _laserControllerManager;
     private ProcessEngine? _processEngine;
     private SafetyEventLog? _safetyEventLog;
     private SafetyWatchManager? _safetyWatchManager;
@@ -38,6 +40,9 @@ public sealed class AppContext : IAppContext, IDisposable
 
     public CurrentMeasurementManager CurrentMeasurementManager =>
         _currentMeasurementManager ?? throw new InvalidOperationException("AppContext is not initialized.");
+
+    public LaserControllerManager LaserControllerManager =>
+        _laserControllerManager ?? throw new InvalidOperationException("AppContext is not initialized.");
 
     public ProcessEngine ProcessEngine =>
         _processEngine ?? throw new InvalidOperationException("AppContext is not initialized.");
@@ -138,6 +143,18 @@ public sealed class AppContext : IAppContext, IDisposable
             Log($"Current measurement config load error: {ex.Message}");
         }
 
+        // --- Laser Controller subsystem ---
+        _laserControllerManager = new LaserControllerManager();
+        try
+        {
+            var laserCount = LaserControllerJsonLoader.LoadDevices(_laserControllerManager, configDir);
+            Log($"Laser controller devices loaded: {laserCount}");
+        }
+        catch (Exception ex)
+        {
+            Log($"Laser controller config load error: {ex.Message}");
+        }
+
         // --- Pneumatic subsystem (depends on IO) ---
         _pneumaticManager = new PneumaticManager();
         try
@@ -178,6 +195,9 @@ public sealed class AppContext : IAppContext, IDisposable
         _processEngine = null;
 
         _pneumaticManager = null;
+
+        _laserControllerManager?.Dispose();
+        _laserControllerManager = null;
 
         _currentMeasurementManager?.Dispose();
         _currentMeasurementManager = null;

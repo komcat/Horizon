@@ -62,6 +62,13 @@ public enum ErrorCode : ushort
     CMeasCommunicationError     = 0x0504,
     CMeasParseError             = 0x0505,
 
+    // Laser Controller (0x06xx)
+    LaserDeviceNotFound         = 0x0600,
+    LaserDisconnected           = 0x0601,
+    LaserOperationFailed        = 0x0602,
+    LaserCommunicationError     = 0x0603,
+    LaserParseError             = 0x0604,
+
     // Process / Sequence (0x09xx)
     ProcessInvalidStep          = 0x0900,
     ProcessDeviceNotRegistered  = 0x0901,
@@ -92,6 +99,7 @@ public static class ErrorCodeExtensions
             0x03 => ErrorCategory.Pneumatic,
             0x04 => ErrorCategory.Camera,
             0x05 => ErrorCategory.CurrentMeasurement,
+            0x06 => ErrorCategory.LaserController,
             0x09 => ErrorCategory.Process,
             0x0F => ErrorCategory.Safety,
             _    => ErrorCategory.General,
