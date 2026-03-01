@@ -330,14 +330,78 @@
                     <avalonDock:LayoutAnchorSide>
                         <avalonDock:LayoutAnchorGroup>
                             <avalonDock:LayoutAnchorable Title="Output" ContentId="output" AutoHideWidth="300" AutoHideHeight="200">
-                                <TextBox x:Name="OutputTextBox"
-                                         Background="{DynamicResource Theme.BackgroundBrush}"
-                                         Foreground="{DynamicResource Theme.ForegroundBrush}"
-                                         FontFamily="Consolas" FontSize="12"
-                                         IsReadOnly="True" AcceptsReturn="True"
-                                         VerticalScrollBarVisibility="Auto"
-                                         BorderThickness="0"
-                                         Text="Horizon ready."/>
+                                <Grid Background="{DynamicResource Theme.BackgroundBrush}">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+
+                                    <!-- Filter toolbar -->
+                                    <ToolBar Grid.Row="0" Background="{DynamicResource Theme.MenuBarBrush}" Band="0" BandIndex="0">
+                                        <ToggleButton x:Name="FilterInfoToggle" IsChecked="True" Click="FilterInfo_Click"
+                                                      Padding="6,2" FontFamily="Consolas" FontSize="11" ToolTip="Show Info messages">
+                                            <TextBlock Text="Info" Foreground="#F1F1F1"/>
+                                        </ToggleButton>
+                                        <ToggleButton x:Name="FilterWarnToggle" IsChecked="True" Click="FilterWarn_Click"
+                                                      Padding="6,2" FontFamily="Consolas" FontSize="11" ToolTip="Show Warning messages">
+                                            <TextBlock Text="Warn" Foreground="#FFB900"/>
+                                        </ToggleButton>
+                                        <ToggleButton x:Name="FilterErrorToggle" IsChecked="True" Click="FilterError_Click"
+                                                      Padding="6,2" FontFamily="Consolas" FontSize="11" ToolTip="Show Error messages">
+                                            <TextBlock Text="Error" Foreground="#FF4444"/>
+                                        </ToggleButton>
+                                        <Separator/>
+                                        <Button Click="ClearLog_Click" Padding="6,2" FontFamily="Consolas" FontSize="11"
+                                                ToolTip="Clear log">
+                                            <TextBlock><Run FontFamily="Segoe MDL2 Assets" Text="&#xE74D;" FontSize="12" Foreground="#FF6B68"/> Clear</TextBlock>
+                                        </Button>
+                                    </ToolBar>
+
+                                    <!-- Virtualized log list -->
+                                    <ListBox x:Name="OutputListBox" Grid.Row="1"
+                                             Background="{DynamicResource Theme.BackgroundBrush}"
+                                             BorderThickness="0"
+                                             FontFamily="Consolas" FontSize="12"
+                                             VirtualizingStackPanel.IsVirtualizing="True"
+                                             VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                             ScrollViewer.CanContentScroll="True"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             HorizontalContentAlignment="Stretch">
+                                        <ListBox.Resources>
+                                            <Style TargetType="ListBoxItem">
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="ListBoxItem">
+                                                            <Border x:Name="Bd" Background="Transparent" Padding="2,1"
+                                                                    SnapsToDevicePixels="True">
+                                                                <ContentPresenter/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsSelected" Value="True">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#FF3E3E40"/>
+                                                                </Trigger>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#FF333337"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </ListBox.Resources>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock>
+                                                    <Run Text="{Binding Timestamp, Mode=OneTime}"
+                                                         Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"/>
+                                                    <Run Text=" "/>
+                                                    <Run Text="{Binding Message, Mode=OneTime}"
+                                                         Foreground="{Binding Foreground, Mode=OneTime}"/>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Grid>
                             </avalonDock:LayoutAnchorable>
                         </avalonDock:LayoutAnchorGroup>
                     </avalonDock:LayoutAnchorSide>

@@ -5,6 +5,7 @@ using AvalonDock.Layout;
 using AvalonDock.Layout.Serialization;
 using Horizon.Camera;
 using Horizon.Camera.Models;
+using System.Collections.Specialized;
 using System.Windows.Input;
 using Horizon.Core;
 using Horizon.CurrentMeasurement;
@@ -12,6 +13,7 @@ using Horizon.CurrentMeasurement.Interfaces;
 using Horizon.LaserController;
 using Horizon.Motion;
 using Horizon.Pneumatic;
+using Serilog;
 
 namespace Horizon.App;
 
@@ -46,9 +48,16 @@ public partial class MainWindow : Window
         MountConnCombo.ItemsSource = new[] { "USB", "IP" };
         MountConnCombo.SelectedIndex = 0;
 
-        // Wire up logging to the output panel
-        if (_context is Horizon.Core.AppContext appCtx)
-            appCtx.LogSink = new OutputPanelLogSink(this);
+        // Wire WPF output sink to the log ListBox
+        App.UiSink.Initialize(Dispatcher);
+        OutputListBox.ItemsSource = App.UiSink.ViewSource.View;
+
+        // Auto-scroll to newest entry
+        ((INotifyCollectionChanged)App.UiSink.ViewSource.View).CollectionChanged += (_, args) =>
+        {
+            if (args.Action == NotifyCollectionChangedAction.Add && OutputListBox.Items.Count > 0)
+                OutputListBox.ScrollIntoView(OutputListBox.Items[^1]);
+        };
 
         // Initialize and auto-connect are handled by SplashWindow before MainWindow is shown
         LoadRegisteredCameras();
@@ -138,7 +147,7 @@ public partial class MainWindow : Window
             return;
 
         var statuses = _context.CameraManager.GetAllCameraStatus();
-        LogOutput($"Found {statuses.Count} camera(s)");
+        Log.Information("Found {Count} camera(s)", statuses.Count);
 
         foreach (var status in statuses)
         {
@@ -246,13 +255,13 @@ public partial class MainWindow : Window
         var result = _context.CameraManager.ConnectCamera(cameraId);
         if (result)
         {
-            LogOutput($"Connect '{cameraId}': OK");
+            Log.Information("Connect '{CameraId}': OK", cameraId);
         }
         else
         {
             var hw = _context.CameraManager.GetCameraHardware(cameraId);
             var error = hw?.LastError ?? "unknown error";
-            LogOutput($"Connect '{cameraId}': FAILED — {error}");
+            Log.Error("Connect '{CameraId}': FAILED — {Error}", cameraId, error);
         }
         RefreshCameraTree();
         RefreshConfigGrid();
@@ -262,7 +271,7 @@ public partial class MainWindow : Window
     {
         if (!_context.IsInitialized) return;
         var result = _context.CameraManager.DisconnectCamera(cameraId);
-        LogOutput($"Disconnect '{cameraId}': {(result ? "OK" : "FAILED")}");
+        Log.Information("Disconnect '{CameraId}': {Result}", cameraId, result ? "OK" : "FAILED");
         RefreshCameraTree();
     }
 
@@ -273,11 +282,11 @@ public partial class MainWindow : Window
         if (result)
         {
             var path = _context.CameraManager.GetLastCapturedImagePath();
-            LogOutput($"Capture '{cameraId}': saved to {path}");
+            Log.Information("Capture '{CameraId}': saved to {Path}", cameraId, path);
         }
         else
         {
-            LogOutput($"Capture '{cameraId}': FAILED");
+            Log.Error("Capture '{CameraId}': FAILED", cameraId);
         }
     }
 
@@ -285,14 +294,14 @@ public partial class MainWindow : Window
     {
         if (!_context.IsInitialized) return;
         var s = _context.CameraManager.GetCameraStatus(cameraId);
-        LogOutput($"--- Status: {s.ModelName} ({s.Id}) ---");
-        LogOutput($"  Type: {s.TypeName}");
-        LogOutput($"  Connected: {s.Connected}");
-        LogOutput($"  Grabbing: {s.Grabbing}");
-        LogOutput($"  Serial: {s.SerialNumber}");
-        LogOutput($"  Exposure: {s.ExposureSettings.ExposureTimeUs:F2} us");
-        LogOutput($"  Gain: {s.ExposureSettings.Gain:F2}");
-        LogOutput($"  FrameRate: {s.ExposureSettings.FrameRate:F2} fps");
+        Log.Information("--- Status: {ModelName} ({Id}) ---", s.ModelName, s.Id);
+        Log.Information("  Type: {TypeName}", s.TypeName);
+        Log.Information("  Connected: {Connected}", s.Connected);
+        Log.Information("  Grabbing: {Grabbing}", s.Grabbing);
+        Log.Information("  Serial: {Serial}", s.SerialNumber);
+        Log.Information("  Exposure: {Exposure:F2} us", s.ExposureSettings.ExposureTimeUs);
+        Log.Information("  Gain: {Gain:F2}", s.ExposureSettings.Gain);
+        Log.Information("  FrameRate: {FrameRate:F2} fps", s.ExposureSettings.FrameRate);
     }
 
     private void StartLiveFeed(string cameraId)
@@ -317,7 +326,7 @@ public partial class MainWindow : Window
 
         if (!panel.Start())
         {
-            LogOutput($"Live Feed: Failed to start grabbing for '{cameraId}'");
+            Log.Error("Live Feed: Failed to start grabbing for '{CameraId}'", cameraId);
             return;
         }
 
@@ -351,7 +360,7 @@ public partial class MainWindow : Window
             doc.IsActive = true;
         }
 
-        LogOutput($"Live Feed: Started for '{cameraId}'");
+        Log.Information("Live Feed: Started for '{CameraId}'", cameraId);
     }
 
     private void StopLiveFeed()
@@ -368,7 +377,7 @@ public partial class MainWindow : Window
             if (doc.Content is LiveFeedPanel panel)
             {
                 panel.Stop();
-                LogOutput($"Live Feed: Stopped for '{panel.CameraId}'");
+                Log.Information("Live Feed: Stopped for '{CameraId}'", panel.CameraId);
             }
             doc.Close();
         }
@@ -387,7 +396,7 @@ public partial class MainWindow : Window
         if (doc.Content is LiveFeedPanel panel)
         {
             panel.Stop();
-            LogOutput($"Live Feed: Stopped for '{cameraId}'");
+            Log.Information("Live Feed: Stopped for '{CameraId}'", cameraId);
         }
         doc.Close();
     }
@@ -449,19 +458,19 @@ public partial class MainWindow : Window
         var ids = _context.CameraManager.GetCameraIds();
         if (ids.Count == 0) return;
 
-        LogOutput($"Auto-connecting {ids.Count} camera(s)...");
+        Log.Information("Auto-connecting {Count} camera(s)...", ids.Count);
         foreach (var id in ids)
         {
             var result = _context.CameraManager.ConnectCamera(id);
             if (result)
             {
-                LogOutput($"Auto-connect '{id}': OK");
+                Log.Information("Auto-connect '{CameraId}': OK", id);
             }
             else
             {
                 var hw = _context.CameraManager.GetCameraHardware(id);
                 var error = hw?.LastError ?? "unknown error";
-                LogOutput($"Auto-connect '{id}': FAILED — {error}");
+                Log.Error("Auto-connect '{CameraId}': FAILED — {Error}", id, error);
             }
         }
         RefreshCameraTree();
@@ -482,19 +491,19 @@ public partial class MainWindow : Window
 
         if (string.IsNullOrEmpty(serial))
         {
-            LogOutput("Mount: Serial number is required.");
+            Log.Warning("Mount: Serial number is required.");
             return;
         }
 
         if (connType == "IP" && string.IsNullOrEmpty(ipAddress))
         {
-            LogOutput("Mount: IP address is required for IP connection.");
+            Log.Warning("Mount: IP address is required for IP connection.");
             return;
         }
 
         if (_registeredCameras.Any(r => r.SerialNumber.Equals(serial, StringComparison.OrdinalIgnoreCase)))
         {
-            LogOutput($"Mount: Serial '{serial}' is already registered.");
+            Log.Warning("Mount: Serial '{Serial}' is already registered.", serial);
             return;
         }
 
@@ -519,7 +528,9 @@ public partial class MainWindow : Window
         MountSerialBox.Clear();
         MountIpBox.Clear();
 
-        LogOutput($"Mounted camera: {entry.Name} ({entry.SerialNumber}) [{entry.SdkType}] {connType}{(connType == "IP" ? $" {ipAddress}" : "")}");
+        Log.Information("Mounted camera: {Name} ({Serial}) [{SdkType}] {ConnType}{IpSuffix}",
+            entry.Name, entry.SerialNumber, entry.SdkType, connType,
+            connType == "IP" ? $" {ipAddress}" : "");
         RefreshConfigGrid();
 
         // Re-discover with updated list
@@ -531,7 +542,7 @@ public partial class MainWindow : Window
         var selected = ConfigDataGrid.SelectedItem;
         if (selected == null)
         {
-            LogOutput("Unmount: No camera selected.");
+            Log.Warning("Unmount: No camera selected.");
             return;
         }
 
@@ -560,7 +571,7 @@ public partial class MainWindow : Window
             }
         }
 
-        LogOutput($"Unmounted camera: {entry.Name} ({entry.SerialNumber})");
+        Log.Information("Unmounted camera: {Name} ({Serial})", entry.Name, entry.SerialNumber);
         RefreshConfigGrid();
         RefreshCameraTree();
     }
@@ -591,7 +602,7 @@ public partial class MainWindow : Window
         foreach (var id in _context.CameraManager.GetCameraIds())
         {
             var result = _context.CameraManager.ConnectCamera(id);
-            LogOutput($"Connect '{id}': {(result ? "OK" : "FAILED")}");
+            Log.Information("Connect '{CameraId}': {Result}", id, result ? "OK" : "FAILED");
         }
         RefreshCameraTree();
     }
@@ -603,7 +614,7 @@ public partial class MainWindow : Window
         foreach (var id in _context.CameraManager.GetCameraIds())
         {
             var result = _context.CameraManager.DisconnectCamera(id);
-            LogOutput($"Disconnect '{id}': {(result ? "OK" : "FAILED")}");
+            Log.Information("Disconnect '{CameraId}': {Result}", id, result ? "OK" : "FAILED");
         }
         RefreshCameraTree();
     }
@@ -671,7 +682,6 @@ public partial class MainWindow : Window
 
         var panel = new MotionPanel(deviceName, _context.MotionManager);
         panel.ConnectionChanged += () => RefreshMotionTree();
-        panel.LogMessage += msg => LogOutput(msg);
 
         var doc = new LayoutDocument
         {
@@ -734,7 +744,6 @@ public partial class MainWindow : Window
 
         var panel = new IOPanel(deviceName, _context.IOManager);
         panel.ConnectionChanged += () => RefreshIOTree();
-        panel.LogMessage += msg => LogOutput(msg);
 
         var doc = new LayoutDocument
         {
@@ -797,7 +806,6 @@ public partial class MainWindow : Window
 
         var panel = new PneumaticPanel(slideName, _context.PneumaticManager);
         panel.StatusChanged += () => RefreshPneumaticTree();
-        panel.LogMessage += msg => LogOutput(msg);
 
         var doc = new LayoutDocument
         {
@@ -861,7 +869,6 @@ public partial class MainWindow : Window
 
         var panel = new CurrentMeasurementPanel(deviceName, _context.CurrentMeasurementManager, _context.MeasurementHub);
         panel.ConnectionChanged += () => RefreshCurrentMeasTree();
-        panel.LogMessage += msg => LogOutput(msg);
         panel.PopOutChartRequested += OpenCurrentChartPanel;
 
         var doc = new LayoutDocument
@@ -925,7 +932,6 @@ public partial class MainWindow : Window
 
         var panel = new LaserControllerPanel(deviceName, _context.LaserControllerManager, _context.MeasurementHub);
         panel.ConnectionChanged += () => RefreshLaserControllerTree();
-        panel.LogMessage += msg => LogOutput(msg);
 
         var doc = new LayoutDocument
         {
@@ -1112,6 +1118,28 @@ public partial class MainWindow : Window
             anchorable.Show();
     }
 
+    // --- Log filter/clear handlers ---
+
+    private void FilterInfo_Click(object sender, RoutedEventArgs e)
+    {
+        App.UiSink.ShowInfo = FilterInfoToggle.IsChecked == true;
+    }
+
+    private void FilterWarn_Click(object sender, RoutedEventArgs e)
+    {
+        App.UiSink.ShowWarning = FilterWarnToggle.IsChecked == true;
+    }
+
+    private void FilterError_Click(object sender, RoutedEventArgs e)
+    {
+        App.UiSink.ShowError = FilterErrorToggle.IsChecked == true;
+    }
+
+    private void ClearLog_Click(object sender, RoutedEventArgs e)
+    {
+        App.UiSink.Clear();
+    }
+
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 
     // --- Dock/Window state persistence ---
@@ -1240,16 +1268,5 @@ public partial class MainWindow : Window
         {
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
         }
-    }
-
-    internal void LogOutput(string message)
-    {
-        OutputTextBox.Text += $"\n{message}";
-        OutputTextBox.ScrollToEnd();
-    }
-
-    private sealed class OutputPanelLogSink(MainWindow window) : ILogSink
-    {
-        public void Log(string message) => window.LogOutput(message);
     }
 }
