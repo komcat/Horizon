@@ -7,6 +7,8 @@ using Horizon.Camera;
 using Horizon.Camera.Models;
 using System.Windows.Input;
 using Horizon.Core;
+using Horizon.CurrentMeasurement;
+using Horizon.CurrentMeasurement.Interfaces;
 using Horizon.Motion;
 using Horizon.Pneumatic;
 
@@ -17,6 +19,7 @@ public partial class MainWindow : Window
     private readonly IAppContext _context;
 
     private List<RegisteredCamera> _registeredCameras = new();
+    private OverlayWindow? _overlayWindow;
 
     private static readonly string SettingsDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon");
@@ -57,6 +60,9 @@ public partial class MainWindow : Window
         StopAllIOPanels();
         StopAllMotionPanels();
         StopAllPneumaticPanels();
+        StopAllCurrentMeasPanels();
+        StopAllCurrentChartPanels();
+        _overlayWindow?.Close();
         SaveWindowState();
         SaveDockLayout();
     }
@@ -102,6 +108,21 @@ public partial class MainWindow : Window
         foreach (var doc in pneuDocs)
         {
             if (doc.Content is PneumaticPanel panel)
+                panel.StopPolling();
+        }
+    }
+
+    private void StopAllCurrentMeasPanels()
+    {
+        var cmeasDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId != null && d.ContentId.StartsWith("cmeas_"))
+            .ToList();
+
+        foreach (var doc in cmeasDocs)
+        {
+            if (doc.Content is CurrentMeasurementPanel panel)
                 panel.StopPolling();
         }
     }
@@ -295,6 +316,19 @@ public partial class MainWindow : Window
         {
             LogOutput($"Live Feed: Failed to start grabbing for '{cameraId}'");
             return;
+        }
+
+        // Attach first available current measurement device channels for overlay
+        var cmeasNamesForFeed = _context.CurrentMeasurementManager.GetAllDeviceNames();
+        if (cmeasNamesForFeed.Count > 0)
+        {
+            var cmeasDevice = _context.CurrentMeasurementManager.GetDevice(cmeasNamesForFeed[0]);
+            if (cmeasDevice != null)
+            {
+                var keys = BuildChannelKeys(cmeasNamesForFeed[0], cmeasDevice);
+                panel.AttachCurrentChart(_context.MeasurementHub, keys,
+                    _context.CurrentMeasurementManager);
+            }
         }
 
         var doc = new LayoutDocument
@@ -587,6 +621,7 @@ public partial class MainWindow : Window
         RefreshMotionTree();
         RefreshIOTree();
         RefreshPneumaticTree();
+        RefreshCurrentMeasTree();
     }
 
     private void RefreshMotionTree()
@@ -778,6 +813,157 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RefreshCurrentMeasTree()
+    {
+        CurrentMeasTreeItem.Items.Clear();
+        if (!_context.IsInitialized) return;
+
+        foreach (var name in _context.CurrentMeasurementManager.GetAllDeviceNames())
+        {
+            var device = _context.CurrentMeasurementManager.GetDevice(name);
+            if (device == null) continue;
+
+            var status = device.IsConnected ? "Connected" : "Disconnected";
+            var channels = string.Join(",", device.EnabledChannels.Select(ch => $"CH{ch}"));
+            var label = $"{name} [{status}] {channels}";
+            var item = new TreeViewItem { Header = label, Tag = name };
+            item.MouseDoubleClick += CurrentMeasItem_MouseDoubleClick;
+            CurrentMeasTreeItem.Items.Add(item);
+        }
+    }
+
+    private void CurrentMeasItem_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not TreeViewItem item || item.Tag is not string deviceName)
+            return;
+        if (!_context.IsInitialized) return;
+
+        e.Handled = true;
+
+        var contentId = $"cmeas_{deviceName}";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var device = _context.CurrentMeasurementManager.GetDevice(deviceName);
+        if (device == null) return;
+
+        var panel = new CurrentMeasurementPanel(deviceName, _context.CurrentMeasurementManager, _context.MeasurementHub);
+        panel.ConnectionChanged += () => RefreshCurrentMeasTree();
+        panel.LogMessage += msg => LogOutput(msg);
+        panel.PopOutChartRequested += OpenCurrentChartPanel;
+
+        var doc = new LayoutDocument
+        {
+            Title = $"CMeas: {deviceName}",
+            ContentId = contentId,
+            Content = panel
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+    }
+
+    private void TopViewChart_Click(object sender, RoutedEventArgs e)
+    {
+        if (_overlayWindow != null)
+        {
+            // Toggle: if already open, bring to front or close
+            if (_overlayWindow.IsVisible)
+            {
+                _overlayWindow.Close();
+                _overlayWindow = null;
+                return;
+            }
+            _overlayWindow = null;
+        }
+
+        _overlayWindow = new OverlayWindow(
+            _context.CameraManager,
+            _context.CurrentMeasurementManager,
+            _context.MeasurementHub);
+
+        _overlayWindow.Closed += (_, _) => _overlayWindow = null;
+        _overlayWindow.Show();
+    }
+
+    private void OpenCurrentChartPanel(string deviceName, List<string> channelKeys)
+    {
+        var contentId = $"chart_{deviceName}";
+
+        // If already open, just activate
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var panel = new CurrentChartPanel(deviceName, _context.MeasurementHub, channelKeys,
+            _context.CurrentMeasurementManager);
+
+        var doc = new LayoutDocument
+        {
+            Title = $"Chart: {deviceName}",
+            ContentId = contentId,
+            Content = panel,
+            CanFloat = true
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+
+            // Float it immediately so it pops out as a window
+            doc.Float();
+        }
+    }
+
+    private void StopAllCurrentChartPanels()
+    {
+        var chartDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId != null && d.ContentId.StartsWith("chart_"))
+            .ToList();
+
+        foreach (var doc in chartDocs)
+        {
+            if (doc.Content is CurrentChartPanel panel)
+                panel.StopRendering();
+        }
+    }
+
+    private static List<string> BuildChannelKeys(string deviceName, ICurrentMeasurementDevice device)
+    {
+        var keys = new List<string>(device.ChannelCount);
+        foreach (var ch in device.EnabledChannels)
+            keys.Add($"{deviceName}.CH{ch}");
+        return keys;
+    }
+
     private void ToggleAnchorable(string contentId)
     {
         var anchorable = DockManager.Layout
@@ -846,7 +1032,9 @@ public partial class MainWindow : Window
                     || (id != null && id.StartsWith("liveFeed_"))
                     || (id != null && id.StartsWith("io_"))
                     || (id != null && id.StartsWith("motion_"))
-                    || (id != null && id.StartsWith("pneu_")))
+                    || (id != null && id.StartsWith("pneu_"))
+                    || (id != null && id.StartsWith("cmeas_"))
+                    || (id != null && id.StartsWith("chart_")))
                 {
                     args.Cancel = true;
                     return;

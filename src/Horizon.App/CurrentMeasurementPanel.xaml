@@ -1,0 +1,153 @@
+<UserControl x:Class="Horizon.App.CurrentMeasurementPanel"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Horizon.App"
+        Background="{DynamicResource Theme.BackgroundBrush}"
+        Foreground="{DynamicResource Theme.ForegroundBrush}">
+
+    <Grid Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" x:Name="HeaderText" FontSize="14" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Theme.ForegroundBrush}" VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button x:Name="ConnectButton" Content="Connect" Padding="10,3" Margin="0,0,6,0" Click="Connect_Click"/>
+                <Button x:Name="DisconnectButton" Content="Disconnect" Padding="10,3" Margin="0,0,6,0" Click="Disconnect_Click"/>
+                <Button x:Name="ResetButton" Content="Reset" Padding="10,3" Margin="0,0,6,0" Click="Reset_Click"/>
+                <Button x:Name="RefreshButton" Content="Refresh" Padding="10,3" Click="Refresh_Click"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Status -->
+        <StackPanel Grid.Row="1" Margin="0,4,0,2">
+            <TextBlock x:Name="StatusText" FontSize="11" FontFamily="Consolas"
+                       Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"/>
+            <TextBlock x:Name="IdentityText" FontSize="11" FontFamily="Consolas"
+                       Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"/>
+        </StackPanel>
+
+        <!-- Bias Voltage -->
+        <Border Grid.Row="2" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2" Margin="0,4,0,8">
+            <Grid Margin="8,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="80"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="Bias Voltage (V):" FontFamily="Consolas" FontSize="12"
+                           FontWeight="SemiBold" VerticalAlignment="Center"
+                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,8,0"/>
+                <TextBox x:Name="VoltageInput" Grid.Column="1" Text="0"
+                         FontFamily="Consolas" FontSize="12"
+                         Background="{DynamicResource Theme.BackgroundBrush}"
+                         Foreground="{DynamicResource Theme.ForegroundBrush}"
+                         BorderBrush="{DynamicResource Theme.BorderBrush}"
+                         Padding="4,2" VerticalAlignment="Center"/>
+                <Button x:Name="SetVoltageButton" Grid.Column="2" Content="Set" Padding="10,3" Margin="6,0,0,0"
+                        VerticalAlignment="Center" Click="SetVoltage_Click"/>
+                <Button x:Name="VSourceOnButton" Grid.Column="3" Content="V-Src ON" Padding="10,3" Margin="6,0,0,0"
+                        VerticalAlignment="Center" Click="VSourceOn_Click"/>
+                <Button x:Name="VSourceOffButton" Grid.Column="4" Content="V-Src OFF" Padding="10,3" Margin="6,0,0,0"
+                        VerticalAlignment="Center" Click="VSourceOff_Click"/>
+                <TextBlock x:Name="VoltageStatusText" Grid.Column="6" FontFamily="Consolas" FontSize="11"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"/>
+            </Grid>
+        </Border>
+
+        <!-- Continuous Polling -->
+        <Border Grid.Row="3" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2" Margin="0,0,0,8">
+            <Grid Margin="8,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="Continuous Polling:" FontFamily="Consolas" FontSize="12"
+                           FontWeight="SemiBold" VerticalAlignment="Center"
+                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,8,0"/>
+                <Button x:Name="StartPollButton" Grid.Column="1" Content="Start" Padding="10,3" Margin="0,0,6,0"
+                        VerticalAlignment="Center" Click="StartPoll_Click"/>
+                <Button x:Name="StopPollButton" Grid.Column="2" Content="Stop" Padding="10,3"
+                        VerticalAlignment="Center" Click="StopPoll_Click" IsEnabled="False"/>
+                <TextBlock x:Name="PollRateText" Grid.Column="4" FontFamily="Consolas" FontSize="11"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"/>
+            </Grid>
+        </Border>
+
+        <!-- Current Chart -->
+        <Border Grid.Row="4" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2" Margin="0,0,0,8">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Border Grid.Row="0" Background="{DynamicResource Theme.MenuBarBrush}" Padding="6,4">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Current Chart (10s)" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Theme.ForegroundBrush}"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <Ellipse Width="8" Height="8" Fill="Cyan" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                            <TextBlock Text="CH1" FontSize="9" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Ellipse Width="8" Height="8" Fill="Orange" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                            <TextBlock Text="CH2" FontSize="9" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Button x:Name="PopOutChartButton" Content="&#x2197;" ToolTip="Pop out chart"
+                                    FontSize="12" Padding="4,0" MinWidth="22"
+                                    VerticalAlignment="Center" Click="PopOutChart_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+                <local:CurrentReadingChart x:Name="ReadingChart" Grid.Row="1" Height="180"/>
+            </Grid>
+        </Border>
+
+        <!-- Channel readings -->
+        <Border Grid.Row="5" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Border Grid.Row="0" Background="{DynamicResource Theme.MenuBarBrush}" Padding="6,4">
+                    <TextBlock Text="Channel Readings" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Theme.ForegroundBrush}"/>
+                </Border>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="ChannelStack" Margin="4,4,4,4"/>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

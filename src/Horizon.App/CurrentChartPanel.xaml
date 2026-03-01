@@ -1,0 +1,43 @@
+<UserControl x:Class="Horizon.App.CurrentChartPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:Horizon.App"
+    Background="{DynamicResource Theme.BackgroundBrush}"
+    Foreground="{DynamicResource Theme.ForegroundBrush}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header bar with device selector and legend -->
+        <Border Grid.Row="0" Background="{DynamicResource Theme.MenuBarBrush}" Padding="8,5">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" x:Name="HeaderText" Text="Current Chart (10s)"
+                           FontSize="13" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Theme.ForegroundBrush}" VerticalAlignment="Center"/>
+                <ComboBox Grid.Column="1" x:Name="DeviceCombo" Width="160" Margin="10,0,0,0"
+                          FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"
+                          SelectionChanged="DeviceCombo_SelectionChanged"/>
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="8" Height="8" Fill="Cyan" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                    <TextBlock Text="CH1" FontSize="10" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"
+                               VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <Ellipse Width="8" Height="8" Fill="Orange" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                    <TextBlock Text="CH2" FontSize="10" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Chart fills remaining space -->
+        <local:CurrentReadingChart x:Name="Chart" Grid.Row="1" Margin="4"/>
+    </Grid>
+</UserControl>

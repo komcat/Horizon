@@ -1,5 +1,6 @@
 using Horizon.Camera;
 using Horizon.Common;
+using Horizon.CurrentMeasurement;
 using Horizon.IO;
 using Horizon.Motion;
 using Horizon.Pneumatic;
@@ -14,11 +15,13 @@ public sealed class AppContext : IAppContext, IDisposable
     private UnifiedMotionManager? _motionManager;
     private EziIOManager? _ioManager;
     private PneumaticManager? _pneumaticManager;
+    private CurrentMeasurementManager? _currentMeasurementManager;
     private ProcessEngine? _processEngine;
     private SafetyEventLog? _safetyEventLog;
     private SafetyWatchManager? _safetyWatchManager;
 
     private readonly CameraConfigStore _configStore = new();
+    private readonly MeasurementHub _measurementHub = new();
     private bool _disposed;
 
     public CameraManager CameraManager =>
@@ -33,10 +36,15 @@ public sealed class AppContext : IAppContext, IDisposable
     public PneumaticManager PneumaticManager =>
         _pneumaticManager ?? throw new InvalidOperationException("AppContext is not initialized.");
 
+    public CurrentMeasurementManager CurrentMeasurementManager =>
+        _currentMeasurementManager ?? throw new InvalidOperationException("AppContext is not initialized.");
+
     public ProcessEngine ProcessEngine =>
         _processEngine ?? throw new InvalidOperationException("AppContext is not initialized.");
 
     public SafetyWatchManager? SafetyWatchManager => _safetyWatchManager;
+
+    public MeasurementHub MeasurementHub => _measurementHub;
 
     public CameraConfigStore ConfigStore => _configStore;
 
@@ -118,6 +126,18 @@ public sealed class AppContext : IAppContext, IDisposable
             Log($"Motion config load error: {ex.Message}");
         }
 
+        // --- Current Measurement subsystem ---
+        _currentMeasurementManager = new CurrentMeasurementManager();
+        try
+        {
+            var cmeasCount = CurrentMeasurementJsonLoader.LoadDevices(_currentMeasurementManager, configDir);
+            Log($"Current measurement devices loaded: {cmeasCount}");
+        }
+        catch (Exception ex)
+        {
+            Log($"Current measurement config load error: {ex.Message}");
+        }
+
         // --- Pneumatic subsystem (depends on IO) ---
         _pneumaticManager = new PneumaticManager();
         try
@@ -158,6 +178,9 @@ public sealed class AppContext : IAppContext, IDisposable
         _processEngine = null;
 
         _pneumaticManager = null;
+
+        _currentMeasurementManager?.Dispose();
+        _currentMeasurementManager = null;
 
         _motionManager?.DisconnectAll();
         _motionManager = null;

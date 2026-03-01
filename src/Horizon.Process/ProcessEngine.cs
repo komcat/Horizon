@@ -25,6 +25,7 @@ public sealed class ProcessEngine
         _dispatcher.RegisterHandler(new CameraCommandHandler());
         _dispatcher.RegisterHandler(new SystemCommandHandler());
         _dispatcher.RegisterHandler(new ContextCommandHandler());
+        _dispatcher.RegisterHandler(new CurrentMeasurementCommandHandler());
     }
 
     public void RegisterDevice(string deviceName, object? manager, string managerType)
@@ -85,6 +86,18 @@ public sealed class ProcessEngine
             {
                 foreach (var id in ids)
                     RegisterDevice(id, cameraMgr, "camera");
+            }
+        }
+
+        // Register current measurement devices
+        var cmeasMgr = contextType.GetProperty("CurrentMeasurementManager")?.GetValue(context);
+        if (cmeasMgr != null)
+        {
+            var getNames = cmeasMgr.GetType().GetMethod("GetAllDeviceNames");
+            if (getNames?.Invoke(cmeasMgr, null) is List<string> names)
+            {
+                foreach (var name in names)
+                    RegisterDevice(name, cmeasMgr, "currentmeasurement");
             }
         }
 

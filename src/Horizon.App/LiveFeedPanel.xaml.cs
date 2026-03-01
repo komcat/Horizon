@@ -4,6 +4,8 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Horizon.Camera;
+using Horizon.Core;
+using Horizon.CurrentMeasurement;
 
 namespace Horizon.App;
 
@@ -11,10 +13,13 @@ public partial class LiveFeedPanel : UserControl
 {
     private readonly string _cameraId;
     private readonly CameraManager _cameraManager;
+    private MeasurementHub? _hub;
+    private CurrentMeasurementManager? _cmeasManager;
     private LiveVideoSubscriber? _subscriber;
     private DispatcherTimer? _timer;
     private WriteableBitmap? _writeableBitmap;
     private byte[]? _rgbBuffer;
+    private bool _chartVisible;
 
     public string CameraId => _cameraId;
 
@@ -23,6 +28,59 @@ public partial class LiveFeedPanel : UserControl
         _cameraId = cameraId;
         _cameraManager = cameraManager;
         InitializeComponent();
+    }
+
+    public void AttachCurrentChart(MeasurementHub hub, List<string> channelKeys,
+        CurrentMeasurementManager? cmeasManager = null)
+    {
+        _hub = hub;
+        _cmeasManager = cmeasManager;
+
+        OverlayChart.Attach(hub, channelKeys);
+        ChartToggleButton.Visibility = Visibility.Visible;
+
+        // Populate measurement device combo
+        if (_cmeasManager != null)
+        {
+            var names = _cmeasManager.GetAllDeviceNames();
+            MeasCombo.ItemsSource = names;
+            MeasCombo.Visibility = Visibility.Visible;
+            if (names.Count > 0)
+                MeasCombo.SelectedIndex = 0;
+        }
+    }
+
+    private void MeasCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (MeasCombo.SelectedItem is not string deviceName || _cmeasManager == null || _hub == null)
+            return;
+
+        var device = _cmeasManager.GetDevice(deviceName);
+        if (device == null) return;
+
+        var keys = new List<string>(device.ChannelCount);
+        foreach (var ch in device.EnabledChannels)
+            keys.Add($"{deviceName}.CH{ch}");
+
+        OverlayChart.Detach();
+        OverlayChart.Attach(_hub, keys);
+        if (_chartVisible)
+            OverlayChart.StartRendering();
+    }
+
+    private void ToggleChart_Click(object sender, RoutedEventArgs e)
+    {
+        _chartVisible = !_chartVisible;
+        if (_chartVisible)
+        {
+            ChartOverlayBorder.Visibility = Visibility.Visible;
+            OverlayChart.StartRendering();
+        }
+        else
+        {
+            ChartOverlayBorder.Visibility = Visibility.Collapsed;
+            OverlayChart.StopRendering();
+        }
     }
 
     public bool Start()
@@ -48,6 +106,8 @@ public partial class LiveFeedPanel : UserControl
 
     public void Stop()
     {
+        OverlayChart.StopRendering();
+
         if (_timer != null)
         {
             _timer.Stop();

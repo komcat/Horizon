@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.Process", "src\Hori
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.Safety", "src\Horizon.Safety\Horizon.Safety.csproj", "{A1B2C3D4-1111-2222-3333-444455554444}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.CurrentMeasurement", "src\Horizon.CurrentMeasurement\Horizon.CurrentMeasurement.csproj", "{A1B2C3D4-1111-2222-3333-444455559999}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -66,5 +68,9 @@ Global
 		{A1B2C3D4-1111-2222-3333-444455554444}.Debug|x64.Build.0 = Debug|x64
 		{A1B2C3D4-1111-2222-3333-444455554444}.Release|x64.ActiveCfg = Release|x64
 		{A1B2C3D4-1111-2222-3333-444455554444}.Release|x64.Build.0 = Release|x64
+		{A1B2C3D4-1111-2222-3333-444455559999}.Debug|x64.ActiveCfg = Debug|x64
+		{A1B2C3D4-1111-2222-3333-444455559999}.Debug|x64.Build.0 = Debug|x64
+		{A1B2C3D4-1111-2222-3333-444455559999}.Release|x64.ActiveCfg = Release|x64
+		{A1B2C3D4-1111-2222-3333-444455559999}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 EndGlobal

@@ -1,0 +1,28 @@
+<UserControl x:Class="Horizon.App.CurrentReadingChart"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="55"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="18"/>
+        </Grid.RowDefinitions>
+
+        <!-- Y-axis labels -->
+        <Canvas x:Name="YAxisCanvas" Grid.Column="0" Grid.Row="0" ClipToBounds="True"/>
+
+        <!-- Chart area -->
+        <Border Grid.Column="1" Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1">
+            <Canvas x:Name="ChartCanvas" ClipToBounds="True" Background="Transparent"
+                    SizeChanged="ChartCanvas_SizeChanged"/>
+        </Border>
+
+        <!-- X-axis labels -->
+        <Canvas x:Name="XAxisCanvas" Grid.Column="1" Grid.Row="1" ClipToBounds="True"/>
+    </Grid>
+</UserControl>

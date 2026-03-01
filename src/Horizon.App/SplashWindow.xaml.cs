@@ -92,6 +92,10 @@ public partial class SplashWindow : Window
         foreach (var name in _context.MotionManager.GetAllDeviceNames())
             _devices.Add(new DeviceItem($"Motion: {name}", DeviceKind.Motion, name));
 
+        // Current Measurement devices
+        foreach (var name in _context.CurrentMeasurementManager.GetAllDeviceNames())
+            _devices.Add(new DeviceItem($"CMeas: {name}", DeviceKind.CurrentMeasurement, name));
+
         // Cameras
         foreach (var id in _context.CameraManager.GetCameraIds())
         {
@@ -109,6 +113,7 @@ public partial class SplashWindow : Window
             {
                 DeviceKind.IO => _context.IOManager.ConnectDevice(device.DeviceId),
                 DeviceKind.Motion => _context.MotionManager.ConnectDevice(device.DeviceId),
+                DeviceKind.CurrentMeasurement => _context.CurrentMeasurementManager.ConnectDevice(device.DeviceId),
                 DeviceKind.Camera => _context.CameraManager.ConnectCamera(device.DeviceId),
                 _ => false
             };
@@ -119,7 +124,7 @@ public partial class SplashWindow : Window
         }
     }
 
-    internal enum DeviceKind { IO, Motion, Camera }
+    internal enum DeviceKind { IO, Motion, CurrentMeasurement, Camera }
 
     internal sealed class DeviceItem : INotifyPropertyChanged
     {

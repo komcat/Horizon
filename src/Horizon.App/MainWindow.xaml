@@ -134,6 +134,9 @@
                 <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="_Output" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ViewOutput_Click"/>
             </MenuItem>
+            <MenuItem Header="_Production" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
+                <MenuItem Header="_Top View &amp; Chart" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="TopViewChart_Click"/>
+            </MenuItem>
             <MenuItem Header="_Help" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
                 <MenuItem Header="_About" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}"/>
             </MenuItem>
@@ -176,6 +179,7 @@
                                     <TreeViewItem x:Name="MotionTreeItem" Header="Motion" IsExpanded="True"/>
                                     <TreeViewItem x:Name="IOTreeItem" Header="IO" IsExpanded="True"/>
                                     <TreeViewItem x:Name="PneumaticTreeItem" Header="Pneumatic" IsExpanded="True"/>
+                                    <TreeViewItem x:Name="CurrentMeasTreeItem" Header="Current Measurement" IsExpanded="True"/>
                                 </TreeView>
                             </Border>
                         </avalonDock:LayoutAnchorable>

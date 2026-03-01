@@ -54,6 +54,14 @@ public enum ErrorCode : ushort
     CameraAlreadyConnected      = 0x0404,
     CameraNotConnected          = 0x0405,
 
+    // Current Measurement (0x05xx)
+    CMeasDeviceNotFound         = 0x0500,
+    CMeasDisconnected           = 0x0501,
+    CMeasInvalidChannel         = 0x0502,
+    CMeasOperationFailed        = 0x0503,
+    CMeasCommunicationError     = 0x0504,
+    CMeasParseError             = 0x0505,
+
     // Process / Sequence (0x09xx)
     ProcessInvalidStep          = 0x0900,
     ProcessDeviceNotRegistered  = 0x0901,
@@ -83,6 +91,7 @@ public static class ErrorCodeExtensions
             0x02 => ErrorCategory.IO,
             0x03 => ErrorCategory.Pneumatic,
             0x04 => ErrorCategory.Camera,
+            0x05 => ErrorCategory.CurrentMeasurement,
             0x09 => ErrorCategory.Process,
             0x0F => ErrorCategory.Safety,
             _    => ErrorCategory.General,

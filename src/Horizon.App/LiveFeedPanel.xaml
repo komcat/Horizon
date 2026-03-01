@@ -1,6 +1,7 @@
 <UserControl x:Class="Horizon.App.LiveFeedPanel"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Horizon.App"
         Background="{DynamicResource Theme.BackgroundAltBrush}">
 
     <Grid>
@@ -8,10 +9,39 @@
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <Image x:Name="FeedImage" Grid.Row="0" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
-        <TextBlock x:Name="FeedStatus" Grid.Row="1"
-                   Text="Starting..."
-                   Foreground="{DynamicResource Theme.ForegroundBrush}"
-                   Padding="4,2" FontSize="11" FontFamily="Consolas"/>
+
+        <!-- Image + chart overlay stacked -->
+        <Grid Grid.Row="0">
+            <Image x:Name="FeedImage" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+
+            <!-- Chart overlay (bottom-right) -->
+            <Border x:Name="ChartOverlayBorder" Visibility="Collapsed"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Width="350" Height="160" Margin="8"
+                    Background="#60000000" CornerRadius="4"
+                    BorderBrush="#40FFFFFF" BorderThickness="1">
+                <local:CurrentReadingChart x:Name="OverlayChart" IsOverlayMode="True" Margin="4"/>
+            </Border>
+        </Grid>
+
+        <!-- Status bar -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="FeedStatus" Grid.Column="0"
+                       Text="Starting..."
+                       Foreground="{DynamicResource Theme.ForegroundBrush}"
+                       Padding="4,2" FontSize="11" FontFamily="Consolas"/>
+            <ComboBox x:Name="MeasCombo" Grid.Column="1" Width="140" Margin="4,1"
+                      FontFamily="Consolas" FontSize="10" VerticalAlignment="Center"
+                      Visibility="Collapsed" SelectionChanged="MeasCombo_SelectionChanged"/>
+            <Button x:Name="ChartToggleButton" Grid.Column="2"
+                    Content="Chart" Padding="8,2" Margin="4,1" FontSize="10"
+                    Visibility="Collapsed" Click="ToggleChart_Click"/>
+        </Grid>
     </Grid>
 </UserControl>

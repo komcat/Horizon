@@ -1,4 +1,5 @@
 using Horizon.Camera;
+using Horizon.CurrentMeasurement;
 using Horizon.IO;
 using Horizon.Motion;
 using Horizon.Pneumatic;
@@ -13,8 +14,10 @@ public interface IAppContext
     UnifiedMotionManager MotionManager { get; }
     EziIOManager IOManager { get; }
     PneumaticManager PneumaticManager { get; }
+    CurrentMeasurementManager CurrentMeasurementManager { get; }
     ProcessEngine ProcessEngine { get; }
     SafetyWatchManager? SafetyWatchManager { get; }
+    MeasurementHub MeasurementHub { get; }
     bool IsInitialized { get; }
     bool SimulationMode { get; set; }
     void Initialize();
