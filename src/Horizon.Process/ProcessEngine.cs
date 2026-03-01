@@ -179,13 +179,16 @@ public sealed class ProcessEngine
 
                 case LoopStep loop:
                 {
-                    for (int i = 0; i < loop.Count; i++)
+                    bool infinite = loop.Count <= 0;
+                    int iteration = 0;
+                    while (infinite || iteration < loop.Count)
                     {
                         if (ct.IsCancellationRequested) return false;
-                        context.SetValue("loop.iteration", i);
+                        context.SetValue("loop.iteration", iteration);
 
                         if (!ExecuteSteps(loop.Steps, context, ct, stepIndex))
                             return false;
+                        iteration++;
                     }
                     stepIndex += CountSteps(loop.Steps);
                     break;

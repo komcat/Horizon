@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using Horizon.Core;
 using Horizon.LaserController;
 
 namespace Horizon.App;
@@ -10,15 +11,22 @@ public partial class LaserControllerPanel : UserControl
 {
     private readonly string _deviceName;
     private readonly LaserControllerManager _manager;
+    private readonly MeasurementHub? _hub;
+    private readonly string _tempChannelKey;
+    private readonly string _currentChannelKey;
     private readonly DispatcherTimer _pollTimer;
 
     public event Action? ConnectionChanged;
     public event Action<string>? LogMessage;
 
-    public LaserControllerPanel(string deviceName, LaserControllerManager manager)
+    public LaserControllerPanel(string deviceName, LaserControllerManager manager, MeasurementHub? hub = null)
     {
         _deviceName = deviceName;
         _manager = manager;
+        _hub = hub;
+        _tempChannelKey = $"{deviceName}.Temperature";
+        _currentChannelKey = $"{deviceName}.LaserCurrent";
+
         InitializeComponent();
 
         HeaderText.Text = $"Laser Controller: {deviceName}";
@@ -26,7 +34,24 @@ public partial class LaserControllerPanel : UserControl
         _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _pollTimer.Tick += PollTimer_Tick;
 
+        // Attach chart to hub
+        if (_hub != null)
+        {
+            var channelKeys = new List<string> { _tempChannelKey, _currentChannelKey };
+            ReadingChart.YAxisFormatter = FormatGenericValue;
+            ReadingChart.Attach(_hub, channelKeys);
+            ReadingChart.StartRendering();
+        }
+
         UpdateStatus();
+    }
+
+    private static string FormatGenericValue(double value)
+    {
+        var abs = Math.Abs(value);
+        if (abs < 0.001) return $"{value * 1000:F2} m";
+        if (abs < 1000) return $"{value:F2}";
+        return $"{value:F0}";
     }
 
     private void Connect_Click(object sender, RoutedEventArgs e)
@@ -121,6 +146,15 @@ public partial class LaserControllerPanel : UserControl
 
         var status = device.GetStatus();
 
+        // Push to MeasurementHub for chart consumers
+        if (_hub != null)
+        {
+            var now = DateTimeOffset.UtcNow;
+            if (!IsThermistorDisconnected(status.CurrentTemperature))
+                _hub.Push(_tempChannelKey, status.CurrentTemperature, now);
+            _hub.Push(_currentChannelKey, status.CurrentLaserCurrent, now);
+        }
+
         var tempText = IsThermistorDisconnected(status.CurrentTemperature)
             ? "No Thermistor"
             : $"{status.CurrentTemperature:F2} C";
@@ -146,6 +180,7 @@ public partial class LaserControllerPanel : UserControl
     public void StopPolling()
     {
         _pollTimer.Stop();
+        ReadingChart.StopRendering();
     }
 
     private void Log(string message)

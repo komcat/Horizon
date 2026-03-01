@@ -64,6 +64,7 @@ public partial class MainWindow : Window
         StopAllCurrentMeasPanels();
         StopAllCurrentChartPanels();
         StopAllLaserControllerPanels();
+        StopAllProcessPanels();
         _overlayWindow?.Close();
         SaveWindowState();
         SaveDockLayout();
@@ -329,7 +330,7 @@ public partial class MainWindow : Window
             {
                 var keys = BuildChannelKeys(cmeasNamesForFeed[0], cmeasDevice);
                 panel.AttachCurrentChart(_context.MeasurementHub, keys,
-                    _context.CurrentMeasurementManager);
+                    _context.CurrentMeasurementManager, _context.LaserControllerManager);
             }
         }
 
@@ -922,7 +923,7 @@ public partial class MainWindow : Window
         var device = _context.LaserControllerManager.GetDevice(deviceName);
         if (device == null) return;
 
-        var panel = new LaserControllerPanel(deviceName, _context.LaserControllerManager);
+        var panel = new LaserControllerPanel(deviceName, _context.LaserControllerManager, _context.MeasurementHub);
         panel.ConnectionChanged += () => RefreshLaserControllerTree();
         panel.LogMessage += msg => LogOutput(msg);
 
@@ -977,7 +978,8 @@ public partial class MainWindow : Window
             _context.CameraManager,
             _context.CurrentMeasurementManager,
             _context.MeasurementHub,
-            _context.MotionManager);
+            _context.MotionManager,
+            _context.LaserControllerManager);
 
         _overlayWindow.Closed += (_, _) => _overlayWindow = null;
         _overlayWindow.Show();
@@ -999,7 +1001,7 @@ public partial class MainWindow : Window
         }
 
         var panel = new CurrentChartPanel(deviceName, _context.MeasurementHub, channelKeys,
-            _context.CurrentMeasurementManager);
+            _context.CurrentMeasurementManager, _context.LaserControllerManager);
 
         var doc = new LayoutDocument
         {
@@ -1020,6 +1022,55 @@ public partial class MainWindow : Window
 
             // Float it immediately so it pops out as a window
             doc.Float();
+        }
+    }
+
+    private void ProcessEditor_Click(object sender, RoutedEventArgs e)
+    {
+        var contentId = "process_editor";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var panel = new ProcessPanel(_context);
+
+        var doc = new LayoutDocument
+        {
+            Title = "Process Editor",
+            ContentId = contentId,
+            Content = panel
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+    }
+
+    private void StopAllProcessPanels()
+    {
+        var processDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId != null && d.ContentId.StartsWith("process_"))
+            .ToList();
+
+        foreach (var doc in processDocs)
+        {
+            if (doc.Content is ProcessPanel panel)
+                panel.StopExecution();
         }
     }
 
@@ -1120,6 +1171,13 @@ public partial class MainWindow : Window
                     || (id != null && id.StartsWith("laser_")))
                 {
                     args.Cancel = true;
+                    return;
+                }
+
+                // Recreate Process Editor panel with fresh runtime context
+                if (id == "process_editor")
+                {
+                    args.Content = new ProcessPanel(_context);
                     return;
                 }
 

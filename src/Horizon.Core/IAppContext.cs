@@ -18,6 +18,7 @@ public interface IAppContext
     CurrentMeasurementManager CurrentMeasurementManager { get; }
     LaserControllerManager LaserControllerManager { get; }
     ProcessEngine ProcessEngine { get; }
+    ProcessPluginRegistry PluginRegistry { get; }
     SafetyWatchManager? SafetyWatchManager { get; }
     MeasurementHub MeasurementHub { get; }
     bool IsInitialized { get; }

@@ -8,6 +8,7 @@ using Horizon.Camera.Models;
 using Horizon.Common;
 using Horizon.Core;
 using Horizon.CurrentMeasurement;
+using Horizon.LaserController;
 using Horizon.Motion;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
@@ -18,8 +19,10 @@ public partial class OverlayWindow : Window
 {
     private readonly CameraManager _cameraManager;
     private readonly CurrentMeasurementManager? _cmeasManager;
+    private readonly LaserControllerManager? _laserManager;
     private MeasurementHub? _hub;
     private List<string>? _channelKeys;
+    private Func<double, string>? _chartFormatter;
 
     private LiveVideoSubscriber? _subscriber;
     private string? _activeCameraId;
@@ -70,10 +73,12 @@ public partial class OverlayWindow : Window
     ];
 
     public OverlayWindow(CameraManager cameraManager, CurrentMeasurementManager? cmeasManager = null,
-        MeasurementHub? hub = null, UnifiedMotionManager? motionManager = null)
+        MeasurementHub? hub = null, UnifiedMotionManager? motionManager = null,
+        LaserControllerManager? laserManager = null)
     {
         _cameraManager = cameraManager;
         _cmeasManager = cmeasManager;
+        _laserManager = laserManager;
         _hub = hub;
         _motionManager = motionManager;
 
@@ -113,13 +118,17 @@ public partial class OverlayWindow : Window
         if (ids.Count > 0)
             CameraCombo.SelectedIndex = 0;
 
-        // Populate measurement device list
+        // Populate measurement device list (cmeas + laser)
+        var allMeasNames = new List<string>();
         if (_cmeasManager != null)
+            allMeasNames.AddRange(_cmeasManager.GetAllDeviceNames());
+        if (_laserManager != null)
+            allMeasNames.AddRange(_laserManager.GetAllDeviceNames());
+
+        if (allMeasNames.Count > 0)
         {
-            var names = _cmeasManager.GetAllDeviceNames();
-            MeasCombo.ItemsSource = names;
-            if (names.Count > 0)
-                MeasCombo.SelectedIndex = 0; // triggers SelectionChanged → sets _channelKeys
+            MeasCombo.ItemsSource = allMeasNames;
+            MeasCombo.SelectedIndex = 0;
         }
     }
 
@@ -155,15 +164,33 @@ public partial class OverlayWindow : Window
 
     private void MeasCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (MeasCombo.SelectedItem is not string deviceName || _cmeasManager == null || _hub == null)
+        if (MeasCombo.SelectedItem is not string deviceName || _hub == null)
             return;
 
-        var device = _cmeasManager.GetDevice(deviceName);
-        if (device == null) return;
+        // Try current measurement device first
+        if (_cmeasManager != null)
+        {
+            var device = _cmeasManager.GetDevice(deviceName);
+            if (device != null)
+            {
+                _channelKeys = new List<string>(device.ChannelCount);
+                foreach (var ch in device.EnabledChannels)
+                    _channelKeys.Add($"{deviceName}.CH{ch}");
+                _chartFormatter = null;
+                return;
+            }
+        }
 
-        _channelKeys = new List<string>(device.ChannelCount);
-        foreach (var ch in device.EnabledChannels)
-            _channelKeys.Add($"{deviceName}.CH{ch}");
+        // Try laser controller device
+        if (_laserManager != null)
+        {
+            var device = _laserManager.GetDevice(deviceName);
+            if (device != null)
+            {
+                _channelKeys = new List<string> { $"{deviceName}.Temperature", $"{deviceName}.LaserCurrent" };
+                _chartFormatter = FormatGenericValue;
+            }
+        }
     }
 
     private void StartFeed()
@@ -447,8 +474,9 @@ public partial class OverlayWindow : Window
         float ylx = cx - 4;
         double[] yVals = { yMax, yMin + yRange * 0.75, yMin + yRange * 0.5, yMin + yRange * 0.25 };
         float[] yPositions = { cy + 4, cy + ch2 * 0.25f + 3, cy + ch2 * 0.5f + 3, cy + ch2 * 0.75f + 3 };
+        var fmt = _chartFormatter ?? FormatCurrentSI;
         for (int i = 0; i < 4; i++)
-            canvas.DrawText(FormatCurrentSI(yVals[i]), ylx, yPositions[i], yLblPaint);
+            canvas.DrawText(fmt(yVals[i]), ylx, yPositions[i], yLblPaint);
 
         // X-axis labels
         using var xLblPaint = new SKPaint
@@ -799,5 +827,13 @@ public partial class OverlayWindow : Window
         if (absVal < 1e-3) return $"{amps * 1e6:F1} uA";
         if (absVal < 1.0) return $"{amps * 1e3:F1} mA";
         return $"{amps:F3} A";
+    }
+
+    private static string FormatGenericValue(double value)
+    {
+        var abs = Math.Abs(value);
+        if (abs < 0.001) return $"{value * 1000:F2} m";
+        if (abs < 1000) return $"{value:F2}";
+        return $"{value:F0}";
     }
 }

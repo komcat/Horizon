@@ -34,6 +34,8 @@ public partial class CurrentReadingChart : UserControl
         new SolidColorBrush(Color.FromRgb(255, 180, 0))
     };
 
+    public Func<double, string>? YAxisFormatter { get; set; }
+
     private bool _isOverlayMode;
     public bool IsOverlayMode
     {
@@ -266,7 +268,7 @@ public partial class CurrentReadingChart : UserControl
         double[] yValues = { yMax, yMin + yRange * 0.75, yMin + yRange * 0.5, yMin + yRange * 0.25 };
         for (int i = 0; i < 4; i++)
         {
-            _yLabels[i].Text = FormatCurrentSI(yValues[i]);
+            _yLabels[i].Text = (YAxisFormatter ?? FormatCurrentSI)(yValues[i]);
             Canvas.SetLeft(_yLabels[i], 0);
             Canvas.SetTop(_yLabels[i], yPositions[i] - 6);
         }

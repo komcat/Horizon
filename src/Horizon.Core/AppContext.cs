@@ -19,6 +19,7 @@ public sealed class AppContext : IAppContext, IDisposable
     private CurrentMeasurementManager? _currentMeasurementManager;
     private LaserControllerManager? _laserControllerManager;
     private ProcessEngine? _processEngine;
+    private ProcessPluginRegistry? _pluginRegistry;
     private SafetyEventLog? _safetyEventLog;
     private SafetyWatchManager? _safetyWatchManager;
 
@@ -46,6 +47,9 @@ public sealed class AppContext : IAppContext, IDisposable
 
     public ProcessEngine ProcessEngine =>
         _processEngine ?? throw new InvalidOperationException("AppContext is not initialized.");
+
+    public ProcessPluginRegistry PluginRegistry =>
+        _pluginRegistry ?? throw new InvalidOperationException("AppContext is not initialized.");
 
     public SafetyWatchManager? SafetyWatchManager => _safetyWatchManager;
 
@@ -184,6 +188,11 @@ public sealed class AppContext : IAppContext, IDisposable
         _processEngine = new ProcessEngine();
         _processEngine.BuildDeviceRegistry(this);
         Log("Process engine initialized");
+
+        // --- Plugin registry ---
+        _pluginRegistry = new ProcessPluginRegistry();
+        _pluginRegistry.DiscoverPlugins(typeof(ProcessPluginRegistry).Assembly);
+        Log($"Process plugins discovered: {_pluginRegistry.GetAll().Count}");
     }
 
     public void Shutdown()
@@ -193,6 +202,7 @@ public sealed class AppContext : IAppContext, IDisposable
         _safetyEventLog = null;
 
         _processEngine = null;
+        _pluginRegistry = null;
 
         _pneumaticManager = null;
 

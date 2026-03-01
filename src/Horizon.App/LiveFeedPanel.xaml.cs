@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using Horizon.Camera;
 using Horizon.Core;
 using Horizon.CurrentMeasurement;
+using Horizon.LaserController;
 
 namespace Horizon.App;
 
@@ -15,6 +16,7 @@ public partial class LiveFeedPanel : UserControl
     private readonly CameraManager _cameraManager;
     private MeasurementHub? _hub;
     private CurrentMeasurementManager? _cmeasManager;
+    private LaserControllerManager? _laserManager;
     private LiveVideoSubscriber? _subscriber;
     private DispatcherTimer? _timer;
     private WriteableBitmap? _writeableBitmap;
@@ -31,41 +33,77 @@ public partial class LiveFeedPanel : UserControl
     }
 
     public void AttachCurrentChart(MeasurementHub hub, List<string> channelKeys,
-        CurrentMeasurementManager? cmeasManager = null)
+        CurrentMeasurementManager? cmeasManager = null, LaserControllerManager? laserManager = null)
     {
         _hub = hub;
         _cmeasManager = cmeasManager;
+        _laserManager = laserManager;
 
         OverlayChart.Attach(hub, channelKeys);
         ChartToggleButton.Visibility = Visibility.Visible;
 
-        // Populate measurement device combo
+        // Populate measurement device combo (cmeas + laser)
+        var allNames = new List<string>();
         if (_cmeasManager != null)
+            allNames.AddRange(_cmeasManager.GetAllDeviceNames());
+        if (_laserManager != null)
+            allNames.AddRange(_laserManager.GetAllDeviceNames());
+
+        if (allNames.Count > 0)
         {
-            var names = _cmeasManager.GetAllDeviceNames();
-            MeasCombo.ItemsSource = names;
+            MeasCombo.ItemsSource = allNames;
             MeasCombo.Visibility = Visibility.Visible;
-            if (names.Count > 0)
-                MeasCombo.SelectedIndex = 0;
+            MeasCombo.SelectedIndex = 0;
         }
     }
 
     private void MeasCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (MeasCombo.SelectedItem is not string deviceName || _cmeasManager == null || _hub == null)
+        if (MeasCombo.SelectedItem is not string deviceName || _hub == null)
             return;
 
-        var device = _cmeasManager.GetDevice(deviceName);
-        if (device == null) return;
+        // Try current measurement device first
+        if (_cmeasManager != null)
+        {
+            var device = _cmeasManager.GetDevice(deviceName);
+            if (device != null)
+            {
+                var keys = new List<string>(device.ChannelCount);
+                foreach (var ch in device.EnabledChannels)
+                    keys.Add($"{deviceName}.CH{ch}");
 
-        var keys = new List<string>(device.ChannelCount);
-        foreach (var ch in device.EnabledChannels)
-            keys.Add($"{deviceName}.CH{ch}");
+                OverlayChart.YAxisFormatter = null;
+                OverlayChart.Detach();
+                OverlayChart.Attach(_hub, keys);
+                if (_chartVisible)
+                    OverlayChart.StartRendering();
+                return;
+            }
+        }
 
-        OverlayChart.Detach();
-        OverlayChart.Attach(_hub, keys);
-        if (_chartVisible)
-            OverlayChart.StartRendering();
+        // Try laser controller device
+        if (_laserManager != null)
+        {
+            var device = _laserManager.GetDevice(deviceName);
+            if (device != null)
+            {
+                var keys = new List<string> { $"{deviceName}.Temperature", $"{deviceName}.LaserCurrent" };
+
+                OverlayChart.YAxisFormatter = FormatGenericValue;
+                OverlayChart.Detach();
+                OverlayChart.Attach(_hub, keys);
+                if (_chartVisible)
+                    OverlayChart.StartRendering();
+            }
+        }
+    }
+
+    private static string FormatGenericValue(double value)
+    {
+        var abs = Math.Abs(value);
+        if (abs < 0.001) return $"{value * 1000:F2} m";
+        if (abs < 1000) return $"{value:F2}";
+        return $"{value:F0}";
     }
 
     private void ToggleChart_Click(object sender, RoutedEventArgs e)

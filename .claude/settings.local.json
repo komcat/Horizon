@@ -8,7 +8,8 @@
       "Bash(python:*)",
       "WebSearch",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:www.nuget.org)"
+      "WebFetch(domain:www.nuget.org)",
+      "Bash(grep:*)"
     ]
   }
 }

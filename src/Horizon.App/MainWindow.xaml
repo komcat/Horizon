@@ -136,6 +136,8 @@
             </MenuItem>
             <MenuItem Header="_Production" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
                 <MenuItem Header="_Top View &amp; Chart" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="TopViewChart_Click"/>
+                <Separator Style="{StaticResource MenuSeparator}"/>
+                <MenuItem Header="_Process Editor" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ProcessEditor_Click"/>
             </MenuItem>
             <MenuItem Header="_Help" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
                 <MenuItem Header="_About" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}"/>
