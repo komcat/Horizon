@@ -1,10 +1,14 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Horizon.Camera;
 using Horizon.Camera.Models;
+using Horizon.Common;
 using Horizon.Core;
 using Horizon.CurrentMeasurement;
+using Horizon.Motion;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 
@@ -43,11 +47,35 @@ public partial class OverlayWindow : Window
     private static readonly SKColor GridColor = new(128, 128, 128, 60);
     private static readonly SKColor LabelColor = new(200, 200, 200);
 
-    public OverlayWindow(CameraManager cameraManager, CurrentMeasurementManager? cmeasManager = null, MeasurementHub? hub = null)
+    // Crosshair + Click-to-Move fields
+    private readonly UnifiedMotionManager? _motionManager;
+    private readonly ClickToMoveConfig? _clickToMoveConfig;
+    private bool _showCrosshair;
+    private bool _clickToMoveEnabled;
+    private Point? _lastMouseFramePos;
+    private bool _isMoving;
+
+    // Z Jog
+    private static readonly (string Label, double Mm)[] JogSteps =
+    [
+        ("1 um",    0.001),
+        ("5 um",    0.005),
+        ("10 um",   0.01),
+        ("50 um",   0.05),
+        ("0.1 mm",  0.1),
+        ("0.5 mm",  0.5),
+        ("1 mm",    1.0),
+        ("5 mm",    5.0),
+        ("10 mm",  10.0),
+    ];
+
+    public OverlayWindow(CameraManager cameraManager, CurrentMeasurementManager? cmeasManager = null,
+        MeasurementHub? hub = null, UnifiedMotionManager? motionManager = null)
     {
         _cameraManager = cameraManager;
         _cmeasManager = cmeasManager;
         _hub = hub;
+        _motionManager = motionManager;
 
         _snapTimestamps = new double[MaxChannels][];
         _snapValues = new double[MaxChannels][];
@@ -57,7 +85,16 @@ public partial class OverlayWindow : Window
             _snapValues[i] = new double[MaxChartSamples];
         }
 
+        // Load click-to-move config
+        var configDir = ConfigLoader.GetConfigDirectory();
+        _clickToMoveConfig = ConfigLoader.LoadJson<ClickToMoveConfig>(configDir, "click_to_move");
+
         InitializeComponent();
+
+        // Populate jog step combo (default = 1 mm, index 6)
+        JogStepCombo.ItemsSource = JogSteps.Select(s => s.Label).ToList();
+        JogStepCombo.SelectedIndex = 6;
+
         Loaded += OnLoaded;
         Closing += OnClosing;
     }
@@ -244,12 +281,26 @@ public partial class OverlayWindow : Window
         var info = e.Info;
         canvas.Clear(SKColors.Black);
 
+        SKRect dstRect = default;
+
         // Draw camera frame scaled to fill canvas
         if (_frameBitmap != null)
         {
             var srcRect = new SKRect(0, 0, _frameBitmap.Width, _frameBitmap.Height);
-            var dstRect = FitRect(srcRect, new SKRect(0, 0, info.Width, info.Height));
+            dstRect = FitRect(srcRect, new SKRect(0, 0, info.Width, info.Height));
             canvas.DrawBitmap(_frameBitmap, dstRect);
+        }
+
+        // Draw center crosshair on the image
+        if (_showCrosshair && _frameBitmap != null)
+        {
+            DrawCenterCrosshair(canvas, dstRect);
+        }
+
+        // Draw Click-to-Move overlay (mouse crosshair, distance label, moving indicator)
+        if (_clickToMoveEnabled && _frameBitmap != null)
+        {
+            DrawClickToMoveOverlay(canvas, dstRect, _frameBitmap.Width, _frameBitmap.Height);
         }
 
         // Draw chart overlay
@@ -447,6 +498,286 @@ public partial class OverlayWindow : Window
 
             canvas.DrawPath(path, linePaint);
         }
+    }
+
+    // --- Crosshair + Click-to-Move: checkbox handlers, mouse handlers, overlay ---
+
+    private void CrosshairCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        _showCrosshair = CrosshairCheckBox.IsChecked == true;
+        SkiaCanvas?.InvalidateVisual();
+    }
+
+    private void ClickToMoveCheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+        _clickToMoveEnabled = true;
+    }
+
+    private void ClickToMoveCheckBox_Unchecked(object sender, RoutedEventArgs e)
+    {
+        _clickToMoveEnabled = false;
+        _lastMouseFramePos = null;
+    }
+
+    private void SKElement_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_clickToMoveEnabled || _frameBitmap == null) return;
+
+        var wpfPoint = e.GetPosition(SkiaCanvas);
+        var srcRect = new SKRect(0, 0, _frameBitmap.Width, _frameBitmap.Height);
+        var canvasSize = new SKRect(0, 0,
+            (float)(SkiaCanvas.ActualWidth * GetDpiScale()),
+            (float)(SkiaCanvas.ActualHeight * GetDpiScale()));
+        var dstRect = FitRect(srcRect, canvasSize);
+
+        var framePos = WpfPointToFramePixels(wpfPoint, dstRect, _frameBitmap.Width, _frameBitmap.Height);
+        _lastMouseFramePos = framePos;
+    }
+
+    private void SKElement_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!_clickToMoveEnabled || _isMoving || _motionManager == null)
+            return;
+
+        var cfg = _clickToMoveConfig ?? new ClickToMoveConfig();
+        if (_frameBitmap == null) return;
+
+        var wpfPoint = e.GetPosition(SkiaCanvas);
+        var srcRect = new SKRect(0, 0, _frameBitmap.Width, _frameBitmap.Height);
+        var canvasSize = new SKRect(0, 0,
+            (float)(SkiaCanvas.ActualWidth * GetDpiScale()),
+            (float)(SkiaCanvas.ActualHeight * GetDpiScale()));
+        var dstRect = FitRect(srcRect, canvasSize);
+
+        var framePos = WpfPointToFramePixels(wpfPoint, dstRect, _frameBitmap.Width, _frameBitmap.Height);
+        if (framePos == null) return;
+
+        int frameW = _frameBitmap.Width;
+        int frameH = _frameBitmap.Height;
+        double frameX = framePos.Value.X;
+        double frameY = framePos.Value.Y;
+
+        // Pixel offset from frame center
+        double dx = frameX - frameW / 2.0;
+        double dy = frameY - frameH / 2.0;
+
+        // Scale to calibration reference resolution
+        dx *= (double)cfg.CalibrationRefWidth / frameW;
+        dy *= (double)cfg.CalibrationRefHeight / frameH;
+
+        // Convert to mm: pixel offset * mm_per_pixel / magnification
+        double mmX = dx * cfg.PixelToMmX / cfg.Magnification;
+        double mmY = dy * cfg.PixelToMmY / cfg.Magnification;
+
+        // Apply invert flags
+        if (cfg.InvertX) mmX = -mmX;
+        if (cfg.InvertY) mmY = -mmY;
+
+        var deviceName = cfg.MotionDevice;
+        var currentPos = _motionManager.GetCurrentPosition(deviceName);
+        if (currentPos == null)
+        {
+            StatusText.Text = $"Move2Point: device '{deviceName}' position unavailable";
+            return;
+        }
+
+        double newX = currentPos.X + mmX;
+        double newY = currentPos.Y + mmY;
+
+        _isMoving = true;
+        StatusText.Text = $"Moving to X={newX:F3} Y={newY:F3} mm...";
+
+        // Fire-and-forget async move
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var moveX = Task.Run(() => _motionManager.MoveToAbs(deviceName, "X", newX, blocking: true));
+                var moveY = Task.Run(() => _motionManager.MoveToAbs(deviceName, "Y", newY, blocking: true));
+                Task.WaitAll(moveX, moveY);
+            }
+            finally
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    _isMoving = false;
+                    StatusText.Text = _running ? $"Live: {_activeCameraId}" : "Idle";
+                });
+            }
+        });
+    }
+
+    private void SKElement_MouseLeave(object sender, MouseEventArgs e)
+    {
+        _lastMouseFramePos = null;
+    }
+
+    // --- Z Jog ---
+
+    private void ZPlus_Click(object sender, RoutedEventArgs e) => JogZ(+1);
+    private void ZMinus_Click(object sender, RoutedEventArgs e) => JogZ(-1);
+
+    private void JogZ(int direction)
+    {
+        if (_motionManager == null) return;
+
+        var idx = JogStepCombo.SelectedIndex;
+        if (idx < 0 || idx >= JogSteps.Length) return;
+
+        var cfg = _clickToMoveConfig ?? new ClickToMoveConfig();
+        var deviceName = cfg.MotionDevice;
+        var step = JogSteps[idx].Mm;
+        var distance = step * direction;
+
+        var ok = _motionManager.MoveRelative(deviceName, "Z", distance, blocking: false);
+        StatusText.Text = ok
+            ? $"Jog Z {(direction > 0 ? "+" : "")}{distance} mm"
+            : $"Jog Z FAILED";
+
+        // Update Z position display after a short delay
+        _ = Task.Run(() =>
+        {
+            Thread.Sleep(200);
+            var pos = _motionManager.GetCurrentPosition(deviceName);
+            if (pos != null)
+                Dispatcher.Invoke(() => ZPositionText.Text = $"Z = {pos.Z:F4} mm");
+        });
+    }
+
+    private void DrawCenterCrosshair(SKCanvas canvas, SKRect destRect)
+    {
+        if (destRect.Width <= 0 || destRect.Height <= 0) return;
+
+        float centerX = destRect.Left + destRect.Width / 2;
+        float centerY = destRect.Top + destRect.Height / 2;
+
+        // Full image-spanning crosshair lines
+        using var paint = new SKPaint
+        {
+            Color = new SKColor(0, 255, 0, 140),
+            StrokeWidth = 1,
+            Style = SKPaintStyle.Stroke,
+            IsAntialias = true
+        };
+        canvas.DrawLine(destRect.Left, centerY, destRect.Right, centerY, paint);
+        canvas.DrawLine(centerX, destRect.Top, centerX, destRect.Bottom, paint);
+    }
+
+    private void DrawClickToMoveOverlay(SKCanvas canvas, SKRect destRect, int frameW, int frameH)
+    {
+        if (destRect.Width <= 0 || destRect.Height <= 0) return;
+
+        float scaleX = destRect.Width / frameW;
+        float scaleY = destRect.Height / frameH;
+        float centerCanvasX = destRect.Left + destRect.Width / 2;
+        float centerCanvasY = destRect.Top + destRect.Height / 2;
+        float crossSize = 20;
+
+        // If crosshair checkbox is off, draw the center crosshair here so click-to-move still shows reference
+        if (!_showCrosshair)
+        {
+            using var centerPaint = new SKPaint
+            {
+                Color = new SKColor(0, 255, 0, 140),
+                StrokeWidth = 1,
+                Style = SKPaintStyle.Stroke,
+                IsAntialias = true
+            };
+            canvas.DrawLine(destRect.Left, centerCanvasY, destRect.Right, centerCanvasY, centerPaint);
+            canvas.DrawLine(centerCanvasX, destRect.Top, centerCanvasX, destRect.Bottom, centerPaint);
+        }
+
+        // Mouse crosshair + distance line
+        if (_lastMouseFramePos != null)
+        {
+            var cfg = _clickToMoveConfig ?? new ClickToMoveConfig();
+            float mouseFrameX = (float)_lastMouseFramePos.Value.X;
+            float mouseFrameY = (float)_lastMouseFramePos.Value.Y;
+
+            float mouseCanvasX = destRect.Left + mouseFrameX * scaleX;
+            float mouseCanvasY = destRect.Top + mouseFrameY * scaleY;
+
+            // Cyan crosshair at mouse position
+            using var mousePaint = new SKPaint
+            {
+                Color = new SKColor(0, 255, 255, 200),
+                StrokeWidth = 1.5f,
+                Style = SKPaintStyle.Stroke,
+                IsAntialias = true
+            };
+            canvas.DrawLine(mouseCanvasX - crossSize, mouseCanvasY, mouseCanvasX + crossSize, mouseCanvasY, mousePaint);
+            canvas.DrawLine(mouseCanvasX, mouseCanvasY - crossSize, mouseCanvasX, mouseCanvasY + crossSize, mousePaint);
+
+            // Dashed line from center to mouse
+            using var dashPaint = new SKPaint
+            {
+                Color = new SKColor(255, 255, 0, 120),
+                StrokeWidth = 1,
+                Style = SKPaintStyle.Stroke,
+                IsAntialias = true,
+                PathEffect = SKPathEffect.CreateDash(new float[] { 6, 4 }, 0)
+            };
+            canvas.DrawLine(centerCanvasX, centerCanvasY, mouseCanvasX, mouseCanvasY, dashPaint);
+
+            // Distance label in mm
+            double dx = mouseFrameX - frameW / 2.0;
+            double dy = mouseFrameY - frameH / 2.0;
+            dx *= (double)cfg.CalibrationRefWidth / frameW;
+            dy *= (double)cfg.CalibrationRefHeight / frameH;
+            double mmX = dx * cfg.PixelToMmX / cfg.Magnification;
+            double mmY = dy * cfg.PixelToMmY / cfg.Magnification;
+            if (cfg.InvertX) mmX = -mmX;
+            if (cfg.InvertY) mmY = -mmY;
+            double dist = Math.Sqrt(mmX * mmX + mmY * mmY);
+
+            using var labelPaint = new SKPaint
+            {
+                Color = SKColors.White,
+                TextSize = 12,
+                IsAntialias = true,
+                Typeface = SKTypeface.FromFamilyName("Consolas")
+            };
+            string label = $"dX={mmX:F3} dY={mmY:F3} mm (d={dist:F3})";
+            canvas.DrawText(label, mouseCanvasX + 8, mouseCanvasY - 8, labelPaint);
+        }
+
+        // "Moving..." indicator
+        if (_isMoving)
+        {
+            using var movingPaint = new SKPaint
+            {
+                Color = new SKColor(255, 100, 100, 220),
+                TextSize = 16,
+                IsAntialias = true,
+                Typeface = SKTypeface.FromFamilyName("Consolas"),
+                FakeBoldText = true
+            };
+            canvas.DrawText("Moving...", destRect.Left + 10, destRect.Top + 24, movingPaint);
+        }
+    }
+
+    private Point? WpfPointToFramePixels(Point wpfPoint, SKRect destRect, int frameW, int frameH)
+    {
+        double dpiScale = GetDpiScale();
+        double canvasX = wpfPoint.X * dpiScale;
+        double canvasY = wpfPoint.Y * dpiScale;
+
+        // Check if within the frame destRect
+        if (canvasX < destRect.Left || canvasX > destRect.Right ||
+            canvasY < destRect.Top || canvasY > destRect.Bottom)
+            return null;
+
+        // Reverse-map from destRect to frame pixel coords
+        double frameX = (canvasX - destRect.Left) / destRect.Width * frameW;
+        double frameY = (canvasY - destRect.Top) / destRect.Height * frameH;
+
+        return new Point(frameX, frameY);
+    }
+
+    private double GetDpiScale()
+    {
+        var source = PresentationSource.FromVisual(this);
+        return source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
     }
 
     private static SKRect FitRect(SKRect src, SKRect dst)

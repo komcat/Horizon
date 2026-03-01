@@ -9,6 +9,7 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -25,6 +26,12 @@
                 <CheckBox x:Name="ChartCheckBox" Content="Show Chart" Foreground="#FFCCCCCC"
                           VerticalAlignment="Center" Margin="16,0,0,0" IsChecked="True"
                           Checked="ChartCheckBox_Changed" Unchecked="ChartCheckBox_Changed"/>
+                <CheckBox x:Name="CrosshairCheckBox" Content="Crosshair" Foreground="#FFCCCCCC"
+                          VerticalAlignment="Center" Margin="16,0,0,0" IsChecked="False"
+                          Checked="CrosshairCheckBox_Changed" Unchecked="CrosshairCheckBox_Changed"/>
+                <CheckBox x:Name="ClickToMoveCheckBox" Content="Click to Move" Foreground="#FFCCCCCC"
+                          VerticalAlignment="Center" Margin="16,0,0,0" IsChecked="False"
+                          Checked="ClickToMoveCheckBox_Checked" Unchecked="ClickToMoveCheckBox_Unchecked"/>
                 <TextBlock Text="Measurement:" Foreground="#FFCCCCCC" VerticalAlignment="Center"
                            FontFamily="Consolas" FontSize="11" Margin="16,0,6,0"/>
                 <ComboBox x:Name="MeasCombo" Width="180" FontFamily="Consolas" FontSize="11"
@@ -32,11 +39,31 @@
             </StackPanel>
         </Border>
 
+        <!-- Z Jog toolbar -->
+        <Border Grid.Row="1" Background="#FF252528" Padding="6,3">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Z Jog:" Foreground="#FFCCCCCC" VerticalAlignment="Center"
+                           FontFamily="Consolas" FontSize="11" Margin="0,0,6,0"/>
+                <Button x:Name="ZMinusButton" Content="Z-" FontFamily="Consolas" FontSize="11"
+                        FontWeight="Bold" Padding="8,2" Margin="0,0,4,0" Click="ZMinus_Click"/>
+                <Button x:Name="ZPlusButton" Content="Z+" FontFamily="Consolas" FontSize="11"
+                        FontWeight="Bold" Padding="8,2" Margin="0,0,8,0" Click="ZPlus_Click"/>
+                <TextBlock Text="Step:" Foreground="#FFCCCCCC" VerticalAlignment="Center"
+                           FontFamily="Consolas" FontSize="11" Margin="0,0,6,0"/>
+                <ComboBox x:Name="JogStepCombo" Width="90" FontFamily="Consolas" FontSize="11"/>
+                <TextBlock x:Name="ZPositionText" Text="" Foreground="#FF80FF80" VerticalAlignment="Center"
+                           FontFamily="Consolas" FontSize="11" Margin="16,0,0,0"/>
+            </StackPanel>
+        </Border>
+
         <!-- SkiaSharp render surface -->
-        <skia:SKElement x:Name="SkiaCanvas" Grid.Row="1" PaintSurface="SkiaCanvas_PaintSurface"/>
+        <skia:SKElement x:Name="SkiaCanvas" Grid.Row="2" PaintSurface="SkiaCanvas_PaintSurface"
+                        MouseMove="SKElement_MouseMove"
+                        MouseLeftButtonDown="SKElement_MouseLeftButtonDown"
+                        MouseLeave="SKElement_MouseLeave"/>
 
         <!-- Status bar -->
-        <Border Grid.Row="2" Background="#FF2D2D30" Padding="6,3">
+        <Border Grid.Row="3" Background="#FF2D2D30" Padding="6,3">
             <TextBlock x:Name="StatusText" Text="Idle" Foreground="#FF999999"
                        FontFamily="Consolas" FontSize="10"/>
         </Border>

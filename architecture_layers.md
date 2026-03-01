@@ -1,6 +1,8 @@
-# Bobcat Engine - Architecture Layers
+# Horizon — Architecture Layers
 
 This document describes the application's layered architecture from top-level initialization down to low-level hardware controllers.
+
+**Platform:** .NET 8 (C#), WPF, x64 only | **Solution:** `Horizon.sln` (10 projects, 81 source files)
 
 ---
 
@@ -8,57 +10,55 @@ This document describes the application's layered architecture from top-level in
 
 ```
 +-----------------------------------------------------------------------+
-|                        Application (Entry Point)                       |
-|   Lifecycle: initialize() -> initializeManagers() -> createMainWindow()|
-|              -> connectHardwareAsync() -> exec() -> shutdown()         |
+|                      Application Layer (WPF)                          |
+|  App.xaml.cs -> SplashWindow (async connect) -> MainWindow (AvalonDock)|
 +-----------------------------------------------------------------------+
          |
          v
 +-----------------------------------------------------------------------+
-|                      ApplicationContext (DI Container)                  |
-|   Raw pointer struct holding all 23+ managers. Ownership in Application|
+|                    AppContext (DI Container)                           |
+|  Horizon.Core.AppContext owns all managers, MeasurementHub            |
 +-----------------------------------------------------------------------+
          |
          v
 +-----------------------------------------------------------------------+
-|                    Recipe / Program Execution Layer                     |
-|   ProgramManager -> RecipeWorker -> ProcessPluginRegistry              |
-|   RecipeExecutionStateMachine (DAG-based multi-recipe orchestration)   |
+|                    Data Hub Layer                                      |
+|  MeasurementHub (per-channel circular buffers, pub/sub)               |
 +-----------------------------------------------------------------------+
          |
          v
 +-----------------------------------------------------------------------+
-|                    Sequence Execution Layer                             |
-|   SequenceEngine -> CommandDispatcher -> ICommandHandler (18 handlers) |
-|   SequenceBuilder | SequenceContext | Timeout/Safety enforcement       |
+|                    Process Execution Layer                             |
+|  ProcessEngine -> CommandDispatcher -> ICommandHandler (7 handlers)   |
+|  ProcessBuilder | ProcessContext | Breakpoint/StepByStep support      |
 +-----------------------------------------------------------------------+
          |
          v
 +-----------------------------------------------------------------------+
 |                        Manager Layer                                   |
-|   UnifiedMotionManager | CameraManager | EziIOManager | TECManager    |
-|   PowerSupplyManager | SMUManager | LightingManager | PneumaticManager|
+|  CameraManager | UnifiedMotionManager | EziIOManager                  |
+|  PneumaticManager | CurrentMeasurementManager | SafetyWatchManager    |
 +-----------------------------------------------------------------------+
          |
          v
 +-----------------------------------------------------------------------+
-|                   Hardware Abstraction Interfaces                       |
-|   IMotionControllerManager | ICameraHardware | IEziIODevice           |
-|   ITECDevice | IPowerSupply | ISMUDevice | ILightingController        |
+|                   Hardware Abstraction Interfaces                      |
+|  ICameraHardware | IMotionController | IIODevice                      |
+|  IPneumaticSlide | ICurrentMeasurementDevice                          |
 +-----------------------------------------------------------------------+
          |
          v
 +-----------------------------------------------------------------------+
-|                      Adapter / Device Layer                             |
-|   ACSController | PIController | PylonCameraAdapter | IDSCameraAdapter|
-|   WagoIODevice | CLD101xAdapter | TED4015DirectAdapter | etc.        |
+|                      Adapter / Device Layer                            |
+|  PylonCameraAdapter | IDSPeakCameraAdapter | ACSMotionController      |
+|  PIMotionController | EziIODevice | PneumaticSlide | Keithley6482     |
 +-----------------------------------------------------------------------+
          |
          v
 +-----------------------------------------------------------------------+
-|                        SDK / Protocol Layer                             |
-|   ACSC SDK | PI GCS2 DLL | Pylon SDK | IDS uEye SDK | NI-VISA       |
-|   Modbus TCP | SCPI/TCP | Custom TCP protocols                       |
+|                        SDK / Protocol Layer                            |
+|  Basler Pylon | IDS Peak | ACS.SPiiPlusNET6 | PI GCS2 DLL           |
+|  Fastech EziMOTION | NI-VISA (GPIB/USB for Keithley)                |
 +-----------------------------------------------------------------------+
 ```
 
@@ -66,508 +66,377 @@ This document describes the application's layered architecture from top-level in
 
 ## 1. Application Layer
 
-**Files:** `Application.h`, `Application.cpp`
+**Project:** `Horizon.App` (net8.0-windows, WPF, AllowUnsafeBlocks)
 
-The `Application` class owns all resources as `std::unique_ptr` members and orchestrates the full lifecycle:
-
-### Initialization Sequence
+### Startup Sequence
 
 ```
-Application::run()
+App.xaml.cs
   |
-  +-> initialize()
-  |     +-> Create QApplication (Fusion style, dark theme, RobotoMono font)
-  |     +-> Check BOBCAT_SIMULATION env var
-  |     +-> Show ConnectionSplashScreen (hardware mode only)
-  |     +-> initializeManagers()        -- sequential, 20+ managers
-  |     +-> createMainWindow()          -- UI shown before hardware connects
-  |     +-> QTimer::singleShot(100ms)   -- defer connectHardwareAsync()
-  |
-  +-> m_qApplication->exec()            -- Qt event loop starts
-  |     |
-  |     +-> [100ms later] connectHardwareAsync()
-  |           +-> ConnectionWorkerPool executes parallel connection tasks
-  |           +-> Phase 0: TCP + Cameras
-  |           +-> Phase 1: Motion + I/O
-  |           +-> Phase 2: TEC + Lighting
-  |
-  +-> shutdown()                         -- destroy managers in reverse order
+  +-> Set Pylon environment (PYLON_ROOT, PATH, GENICAM_GENTL64_PATH, DLL search dirs)
+  +-> Create AppContext
+  +-> Show SplashWindow
+  |     +-> AppContext.Initialize() on background thread
+  |     +-> Sequential: Camera, IO, Motion, CurrentMeasurement, Pneumatic, Safety, Process
+  |     +-> Parallel connect tasks per subsystem
+  |     +-> Progress bar updates via Dispatcher
+  +-> Show MainWindow (AvalonDock shell)
+  +-> SplashWindow closes
 ```
 
-### Manager Initialization Order
+### MainWindow (AvalonDock Shell)
 
-Managers are created sequentially in strict dependency order:
+The main window hosts a dockable panel layout with:
 
-1. LogManager
-2. ApplicationSettings
-3. DataStore
-4. TcpClientManager
-5. CameraManager
-6. UnifiedMotionManager
-7. EziIOManager
-8. PneumaticManager
-9. TECManager
-10. PowerSupplyManager
-11. SMUManager
-12. AuxWindowManager
-13. GdiCameraWindowManager (x2)
-14. ProductPositionManager
-15. DeviceLinkManager *(must precede SequenceEngine)*
-16. SequenceEngine
-17. AdaptiveScanController
-18. CoordinateSystemManager
-19. LightingManager
-20. BeamServerClient
-21. SafetyEventLog *(must precede SafetyWatchManager)*
-22. SafetyWatchManager
+| Panel Type | Content ID Prefix | Description |
+|---|---|---|
+| IOPanel | `io_` | Per-device digital I/O pin state + toggle |
+| MotionPanel | `motion_` | Per-device axis position + jog controls |
+| PneumaticPanel | `pneu_` | Per-slide extend/retract + sensor state |
+| CurrentMeasurementPanel | `cmeas_` | Per-device channel readings + fast poll |
+| LiveFeedPanel | `liveFeed_` | Camera live video + chart overlay |
+| CameraInfoPanel | `camInfo_` | Camera settings + exposure controls |
+| CurrentChartPanel | `chart_` | Pop-out current chart with device selector |
+| OverlayWindow | (separate window) | Camera + SkiaSharp chart overlay |
 
-### Hardware Connection (Deferred)
+**Anchorables:** Hardware tree (left), Output log (bottom), Camera config (collapsible)
 
-`ConnectionWorkerPool` runs connection tasks in background threads organized into phases. Within each phase, tasks execute in parallel. Phases execute sequentially (barrier pattern).
+Panels are created on demand (double-click hardware tree item) and destroyed on close. Layout state (dock positions, window bounds) is persisted to `%APPDATA%\Horizon\dock-layout.xml` and `window-state.txt`.
+
+### UI Data Flow (MeasurementHub)
 
 ```
-ConnectionWorkerPool
-  +-> Phase 0 (parallel): TCP clients, Cameras
-  +-> Phase 1 (parallel): Motion controllers, I/O devices
-  +-> Phase 2 (parallel): TEC devices, Lighting controllers
-```
+              MeasurementHub (Horizon.Core, owned by AppContext)
+              +---------------------------------------------+
+ Producers:   |  ConcurrentDictionary<string, Channel>      |  Consumers:
+              |                                             |
+ CMeasPanel --Push--> "Keithley-1.CH1" (500-sample buffer) --> CurrentReadingChart
+ CMeasPanel --Push--> "Keithley-1.CH2" (500-sample buffer) --> OverlayWindow
+ (future)   --Push--> "PowerMeter.CH1"                     --> CurrentChartPanel
+ (future)   --Push--> "TempSensor.T1"                      --> LiveFeedPanel overlay
+              +---------------------------------------------+
 
-Each task has a configurable timeout and emits Qt signals for splash screen progress updates.
+ Device selector combos on OverlayWindow, CurrentChartPanel, and LiveFeedPanel
+ allow users to switch which device's channels are displayed.
+```
 
 ---
 
-## 2. ApplicationContext (Dependency Injection)
+## 2. AppContext (DI Container)
 
-**File:** `include/context/ApplicationContext.h`
+**Files:** `Horizon.Core/AppContext.cs`, `Horizon.Core/IAppContext.cs`
 
-A plain struct holding raw pointers to all managers:
+### Interface
 
-```cpp
-struct ApplicationContext {
-    CameraManager*            cameraManager;
-    LogManager*               logManager;
-    DataStore*                dataStore;
-    TcpClientManager*         tcpClientManager;
-    UnifiedMotionManager*     motionManager;
-    EziIOManager*             ioManager;
-    PneumaticManager*         pneumaticManager;
-    SequenceEngine*           sequenceEngine;
-    ProductPositionManager*   productPositionManager;
-    AdaptiveScanController*   scanController;
-    TECManager*               tecManager;
-    AuxWindowManager*         auxWindowManager;
-    PowerSupplyManager*       powerSupplyManager;
-    SMUManager*               smuManager;
-    SMUPollingManager*        smuPollingManager;
-    CoordinateSystemManager*  coordinateSystemManager;
-    DeviceUnderTest*          currentDUT;
-    Lighting::LightingManager* lightingManager;
-    SafetyWatchManager*       safetyWatchManager;
-    DeviceLinkManager*        deviceLinkManager;
-    GdiCameraWindowManager*   gdiCameraWindowManager;
-    GdiCameraWindowManager*   gdiCameraWindowManager2;
-    ApplicationSettings*      applicationSettings;
-    SafetyEventLog*           safetyEventLog;
-    BeamServerClient*         beamServerClient;
-    bool                      simulationMode;
-};
-```
-
-**Ownership model:** `Application` owns all managers via `std::unique_ptr`. ApplicationContext holds **borrowed** raw pointers. All managers receive `&m_context` to access sibling managers.
-
----
-
-## 3. Recipe / Program Execution Layer
-
-### Recipe Data Model
-
-**Files:** `include/recipe/RecipeManager.h`, `include/recipe/IProcessPlugin.h`, `include/recipe/ProcessPluginRegistry.h`
-
-```
-Recipe (JSON file)
-  +-> steps[]: ProcessInstance
-        +-> processType: string     ("Pick", "Place", "Wait", ...)
-        +-> userNickname: string    ("Pick Left Lens")
-        +-> enabled: bool
-        +-> parameters: map<string, string>
-```
-
-### Plugin System
-
-Each process type is an `IProcessPlugin` implementation:
-
-```cpp
-class IProcessPlugin {
-    virtual string GetName() const = 0;
-    virtual string GetCategory() const = 0;
-    virtual map<string, string> GetDefaultParameters() const = 0;
-    virtual void CreateConfigUI(ProcessConfigWidget*, const ProcessInstance*) = 0;
-    virtual void BuildSequence(SequenceBuilder*, const ProcessInstance*) = 0;
-};
-```
-
-Plugins self-register at static initialization via `ProcessPluginRegistry`:
-
-```cpp
-namespace {
-  struct RegisterMotionProcesses {
-    RegisterMotionProcesses() {
-      auto& reg = ProcessPluginRegistry::Instance();
-      reg.RegisterPlugin(std::make_unique<PickPlugin>());
-      reg.RegisterPlugin(std::make_unique<PlacePlugin>());
-      // ...
-    }
-  };
-  static RegisterMotionProcesses g_register;
+```csharp
+public interface IAppContext
+{
+    CameraManager CameraManager { get; }
+    UnifiedMotionManager MotionManager { get; }
+    EziIOManager IOManager { get; }
+    PneumaticManager PneumaticManager { get; }
+    CurrentMeasurementManager CurrentMeasurementManager { get; }
+    ProcessEngine ProcessEngine { get; }
+    SafetyWatchManager? SafetyWatchManager { get; }
+    MeasurementHub MeasurementHub { get; }
+    bool IsInitialized { get; }
+    bool SimulationMode { get; set; }
+    void Initialize();
+    void Reinitialize();
 }
 ```
 
-**25 plugin files** organized by domain: Motion, System, IO, Camera, TEC, PSU, SMU, Vision, DataStore, DUT, Conditional, Calibration, Lighting, AuxWindow, Dispense, etc.
+### Initialization Order
 
-### Recipe Execution Pipeline
+Managers are created sequentially in strict dependency order:
 
-```
-Recipe JSON  --->  RecipeManager::loadFromJson()
-                         |
-                         v
-                   ProcessInstance[]
-                         |
-             +-----------+-----------+
-             |                       |
-     Single-Recipe Path      Multi-Recipe Path
-             |                       |
-      RecipeWorker             ProgramManager
-      (QThread)                      |
-             |               RecipeExecutionStateMachine
-             |               (DAG with dependencies)
-             v                       |
-  buildSequenceFromRecipe()          v
-             |               For each ready recipe:
-             v                 spawn RecipeWorker
-  For each enabled step:
-    ProcessPluginRegistry::GetPlugin(processType)
-    plugin->BuildSequence(sequenceBuilder, step)
-             |
-             v
-  SequenceEngine::ExecuteSequence(sequence, context)
-```
+1. **CameraManager** — discover Pylon + IDS cameras, load registered config
+2. **EziIOManager** — load `io_devices.json`
+3. **UnifiedMotionManager** — load `motor_devices.json`
+4. **CurrentMeasurementManager** — load `current_measurement_devices.json`
+5. **PneumaticManager** — load `pneumatic_slides.json` (depends on IOManager)
+6. **SafetyWatchManager** — load `safety_watch.json` (depends on IOManager)
+7. **ProcessEngine** — `BuildDeviceRegistry(this)` via reflection
 
-### RecipeExecutionStateMachine
+**MeasurementHub** is created once at construction (not cleared on Shutdown — charts retain history during reconnect).
 
-Manages multi-recipe orchestration with DAG-based dependencies:
+### Shutdown
 
-- States: Pending -> Ready -> Running -> Completed/Failed/Skipped
-- Topological sort for execution order
-- Cycle detection and prerequisite validation
-- Conditional execution based on SequenceContext values
+Managers are disposed in reverse order. Camera grabbing is stopped, IO devices disconnected, motion controllers disconnected, safety watch stopped.
 
 ---
 
-## 4. Sequence Execution Layer
+## 3. Data Hub Layer
 
-**Files:** `include/sequence/SequenceEngine.h/.cpp`, `include/sequence/CommandDispatcher.h/.cpp`, `include/sequence/SequenceBuilder.h`
+**File:** `Horizon.Core/MeasurementHub.cs`
 
-### Sequence Step Hierarchy
+### MeasurementChannel
 
-```cpp
-ISequenceStep (abstract)
-  +-> Action          { deviceName, methodName, params }
-  +-> LoopBlock       { count, actions[] }
-  +-> ConditionalBlock { contextKey, comparison, threshold, thenActions[], elseActions[] }
-  +-> StepMarker      { stepIndex, stepName, stepType }
+Per-channel thread-safe circular buffer:
+
+| Method | Description |
+|---|---|
+| `Push(double value, DateTimeOffset ts)` | Add timestamped sample (auto-creates time origin) |
+| `Snapshot(double[] outTs, double[] outVals) → int` | Copy buffer to arrays (oldest-first), returns count |
+| `Clear()` | Reset head/count/origin |
+
+- Capacity: 500 samples (default)
+- Thread safety: `lock` on all operations
+- Timestamps: relative seconds from first push
+
+### MeasurementHub
+
+Central registry with `ConcurrentDictionary<string, MeasurementChannel>` (OrdinalIgnoreCase):
+
+| Method | Description |
+|---|---|
+| `Push(string key, double value, DateTimeOffset ts)` | Auto-creates channel via `GetOrAdd` |
+| `GetChannel(string key) → MeasurementChannel?` | Lookup by key |
+| `GetOrCreateChannel(string key) → MeasurementChannel` | Always returns channel |
+| `GetChannelsForDevice(string deviceName) → IReadOnlyList` | Prefix match (`"deviceName."`) |
+| `GetAllChannelKeys() → IReadOnlyList<string>` | All registered keys |
+| `Clear()` | Clear all channels and data |
+
+**Channel key convention:** `"{DeviceName}.CH{N}"` (e.g., `"Keithley-1.CH1"`, `"Keithley-1.CH2"`)
+
+---
+
+## 4. Process Execution Layer
+
+**Project:** `Horizon.Process` (13 source files)
+
+### Process Step Hierarchy
+
+```csharp
+ProcessStep (abstract)
+  +-> ActionStep       { DeviceName, MethodName, Parameters }
+  +-> LoopStep         { Count, Steps[] }
+  +-> ConditionalStep  { ContextKey, Comparison, Threshold, ThenSteps[], ElseSteps[] }
+  +-> StepMarkerStep   { StepIndex, StepName, StepType }
 ```
 
-### SequenceBuilder
+### ProcessEngine
 
-Plugins use this fluent API to construct sequences:
+| Method | Description |
+|---|---|
+| `BuildDeviceRegistry(object context)` | Auto-register devices from AppContext via reflection |
+| `RegisterDevice(string name, object? mgr, string type)` | Manual device registration |
+| `ExecuteAsync(steps, context, ct) → Task<bool>` | Execute process steps |
+| `ContinueStep()` | Resume from breakpoint/step-by-step pause |
 
-```cpp
-sequence->AddAction("hex-left", "MoveToNamedPosition", {{"position", "lensgrip"}});
-sequence->AddAction("IOBottom", "SetOutput", {{"pin", "0"}, {"state", "1"}});
-sequence->AddAction("system", "Wait", {{"milliseconds", "500"}});
+**Events:** `OnStepStarted(index, device, method)`, `OnStepCompleted(index, success)`
 
-sequence->BeginLoop(3);
-  sequence->AddAction("cam-main", "CaptureToFile", {{"filename", "test"}});
-sequence->EndLoop();
+### Device Registry (built via reflection)
 
-sequence->BeginIf("measured_value", GREATER_THAN, 1.5f);
-  sequence->AddAction("system", "Log", {{"message", "PASS"}});
-sequence->Else();
-  sequence->AddAction("system", "Log", {{"message", "FAIL"}});
-sequence->EndIf();
-```
-
-### SequenceEngine Execution Loop
-
-```
-ExecuteSequence(sequence, context)
-  |
-  +-> Validate sequence (device registry checks)
-  +-> Log to SafetyEventLog: SEQUENCE_START
-  +-> BuildActionList() for look-ahead
-  |
-  +-> For each step:
-        +-> Check m_stopRequested (atomic flag)
-        +-> ExecuteStep(step, context)
-              |
-              +-> ACTION:
-              |     +-> ResolveManager(deviceName)
-              |     +-> ResolveManagerType(deviceName)
-              |     +-> IsDeviceConnected() pre-check
-              |     +-> InjectContinuousVisionResult() -> context
-              |     +-> InjectBeamStreamResult() -> context
-              |     +-> DispatchWithTimeout()
-              |           +-> Spawn std::thread
-              |           +-> CommandDispatcher::ExecuteCommand()
-              |           +-> cv.wait_for(timeout)
-              |           +-> On timeout: zombie thread + CRITICAL log
-              |
-              +-> LOOP: Iterate, recurse into inner steps
-              +-> CONDITIONAL: Evaluate context, execute branch
-              +-> STEP_MARKER: Handle breakpoint/pause, fire callbacks
-```
-
-### Device Registry
-
-`BuildDeviceRegistry()` maps device names to (manager*, managerType):
-
-| Device Name | Manager Type | Manager |
-|-------------|-------------|---------|
-| `"gantry-main"` | `"motion"` | motionManager |
-| `"hex-left"` | `"motion"` | motionManager |
-| `"IOBottom"` | `"io"` | ioManager |
-| `"slide-1"` | `"pneumatic"` | pneumaticManager |
-| `"cam-main"` | `"camera"` | cameraManager |
-| `"tec-main"` | `"tec"` | tecManager |
-| `"psu-1"` | `"psu"` | powerSupplyManager |
-| `"smu-keithley"` | `"smu"` | smuManager |
-| `"light-main"` | `"lighting"` | lightingManager |
-| `"system"` | `"system"` | nullptr (virtual) |
-| `"context"` | `"context"` | nullptr (virtual) |
-| `"vision"` | `"vision"` | nullptr (virtual) |
-| `"dut"` | `"dut"` | nullptr (virtual) |
-| `"datastore"` | `"datastore"` | dataStore |
-| `"calibration"` | `"calibration"` | nullptr (virtual) |
-| `"parallel"` | `"motion"` | motionManager (special) |
+| Source Manager | Type String | Devices |
+|---|---|---|
+| UnifiedMotionManager | `"motion"` | All motion controller device names |
+| EziIOManager | `"io"` | All IO device names |
+| PneumaticManager | `"pneumatic"` | All pneumatic slide names |
+| CameraManager | `"camera"` | All camera IDs |
+| CurrentMeasurementManager | `"currentmeasurement"` | All CMeas device names |
+| (virtual) | `"system"` | `"system"` — Wait, Log |
+| (virtual) | `"context"` | `"context"` — SetValue, Calculate |
 
 ### CommandDispatcher
 
-Routes commands to the appropriate handler based on manager type:
+Routes commands to 7 registered `ICommandHandler` implementations:
 
+| Handler | Type | Key Commands |
+|---|---|---|
+| MotionCommandHandler | `motion` | MoveToNamedPosition, MoveToAbs, MoveRelative, HomeAxis, StopAxis, GetPosition |
+| IOCommandHandler | `io` | SetOutput, SetOutputByName, ClearOutputByName, ReadInput |
+| PneumaticCommandHandler | `pneumatic` | Extend, Retract, ExtendAndWait, RetractAndWait, GetStatus |
+| CameraCommandHandler | `camera` | CaptureToFile, StartGrabbing, StopGrabbing, Connect, Disconnect |
+| CurrentMeasurementCommandHandler | `currentmeasurement` | Read_Current, Read_All |
+| SystemCommandHandler | `system` | Wait, Log (with context variable substitution) |
+| ContextCommandHandler | `context` | SetValue, GetValue, Calculate, IncrementCounter |
+
+### ProcessContext (Runtime Variable Store)
+
+Thread-safe `ConcurrentDictionary<string, string>` for sharing data between steps:
+
+```csharp
+context.SetValue("measured_value", "1.234");
+context.GetNumeric("measured_value", 0.0);    // returns 1.234
+
+// Motion handler stores: "{deviceName}.X", "{deviceName}.Y", "{deviceName}.Z"
+// CMeas handler stores: "{deviceName}.current.ch1", "{deviceName}.current.ch2"
+// Pneumatic handler stores: "{deviceName}.position"
 ```
-CommandDispatcher
-  +-> m_handlers: map<string, unique_ptr<ICommandHandler>>
-        "motion"          -> MotionCommandHandler
-        "io"              -> IOCommandHandler
-        "pneumatic"       -> PneumaticCommandHandler
-        "camera"          -> CameraCommandHandler
-        "tec"             -> TECCommandHandler
-        "psu"             -> PSUCommandHandler
-        "smu"             -> SMUCommandHandler
-        "lighting"        -> LightingCommandHandler
-        "system"          -> SystemCommandHandler
-        "context"         -> SequenceContextCommandHandler
-        "vision"          -> VisionCommandHandler
-        "dut"             -> DUTCommandHandler
-        "datastore"       -> DataStoreCommandHandler
-        "calibration"     -> CalibrationCommandHandler
-        "auxwindow"       -> AuxWindowCommandHandler
-        "relpos"          -> RelativePositionCommandHandler
-        "coordalign"      -> CoordinateAlignCommandHandler
-        "accuracytrainer" -> AccuracyTrainerCommandHandler
-```
-
-### SequenceContext (Runtime Variable Store)
-
-Commands share data via key-value context:
-
-```cpp
-context->Set("measured_value", "1.234");
-context->GetNumeric("measured_value", 0.0);    // returns 1.234
-
-// Vision injection: cv.* keys (circle center, line endpoints, etc.)
-// Beam stream injection: bs.* keys (centroids, d4sigma, intensity)
-// Referenced in params as "context:variable_name"
-```
-
-### Safety Enforcement
-
-- **Pre-dispatch check:** `IsDeviceConnected()` before every action
-- **Timeout enforcement:** `DispatchWithTimeout()` with configurable limit (default 60s)
-- **Post-dispatch TOCTOU check:** Re-verify connectivity after failures
-- **Zombie thread management:** Timed-out threads stored and joined at cleanup
-- **Stop/Pause control:** Atomic flags, condition_variable, step-by-step mode
-- **Breakpoints:** Per-step breakpoints with callback notification
 
 ---
 
 ## 5. Manager Layer
 
-Each hardware domain has a dedicated manager. Managers are created and owned by `Application`, wired into `ApplicationContext`, and accessed by command handlers.
+### 5.1 CameraManager
 
-### 5.1 UnifiedMotionManager
+**File:** `Horizon.Camera/CameraManager.cs`
 
-**Files:** `include/motions/unified_motion_manager.h/.cpp`
+Manages camera lifecycle and frame broadcasting (pub/sub pattern):
 
-Routes commands to the correct controller brand based on device type:
+- `AddCamera()`, `RemoveCamera()`, `ConnectCamera()`, `DisconnectCamera()`
+- `StartGrabbingWithBroadcast()` — starts frame capture + subscriber notification
+- `SubscribeToFrames()` / `UnsubscribeFromFrames()` — observer pattern
+- `DiscoverPylonCameras()`, `DiscoverIDSCameras()` — static discovery methods
+- `CameraConfigStore` — JSON persistence for registered cameras (`%APPDATA%\Horizon\camera-config.json`)
+
+### 5.2 UnifiedMotionManager
+
+**File:** `Horizon.Motion/UnifiedMotionManager.cs`
+
+Multiplexes ACS and PI motion controllers:
 
 ```
 UnifiedMotionManager
-  +-> m_managers: map<string, unique_ptr<IMotionControllerManager>>
-  |     +-> "ACS" -> ACSControllerManager
-  |     +-> "PI"  -> PIControllerManager
-  |
-  +-> m_deviceTypes: map<deviceName, controllerType>
-  +-> m_namedPositions: map<device, map<posName, PositionStruct>>
-  +-> m_waypointStates: map<device, DeviceWaypointState>
+  +-> ACSControllerManager
+  |     +-> ACSMotionController(s) — TCP port 701
+  +-> PIControllerManager
+        +-> PIMotionController(s) — TCP port 50000
 ```
 
-**Key operations:**
-- `MoveToAbs(device, x, y, z)` - routes to ACS or PI controller
-- `MoveToAbs6(device, x, y, z, u, v, w)` - 6-axis with axis filtering
-- `MoveToNamedPosition(device, name)` - with waypoint state machine
-- `GetPosition()`, `IsMoving()`, `HomeAxis()`, `StopAxis()`
+Key operations: `MoveToAbs()`, `MoveToAbs6()` (6-axis hexapod), `MoveToNamedPosition()`, `MoveRelative()`, `HomeAxis()`, `StopAxis()`, `GetCurrentPosition()`
 
-**Waypoint Navigation State Machine:**
+Named positions loaded from `motor_devices.json` with axis values (X,Y,Z,U,V,W).
 
-```
-MoveToNamedPosition("hex-left", "lensgrip")
-  |
-  +-> Check exit waypoints from current position
-  +-> Check entry waypoints on target position
-  |
-  State: Idle
-    -> MovingThroughExitWaypoints (queue exit waypoints)
-    -> MovingThroughEntryWaypoints (queue entry waypoints)
-    -> MovingToFinalTarget (direct move)
-    -> Idle (update currentPositionName)
-```
+### 5.3 EziIOManager
 
-**Calculated Positions:** Offset notation `"safe+Y1+Z-2"` parsed at runtime:
-- Base position looked up from named positions
-- Axis offsets applied additively
-- Waypoints cleared (calculated positions don't inherit waypoints)
+**File:** `Horizon.IO/EziIOManager.cs`
 
-### 5.2 CameraManager
+Fastech Ezi-IO digital I/O with named pin mapping:
 
-**Files:** `include/camera/CameraManager.h/.cpp`
+- `ReadInputs()`, `SetOutput()`, `SetOutputByName()`
+- Standalone IO modules use combined register: bits `[0..InputCount-1]` = inputs, bits `[InputCount..InputCount+OutputCount-1]` = outputs
+- Motor IO (`FAS_SetIOOutput`) does not use this offset
+- Polling via `PeriodicTimer`, `OnIOStatusUpdated` event
 
-Manages camera lifecycle and frame broadcasting:
+### 5.4 PneumaticManager
 
-```
-CameraManager
-  +-> m_cameras: map<string, ManagedCamera>
-  |     +-> info: ExtendedCameraInfo
-  |     +-> camera: unique_ptr<ICameraHardware>
-  |
-  +-> m_subscribers: map<string, SubscriberInfo>
-  +-> m_broadcastThread: std::thread
-  +-> m_globalBroadcastRate: float (FPS)
-```
+**File:** `Horizon.Pneumatic/PneumaticManager.cs`
 
-**Broadcasting (Pub/Sub):**
-1. Camera adapter acquires frame -> calls frameCallback
-2. CameraManager::BroadcastFrame() iterates subscribers
-3. Rate-limits per subscriber's `GetMinFrameIntervalMs()`
-4. Calls `subscriber.OnNewFrame(frameData)` on broadcast thread
+Pneumatic slides controlled via IO output pins with sensor feedback:
 
-### 5.3 Other Managers
+- `Extend()`, `Retract()`, `ExtendAndWait()`, `RetractAndWait()`
+- Each slide maps to: output pin, extended sensor pin, retracted sensor pin
+- Position enum: Extended, Retracted, Extending, Retracting, Unknown, HardwareError, Timeout
 
-| Manager | Domain | Key Operations |
-|---------|--------|---------------|
-| `EziIOManager` | Digital I/O | Read/write pins, polling, latch detection |
-| `PneumaticManager` | Pneumatic slides | Extend, retract, wait, state machine |
-| `TECManager` | Temperature control | Set temperature, measure, enable output |
-| `PowerSupplyManager` | Power supplies | Set voltage/current, OVP/OCP, enable |
-| `SMUManager` | Source measure | Configure source/measure, compliance |
-| `SMUPollingManager` | SMU polling | Background measurement worker threads |
-| `LightingManager` | LED controllers | Set intensity, channel on/off |
-| `SafetyWatchManager` | Safety monitoring | I/O polling, E-stop broadcast |
-| `VisionManager` | Image processing | Plugin registry, execute pipeline |
+### 5.5 CurrentMeasurementManager
+
+**File:** `Horizon.CurrentMeasurement/CurrentMeasurementManager.cs`
+
+Keithley picoammeter management:
+
+- `ConnectAll()`, `DisconnectAll()`, `ReadCurrent()`, `ReadAllChannels()`
+- `ConfigureFastMode()` / `ConfigureDefaultMode()` — NPLC switching for fast polling
+- `SetVoltage()`, `SetVoltageEnabled()` — V-source control
+- `GetIdentity()` — SCPI `*IDN?` query
+
+### 5.6 SafetyWatchManager
+
+**File:** `Horizon.Safety/SafetyWatchManager.cs`
+
+I/O edge detection for safety monitoring:
+
+- `LoadConfig()`, `StartWatching()`, `StopWatching()`
+- `SafetyTriggered` / `SafetyCleared` events
+- Configurable trigger edge (Rising, Falling, Both) per watched input
+- `SafetyEventLog` — JSON audit trail with severity levels
 
 ---
 
 ## 6. Hardware Abstraction Interfaces
 
-Each subsystem defines a pure virtual interface that adapters implement:
-
 ### Motion
 
-```cpp
-// include/motions/interfaces/IMotionControllerManager.h
-class IMotionControllerManager {
-    virtual void AddDevice(const MotionDevice& device) = 0;
-    virtual bool ConnectAll() = 0;
-    virtual void DisconnectAll() = 0;
-    virtual bool ConnectDevice(const string& deviceName) = 0;
-    virtual vector<string> GetDeviceNames() const = 0;
-    virtual string GetControllerType() const = 0;
-    virtual void* GetController(const string& deviceName) = 0;
-};
+```csharp
+interface IMotionController {
+    bool Connect(); bool Disconnect(); bool IsConnected { get; }
+    MotionError MoveToPosition(string axis, double position);
+    MotionError MoveRelative(string axis, double distance);
+    bool IsMoving(); bool IsOnTarget();
+    double[] GetCurrentPosition();
+    MotionError HomeAxis(string axis);
+    MotionError StopAxis(string axis);
+    string ControllerType { get; } string DeviceName { get; }
+    IReadOnlyList<string> AxisNames { get; }
+}
 ```
 
 ### Camera
 
-```cpp
-// include/camera/ICameraHardware.h
-class ICameraHardware {
-    virtual bool Initialize() = 0;
-    virtual bool Connect() = 0;
-    virtual bool Disconnect() = 0;
-    virtual bool StartGrabbing() = 0;
-    virtual bool StopGrabbing() = 0;
-    virtual bool CaptureFrame(CameraFrameData& frameData) = 0;
-    virtual bool SetExposureSettings(const ExposureSettings& settings) = 0;
-    virtual void SetFrameCallback(function<void(const CameraFrameData&)> cb) = 0;
-    virtual CameraType GetCameraType() const = 0;
-};
+```csharp
+interface ICameraHardware {
+    bool Initialize(); bool Connect(); bool Disconnect();
+    bool StartGrabbing(); bool StopGrabbing();
+    bool CaptureFrame(out CameraFrameData frame);
+    bool IsConnected { get; } bool IsGrabbing { get; }
+    string CameraId { get; } string ModelName { get; } string SerialNumber { get; }
+    CameraType CameraType { get; }
+    ExposureSettings ExposureSettings { get; set; }
+    Action<CameraFrameData>? FrameCallback { set; }
+}
 ```
 
 ### I/O
 
-```cpp
-// include/IO/IEziIODevice.h
-class IEziIODevice {
-    virtual bool Connect() = 0;
-    virtual bool IsConnected() const = 0;
-    virtual bool ReadInput(int pin) = 0;
-    virtual bool SetOutput(int pin, bool state) = 0;
-    virtual uint64_t ReadAllInputs() = 0;
-    virtual uint64_t ReadAllOutputs() = 0;
-};
+```csharp
+interface IIODevice {
+    bool Connect(); bool Disconnect(); bool IsConnected { get; }
+    bool ReadInputs(out ulong inputState);
+    bool SetOutput(int pin, bool state);
+    bool SetOutputByName(string pinName, bool state);
+    ulong ReadAllOutputs();
+    int InputCount { get; } int OutputCount { get; }
+    string DeviceName { get; }
+}
 ```
 
-### TEC, PSU, SMU, Lighting
+### Pneumatic
 
-```cpp
-// Similar pattern for each:
-class ITECDevice { /* SetTemperature, GetTemperature, EnableOutput, ... */ };
-class IPowerSupply { /* SetVoltage, SetCurrent, EnableOutput, ... */ };
-class ISMUDevice { /* ConfigureSource, Measure, EnableOutput, ... */ };
-class ILightingController { /* SetIntensity, ChannelOn/Off, ... */ };
+```csharp
+interface IPneumaticSlide {
+    PneumaticError Extend(); PneumaticError Retract();
+    PneumaticError ExtendAndWait(int timeoutMs);
+    PneumaticError RetractAndWait(int timeoutMs);
+    PneumaticStatus GetStatus(); PneumaticPosition GetPosition();
+    string SlideName { get; }
+}
+```
+
+### Current Measurement
+
+```csharp
+interface ICurrentMeasurementDevice {
+    bool Connect(); bool Disconnect(); bool IsConnected { get; }
+    CurrentMeasurementError ReadCurrent(int channel, out double current);
+    CurrentMeasurementError ReadAllChannels(out double[] currents);
+    CurrentMeasurementError GetIdentity(out string identity);
+    CurrentMeasurementError Reset();
+    CurrentMeasurementError SetVoltage(double volts);
+    CurrentMeasurementError SetVoltageEnabled(bool enabled);
+    CurrentMeasurementError ConfigureFastMode();
+    CurrentMeasurementError ConfigureDefaultMode();
+    int ChannelCount { get; } IReadOnlyList<int> EnabledChannels { get; }
+}
 ```
 
 ---
 
 ## 7. Adapter / Device Layer
 
-Adapters implement the hardware abstraction interfaces for specific hardware:
-
 ### Motion Controllers
 
 ```
-IMotionControllerManager
-  +-> ACSControllerManager
-  |     +-> ACSController (per device)
-  |           +-> ACSC_wrapper (C SDK wrapper)
-  |           +-> TCP/IP to ACS SPiiPLUS controller (port 701)
-  |           +-> Features: 3-axis gantry, buffer programs, communication thread
+IMotionController
+  +-> ACSMotionController
+  |     +-> ACS.SPiiPlusNET6.dll (managed)
+  |     +-> TCP/IP to ACS SPiiPlus controller (port 701)
+  |     +-> 3-axis gantry (X, Y, Z)
   |
-  +-> PIControllerManager
-        +-> PIController (per device)
-              +-> PI_GCS2_DLL (GCS2 protocol wrapper)
-              +-> TCP/IP to PI hexapod controller (port 50000)
-              +-> Features: 6-axis (XYZUVW), fast scan, analog input, pivot point
+  +-> PIMotionController
+        +-> PI_GCS2_DLL_x64.dll (P/Invoke via PIGcs2.cs)
+        +-> TCP/IP to PI hexapod controller (port 50000)
+        +-> 6-axis (X, Y, Z, U, V, W)
 ```
 
 ### Camera Adapters
@@ -575,87 +444,39 @@ IMotionControllerManager
 ```
 ICameraHardware
   +-> PylonCameraAdapter
-  |     +-> PylonCamera (legacy wrapper)
-  |           +-> Pylon::CInstantCamera
-  |           +-> Format converter: raw -> RGB8
-  |           +-> Connection: IP, serial, index, auto
+  |     +-> Basler.Pylon.dll (managed)
+  |     +-> GigE Vision / USB3 cameras
+  |     +-> Format converter: raw -> RGB8
   |
-  +-> IDSCameraAdapter
-        +-> Direct uEye SDK calls (HCAM handle)
-        +-> Grab thread: std::thread
-        +-> Connection: device index
+  +-> IDSPeakCameraAdapter
+  |     +-> ids_peak_dotnet.dll + ids_peak_ipl_dotnet.dll (managed)
+  |     +-> IDS industrial cameras
+  |
+  +-> UEyeCameraAdapter
+        +-> uEye legacy SDK (P/Invoke via UEyeNative.cs)
+        +-> Older IDS cameras
 ```
-
-**Factory:** `CameraHardwareFactory::CreateCamera(type, info)` produces the right adapter.
 
 ### I/O Adapters
 
 ```
-IEziIODevice
+IIODevice
   +-> EziIODevice
-  |     +-> Fastech EziIO SDK (PE::FAS_* API)
-  |     +-> TCP/IP to EziIO controller
-  |
-  +-> WagoIODevice
-        +-> Modbus TCP protocol (raw socket)
-        +-> SocketGuard RAII wrapper
-        +-> Coil/discrete input address mapping
+        +-> EziMOTIONPlusE.dll (P/Invoke via EziNative.cs)
+        +-> TCP/IP to Fastech Ezi-IO modules
+        +-> Combined I/O register with automatic bit offset
 ```
 
-### TEC Adapters
+### Current Measurement Adapters
 
 ```
-ITECDevice
-  +-> CLD101xAdapter
-  |     +-> TCP socket to Python server
-  |     +-> SCPI commands (text protocol)
-  |     +-> Controls TEC + laser current
-  |     +-> SocketGuard RAII
-  |
-  +-> TED4015DirectAdapter
-        +-> NI-VISA (USB/GPIB)
-        +-> SCPI commands
-        +-> TEC only (no laser)
-```
-
-### PSU Adapters
-
-```
-IPowerSupply
-  +-> KeysightE36103B
-  |     +-> Direct TCP/SCPI (port 5025)
-  |     +-> SocketGuard RAII
-  |
-  +-> KeysightPSUAdapter
-        +-> TCP/JSON to Python server proxy
-        +-> SocketGuard RAII
-```
-
-### SMU Adapters
-
-```
-ISMUDevice
-  +-> KeithleySMUAdapter
-  |     +-> NI-VISA (GPIB/USB)
-  |     +-> SCPI commands
-  |     +-> Auto-detect 2400/2600 series
-  |     +-> Single or dual channel
-  |
+ICurrentMeasurementDevice
   +-> Keithley6482Adapter
-        +-> NI-VISA
-        +-> Picoammeter (2nA to 21mA)
-        +-> NPLC-based measurement modes
-```
-
-### Lighting Adapters
-
-```
-ILightingController
-  +-> CCSPD3Adapter
-        +-> TCP socket (port 40001)
-        +-> Proprietary checksum protocol
-        +-> Multi-channel intensity (0-255)
-        +-> SocketGuard RAII
+        +-> NI-VISA (P/Invoke via VisaNative.cs)
+        +-> GPIB/USB to Keithley 6482 picoammeter
+        +-> 2-channel, pA to mA range
+        +-> NPLC-based fast/default modes
+        +-> V-source control
 ```
 
 ---
@@ -664,120 +485,84 @@ ILightingController
 
 | SDK | Protocol | Connection | Used By |
 |-----|----------|------------|---------|
-| ACSC SDK | Proprietary | TCP port 701 | ACSController |
-| PI GCS2 DLL | GCS2 | TCP port 50000 | PIController |
-| Pylon 8 SDK | GigE Vision | IP/serial/index | PylonCameraAdapter |
-| IDS uEye SDK | Proprietary | USB | IDSCameraAdapter |
-| NI-VISA | VISA/SCPI | USB/GPIB | TED4015, Keithley SMUs |
-| Fastech EziIO | Proprietary | TCP | EziIODevice |
-| Modbus TCP | RFC 1006 | TCP | WagoIODevice |
-| SCPI/TCP | SCPI text | TCP port 5025 | KeysightE36103B |
-| Custom TCP/JSON | JSON-RPC-like | TCP | KeysightPSUAdapter, CLD101xAdapter |
-| CCS PD3 | Checksum protocol | TCP port 40001 | CCSPD3Adapter |
+| Basler Pylon 8 | GigE Vision | IP / USB3 | PylonCameraAdapter |
+| IDS Peak SDK | GenICam | USB3 / GigE | IDSPeakCameraAdapter |
+| ACS.SPiiPlusNET6 | Proprietary | TCP port 701 | ACSMotionController |
+| PI GCS2 DLL (x64) | GCS2 | TCP port 50000 | PIMotionController |
+| Fastech EziMOTION | Proprietary | TCP | EziIODevice |
+| NI-VISA | VISA/SCPI | GPIB / USB | Keithley6482Adapter |
+
+### Native DLL Deployment
+
+| DLL | Source Path | Deployment |
+|-----|------------|------------|
+| `PI_GCS2_DLL_x64.dll` | `C:\Program Files (x86)\Physik Instrumente (PI)\...` | `CopyToOutputDirectory="PreserveNewest"` |
+| `EziMOTIONPlusE.dll` | `C:\Program Files\FASTECH\Ezi-MOTION Plus-E V6\...` | `CopyToOutputDirectory="PreserveNewest"` |
+| VISA runtime | NI-VISA installer | System-wide (GAC) |
 
 ---
 
 ## 9. Safety Layer (Cross-Cutting)
 
-Safety spans all layers:
-
 ```
-SafetyWatchManager (polling thread)
+SafetyWatchManager (PeriodicTimer polling)
   |
   +-> Reads safety I/O pins via EziIOManager
-  +-> On trigger: emits safetyTriggered signal
-        |
-        v
-  Application::performEStopCascade()
-        |
-        +-> TECManager::DisableAllOutputs()
-        +-> PowerSupplyManager::disableAllOutputs()
-        +-> SMUManager::OutputOffAll()
-        +-> PneumaticManager::StopAll()
-        +-> LightingManager::AllOff()
-        |
-        +-> SafetyEventLog::LogEvent(CRITICAL, ESTOP_CASCADE_COMPLETE)
-```
-
-**Safety infrastructure:**
-- `ErrorCode` enum (`include/common/ErrorCode.h`) - 40+ codes across 12 categories
-- `SafetyEventLog` (`include/safety/SafetyEventLog.h`) - JSON-lines audit trail with rotation
-- `ThreadPriority` (`include/common/ThreadPriority.h`) - AboveNormal for safety-critical threads
-- `SocketGuard` (`include/IO/SocketGuard.h`) - RAII socket lifetime management
-
----
-
-## 10. Complete Data Flow Example
-
-**Recipe step "Pick Left Lens" executing:**
-
-```
-1. Recipe JSON loaded by RecipeManager
-   {"type": "Pick", "parameters": {"gripper_device": "hex-left", ...}}
-
-2. RecipeWorker iterates steps
-   ProcessPluginRegistry::GetPlugin("Pick") -> PickPlugin
-
-3. PickPlugin::BuildSequence()
-   sequence->AddAction("hex-left", "MoveToNamedPosition", {{"position", "lensgrip"}});
-   sequence->AddAction("IOBottom", "SetOutput", {{"pin", "0"}, {"state", "1"}});
-   sequence->AddAction("system", "Wait", {{"milliseconds", "500"}});
-
-4. SequenceEngine::ExecuteSequence()
-   For each Action:
-
-5. ExecuteStep(Action: "hex-left" / "MoveToNamedPosition")
-   -> ResolveManager("hex-left") = motionManager
-   -> ResolveManagerType("hex-left") = "motion"
-   -> IsDeviceConnected("hex-left") pre-check
-   -> DispatchWithTimeout("motion", motionManager, "hex-left", "MoveToNamedPosition", ...)
-
-6. CommandDispatcher routes to MotionCommandHandler
-   -> MotionCommandHandler::ExecuteCommand()
-   -> Calls motionManager->MoveToNamedPosition("hex-left", "lensgrip", false)
-
-7. UnifiedMotionManager routes by device type
-   -> GetDeviceType("hex-left") = "PI"
-   -> GetPIController("hex-left")
-   -> Check waypoints: exit "safe" -> entry "safe" -> target "lensgrip"
-   -> Init DeviceWaypointState, queue waypoints
-
-8. PIController::MoveToPosition("X", x, false)  per axis
-   -> PI GCS2 DLL sends motion commands over TCP/IP
-   -> PI hexapod physically moves
-
-9. MotionCommandHandler::WaitForMotionWithStopCheck()
-   -> Monitors SequenceEngine stop flag
-   -> Checks position tolerance (0.5mm)
-   -> Returns when motion complete
-
-10. Waypoint state machine advances through queue
-    -> Moves through exit waypoints -> entry waypoints -> final target
-    -> Updates currentPositionName to "lensgrip"
-
-11. Next action executes...
+  +-> Edge detection (Rising, Falling, Both) per watched input
+  +-> On trigger: fires SafetyTriggered event
+  |     +-> IsCritical flag per input
+  |     +-> AlertTitle + AlertMessage per input
+  |
+  +-> SafetyEventLog
+        +-> JSON audit trail with timestamps
+        +-> Severity: Info, Warning, Critical, Emergency
 ```
 
 ---
 
-## 11. Configuration System
+## 10. Configuration System
 
-All hardware config is JSON-based in `config/`:
+All hardware config is JSON-based in `%APPDATA%\Horizon\config\`:
 
 | File | Purpose |
 |------|---------|
-| `motor_devices.json` | Motion controllers, axes, named positions, waypoints |
-| `camera_config.json` | Camera type, connection, exposure settings |
-| `io_devices.json` | Digital I/O device addresses and pin mappings |
+| `motor_devices.json` | Motion controllers, axes, named positions |
+| `io_devices.json` | Ezi-IO device addresses and pin name mappings |
 | `pneumatic_slides.json` | Slide configs, sensor pins, timeouts |
-| `tec_devices.json` | TEC device connections and types |
-| `power_supply_config.json` | PSU channels and connection info |
-| `smu_devices.json` | SMU device VISA addresses |
-| `lighting_config.json` | Lighting controllers and channel names |
-| `safety_watch.json` | Safety I/O pins and edge detection |
-| `tcp_clients.json` | TCP client connections |
+| `safety_watch.json` | Safety I/O pins, trigger edges, severity |
+| `current_measurement_devices.json` | VISA resources, enabled channels |
 
-**Local override pattern:** `xxx.local.json` takes precedence over `xxx.json`. Local files are gitignored for machine-specific settings.
+**Camera config:** `%APPDATA%\Horizon\camera-config.json` (separate, managed by CameraConfigStore)
+
+**Local override pattern:** `xxx.local.json` takes precedence over `xxx.json` — for machine-specific settings.
+
+**JSON options:** `System.Text.Json` with `PropertyNameCaseInsensitive = true`, `ReadCommentHandling = JsonCommentHandling.Skip`, `AllowTrailingCommas = true`.
+
+---
+
+## 11. Project Dependency Graph
+
+```
+Horizon.App (net8.0-windows, WPF)
+  +-> Horizon.Core
+  |     +-> Horizon.Camera ---------> Horizon.Common
+  |     +-> Horizon.IO --------------> Horizon.Common
+  |     +-> Horizon.Motion ----------> Horizon.Common
+  |     +-> Horizon.Pneumatic -------> Horizon.Common + Horizon.IO
+  |     +-> Horizon.CurrentMeasurement -> Horizon.Common
+  |     +-> Horizon.Safety ----------> Horizon.Common + Horizon.IO
+  |     +-> Horizon.Process ---------> Horizon.Common
+  |     +-> Horizon.Common (leaf)
+  +-> Horizon.IO (direct, for UI panels)
+  +-> Horizon.Motion (direct, for UI panels)
+  +-> Horizon.Pneumatic (direct, for UI panels)
+  +-> Horizon.CurrentMeasurement (direct, for UI panels)
+```
+
+**NuGet Packages:**
+- `Dirkster.AvalonDock` 4.72.1 (Horizon.App)
+- `Dirkster.AvalonDock.Themes.VS2013` 4.72.1 (Horizon.App)
+- `SkiaSharp.Views.WPF` 3.116.1 (Horizon.App — for OverlayWindow)
 
 ---
 
@@ -785,28 +570,73 @@ All hardware config is JSON-based in `config/`:
 
 | Pattern | Where Used |
 |---------|------------|
-| **Dependency Injection** | ApplicationContext struct passed to all managers |
-| **Manager** | Each subsystem has a dedicated manager class |
-| **Factory** | CameraHardwareFactory, hardware adapter creation |
-| **Strategy** | IMotionControllerManager allows swapping ACS/PI implementations |
-| **Adapter** | PylonCameraAdapter, IDSCameraAdapter wrap different SDKs |
-| **Command/Dispatcher** | SequenceEngine -> CommandDispatcher -> ICommandHandler |
-| **Builder** | SequenceBuilder for constructing command sequences |
-| **Plugin** | IProcessPlugin for recipe processes, IVisionPlugin for vision |
-| **State Machine** | Waypoint navigation, recipe execution |
-| **Observer/Pub-Sub** | Camera frame broadcasting, Qt signals throughout |
-| **RAII** | SocketGuard for sockets, unique_ptr for ownership |
+| **Dependency Injection** | AppContext owns + exposes all managers via IAppContext |
+| **Manager** | Each hardware subsystem has a dedicated manager class |
+| **Factory** | CameraHardwareFactory selects adapter by CameraType |
+| **Strategy** | IMotionControllerManager allows ACS/PI interchangeability |
+| **Adapter** | PylonCameraAdapter, PIMotionController wrap vendor SDKs |
+| **Command/Dispatcher** | ProcessEngine -> CommandDispatcher -> ICommandHandler |
+| **Builder** | ProcessBuilder for constructing step sequences |
+| **Observer/Pub-Sub** | Camera frame broadcasting, MeasurementHub push/read |
+| **Circular Buffer** | MeasurementChannel for time-series data (lock-based) |
+| **Config Override** | `.local.json` overlay pattern for machine-specific settings |
 
 ---
 
-## 13. Error Handling (No Exceptions)
+## 13. Error Handling
 
-MISRA-aligned error handling throughout:
+Each domain has a typed error enum:
 
-- **ErrorCode enum** (`include/common/ErrorCode.h`) - 40+ codes (0x0000-0x0F00)
-- **Return codes** from all hardware operations (bool success or ErrorCode)
-- **`std::optional<T>`** for fallible constructors (e.g., `DeviceUnderTest::create()`)
-- **`IsValid()` pattern** for objects that may fail initialization
-- **`[[nodiscard]]`** on safety-critical return values
-- **Bounded loops** (no `while(true)`) with maximum iteration counts
-- **SocketGuard** RAII for all TCP socket lifetime management
+| Enum | Hex Range | Domain |
+|------|-----------|--------|
+| `IOError` | — | Digital I/O |
+| `MotionError` | — | Motion controllers |
+| `PneumaticError` | — | Pneumatic slides |
+| `CurrentMeasurementError` | — | Picoammeter |
+| `ErrorCode` (unified) | `0x0000`–`0x0700` | Cross-domain (Common) |
+
+`ErrorCategory` enum groups ErrorCode values: General, Motion, IO, Pneumatic, Camera, CurrentMeasurement, Process, Safety.
+
+`Result<T>` struct provides generic success/failure container with ErrorCode + Message.
+
+---
+
+## 14. Complete Data Flow Example
+
+**CurrentMeasurementPanel fast-polling to chart overlay on camera view:**
+
+```
+1. User double-clicks "Keithley-1" in hardware tree
+   -> MainWindow creates CurrentMeasurementPanel(deviceName, manager, hub)
+
+2. Panel builds channel keys: ["Keithley-1.CH1", "Keithley-1.CH2"]
+   -> ReadingChart.Attach(hub, channelKeys)
+   -> ReadingChart.StartRendering() (33ms DispatcherTimer)
+
+3. User clicks "Start Poll" -> ConfigureFastMode() -> FastPollLoopAsync()
+
+4. FastPollLoopAsync (background thread, tight loop):
+   device.ReadAllChannels(out readings)  // VISA SCPI ":READ?" command
+   hub.Push("Keithley-1.CH1", readings[0], now)  // auto-creates channel
+   hub.Push("Keithley-1.CH2", readings[1], now)
+   Dispatcher.Invoke() -> update TextBlock readings + Hz rate
+
+5. CurrentReadingChart.RenderFrame (UI thread, 30fps):
+   channel1 = hub.GetChannel("Keithley-1.CH1")
+   count1 = channel1.Snapshot(timestamps1, values1)
+   channel2 = hub.GetChannel("Keithley-1.CH2")
+   count2 = channel2.Snapshot(timestamps2, values2)
+   -> find global tMax, tMin, yMin, yMax
+   -> map to WPF Polyline points
+   -> update grid lines + SI-formatted axis labels
+
+6. OverlayWindow (separate window, SkiaSharp rendering):
+   MeasCombo selects device -> builds channelKeys
+   DrawChartOverlay():
+     snapshot each channel independently
+     same auto-scale logic, but rendered via SKPath on SKCanvas
+     semi-transparent panel overlaid on camera frame
+
+7. User switches MeasCombo to "PowerMeter-1" (future)
+   -> new channelKeys built -> chart switches seamlessly
+```

@@ -4,7 +4,11 @@
       "Bash(echo:*)",
       "Bash(xargs head:*)",
       "Bash(find:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(python:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.nuget.org)"
     ]
   }
 }

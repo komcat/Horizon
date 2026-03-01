@@ -895,7 +895,8 @@ public partial class MainWindow : Window
         _overlayWindow = new OverlayWindow(
             _context.CameraManager,
             _context.CurrentMeasurementManager,
-            _context.MeasurementHub);
+            _context.MeasurementHub,
+            _context.MotionManager);
 
         _overlayWindow.Closed += (_, _) => _overlayWindow = null;
         _overlayWindow.Show();
