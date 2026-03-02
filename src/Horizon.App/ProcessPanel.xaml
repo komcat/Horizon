@@ -113,27 +113,138 @@
             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
                           Background="{DynamicResource Theme.BorderBrush}"/>
 
-            <!-- Col 2: Builder List -->
-            <Border Grid.Column="2" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1" Margin="4">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="Build Steps" FontFamily="Consolas" FontSize="11"
-                               FontWeight="SemiBold" Padding="6,4"
-                               Background="{DynamicResource Theme.MenuBarBrush}"
-                               Foreground="{DynamicResource Theme.ForegroundBrush}"/>
-                    <ListBox x:Name="BuilderList" Background="{DynamicResource Theme.BackgroundBrush}"
-                             Foreground="{DynamicResource Theme.ForegroundBrush}"
-                             FontFamily="Consolas" FontSize="11"
-                             BorderThickness="0"
-                             SelectionChanged="BuilderList_SelectionChanged">
-                        <ListBox.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem x:Name="ToggleEnableMenuItem" Click="ToggleEnable_Click"
-                                          Header="Enable/Disable" FontFamily="Consolas" FontSize="11"/>
-                            </ContextMenu>
-                        </ListBox.ContextMenu>
-                    </ListBox>
-                </DockPanel>
-            </Border>
+            <!-- Col 2: Builder List + Context Watch -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="5"/>
+                    <RowDefinition Height="150" MinHeight="80"/>
+                </Grid.RowDefinitions>
+
+                <!-- Build Steps -->
+                <Border Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1" Margin="4,4,4,0">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="Build Steps" FontFamily="Consolas" FontSize="11"
+                                   FontWeight="SemiBold" Padding="6,4"
+                                   Background="{DynamicResource Theme.MenuBarBrush}"
+                                   Foreground="{DynamicResource Theme.ForegroundBrush}"/>
+                        <ListBox x:Name="BuilderList" Background="{DynamicResource Theme.BackgroundBrush}"
+                                 Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                 FontFamily="Consolas" FontSize="11"
+                                 BorderThickness="0"
+                                 SelectionMode="Extended"
+                                 SelectionChanged="BuilderList_SelectionChanged"
+                                 PreviewKeyDown="BuilderList_KeyDown">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem x:Name="ToggleEnableMenuItem" Click="ToggleEnable_Click"
+                                              Header="Enable/Disable" FontFamily="Consolas" FontSize="11"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                        </ListBox>
+                    </DockPanel>
+                </Border>
+
+                <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch"
+                              Background="{DynamicResource Theme.BorderBrush}"/>
+
+                <!-- Context Watch -->
+                <Border Grid.Row="2" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1" Margin="4,0,4,4">
+                    <DockPanel>
+                        <Grid DockPanel.Dock="Top" Background="{DynamicResource Theme.MenuBarBrush}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Context Watch" FontFamily="Consolas" FontSize="11"
+                                       FontWeight="SemiBold" Padding="6,4"
+                                       Foreground="{DynamicResource Theme.ForegroundBrush}"/>
+                            <TextBlock x:Name="WatchCountText" Grid.Column="1" Text="" FontFamily="Consolas" FontSize="11"
+                                       Padding="6,4" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"/>
+                        </Grid>
+                        <DataGrid x:Name="WatchGrid"
+                                  Background="{DynamicResource Theme.BackgroundBrush}"
+                                  Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                  FontFamily="Consolas" FontSize="11"
+                                  BorderThickness="0"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True"
+                                  HeadersVisibility="Column"
+                                  GridLinesVisibility="None"
+                                  CanUserAddRows="False"
+                                  CanUserDeleteRows="False"
+                                  CanUserReorderColumns="False"
+                                  SelectionUnit="FullRow"
+                                  RowBackground="Transparent"
+                                  AlternatingRowBackground="Transparent">
+                            <DataGrid.ColumnHeaderStyle>
+                                <Style TargetType="DataGridColumnHeader">
+                                    <Setter Property="Background" Value="{DynamicResource Theme.MenuBarBrush}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundDisabledBrush}"/>
+                                    <Setter Property="FontFamily" Value="Consolas"/>
+                                    <Setter Property="FontSize" Value="10"/>
+                                    <Setter Property="Padding" Value="4,2"/>
+                                    <Setter Property="BorderBrush" Value="{DynamicResource Theme.BorderBrush}"/>
+                                    <Setter Property="BorderThickness" Value="0,0,1,1"/>
+                                </Style>
+                            </DataGrid.ColumnHeaderStyle>
+                            <DataGrid.CellStyle>
+                                <Style TargetType="DataGridCell">
+                                    <Setter Property="BorderThickness" Value="0"/>
+                                    <Setter Property="Padding" Value="4,1"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="DataGridCell">
+                                                <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </DataGrid.CellStyle>
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Changed}" Value="True">
+                                            <Setter Property="Background" Value="#4A4A20"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.RowStyle>
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Variable" Binding="{Binding Variable}" Width="*">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="#5B9BD5"/>
+                                            <Setter Property="Padding" Value="4,1"/>
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="120">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundBrush}"/>
+                                            <Setter Property="TextAlignment" Value="Right"/>
+                                            <Setter Property="Padding" Value="4,1"/>
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="55">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundDisabledBrush}"/>
+                                            <Setter Property="TextAlignment" Value="Right"/>
+                                            <Setter Property="Padding" Value="4,1"/>
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </Border>
+            </Grid>
 
             <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch"
                           Background="{DynamicResource Theme.BorderBrush}"/>

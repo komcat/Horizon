@@ -1,7 +1,9 @@
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using Horizon.App.Controls;
 using Horizon.Core;
@@ -9,6 +11,7 @@ using Horizon.Process;
 using Horizon.Process.Interfaces;
 using Horizon.Process.Models;
 using Microsoft.Win32;
+using Serilog;
 
 namespace Horizon.App;
 
@@ -22,6 +25,10 @@ public partial class ProcessPanel : UserControl
     private CancellationTokenSource? _cts;
     private bool _isRunning;
     private string? _currentFilePath;
+
+    private ProcessContext? _runContext;
+    private readonly ObservableCollection<ContextWatchItem> _watchItems = new();
+    private Dictionary<string, string> _prevWatchValues = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly string DefaultProcessDir =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon", "processes");
@@ -45,6 +52,8 @@ public partial class ProcessPanel : UserControl
 
         PropertyHost.Content = _propertyTable;
         _propertyTable.ValuesChanged += OnPropertyValuesChanged;
+
+        WatchGrid.ItemsSource = _watchItems;
 
         PopulateCatalog();
         RefreshBuilderList();
@@ -100,15 +109,16 @@ public partial class ProcessPanel : UserControl
                     node.ParamValues[param.Name] = param.Default;
             }
 
-            // Insert after selection or at end
-            var selectedIndex = BuilderList.SelectedIndex;
-            if (selectedIndex >= 0 && selectedIndex < _builderSteps.Count)
-                _builderSteps.Insert(selectedIndex + 1, node);
+            // Insert after last selected item or at end
+            var selected = GetSelectedIndices();
+            var insertAfter = selected.Count > 0 ? selected[^1] : -1;
+            if (insertAfter >= 0 && insertAfter < _builderSteps.Count)
+                _builderSteps.Insert(insertAfter + 1, node);
             else
                 _builderSteps.Add(node);
 
-            RefreshBuilderList();
-            BuilderList.SelectedIndex = _builderSteps.IndexOf(node);
+            var newIdx = _builderSteps.IndexOf(node);
+            RefreshBuilderList(new[] { newIdx });
         }
     }
 
@@ -116,13 +126,18 @@ public partial class ProcessPanel : UserControl
 
     private static readonly Brush DisabledBrush = new SolidColorBrush(Color.FromRgb(0x6A, 0x6A, 0x6A));
     private static readonly Brush StructBrush = new SolidColorBrush(Color.FromRgb(0x56, 0x9C, 0xD6)); // blue for flow control
+    private static readonly Brush CommentBrush = new SolidColorBrush(Color.FromRgb(0x6A, 0x99, 0x55)); // green for comments
 
     private const string LoopStartId = "system.loop_start";
     private const string LoopEndId = "system.loop_end";
+    private const string CommentId = "system.comment";
 
-    private void RefreshBuilderList()
+    private void RefreshBuilderList(IEnumerable<int>? selectIndices = null)
     {
-        var selectedIdx = BuilderList.SelectedIndex;
+        // Save selection if not explicitly provided
+        var savedIndices = selectIndices?.ToList()
+            ?? GetSelectedIndices();
+
         BuilderList.Items.Clear();
 
         int depth = 0;
@@ -138,11 +153,15 @@ public partial class ProcessPanel : UserControl
             var indent = depth > 0 ? new string(' ', depth * 3) : "";
             var prefix = node.IsEnabled ? $"[{i}]" : $"[{i}] //";
 
+            bool isComment = node.Plugin.Id == CommentId;
+
             Brush fg;
             if (!node.IsEnabled)
                 fg = DisabledBrush;
             else if (isLoopStart || isLoopEnd)
                 fg = StructBrush;
+            else if (isComment)
+                fg = CommentBrush;
             else
                 fg = (Brush)FindResource("Theme.ForegroundBrush");
 
@@ -167,8 +186,22 @@ public partial class ProcessPanel : UserControl
             : $"{_builderSteps.Count} steps";
 
         // Restore selection
-        if (selectedIdx >= 0 && selectedIdx < BuilderList.Items.Count)
-            BuilderList.SelectedIndex = selectedIdx;
+        foreach (var idx in savedIndices)
+        {
+            if (idx >= 0 && idx < BuilderList.Items.Count)
+                ((ListBoxItem)BuilderList.Items[idx]).IsSelected = true;
+        }
+    }
+
+    private List<int> GetSelectedIndices()
+    {
+        var indices = new List<int>();
+        for (int i = 0; i < BuilderList.Items.Count; i++)
+        {
+            if (BuilderList.Items[i] is ListBoxItem li && li.IsSelected)
+                indices.Add(i);
+        }
+        return indices;
     }
 
     private void BuilderList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -176,10 +209,49 @@ public partial class ProcessPanel : UserControl
         if (BuilderList.SelectedItem is ListBoxItem item && item.Tag is PluginStepNode node)
         {
             _propertyTable.BindPlugin(node.Plugin, node.ParamValues);
+            _propertyTable.BindStepHeader(node.Uid, node.CustomName, newName =>
+            {
+                node.CustomName = newName;
+                // Refresh the selected item's display text
+                var idx = BuilderList.SelectedIndex;
+                if (idx >= 0 && idx < BuilderList.Items.Count &&
+                    BuilderList.Items[idx] is ListBoxItem li)
+                {
+                    int d = 0;
+                    for (int j = 0; j < idx; j++)
+                    {
+                        if (_builderSteps[j].Plugin.Id == LoopStartId) d++;
+                        else if (_builderSteps[j].Plugin.Id == LoopEndId && d > 0) d--;
+                    }
+                    if (node.Plugin.Id == LoopEndId && d > 0) d--;
+                    var indent = d > 0 ? new string(' ', d * 3) : "";
+                    var prefix = node.IsEnabled ? $"[{idx}]" : $"[{idx}] //";
+                    li.Content = $"{prefix}  {indent}{node.DisplayText}";
+                }
+            });
         }
         else
         {
             _propertyTable.BindPlugin(null, null);
+        }
+    }
+
+    private void BuilderList_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Delete)
+        {
+            DeleteSelected();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Up && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            MoveSelectedUp();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Down && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            MoveSelectedDown();
+            e.Handled = true;
         }
     }
 
@@ -277,7 +349,12 @@ public partial class ProcessPanel : UserControl
                 continue;
             }
 
-            var node = new PluginStepNode(plugin) { IsEnabled = step.Enabled };
+            var node = new PluginStepNode(plugin)
+            {
+                IsEnabled = step.Enabled,
+                Uid = string.IsNullOrEmpty(step.Uid) ? Guid.NewGuid().ToString("N")[..8] : step.Uid,
+                CustomName = step.CustomName ?? ""
+            };
             foreach (var (k, v) in step.Parameters)
                 node.ParamValues[k] = v;
             _builderSteps.Add(node);
@@ -342,7 +419,9 @@ public partial class ProcessPanel : UserControl
             {
                 PluginId = node.Plugin.Id,
                 Parameters = new Dictionary<string, string>(node.ParamValues),
-                Enabled = node.IsEnabled
+                Enabled = node.IsEnabled,
+                Uid = node.Uid,
+                CustomName = node.CustomName
             }).ToList()
         };
 
@@ -384,37 +463,58 @@ public partial class ProcessPanel : UserControl
 
     // --- Toolbar handlers ---
 
-    private void Delete_Click(object sender, RoutedEventArgs e)
+    private void DeleteSelected()
     {
-        var idx = BuilderList.SelectedIndex;
-        if (idx < 0 || idx >= _builderSteps.Count) return;
+        var indices = GetSelectedIndices();
+        if (indices.Count == 0) return;
 
-        _builderSteps.RemoveAt(idx);
-        RefreshBuilderList();
+        // Remove from highest index first to preserve lower indices
+        for (int i = indices.Count - 1; i >= 0; i--)
+            _builderSteps.RemoveAt(indices[i]);
 
-        if (_builderSteps.Count > 0)
-            BuilderList.SelectedIndex = Math.Min(idx, _builderSteps.Count - 1);
+        // Select item at first deleted position (or last item)
+        var newIdx = Math.Min(indices[0], _builderSteps.Count - 1);
+        RefreshBuilderList(newIdx >= 0 ? new[] { newIdx } : Array.Empty<int>());
     }
 
-    private void MoveUp_Click(object sender, RoutedEventArgs e)
-    {
-        var idx = BuilderList.SelectedIndex;
-        if (idx <= 0) return;
+    private void Delete_Click(object sender, RoutedEventArgs e) => DeleteSelected();
 
-        (_builderSteps[idx], _builderSteps[idx - 1]) = (_builderSteps[idx - 1], _builderSteps[idx]);
-        RefreshBuilderList();
-        BuilderList.SelectedIndex = idx - 1;
+    private void MoveSelectedUp()
+    {
+        var indices = GetSelectedIndices();
+        if (indices.Count == 0 || indices[0] <= 0) return;
+
+        // Check contiguous block can move up
+        foreach (var idx in indices)
+        {
+            var target = idx - 1;
+            if (target < 0 || indices.Contains(target)) continue;
+            (_builderSteps[idx], _builderSteps[target]) = (_builderSteps[target], _builderSteps[idx]);
+        }
+
+        RefreshBuilderList(indices.Select(i => i - 1));
     }
 
-    private void MoveDown_Click(object sender, RoutedEventArgs e)
+    private void MoveSelectedDown()
     {
-        var idx = BuilderList.SelectedIndex;
-        if (idx < 0 || idx >= _builderSteps.Count - 1) return;
+        var indices = GetSelectedIndices();
+        if (indices.Count == 0 || indices[^1] >= _builderSteps.Count - 1) return;
 
-        (_builderSteps[idx], _builderSteps[idx + 1]) = (_builderSteps[idx + 1], _builderSteps[idx]);
-        RefreshBuilderList();
-        BuilderList.SelectedIndex = idx + 1;
+        // Move from bottom up to avoid collisions
+        for (int i = indices.Count - 1; i >= 0; i--)
+        {
+            var idx = indices[i];
+            var target = idx + 1;
+            if (target >= _builderSteps.Count || indices.Contains(target)) continue;
+            (_builderSteps[idx], _builderSteps[target]) = (_builderSteps[target], _builderSteps[idx]);
+        }
+
+        RefreshBuilderList(indices.Select(i => i + 1));
     }
+
+    private void MoveUp_Click(object sender, RoutedEventArgs e) => MoveSelectedUp();
+
+    private void MoveDown_Click(object sender, RoutedEventArgs e) => MoveSelectedDown();
 
     private async void Run_Click(object sender, RoutedEventArgs e)
     {
@@ -431,6 +531,11 @@ public partial class ProcessPanel : UserControl
         StopBtn.IsEnabled = true;
         ContinueBtn.IsEnabled = StepModeCheck.IsChecked == true;
         StatusText.Text = "Running...";
+
+        var enabledCount = _builderSteps.Count(n => n.IsEnabled);
+        Log.Information("Process: Running {Count} enabled step(s){File}",
+            enabledCount,
+            _currentFilePath != null ? $" — {Path.GetFileName(_currentFilePath)}" : "");
 
         var engine = _context.ProcessEngine;
         engine.StepByStepMode = StepModeCheck.IsChecked == true;
@@ -480,35 +585,65 @@ public partial class ProcessPanel : UserControl
 
             engine.OnStepStarted = (idx, device, method) =>
             {
+                var bi = stepToBuilderMap.GetValueOrDefault(idx, -1);
+                var name = bi >= 0 ? _builderSteps[bi].CustomName : "";
+                var label = string.IsNullOrWhiteSpace(name) ? $"{device}.{method}" : $"{name} ({device}.{method})";
+
+                Log.Information("Process: Step {Index} — {Label}", idx, label);
                 Dispatcher.Invoke(() =>
                 {
-                    StatusText.Text = $"Step {idx}: {device}.{method}";
-                    var bi = stepToBuilderMap.GetValueOrDefault(idx, -1);
+                    StatusText.Text = $"Step {idx}: {label}";
                     if (bi >= 0) HighlightStep(bi, Brushes.Yellow);
                 });
             };
 
             engine.OnStepCompleted = (idx, success) =>
             {
+                var bi = stepToBuilderMap.GetValueOrDefault(idx, -1);
+                var name = bi >= 0 ? _builderSteps[bi].CustomName : "";
+                var label = string.IsNullOrWhiteSpace(name) ? $"Step {idx}" : $"{name} (step {idx})";
+
+                if (!success)
+                    Log.Error("Process: {Label} FAILED", label);
                 Dispatcher.Invoke(() =>
                 {
-                    var bi = stepToBuilderMap.GetValueOrDefault(idx, -1);
                     if (bi >= 0) HighlightStep(bi, success ? Brushes.LimeGreen : Brushes.OrangeRed);
+                    RefreshContextWatch();
                 });
             };
 
+            engine.OnLoopIteration = (stepIdx, current, total) =>
+            {
+                var iterLabel = total > 0 ? $"Loop {current}/{total}" : $"Loop {current}/∞";
+                Log.Information("Process: {IterLabel}", iterLabel);
+                Dispatcher.Invoke(() => StatusText.Text = iterLabel);
+            };
+
             var ctx = new ProcessContext { CancellationToken = _cts.Token };
+            _runContext = ctx;
+            _prevWatchValues.Clear();
+            _watchItems.Clear();
+            WatchCountText.Text = "";
 
             var result = await Task.Run(() => engine.ExecuteAsync(processSteps, ctx, _cts.Token));
+            Dispatcher.Invoke(RefreshContextWatch);
             StatusText.Text = result ? "Completed successfully" : "Completed with errors";
+            if (result)
+                Log.Information("Process: Completed successfully");
+            else
+                Log.Error("Process: Completed with errors");
         }
         catch (OperationCanceledException)
         {
+            RefreshContextWatch();
             StatusText.Text = "Stopped by user";
+            Log.Warning("Process: Stopped by user");
         }
         catch (Exception ex)
         {
+            RefreshContextWatch();
             StatusText.Text = $"Error: {ex.Message}";
+            Log.Error("Process: Error — {Message}", ex.Message);
         }
         finally
         {
@@ -518,6 +653,7 @@ public partial class ProcessPanel : UserControl
             ContinueBtn.IsEnabled = false;
             engine.OnStepStarted = null;
             engine.OnStepCompleted = null;
+            engine.OnLoopIteration = null;
             ClearHighlights();
         }
     }
@@ -530,6 +666,33 @@ public partial class ProcessPanel : UserControl
     private void Continue_Click(object sender, RoutedEventArgs e)
     {
         _context.ProcessEngine.ContinueStep();
+    }
+
+    // --- Context Watch ---
+
+    private void RefreshContextWatch()
+    {
+        if (_runContext == null) return;
+
+        var snapshot = _runContext.GetSnapshot();
+        var newPrev = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        _watchItems.Clear();
+        foreach (var (key, value, type) in snapshot)
+        {
+            var changed = !_prevWatchValues.TryGetValue(key, out var old) || old != value;
+            _watchItems.Add(new ContextWatchItem
+            {
+                Variable = key,
+                Value = value,
+                Type = type,
+                Changed = changed
+            });
+            newPrev[key] = value;
+        }
+
+        _prevWatchValues = newPrev;
+        WatchCountText.Text = snapshot.Count > 0 ? $"{snapshot.Count} var(s)" : "";
     }
 
     // --- Step highlighting ---
@@ -557,6 +720,8 @@ public partial class ProcessPanel : UserControl
                     item.Foreground = DisabledBrush;
                 else if (node.Plugin.Id is LoopStartId or LoopEndId)
                     item.Foreground = StructBrush;
+                else if (node.Plugin.Id == CommentId)
+                    item.Foreground = CommentBrush;
                 else
                     item.Foreground = fg;
             }
@@ -570,11 +735,21 @@ public partial class ProcessPanel : UserControl
 
     // --- Inner model ---
 
+    private sealed class ContextWatchItem
+    {
+        public string Variable { get; set; } = "";
+        public string Value { get; set; } = "";
+        public string Type { get; set; } = "";
+        public bool Changed { get; set; }
+    }
+
     private sealed class PluginStepNode
     {
         public IProcessPlugin Plugin { get; }
         public Dictionary<string, string> ParamValues { get; } = new(StringComparer.OrdinalIgnoreCase);
         public bool IsEnabled { get; set; } = true;
+        public string Uid { get; set; } = Guid.NewGuid().ToString("N")[..8];
+        public string CustomName { get; set; } = "";
 
         public PluginStepNode(IProcessPlugin plugin)
         {
@@ -595,6 +770,17 @@ public partial class ProcessPanel : UserControl
 
                 if (Plugin.Id == "system.loop_end")
                     return "└ End Loop";
+
+                // Comment: show text with // prefix
+                if (Plugin.Id == "system.comment")
+                {
+                    var text = ParamValues.GetValueOrDefault("text") ?? "";
+                    return string.IsNullOrWhiteSpace(text) ? "// ..." : $"// {text}";
+                }
+
+                // Custom name overrides default display
+                if (!string.IsNullOrWhiteSpace(CustomName))
+                    return CustomName;
 
                 var devicePart = ParamValues.GetValueOrDefault("device")
                               ?? ParamValues.GetValueOrDefault("camera_name")

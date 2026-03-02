@@ -74,4 +74,15 @@ public sealed class ProcessContext
     {
         lock (_lock) { return _values.Keys.ToList(); }
     }
+
+    public List<(string Key, string Value, string Type)> GetSnapshot()
+    {
+        lock (_lock)
+        {
+            return _values
+                .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(kv => (kv.Key, kv.Value?.ToString() ?? "", kv.Value?.GetType().Name ?? "null"))
+                .ToList();
+        }
+    }
 }
