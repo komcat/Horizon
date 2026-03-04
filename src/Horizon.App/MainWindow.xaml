@@ -111,6 +111,7 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -140,12 +141,68 @@
                 <MenuItem Header="_Process Editor" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ProcessEditor_Click"/>
             </MenuItem>
             <MenuItem Header="_Help" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
+                <MenuItem Header="_Expression Syntax" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="HelpExpressionSyntax_Click"/>
+                <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="_About" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}"/>
             </MenuItem>
         </Menu>
 
+        <!-- Quick-Access Toolbar -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource Theme.MenuBarBrush}"
+                BorderBrush="{DynamicResource Theme.BorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="4,2">
+            <StackPanel x:Name="QuickAccessBar" Orientation="Horizontal">
+                <StackPanel.Resources>
+                    <Style x:Key="QuickBtn" TargetType="Button">
+                        <Setter Property="Width" Value="70"/>
+                        <Setter Property="Height" Value="26"/>
+                        <Setter Property="Margin" Value="2,0"/>
+                        <Setter Property="FontFamily" Value="Consolas"/>
+                        <Setter Property="FontSize" Value="11"/>
+                        <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundBrush}"/>
+                        <Setter Property="Background" Value="{DynamicResource Theme.BackgroundAltBrush}"/>
+                        <Setter Property="BorderBrush" Value="{DynamicResource Theme.BorderBrush}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Setter Property="Cursor" Value="Hand"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd"
+                                            Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            CornerRadius="2"
+                                            Padding="4,2">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.HighlightBrush}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.AccentBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </StackPanel.Resources>
+                <Button Style="{StaticResource QuickBtn}" Content="Run" Click="QuickButton_Click" Tag="0"/>
+                <Button Style="{StaticResource QuickBtn}" Click="QuickButton_Click" Tag="1"/>
+                <Button Style="{StaticResource QuickBtn}" Content="Process" Click="ProcessEditor_Click"/>
+                <Button Style="{StaticResource QuickBtn}" Content="Jog" Click="JogPanel_Click"/>
+                <Button Style="{StaticResource QuickBtn}" Click="QuickButton_Click" Tag="4"/>
+                <Button Style="{StaticResource QuickBtn}" Click="QuickButton_Click" Tag="5"/>
+                <Button Style="{StaticResource QuickBtn}" Click="QuickButton_Click" Tag="6"/>
+                <Button Style="{StaticResource QuickBtn}" Content="Hardware" Click="ViewHardware_Click"/>
+            </StackPanel>
+        </Border>
+
         <!-- AvalonDock DockingManager -->
-        <avalonDock:DockingManager Grid.Row="1" x:Name="DockManager">
+        <avalonDock:DockingManager Grid.Row="2" x:Name="DockManager">
             <avalonDock:DockingManager.Theme>
                 <avalonDockTheme:Vs2013DarkTheme/>
             </avalonDock:DockingManager.Theme>

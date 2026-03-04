@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using Horizon.Motion;
 using Horizon.Motion.Interfaces;
 using Horizon.Motion.Models;
+using Serilog;
 
 namespace Horizon.App;
 
@@ -43,7 +44,6 @@ public partial class MotionPanel : UserControl
     ];
 
     public event Action? ConnectionChanged;
-    public event Action<string>? LogMessage;
 
     public MotionPanel(string deviceName, UnifiedMotionManager motionManager)
     {
@@ -73,7 +73,7 @@ public partial class MotionPanel : UserControl
     private void Connect_Click(object sender, RoutedEventArgs e)
     {
         var ok = _controller.Connect();
-        LogMessage?.Invoke($"Motion '{_deviceName}': Connect {(ok ? "OK" : "FAILED")}");
+        Log.Information("Motion '{DeviceName}': Connect {Result}", _deviceName, ok ? "OK" : "FAILED");
         UpdateStatusText();
         ConnectionChanged?.Invoke();
     }
@@ -81,7 +81,7 @@ public partial class MotionPanel : UserControl
     private void Disconnect_Click(object sender, RoutedEventArgs e)
     {
         var ok = _controller.Disconnect();
-        LogMessage?.Invoke($"Motion '{_deviceName}': Disconnect {(ok ? "OK" : "FAILED")}");
+        Log.Information("Motion '{DeviceName}': Disconnect {Result}", _deviceName, ok ? "OK" : "FAILED");
         UpdateStatusText();
         ConnectionChanged?.Invoke();
     }
@@ -89,7 +89,7 @@ public partial class MotionPanel : UserControl
     private void StopAll_Click(object sender, RoutedEventArgs e)
     {
         var ok = _controller.StopAll();
-        LogMessage?.Invoke($"Motion '{_deviceName}': Stop All {(ok ? "OK" : "FAILED")}");
+        Log.Information("Motion '{DeviceName}': Stop All {Result}", _deviceName, ok ? "OK" : "FAILED");
     }
 
     // --- Status ---
@@ -263,11 +263,11 @@ public partial class MotionPanel : UserControl
         var axis = _axisNames[idx];
         if (!double.TryParse(_absMoveBoxes[idx].Text, out var target))
         {
-            LogMessage?.Invoke($"Motion '{_deviceName}': Invalid position value for {axis}");
+            Log.Warning("Motion '{DeviceName}': Invalid position value for {Axis}", _deviceName, axis);
             return;
         }
         var ok = _motionManager.MoveToAbs(_deviceName, axis, target, blocking: false);
-        LogMessage?.Invoke($"Motion '{_deviceName}': Abs move {axis} → {target:F3} {(ok ? "OK" : "FAILED")}");
+        Log.Information("Motion '{DeviceName}': Abs move {Axis} -> {Target:F3} {Result}", _deviceName, axis, target, ok ? "OK" : "FAILED");
     }
 
     private void JogMinus_Click(object sender, RoutedEventArgs e)
@@ -291,7 +291,8 @@ public partial class MotionPanel : UserControl
         var axis = _axisNames[axisIndex];
         var distance = step * direction;
         var ok = _motionManager.MoveRelative(_deviceName, axis, distance, blocking: false);
-        LogMessage?.Invoke($"Motion '{_deviceName}': Jog {axis} {(direction > 0 ? "+" : "")}{distance} {(ok ? "OK" : "FAILED")}");
+        Log.Information("Motion '{DeviceName}': Jog {Axis} {Direction}{Distance} {Result}",
+            _deviceName, axis, direction > 0 ? "+" : "", distance, ok ? "OK" : "FAILED");
     }
 
     private void ZeroButton_Click(object sender, RoutedEventArgs e)
@@ -299,7 +300,7 @@ public partial class MotionPanel : UserControl
         if (sender is not Button btn || btn.Tag is not int idx) return;
         var axis = _axisNames[idx];
         var ok = _motionManager.MoveToAbs(_deviceName, axis, 0, blocking: false);
-        LogMessage?.Invoke($"Motion '{_deviceName}': Zero {axis} {(ok ? "OK" : "FAILED")}");
+        Log.Information("Motion '{DeviceName}': Zero {Axis} {Result}", _deviceName, axis, ok ? "OK" : "FAILED");
     }
 
     private void StopButton_Click(object sender, RoutedEventArgs e)
@@ -307,7 +308,7 @@ public partial class MotionPanel : UserControl
         if (sender is not Button btn || btn.Tag is not int idx) return;
         var axis = _axisNames[idx];
         var ok = _controller.StopAxis(axis);
-        LogMessage?.Invoke($"Motion '{_deviceName}': Stop {axis} {(ok ? "OK" : "FAILED")}");
+        Log.Information("Motion '{DeviceName}': Stop {Axis} {Result}", _deviceName, axis, ok ? "OK" : "FAILED");
     }
 
     // --- Named positions / presets ---
@@ -344,7 +345,7 @@ public partial class MotionPanel : UserControl
     {
         if (PresetCombo.SelectedItem is not string name) return;
         var ok = _motionManager.MoveToNamedPosition(_deviceName, name, blocking: false);
-        LogMessage?.Invoke($"Motion '{_deviceName}': Move to preset '{name}' {(ok ? "OK" : "FAILED")}");
+        Log.Information("Motion '{DeviceName}': Move to preset '{PresetName}' {Result}", _deviceName, name, ok ? "OK" : "FAILED");
     }
 
     // --- Polling ---

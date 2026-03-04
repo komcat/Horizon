@@ -10,6 +10,7 @@ public sealed class ProcessEngine
 
     public Action<int, string, string>? OnStepStarted;
     public Action<int, bool>? OnStepCompleted;
+    public Action<int, int, int>? OnLoopIteration; // (stepIndex, current 1-based, total 0=infinite)
 
     // Step-by-step mode
     private ManualResetEventSlim? _stepGate;
@@ -185,6 +186,7 @@ public sealed class ProcessEngine
                     {
                         if (ct.IsCancellationRequested) return false;
                         context.SetValue("loop.iteration", iteration);
+                        OnLoopIteration?.Invoke(stepIndex, iteration + 1, loop.Count);
 
                         if (!ExecuteSteps(loop.Steps, context, ct, stepIndex))
                             return false;

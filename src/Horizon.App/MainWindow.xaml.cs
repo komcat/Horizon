@@ -74,6 +74,7 @@ public partial class MainWindow : Window
         StopAllCurrentChartPanels();
         StopAllLaserControllerPanels();
         StopAllProcessPanels();
+        StopAllJogPanels();
         _overlayWindow?.Close();
         SaveWindowState();
         SaveDockLayout();
@@ -1080,6 +1081,21 @@ public partial class MainWindow : Window
         }
     }
 
+    private void StopAllJogPanels()
+    {
+        var jogDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId != null && d.ContentId.StartsWith("jog_"))
+            .ToList();
+
+        foreach (var doc in jogDocs)
+        {
+            if (doc.Content is JogPanel panel)
+                panel.StopPolling();
+        }
+    }
+
     private void StopAllCurrentChartPanels()
     {
         var chartDocs = DockManager.Layout
@@ -1140,6 +1156,53 @@ public partial class MainWindow : Window
         App.UiSink.Clear();
     }
 
+    private void HelpExpressionSyntax_Click(object sender, RoutedEventArgs e)
+    {
+        var win = new ExpressionSyntaxWindow { Owner = this };
+        win.Show();
+    }
+
+    private void QuickButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn) return;
+        var index = btn.Tag?.ToString() ?? "?";
+        Log.Information("Quick button {Index} clicked", index);
+    }
+
+    private void JogPanel_Click(object sender, RoutedEventArgs e)
+    {
+        var contentId = "jog_panel";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var panel = new JogPanel(_context);
+
+        var doc = new LayoutDocument
+        {
+            Title = "Jog Panel",
+            ContentId = contentId,
+            Content = panel
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+    }
+
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 
     // --- Dock/Window state persistence ---
@@ -1196,7 +1259,8 @@ public partial class MainWindow : Window
                     || (id != null && id.StartsWith("pneu_"))
                     || (id != null && id.StartsWith("cmeas_"))
                     || (id != null && id.StartsWith("chart_"))
-                    || (id != null && id.StartsWith("laser_")))
+                    || (id != null && id.StartsWith("laser_"))
+                    || (id != null && id.StartsWith("jog_")))
                 {
                     args.Cancel = true;
                     return;

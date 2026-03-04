@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using Horizon.Core;
 using Horizon.LaserController;
+using Serilog;
 
 namespace Horizon.App;
 
@@ -17,7 +18,6 @@ public partial class LaserControllerPanel : UserControl
     private readonly DispatcherTimer _pollTimer;
 
     public event Action? ConnectionChanged;
-    public event Action<string>? LogMessage;
 
     public LaserControllerPanel(string deviceName, LaserControllerManager manager, MeasurementHub? hub = null)
     {
@@ -57,7 +57,7 @@ public partial class LaserControllerPanel : UserControl
     private void Connect_Click(object sender, RoutedEventArgs e)
     {
         var result = _manager.ConnectDevice(_deviceName);
-        Log(result ? $"Connected '{_deviceName}'" : $"Connect '{_deviceName}' FAILED");
+        Log.Information("[LaserCtrl] {Action} '{DeviceName}'", result ? "Connected" : "Connect FAILED", _deviceName);
         ConnectionChanged?.Invoke();
         UpdateStatus();
         if (result)
@@ -68,7 +68,7 @@ public partial class LaserControllerPanel : UserControl
     {
         _pollTimer.Stop();
         var result = _manager.DisconnectDevice(_deviceName);
-        Log(result ? $"Disconnected '{_deviceName}'" : $"Disconnect '{_deviceName}' FAILED");
+        Log.Information("[LaserCtrl] {Action} '{DeviceName}'", result ? "Disconnected" : "Disconnect FAILED", _deviceName);
         ConnectionChanged?.Invoke();
         UpdateStatus();
     }
@@ -77,46 +77,46 @@ public partial class LaserControllerPanel : UserControl
     {
         if (!double.TryParse(TempSetpointInput.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var temp))
         {
-            Log("Invalid temperature value");
+            Log.Warning("[LaserCtrl] Invalid temperature value");
             return;
         }
         var result = _manager.SetTemperature(_deviceName, temp);
-        Log($"SetTemperature({temp:F1} C): {result}");
+        Log.Information("[LaserCtrl] SetTemperature({Temp:F1} C): {Result}", temp, result);
     }
 
     private void TECOn_Click(object sender, RoutedEventArgs e)
     {
         var result = _manager.TECOn(_deviceName);
-        Log($"TEC ON: {result}");
+        Log.Information("[LaserCtrl] TEC ON: {Result}", result);
     }
 
     private void TECOff_Click(object sender, RoutedEventArgs e)
     {
         var result = _manager.TECOff(_deviceName);
-        Log($"TEC OFF: {result}");
+        Log.Information("[LaserCtrl] TEC OFF: {Result}", result);
     }
 
     private void SetLaserCurrent_Click(object sender, RoutedEventArgs e)
     {
         if (!double.TryParse(LaserCurrentInput.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var current))
         {
-            Log("Invalid current value");
+            Log.Warning("[LaserCtrl] Invalid current value");
             return;
         }
         var result = _manager.SetLaserCurrent(_deviceName, current);
-        Log($"SetLaserCurrent({current:F1} mA): {result}");
+        Log.Information("[LaserCtrl] SetLaserCurrent({Current:F1} mA): {Result}", current, result);
     }
 
     private void LaserOn_Click(object sender, RoutedEventArgs e)
     {
         var result = _manager.LaserOn(_deviceName);
-        Log($"Laser ON: {result}");
+        Log.Information("[LaserCtrl] Laser ON: {Result}", result);
     }
 
     private void LaserOff_Click(object sender, RoutedEventArgs e)
     {
         var result = _manager.LaserOff(_deviceName);
-        Log($"Laser OFF: {result}");
+        Log.Information("[LaserCtrl] Laser OFF: {Result}", result);
     }
 
     private void PollTimer_Tick(object? sender, EventArgs e)
@@ -181,10 +181,5 @@ public partial class LaserControllerPanel : UserControl
     {
         _pollTimer.Stop();
         ReadingChart.StopRendering();
-    }
-
-    private void Log(string message)
-    {
-        LogMessage?.Invoke($"[LaserCtrl] {message}");
     }
 }

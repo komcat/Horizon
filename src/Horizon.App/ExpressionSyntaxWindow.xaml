@@ -1,0 +1,152 @@
+<Window x:Class="Horizon.App.ExpressionSyntaxWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Expression Syntax Reference"
+        Width="560" Height="620"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        Background="#FF1E1E1E" Foreground="#FFF1F1F1">
+
+    <Window.Resources>
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#5B9BD5"/>
+            <Setter Property="Margin" Value="0,14,0,4"/>
+        </Style>
+        <Style x:Key="Body" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="#FFF1F1F1"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,0,0,2"/>
+        </Style>
+        <Style x:Key="Code" TargetType="Border">
+            <Setter Property="Background" Value="#FF2D2D30"/>
+            <Setter Property="BorderBrush" Value="#FF3E3E42"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="2"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Margin" Value="0,2,0,6"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="16,10,16,10">
+            <StackPanel>
+                <!-- Title -->
+                <TextBlock FontFamily="Consolas" FontSize="16" FontWeight="Bold"
+                           Foreground="#FFF1F1F1" Margin="0,0,0,4">
+                    Expression Syntax Reference
+                </TextBlock>
+                <TextBlock Style="{StaticResource Body}" Foreground="#FF999999" Margin="0,0,0,8">
+                    Arithmetic expressions for the Process Engine's Calculate Expression plugin,
+                    inline expr: parameters, and {=...} log interpolation.
+                </TextBlock>
+
+                <!-- Operators -->
+                <TextBlock Style="{StaticResource SectionHeader}">Operators</TextBlock>
+                <Border Style="{StaticResource Code}">
+                    <TextBlock FontFamily="Consolas" FontSize="12" Foreground="#FFF1F1F1">
+                        <Run Foreground="#D7BA7D">+</Run>   Addition           <Run Foreground="#FF999999">posA + 10</Run><LineBreak/>
+                        <Run Foreground="#D7BA7D">-</Run>   Subtraction        <Run Foreground="#FF999999">posA - posB</Run><LineBreak/>
+                        <Run Foreground="#D7BA7D">*</Run>   Multiplication     <Run Foreground="#FF999999">reading * scale</Run><LineBreak/>
+                        <Run Foreground="#D7BA7D">/</Run>   Division           <Run Foreground="#FF999999">total / count</Run><LineBreak/>
+                        <Run Foreground="#D7BA7D">( )</Run> Grouping           <Run Foreground="#FF999999">(a + b) * 2</Run><LineBreak/>
+                        <Run Foreground="#D7BA7D">-</Run>   Unary negative     <Run Foreground="#FF999999">-offset</Run>
+                    </TextBlock>
+                </Border>
+
+                <!-- Precedence -->
+                <TextBlock Style="{StaticResource SectionHeader}">Precedence</TextBlock>
+                <Border Style="{StaticResource Code}">
+                    <TextBlock FontFamily="Consolas" FontSize="12" Foreground="#FFF1F1F1">
+                        <Run Foreground="#FF999999">Highest:</Run>  ( ) grouping, unary -<LineBreak/>
+                        <Run Foreground="#FF999999">   Then:</Run>  * /  (left-to-right)<LineBreak/>
+                        <Run Foreground="#FF999999"> Lowest:</Run>  + -  (left-to-right)
+                    </TextBlock>
+                </Border>
+
+                <!-- Values -->
+                <TextBlock Style="{StaticResource SectionHeader}">Values</TextBlock>
+                <Border Style="{StaticResource Code}">
+                    <TextBlock FontFamily="Consolas" FontSize="12" Foreground="#FFF1F1F1">
+                        <Run Foreground="#B5CEA8">42</Run>          Integer literal<LineBreak/>
+                        <Run Foreground="#B5CEA8">3.14</Run>        Float literal<LineBreak/>
+                        <Run Foreground="#B5CEA8">-2.5</Run>        Negative literal<LineBreak/>
+                        <Run Foreground="#B5CEA8">1.5e-3</Run>      Scientific notation<LineBreak/>
+                        <Run Foreground="#9CDCFE">posA</Run>        Context variable (float)<LineBreak/>
+                        <Run Foreground="#9CDCFE">stage1.X</Run>    Dotted variable name<LineBreak/>
+                        <Run Foreground="#9CDCFE">loop_count</Run>  Underscored variable name
+                    </TextBlock>
+                </Border>
+                <TextBlock Style="{StaticResource Body}" Foreground="#FF999999">
+                    Variables are resolved from the process context. Unknown variables default to 0.
+                </TextBlock>
+
+                <!-- Usage: Plugin -->
+                <TextBlock Style="{StaticResource SectionHeader}">Usage: Calculate Expression Plugin</TextBlock>
+                <TextBlock Style="{StaticResource Body}">
+                    Add "Calculate Expression" from the Variables category in the Plugin Catalog.
+                </TextBlock>
+                <Border Style="{StaticResource Code}">
+                    <TextBlock FontFamily="Consolas" FontSize="12" Foreground="#FFF1F1F1">
+                        <Run Foreground="#FF999999">Expression:</Run>  <Run Foreground="#CE9178">posA - posB</Run><LineBreak/>
+                        <Run Foreground="#FF999999">Store In:</Run>    <Run Foreground="#9CDCFE">distance</Run><LineBreak/>
+                        <LineBreak/>
+                        <Run Foreground="#FF999999">Expression:</Run>  <Run Foreground="#CE9178">(reading * scale) + bias</Run><LineBreak/>
+                        <Run Foreground="#FF999999">Store In:</Run>    <Run Foreground="#9CDCFE">calibrated</Run>
+                    </TextBlock>
+                </Border>
+
+                <!-- Usage: Inline expr: -->
+                <TextBlock Style="{StaticResource SectionHeader}">Usage: Inline expr: Prefix</TextBlock>
+                <TextBlock Style="{StaticResource Body}">
+                    Any parameter in any command handler can use expr: to compute a value inline.
+                </TextBlock>
+                <Border Style="{StaticResource Code}">
+                    <TextBlock FontFamily="Consolas" FontSize="12" Foreground="#FFF1F1F1">
+                        <Run Foreground="#FF999999">Move Relative  Distance:</Run>  <Run Foreground="#C586C0">expr:</Run><Run Foreground="#CE9178">distance * 0.5</Run><LineBreak/>
+                        <Run Foreground="#FF999999">Move To Abs    Position:</Run>  <Run Foreground="#C586C0">expr:</Run><Run Foreground="#CE9178">calibrated + homeOffset</Run><LineBreak/>
+                        <Run Foreground="#FF999999">Set Velocity   Speed:</Run>     <Run Foreground="#C586C0">expr:</Run><Run Foreground="#CE9178">baseSpeed * factor</Run>
+                    </TextBlock>
+                </Border>
+
+                <!-- Usage: Log interpolation -->
+                <TextBlock Style="{StaticResource SectionHeader}">Usage: Log Message {=...} Syntax</TextBlock>
+                <TextBlock Style="{StaticResource Body}">
+                    In system log messages, use {=expression} to inline computed values.
+                </TextBlock>
+                <Border Style="{StaticResource Code}">
+                    <TextBlock FontFamily="Consolas" FontSize="12" Foreground="#FFF1F1F1">
+                        <Run Foreground="#CE9178">Distance = </Run><Run Foreground="#C586C0">{=</Run><Run Foreground="#CE9178">posA - posB</Run><Run Foreground="#C586C0">}</Run><Run Foreground="#CE9178"> mm</Run><LineBreak/>
+                        <Run Foreground="#CE9178">Result = </Run><Run Foreground="#C586C0">{=</Run><Run Foreground="#CE9178">(a + b) * 2</Run><Run Foreground="#C586C0">}</Run>
+                    </TextBlock>
+                </Border>
+
+                <!-- Error handling -->
+                <TextBlock Style="{StaticResource SectionHeader}">Error Handling</TextBlock>
+                <Border Style="{StaticResource Code}">
+                    <TextBlock FontFamily="Consolas" FontSize="12" Foreground="#FFF1F1F1">
+                        <Run Foreground="#FF999999">Division by zero:</Run>   returns Infinity (IEEE 754)<LineBreak/>
+                        <Run Foreground="#FF999999">Syntax error:</Run>       step fails with error message<LineBreak/>
+                        <Run Foreground="#FF999999">Unknown variable:</Run>   resolves to 0<LineBreak/>
+                        <Run Foreground="#FF999999">{=...} error:</Run>       left as-is in log output
+                    </TextBlock>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Close button -->
+        <Border Grid.Row="1" Background="#FF2D2D30" Padding="0,6">
+            <Button Content="Close" HorizontalAlignment="Center" Padding="24,4"
+                    Click="Close_Click" FontFamily="Consolas" FontSize="11"/>
+        </Border>
+    </Grid>
+</Window>

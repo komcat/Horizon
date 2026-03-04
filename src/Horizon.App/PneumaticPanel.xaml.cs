@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using Horizon.Pneumatic;
 using Horizon.Pneumatic.Interfaces;
 using Horizon.Pneumatic.Models;
+using Serilog;
 
 namespace Horizon.App;
 
@@ -23,7 +24,6 @@ public partial class PneumaticPanel : UserControl
     private static readonly SolidColorBrush BlueBrush = new(Color.FromRgb(0x64, 0xB5, 0xF6));
 
     public event Action? StatusChanged;
-    public event Action<string>? LogMessage;
 
     public PneumaticPanel(string slideName, PneumaticManager pneumaticManager)
     {
@@ -41,7 +41,7 @@ public partial class PneumaticPanel : UserControl
     private void Extend_Click(object sender, RoutedEventArgs e)
     {
         var err = _slide.Extend();
-        LogMessage?.Invoke($"Pneumatic '{_slideName}': Extend {(err == PneumaticError.Success ? "OK" : err.ToString())}");
+        Log.Information("Pneumatic '{SlideName}': Extend {Result}", _slideName, err == PneumaticError.Success ? "OK" : err.ToString());
         UpdateDisplay();
         StatusChanged?.Invoke();
     }
@@ -49,7 +49,7 @@ public partial class PneumaticPanel : UserControl
     private void Retract_Click(object sender, RoutedEventArgs e)
     {
         var err = _slide.Retract();
-        LogMessage?.Invoke($"Pneumatic '{_slideName}': Retract {(err == PneumaticError.Success ? "OK" : err.ToString())}");
+        Log.Information("Pneumatic '{SlideName}': Retract {Result}", _slideName, err == PneumaticError.Success ? "OK" : err.ToString());
         UpdateDisplay();
         StatusChanged?.Invoke();
     }
@@ -57,7 +57,7 @@ public partial class PneumaticPanel : UserControl
     private void RetractAll_Click(object sender, RoutedEventArgs e)
     {
         _pneumaticManager.StopAll();
-        LogMessage?.Invoke("Pneumatic: Retract All");
+        Log.Information("Pneumatic: Retract All");
         UpdateDisplay();
         StatusChanged?.Invoke();
     }

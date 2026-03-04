@@ -65,6 +65,18 @@ public sealed class ContextCommandHandler : ICommandHandler
                     return true;
                 }
 
+                case "evaluate":
+                {
+                    var expression = parameters.GetValueOrDefault("expression", "");
+                    var resultKey = parameters.GetValueOrDefault("result", "");
+                    if (string.IsNullOrEmpty(expression)) { errorMessage = "Expression is required"; return false; }
+                    if (string.IsNullOrEmpty(resultKey)) { errorMessage = "Result key is required"; return false; }
+
+                    var result = ExpressionEvaluator.Evaluate(expression, context);
+                    context.SetValue(resultKey, result);
+                    return true;
+                }
+
                 case "incrementcounter":
                 {
                     var key = parameters.GetValueOrDefault("key", "counter");

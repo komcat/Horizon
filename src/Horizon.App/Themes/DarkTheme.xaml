@@ -11,6 +11,8 @@
     <Color x:Key="Theme.Foreground">#FFF1F1F1</Color>
     <Color x:Key="Theme.ForegroundDisabled">#FF656565</Color>
 
+    <Color x:Key="Theme.Accent">#FF14FFEC</Color>
+
     <!-- Brushes derived from palette -->
     <SolidColorBrush x:Key="Theme.BackgroundBrush" Color="{StaticResource Theme.Background}"/>
     <SolidColorBrush x:Key="Theme.BackgroundAltBrush" Color="{StaticResource Theme.BackgroundAlt}"/>
@@ -20,6 +22,7 @@
     <SolidColorBrush x:Key="Theme.HighlightBrush" Color="{StaticResource Theme.Highlight}"/>
     <SolidColorBrush x:Key="Theme.ForegroundBrush" Color="{StaticResource Theme.Foreground}"/>
     <SolidColorBrush x:Key="Theme.ForegroundDisabledBrush" Color="{StaticResource Theme.ForegroundDisabled}"/>
+    <SolidColorBrush x:Key="Theme.AccentBrush" Color="{StaticResource Theme.Accent}"/>
 
     <!-- ============================================================ -->
     <!-- TextBox: dark background with custom template                -->

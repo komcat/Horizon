@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Horizon.Process.Interfaces;
 
 namespace Horizon.Process.Handlers;
@@ -38,13 +39,30 @@ public sealed class SystemCommandHandler : ICommandHandler
                 {
                     var message = parameters.GetValueOrDefault("message", "");
                     // Resolve context references in message
-                    if (message.Contains("{") && message.Contains("}"))
+                    if (message.Contains('{') && message.Contains('}'))
                     {
+                        // Handle {=expression} patterns first
+                        message = Regex.Replace(message, @"\{=([^}]+)\}", m =>
+                        {
+                            try
+                            {
+                                var result = ExpressionEvaluator.Evaluate(m.Groups[1].Value, context);
+                                return result.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                            }
+                            catch
+                            {
+                                return m.Value; // leave unresolved on error
+                            }
+                        });
+
+                        // Then handle {key} variable substitution
                         foreach (var key in context.GetAllKeys())
                         {
                             message = message.Replace($"{{{key}}}", context.GetString(key));
                         }
                     }
+                    // Update the parameter so the resolved message is visible to callbacks
+                    parameters["message"] = message;
                     // Log will be captured by OnStepStarted callback
                     return true;
                 }

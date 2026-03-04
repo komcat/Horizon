@@ -167,6 +167,11 @@ public sealed class LaserControllerCommandHandler : ICommandHandler
         if (!parms.TryGetValue(key, out var value)) return string.Empty;
         if (value.StartsWith("context:", StringComparison.OrdinalIgnoreCase))
             return context.GetString(value[8..]);
+        if (value.StartsWith("expr:", StringComparison.OrdinalIgnoreCase))
+        {
+            var result = ExpressionEvaluator.Evaluate(value[5..], context);
+            return result.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
         return value;
     }
 }

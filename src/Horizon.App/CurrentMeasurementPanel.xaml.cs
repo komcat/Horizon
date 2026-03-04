@@ -7,6 +7,7 @@ using Horizon.Core;
 using Horizon.CurrentMeasurement;
 using Horizon.CurrentMeasurement.Interfaces;
 using Horizon.CurrentMeasurement.Models;
+using Serilog;
 
 namespace Horizon.App;
 
@@ -28,7 +29,6 @@ public partial class CurrentMeasurementPanel : UserControl
     private readonly TextBlock[] _readingTexts;
 
     public event Action? ConnectionChanged;
-    public event Action<string>? LogMessage;
     public event Action<string, List<string>>? PopOutChartRequested;
 
     public CurrentMeasurementPanel(string deviceName, CurrentMeasurementManager manager, MeasurementHub hub)
@@ -63,7 +63,7 @@ public partial class CurrentMeasurementPanel : UserControl
         try
         {
             var ok = await Task.Run(() => _device.Connect());
-            LogMessage?.Invoke($"CMeas '{_deviceName}': Connect {(ok ? "OK" : "FAILED")}");
+            Log.Information("CMeas '{DeviceName}': Connect {Result}", _deviceName, ok ? "OK" : "FAILED");
             if (ok)
             {
                 var (idResult, identity) = await Task.Run(() =>
@@ -74,7 +74,7 @@ public partial class CurrentMeasurementPanel : UserControl
                 if (idResult == CurrentMeasurementError.Success)
                 {
                     IdentityText.Text = $"IDN: {identity}";
-                    LogMessage?.Invoke($"CMeas '{_deviceName}': {identity}");
+                    Log.Debug("CMeas '{DeviceName}': {Identity}", _deviceName, identity);
                 }
             }
             UpdateStatusText();
@@ -92,7 +92,7 @@ public partial class CurrentMeasurementPanel : UserControl
         try
         {
             var ok = await Task.Run(() => _device.Disconnect());
-            LogMessage?.Invoke($"CMeas '{_deviceName}': Disconnect {(ok ? "OK" : "FAILED")}");
+            Log.Information("CMeas '{DeviceName}': Disconnect {Result}", _deviceName, ok ? "OK" : "FAILED");
             IdentityText.Text = string.Empty;
             UpdateStatusText();
             ConnectionChanged?.Invoke();
@@ -109,7 +109,7 @@ public partial class CurrentMeasurementPanel : UserControl
         try
         {
             var result = await Task.Run(() => _device.Reset());
-            LogMessage?.Invoke($"CMeas '{_deviceName}': Reset {(result == CurrentMeasurementError.Success ? "OK" : "FAILED")}");
+            Log.Information("CMeas '{DeviceName}': Reset {Result}", _deviceName, result == CurrentMeasurementError.Success ? "OK" : "FAILED");
         }
         finally
         {
@@ -121,7 +121,7 @@ public partial class CurrentMeasurementPanel : UserControl
     {
         if (!_device.IsConnected)
         {
-            LogMessage?.Invoke($"CMeas '{_deviceName}': Not connected");
+            Log.Warning("CMeas '{DeviceName}': Not connected", _deviceName);
             return;
         }
 
@@ -139,11 +139,12 @@ public partial class CurrentMeasurementPanel : UserControl
                 for (int i = 0; i < readings.Length && i < _readingTexts.Length; i++)
                     _readingTexts[i].Text = FormatCurrent(readings[i]);
 
-                LogMessage?.Invoke($"CMeas '{_deviceName}': CH readings updated — {string.Join(", ", readings.Select((v, i) => $"CH{(i < _device.EnabledChannels.Count ? _device.EnabledChannels[i] : i + 1)}={FormatCurrent(v)}"))}");
+                Log.Information("CMeas '{DeviceName}': CH readings updated — {Readings}", _deviceName,
+                    string.Join(", ", readings.Select((v, i) => $"CH{(i < _device.EnabledChannels.Count ? _device.EnabledChannels[i] : i + 1)}={FormatCurrent(v)}")));
             }
             else
             {
-                LogMessage?.Invoke($"CMeas '{_deviceName}': Read failed — {error}");
+                Log.Error("CMeas '{DeviceName}': Read failed — {Error}", _deviceName, error);
             }
         }
         finally
@@ -156,14 +157,14 @@ public partial class CurrentMeasurementPanel : UserControl
     {
         if (!_device.IsConnected)
         {
-            LogMessage?.Invoke($"CMeas '{_deviceName}': Not connected");
+            Log.Warning("CMeas '{DeviceName}': Not connected", _deviceName);
             return;
         }
 
         if (!double.TryParse(VoltageInput.Text.Trim(), System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out var volts))
         {
-            LogMessage?.Invoke($"CMeas '{_deviceName}': Invalid voltage value");
+            Log.Warning("CMeas '{DeviceName}': Invalid voltage value", _deviceName);
             return;
         }
 
@@ -173,12 +174,12 @@ public partial class CurrentMeasurementPanel : UserControl
             var result = await Task.Run(() => _device.SetVoltage(volts));
             if (result == CurrentMeasurementError.Success)
             {
-                LogMessage?.Invoke($"CMeas '{_deviceName}': Voltage set to {volts} V");
+                Log.Information("CMeas '{DeviceName}': Voltage set to {Volts} V", _deviceName, volts);
                 VoltageStatusText.Text = $"Set: {volts} V";
             }
             else
             {
-                LogMessage?.Invoke($"CMeas '{_deviceName}': Set voltage failed — {result}");
+                Log.Error("CMeas '{DeviceName}': Set voltage failed — {Error}", _deviceName, result);
             }
         }
         finally
@@ -191,7 +192,7 @@ public partial class CurrentMeasurementPanel : UserControl
     {
         if (!_device.IsConnected)
         {
-            LogMessage?.Invoke($"CMeas '{_deviceName}': Not connected");
+            Log.Warning("CMeas '{DeviceName}': Not connected", _deviceName);
             return;
         }
 
@@ -199,7 +200,7 @@ public partial class CurrentMeasurementPanel : UserControl
         try
         {
             var result = await Task.Run(() => _device.SetVoltageEnabled(true));
-            LogMessage?.Invoke($"CMeas '{_deviceName}': V-Source ON {(result == CurrentMeasurementError.Success ? "OK" : "FAILED")}");
+            Log.Information("CMeas '{DeviceName}': V-Source ON {Result}", _deviceName, result == CurrentMeasurementError.Success ? "OK" : "FAILED");
             if (result == CurrentMeasurementError.Success)
                 VoltageStatusText.Text = $"V-Source: ON";
         }
@@ -213,7 +214,7 @@ public partial class CurrentMeasurementPanel : UserControl
     {
         if (!_device.IsConnected)
         {
-            LogMessage?.Invoke($"CMeas '{_deviceName}': Not connected");
+            Log.Warning("CMeas '{DeviceName}': Not connected", _deviceName);
             return;
         }
 
@@ -221,7 +222,7 @@ public partial class CurrentMeasurementPanel : UserControl
         try
         {
             var result = await Task.Run(() => _device.SetVoltageEnabled(false));
-            LogMessage?.Invoke($"CMeas '{_deviceName}': V-Source OFF {(result == CurrentMeasurementError.Success ? "OK" : "FAILED")}");
+            Log.Information("CMeas '{DeviceName}': V-Source OFF {Result}", _deviceName, result == CurrentMeasurementError.Success ? "OK" : "FAILED");
             if (result == CurrentMeasurementError.Success)
                 VoltageStatusText.Text = $"V-Source: OFF";
         }
@@ -240,7 +241,7 @@ public partial class CurrentMeasurementPanel : UserControl
     {
         if (!_device.IsConnected)
         {
-            LogMessage?.Invoke($"CMeas '{_deviceName}': Not connected");
+            Log.Warning("CMeas '{DeviceName}': Not connected", _deviceName);
             return;
         }
 
@@ -254,14 +255,14 @@ public partial class CurrentMeasurementPanel : UserControl
         var result = await Task.Run(() => _device.ConfigureFastMode());
         if (result != CurrentMeasurementError.Success)
         {
-            LogMessage?.Invoke($"CMeas '{_deviceName}': ConfigureFastMode failed — {result}");
+            Log.Error("CMeas '{DeviceName}': ConfigureFastMode failed — {Error}", _deviceName, result);
             StartPollButton.IsEnabled = true;
             StopPollButton.IsEnabled = false;
             StartPolling(); // restart passive poll
             return;
         }
 
-        LogMessage?.Invoke($"CMeas '{_deviceName}': Fast polling started (NPLC=0.1)");
+        Log.Information("CMeas '{DeviceName}': Fast polling started (NPLC=0.1)", _deviceName);
         _fastPolling = true;
         _fastPollCts = new CancellationTokenSource();
         _fastPollTask = FastPollLoopAsync(_fastPollCts.Token);
@@ -283,7 +284,7 @@ public partial class CurrentMeasurementPanel : UserControl
         if (_device.IsConnected)
         {
             var result = await Task.Run(() => _device.ConfigureDefaultMode());
-            LogMessage?.Invoke($"CMeas '{_deviceName}': Fast polling stopped, default mode {(result == CurrentMeasurementError.Success ? "restored" : "FAILED")}");
+            Log.Information("CMeas '{DeviceName}': Fast polling stopped, default mode {Result}", _deviceName, result == CurrentMeasurementError.Success ? "restored" : "FAILED");
         }
 
         PollRateText.Text = string.Empty;

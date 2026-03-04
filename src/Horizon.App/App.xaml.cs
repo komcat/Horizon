@@ -1,13 +1,18 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using Horizon.App.Logging;
 using Horizon.Core;
+using Serilog;
+using Serilog.Events;
 
 namespace Horizon.App;
 
 public partial class App : Application
 {
     private Horizon.Core.AppContext? _appContext;
+
+    internal static WpfOutputSink UiSink { get; } = new();
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool AddDllDirectory(string lpPathName);
@@ -21,9 +26,26 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Configure Serilog
+        var logDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Horizon", "logs");
+
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .WriteTo.File(
+                Path.Combine(logDir, "horizon-.log"),
+                rollingInterval: RollingInterval.Day,
+                retainedFileCountLimit: 7,
+                restrictedToMinimumLevel: LogEventLevel.Debug,
+                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+            .WriteTo.Sink(UiSink, LogEventLevel.Information)
+            .CreateLogger();
+
         InitializePylonEnvironment();
 
         _appContext = new Horizon.Core.AppContext();
+        _appContext.LogSink = new SerilogLogSink();
 
         // Show splash screen and connect all hardware
         var splash = new SplashWindow(_appContext);
@@ -103,6 +125,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _appContext?.Dispose();
+        Log.CloseAndFlush();
         base.OnExit(e);
     }
 }

@@ -19,7 +19,7 @@ Modular hardware control system (WPF + AvalonDock) for cameras, motion stages, d
 ```
 Horizon.App (WPF shell)
   └─ Horizon.Core (AppContext wires all managers)
-       ├─ Horizon.Process (CommandDispatcher + ProcessEngine)
+       ├─ Horizon.Process (CommandDispatcher + ProcessEngine + Plugins)
        │    ├─ Horizon.Camera
        │    ├─ Horizon.Motion
        │    ├─ Horizon.Pneumatic ─── Horizon.IO
@@ -35,8 +35,11 @@ Horizon.App (WPF shell)
 `Horizon.Core.AppContext` owns all managers and orchestrates initialization:
 1. Loads JSON configs from `%APPDATA%\Horizon\config\`
 2. Creates managers (CameraManager, UnifiedMotionManager, EziIOManager, CurrentMeasurementManager, LaserControllerManager, PneumaticManager, SafetyWatchManager)
-3. Builds ProcessEngine device registry via reflection
-4. SplashWindow runs hardware connections async, then MainWindow opens
+3. Discovers process plugins via `ProcessPluginRegistry.DiscoverPlugins()`
+4. Builds ProcessEngine device registry via reflection
+5. SplashWindow runs hardware connections async, then MainWindow opens
+
+Property `ILogSink? LogSink` is set by App.xaml.cs (Serilog adapter) — managers log via `LogSink?.Info/Warn/Error()` extension methods.
 
 ### Config System
 
@@ -65,11 +68,38 @@ Standalone Ezi-IO modules use a **combined I/O register**: bits `[0..InputCount-
 
 ### Process Engine
 
-`ProcessEngine` executes command sequences. `CommandDispatcher` routes commands by manager type (motion, io, pneumatic, camera, currentmeasurement, lasercontroller, system, context) to `ICommandHandler` implementations. `ProcessContext` holds runtime variables as `ConcurrentDictionary<string, string>`. Supports breakpoints via `ManualResetEventSlim` gate.
+`ProcessEngine` executes command sequences. `CommandDispatcher` routes commands by manager type (motion, io, pneumatic, camera, currentmeasurement, lasercontroller, system, context) to 8 `ICommandHandler` implementations. `ProcessContext` holds runtime variables as thread-safe dictionary (typed getters: `GetNumeric`, `GetString`, `GetBoolean`; `GetSnapshot()` for live debugging). Supports breakpoints via `ManualResetEventSlim` gate and step-by-step mode.
+
+Callbacks: `OnStepStarted(index, device, method)`, `OnStepCompleted(index, success)`, `OnLoopIteration(index, current, total)`.
+
+### Process Plugin System
+
+Plugins define reusable process step templates. Each implements `IProcessPlugin` with metadata (`Id`, `DisplayName`, `Category`, `Description`, `Parameters`) and a `BuildSteps()` method that emits `ProcessStep`s via `ProcessBuilder`.
+
+- **Discovery**: `ProcessPluginRegistry.DiscoverPlugins(assemblies)` finds plugins via reflection (parameterless constructor required)
+- **Parameter metadata**: `PluginParamDef` with types: Text, Number, Boolean, Enum, FilePath, MotionDevice, CameraDevice, NamedPosition, Axis
+- **Dependent params**: `DependsOnDevice` chains dropdowns (e.g., NamedPosition refreshes when MotionDevice changes)
+- **UI binding**: `PropertyTable` control auto-generates forms from `PluginParamDef` metadata
+- **Location**: `Horizon.Process/Plugins/` (15 built-in plugins across Motion, Camera, System, Variables categories)
+
+### Expression Evaluator
+
+`ExpressionEvaluator` in `Horizon.Process` — lightweight recursive-descent parser (`ref struct` on `ReadOnlySpan<char>`). Supports `+`, `-`, `*`, `/`, parentheses, float literals (with scientific notation), and variable references resolved from `ProcessContext`. Division by zero returns IEEE 754 Infinity.
+
+Three usage patterns:
+1. **Plugin**: `CalculateExpressionPlugin` evaluates expression → stores result in context variable
+2. **Parameter prefix**: Any handler parameter with `expr:EXPRESSION` computes inline (e.g., `expr:distance * 0.5`)
+3. **Log interpolation**: `{=EXPRESSION}` in SystemCommandHandler log messages (e.g., `Distance = {=posA - posB}`)
+
+### ProcessProgram Persistence
+
+`ProcessProgram` model with `ProcessProgramStep` entries (PluginId, Parameters dict, Enabled flag, Uid, CustomName). Serialized as JSON `.hproc` files in `%APPDATA%\Horizon\processes\`. Last-opened file tracked in `.lastprogram`.
 
 ### UI Panels (AvalonDock)
 
 MainWindow creates document panels per hardware device: IOPanel, MotionPanel, PneumaticPanel, CurrentMeasurementPanel, CurrentChartPanel, LaserControllerPanel, LiveFeedPanel, CameraInfoWindow, OverlayWindow. Each panel polls its hardware independently (DispatcherTimer) and exposes LogMessage/StatusChanged events for the output log and hardware tree.
+
+ProcessPanel includes a plugin catalog (TreeView by category), builder list with step highlighting (yellow=current, green=success, red=failure), PropertyTable for parameter editing, and a Context Watch DataGrid showing live variables during execution.
 
 ## Conventions
 
@@ -79,3 +109,5 @@ MainWindow creates document panels per hardware device: IOPanel, MotionPanel, Pn
 - Pin names use `StringComparer.OrdinalIgnoreCase` throughout
 - Native DLLs (PI, Fastech, VISA, uEye) are copied to output via `<None Include="..." CopyToOutputDirectory="PreserveNewest">`
 - VISA instruments (Keithley, Thorlabs CLD101x) share `Native/VisaNative.cs` P/Invoke pattern
+- Logging: `ILogSink` interface in Core, `SerilogLogSink` adapter in App (rolling daily files + WPF output sink)
+- NuGet: AvalonDock 4.72.1, SkiaSharp.Views.WPF 3.116.1

@@ -7,6 +7,7 @@ using Horizon.IO;
 using Horizon.IO.Adapters;
 using Horizon.IO.Interfaces;
 using Horizon.IO.Models;
+using Serilog;
 
 namespace Horizon.App;
 
@@ -27,7 +28,6 @@ public partial class IOPanel : UserControl
     private static readonly SolidColorBrush OffBrush = new(Color.FromRgb(0x55, 0x55, 0x55));   // dim gray
 
     public event Action? ConnectionChanged;
-    public event Action<string>? LogMessage;
 
     public IOPanel(string deviceName, EziIOManager ioManager)
     {
@@ -53,7 +53,7 @@ public partial class IOPanel : UserControl
     private void Connect_Click(object sender, RoutedEventArgs e)
     {
         var ok = _device.Connect();
-        LogMessage?.Invoke($"IO '{_deviceName}': Connect {(ok ? "OK" : "FAILED")}");
+        Log.Information("IO '{DeviceName}': Connect {Result}", _deviceName, ok ? "OK" : "FAILED");
         UpdateStatusText();
         ConnectionChanged?.Invoke();
     }
@@ -61,7 +61,7 @@ public partial class IOPanel : UserControl
     private void Disconnect_Click(object sender, RoutedEventArgs e)
     {
         var ok = _device.Disconnect();
-        LogMessage?.Invoke($"IO '{_deviceName}': Disconnect {(ok ? "OK" : "FAILED")}");
+        Log.Information("IO '{DeviceName}': Disconnect {Result}", _deviceName, ok ? "OK" : "FAILED");
         UpdateStatusText();
         ConnectionChanged?.Invoke();
     }
@@ -188,11 +188,11 @@ public partial class IOPanel : UserControl
                 _localOutputState &= ~(1u << pin);
 
             _outputIndicators[pin].Fill = newState ? OnBrush : OffBrush;
-            LogMessage?.Invoke($"IO '{_deviceName}': Pin {pin} ({pinName}) → {(newState ? "ON" : "OFF")}");
+            Log.Information("IO '{DeviceName}': Pin {Pin} ({PinName}) -> {State}", _deviceName, pin, pinName, newState ? "ON" : "OFF");
         }
         else
         {
-            LogMessage?.Invoke($"IO '{_deviceName}': Pin {pin} ({pinName}) toggle FAILED — {result}");
+            Log.Error("IO '{DeviceName}': Pin {Pin} ({PinName}) toggle FAILED — {Result}", _deviceName, pin, pinName, result);
         }
     }
 

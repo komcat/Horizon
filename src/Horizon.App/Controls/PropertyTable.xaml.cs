@@ -23,6 +23,73 @@ public partial class PropertyTable : UserControl
         InitializeComponent();
     }
 
+    public void BindStepHeader(string uid, string customName, Action<string> onNameChanged)
+    {
+        // UID row
+        var uidGrid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+        uidGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
+        uidGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var uidLabel = new TextBlock
+        {
+            Text = "UID",
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        uidLabel.SetResourceReference(ForegroundProperty, "Theme.ForegroundBrush");
+        Grid.SetColumn(uidLabel, 0);
+
+        var uidValue = new TextBlock
+        {
+            Text = uid,
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            Opacity = 0.5
+        };
+        uidValue.SetResourceReference(ForegroundProperty, "Theme.ForegroundBrush");
+        Grid.SetColumn(uidValue, 1);
+
+        uidGrid.Children.Add(uidLabel);
+        uidGrid.Children.Add(uidValue);
+        PropertiesPanel.Children.Insert(0, uidGrid);
+
+        // Name row
+        var nameGrid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+        nameGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
+        nameGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var nameLabel = new TextBlock
+        {
+            Text = "Name",
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        nameLabel.SetResourceReference(ForegroundProperty, "Theme.ForegroundBrush");
+        Grid.SetColumn(nameLabel, 0);
+
+        var nameTb = new TextBox
+        {
+            Text = customName,
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 11,
+            Padding = new Thickness(4, 2, 4, 2)
+        };
+        nameTb.TextChanged += (_, _) => onNameChanged(nameTb.Text);
+        Grid.SetColumn(nameTb, 1);
+
+        nameGrid.Children.Add(nameLabel);
+        nameGrid.Children.Add(nameTb);
+        PropertiesPanel.Children.Insert(1, nameGrid);
+
+        // Separator
+        var sep = new Separator { Margin = new Thickness(0, 4, 0, 6) };
+        sep.SetResourceReference(ForegroundProperty, "Theme.BorderBrush");
+        PropertiesPanel.Children.Insert(2, sep);
+    }
+
     public void BindPlugin(IProcessPlugin? plugin, Dictionary<string, string>? values)
     {
         _plugin = plugin;

@@ -80,11 +80,11 @@ public sealed class AppContext : IAppContext, IDisposable
             var pylonCameras = Horizon.Camera.CameraManager.DiscoverPylonCameras();
             Log($"Pylon discovery: {pylonCameras.Count} camera(s)");
             foreach (var cam in pylonCameras)
-                Log($"  Pylon: {cam.ModelName} ({cam.SerialNumber})");
+                LogDebug($"  Pylon: {cam.ModelName} ({cam.SerialNumber})");
         }
         catch (Exception ex)
         {
-            Log($"Pylon discovery error: {ex.Message}");
+            LogError($"Pylon discovery error: {ex.Message}");
         }
 
         try
@@ -92,11 +92,11 @@ public sealed class AppContext : IAppContext, IDisposable
             var idsCameras = Horizon.Camera.CameraManager.DiscoverIDSCameras();
             Log($"IDS discovery: {idsCameras.Count} camera(s)");
             foreach (var cam in idsCameras)
-                Log($"  IDS: {cam.ModelName} ({cam.SerialNumber}) [{cam.Description}]");
+                LogDebug($"  IDS: {cam.ModelName} ({cam.SerialNumber}) [{cam.Description}]");
         }
         catch (Exception ex)
         {
-            Log($"IDS discovery error: {ex.Message}");
+            LogError($"IDS discovery error: {ex.Message}");
         }
 
         var registered = _configStore.Load();
@@ -107,7 +107,7 @@ public sealed class AppContext : IAppContext, IDisposable
         }
         else
         {
-            Log("No registered cameras — use Camera > Config to register cameras.");
+            LogWarn("No registered cameras — use Camera > Config to register cameras.");
         }
         Log($"Total cameras added: {_cameraManager.CameraCount}");
 
@@ -120,7 +120,7 @@ public sealed class AppContext : IAppContext, IDisposable
         }
         catch (Exception ex)
         {
-            Log($"IO config load error: {ex.Message}");
+            LogError($"IO config load error: {ex.Message}");
         }
 
         // --- Motion subsystem ---
@@ -132,7 +132,7 @@ public sealed class AppContext : IAppContext, IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Motion config load error: {ex.Message}");
+            LogError($"Motion config load error: {ex.Message}");
         }
 
         // --- Current Measurement subsystem ---
@@ -144,7 +144,7 @@ public sealed class AppContext : IAppContext, IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Current measurement config load error: {ex.Message}");
+            LogError($"Current measurement config load error: {ex.Message}");
         }
 
         // --- Laser Controller subsystem ---
@@ -156,7 +156,7 @@ public sealed class AppContext : IAppContext, IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Laser controller config load error: {ex.Message}");
+            LogError($"Laser controller config load error: {ex.Message}");
         }
 
         // --- Pneumatic subsystem (depends on IO) ---
@@ -168,7 +168,7 @@ public sealed class AppContext : IAppContext, IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Pneumatic config load error: {ex.Message}");
+            LogError($"Pneumatic config load error: {ex.Message}");
         }
 
         // --- Safety subsystem (depends on IO) ---
@@ -181,7 +181,7 @@ public sealed class AppContext : IAppContext, IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Safety config load error: {ex.Message}");
+            LogError($"Safety config load error: {ex.Message}");
         }
 
         // --- Process engine ---
@@ -245,6 +245,21 @@ public sealed class AppContext : IAppContext, IDisposable
 
     private void Log(string message)
     {
-        LogSink?.Log(message);
+        LogSink?.Info(message);
+    }
+
+    private void LogDebug(string message)
+    {
+        LogSink?.Debug(message);
+    }
+
+    private void LogWarn(string message)
+    {
+        LogSink?.Warn(message);
+    }
+
+    private void LogError(string message)
+    {
+        LogSink?.Error(message);
     }
 }

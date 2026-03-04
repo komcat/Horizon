@@ -202,6 +202,11 @@ public sealed class CameraCommandHandler : ICommandHandler
             var contextKey = value[8..];
             return context.GetString(contextKey);
         }
+        if (value.StartsWith("expr:", StringComparison.OrdinalIgnoreCase))
+        {
+            var result = ExpressionEvaluator.Evaluate(value[5..], context);
+            return result.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
         return value;
     }
 }
