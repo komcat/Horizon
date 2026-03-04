@@ -141,6 +141,8 @@
                 <MenuItem Header="_Process Editor" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ProcessEditor_Click"/>
                 <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="_Teach Points" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="TeachPointPanel_Click"/>
+                <Separator Style="{StaticResource MenuSeparator}"/>
+                <MenuItem Header="_Hex Scan" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="HexScanPanel_Click"/>
             </MenuItem>
             <MenuItem Header="_Help" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
                 <MenuItem Header="_Expression Syntax" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="HelpExpressionSyntax_Click"/>
@@ -197,7 +199,7 @@
                 <Button Style="{StaticResource QuickBtn}" Content="Process" Click="ProcessEditor_Click"/>
                 <Button Style="{StaticResource QuickBtn}" Content="Jog" Click="JogPanel_Click"/>
                 <Button Style="{StaticResource QuickBtn}" Content="Teach" Click="TeachPointPanel_Click"/>
-                <Button Style="{StaticResource QuickBtn}" Click="QuickButton_Click" Tag="5"/>
+                <Button Style="{StaticResource QuickBtn}" Content="HexScan" Click="HexScanPanel_Click"/>
                 <Button Style="{StaticResource QuickBtn}" Click="QuickButton_Click" Tag="6"/>
                 <Button Style="{StaticResource QuickBtn}" Content="Hardware" Click="ViewHardware_Click"/>
             </StackPanel>

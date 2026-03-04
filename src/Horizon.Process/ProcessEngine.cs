@@ -1,4 +1,5 @@
 using Horizon.Process.Handlers;
+using Horizon.Process.Interfaces;
 using Horizon.Process.Models;
 
 namespace Horizon.Process;
@@ -28,6 +29,11 @@ public sealed class ProcessEngine
         _dispatcher.RegisterHandler(new ContextCommandHandler());
         _dispatcher.RegisterHandler(new CurrentMeasurementCommandHandler());
         _dispatcher.RegisterHandler(new LaserControllerCommandHandler());
+    }
+
+    public void RegisterHandler(ICommandHandler handler)
+    {
+        _dispatcher.RegisterHandler(handler);
     }
 
     public void RegisterDevice(string deviceName, object? manager, string managerType)

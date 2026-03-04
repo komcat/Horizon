@@ -191,6 +191,8 @@ public sealed class AppContext : IAppContext, IDisposable
         // --- Process engine ---
         _processEngine = new ProcessEngine();
         _processEngine.BuildDeviceRegistry(this);
+        _processEngine.RegisterHandler(new Scanning.ScanningCommandHandler(_motionManager, _measurementHub, LogSink));
+        _processEngine.RegisterDevice("scanning", null, "scanning");
         Log("Process engine initialized");
 
         // --- Plugin registry ---

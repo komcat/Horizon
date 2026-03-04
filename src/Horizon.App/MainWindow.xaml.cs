@@ -76,6 +76,7 @@ public partial class MainWindow : Window
         StopAllProcessPanels();
         StopAllJogPanels();
         StopAllTeachPanels();
+        StopAllHexScanPanels();
         _overlayWindow?.Close();
         SaveWindowState();
         SaveDockLayout();
@@ -1112,6 +1113,21 @@ public partial class MainWindow : Window
         }
     }
 
+    private void StopAllHexScanPanels()
+    {
+        var hexDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId != null && d.ContentId.StartsWith("hex_"))
+            .ToList();
+
+        foreach (var doc in hexDocs)
+        {
+            if (doc.Content is HexScanPanel panel)
+                panel.StopPolling();
+        }
+    }
+
     private void StopAllCurrentChartPanels()
     {
         var chartDocs = DockManager.Layout
@@ -1253,6 +1269,40 @@ public partial class MainWindow : Window
         }
     }
 
+    private void HexScanPanel_Click(object sender, RoutedEventArgs e)
+    {
+        var contentId = "hex_scan";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var panel = new HexScanPanel(_context);
+
+        var doc = new LayoutDocument
+        {
+            Title = "Hex Scan",
+            ContentId = contentId,
+            Content = panel
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+    }
+
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 
     // --- Dock/Window state persistence ---
@@ -1326,6 +1376,12 @@ public partial class MainWindow : Window
                 if (id == "teach_points")
                 {
                     args.Content = new TeachPointPanel(_context);
+                    return;
+                }
+
+                if (id == "hex_scan")
+                {
+                    args.Content = new HexScanPanel(_context);
                     return;
                 }
 
