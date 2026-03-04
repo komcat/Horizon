@@ -22,6 +22,7 @@ public sealed class AppContext : IAppContext, IDisposable
     private ProcessPluginRegistry? _pluginRegistry;
     private SafetyEventLog? _safetyEventLog;
     private SafetyWatchManager? _safetyWatchManager;
+    private TeachPointManager? _teachPointManager;
 
     private readonly CameraConfigStore _configStore = new();
     private readonly MeasurementHub _measurementHub = new();
@@ -54,6 +55,9 @@ public sealed class AppContext : IAppContext, IDisposable
     public SafetyWatchManager? SafetyWatchManager => _safetyWatchManager;
 
     public MeasurementHub MeasurementHub => _measurementHub;
+
+    public TeachPointManager TeachPointManager =>
+        _teachPointManager ?? throw new InvalidOperationException("AppContext is not initialized.");
 
     public CameraConfigStore ConfigStore => _configStore;
 
@@ -193,6 +197,27 @@ public sealed class AppContext : IAppContext, IDisposable
         _pluginRegistry = new ProcessPluginRegistry();
         _pluginRegistry.DiscoverPlugins(typeof(ProcessPluginRegistry).Assembly);
         Log($"Process plugins discovered: {_pluginRegistry.GetAll().Count}");
+
+        // --- Teach point system ---
+        _teachPointManager = new TeachPointManager(_motionManager);
+        try
+        {
+            _teachPointManager.Load();
+            var activeProduct = _teachPointManager.ActiveProductName;
+            if (!string.IsNullOrEmpty(activeProduct))
+            {
+                _teachPointManager.ApplyActiveProduct();
+                Log($"Teach points loaded, active product: {activeProduct}");
+            }
+            else
+            {
+                Log("Teach points loaded, no active product");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogError($"Teach point load error: {ex.Message}");
+        }
     }
 
     public void Shutdown()
@@ -201,6 +226,7 @@ public sealed class AppContext : IAppContext, IDisposable
         _safetyWatchManager = null;
         _safetyEventLog = null;
 
+        _teachPointManager = null;
         _processEngine = null;
         _pluginRegistry = null;
 

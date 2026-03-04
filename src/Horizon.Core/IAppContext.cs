@@ -21,6 +21,7 @@ public interface IAppContext
     ProcessPluginRegistry PluginRegistry { get; }
     SafetyWatchManager? SafetyWatchManager { get; }
     MeasurementHub MeasurementHub { get; }
+    TeachPointManager TeachPointManager { get; }
     bool IsInitialized { get; }
     bool SimulationMode { get; set; }
     void Initialize();

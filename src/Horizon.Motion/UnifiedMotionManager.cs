@@ -9,6 +9,9 @@ public sealed class UnifiedMotionManager
     private readonly Dictionary<string, IMotionControllerManager> _managers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _deviceTypes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Dictionary<string, PositionStruct>> _namedPositions = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Dictionary<string, PositionStruct>> _teachPositions = new(StringComparer.OrdinalIgnoreCase);
+
+    public event Action? PresetsChanged;
 
     public UnifiedMotionManager()
     {
@@ -72,8 +75,8 @@ public sealed class UnifiedMotionManager
 
     public bool MoveToNamedPosition(string device, string positionName, bool blocking = true)
     {
-        if (!_namedPositions.TryGetValue(device, out var positions)) return false;
-        if (!positions.TryGetValue(positionName, out var pos)) return false;
+        var pos = GetNamedPosition(device, positionName);
+        if (pos == null) return false;
         return MoveToAbs6(device, pos, blocking);
     }
 
@@ -111,13 +114,57 @@ public sealed class UnifiedMotionManager
 
     public List<string> GetNamedPositionNames(string device)
     {
-        if (!_namedPositions.TryGetValue(device, out var positions)) return new();
-        return positions.Keys.ToList();
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (_namedPositions.TryGetValue(device, out var configPositions))
+            foreach (var key in configPositions.Keys)
+                names.Add(key);
+
+        if (_teachPositions.TryGetValue(device, out var teachPositions))
+            foreach (var key in teachPositions.Keys)
+                names.Add(key);
+
+        return names.ToList();
     }
 
     public PositionStruct? GetNamedPosition(string device, string positionName)
     {
-        if (!_namedPositions.TryGetValue(device, out var positions)) return null;
-        return positions.GetValueOrDefault(positionName);
+        // Teach positions override config positions
+        if (_teachPositions.TryGetValue(device, out var teachPositions)
+            && teachPositions.TryGetValue(positionName, out var teachPos))
+            return teachPos;
+
+        if (_namedPositions.TryGetValue(device, out var configPositions))
+            return configPositions.GetValueOrDefault(positionName);
+
+        return null;
+    }
+
+    public void SetTeachPosition(string device, string positionName, PositionStruct position)
+    {
+        if (!_teachPositions.TryGetValue(device, out var positions))
+        {
+            positions = new Dictionary<string, PositionStruct>(StringComparer.OrdinalIgnoreCase);
+            _teachPositions[device] = positions;
+        }
+        positions[positionName] = position;
+        PresetsChanged?.Invoke();
+    }
+
+    public void RemoveTeachPosition(string device, string positionName)
+    {
+        if (_teachPositions.TryGetValue(device, out var positions))
+        {
+            positions.Remove(positionName);
+            if (positions.Count == 0)
+                _teachPositions.Remove(device);
+            PresetsChanged?.Invoke();
+        }
+    }
+
+    public void ClearTeachPositions()
+    {
+        _teachPositions.Clear();
+        PresetsChanged?.Invoke();
     }
 }

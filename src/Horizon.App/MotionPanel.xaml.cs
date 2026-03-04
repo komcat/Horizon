@@ -66,6 +66,13 @@ public partial class MotionPanel : UserControl
         BuildAxisRows();
         LoadPresets();
         StartPolling();
+
+        _motionManager.PresetsChanged += OnPresetsChanged;
+    }
+
+    private void OnPresetsChanged()
+    {
+        Dispatcher.Invoke(LoadPresets);
     }
 
     // --- Connection ---
@@ -362,6 +369,8 @@ public partial class MotionPanel : UserControl
 
     public void StopPolling()
     {
+        _motionManager.PresetsChanged -= OnPresetsChanged;
+
         if (_pollTimer != null)
         {
             _pollTimer.Stop();

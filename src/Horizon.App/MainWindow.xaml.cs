@@ -75,6 +75,7 @@ public partial class MainWindow : Window
         StopAllLaserControllerPanels();
         StopAllProcessPanels();
         StopAllJogPanels();
+        StopAllTeachPanels();
         _overlayWindow?.Close();
         SaveWindowState();
         SaveDockLayout();
@@ -1096,6 +1097,21 @@ public partial class MainWindow : Window
         }
     }
 
+    private void StopAllTeachPanels()
+    {
+        var teachDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId != null && d.ContentId.StartsWith("teach_"))
+            .ToList();
+
+        foreach (var doc in teachDocs)
+        {
+            if (doc.Content is TeachPointPanel panel)
+                panel.StopPolling();
+        }
+    }
+
     private void StopAllCurrentChartPanels()
     {
         var chartDocs = DockManager.Layout
@@ -1203,6 +1219,40 @@ public partial class MainWindow : Window
         }
     }
 
+    private void TeachPointPanel_Click(object sender, RoutedEventArgs e)
+    {
+        var contentId = "teach_points";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var panel = new TeachPointPanel(_context);
+
+        var doc = new LayoutDocument
+        {
+            Title = "Teach Points",
+            ContentId = contentId,
+            Content = panel
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+    }
+
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 
     // --- Dock/Window state persistence ---
@@ -1266,10 +1316,16 @@ public partial class MainWindow : Window
                     return;
                 }
 
-                // Recreate Process Editor panel with fresh runtime context
+                // Recreate panels that need fresh runtime context
                 if (id == "process_editor")
                 {
                     args.Content = new ProcessPanel(_context);
+                    return;
+                }
+
+                if (id == "teach_points")
+                {
+                    args.Content = new TeachPointPanel(_context);
                     return;
                 }
 
