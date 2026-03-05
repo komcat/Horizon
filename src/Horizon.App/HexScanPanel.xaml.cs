@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -332,7 +331,7 @@ public partial class HexScanPanel : UserControl
 
     // ── DataGrid row view model ──────────────────────────────────────
 
-    public sealed class ScanDataRow : INotifyPropertyChanged
+    public sealed class ScanDataRow
     {
         public int StepIndex { get; }
         public string Axis { get; }
@@ -352,7 +351,5 @@ public partial class HexScanPanel : UserControl
             ValueLabel = FormatValue(dp.Value);
             PeakLabel = dp.IsPeak ? "*" : "";
         }
-
-        public event PropertyChangedEventHandler? PropertyChanged;
     }
 }

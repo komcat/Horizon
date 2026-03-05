@@ -9,6 +9,7 @@ public sealed class CameraManager : IDisposable
 {
     private readonly ConcurrentDictionary<string, ManagedCamera> _cameras = new();
     private readonly ConcurrentDictionary<string, SubscriberInfo> _subscribers = new();
+    private readonly ConcurrentDictionary<string, string> _displayNames = new(StringComparer.OrdinalIgnoreCase);
     private volatile bool _broadcastRunning;
     private CancellationTokenSource? _broadcastCts;
     private Task? _broadcastTask;
@@ -40,6 +41,25 @@ public sealed class CameraManager : IDisposable
 
     public List<string> GetCameraIds() => _cameras.Keys.ToList();
     public int CameraCount => _cameras.Count;
+
+    /// <summary>
+    /// Get the friendly display name for a camera (e.g. "cam1").
+    /// Returns the camera ID itself if no display name was registered.
+    /// </summary>
+    public string GetCameraDisplayName(string cameraId)
+    {
+        return _displayNames.TryGetValue(cameraId, out var name) ? name : cameraId;
+    }
+
+    /// <summary>
+    /// Get all camera IDs with their display names.
+    /// </summary>
+    public List<(string Id, string DisplayName)> GetCamerasWithNames()
+    {
+        return _cameras.Keys
+            .Select(id => (id, GetCameraDisplayName(id)))
+            .ToList();
+    }
 
     // --- Camera Operations ---
 
@@ -235,7 +255,11 @@ public sealed class CameraManager : IDisposable
                 DeviceInfo = $"{reg.Name} ({reg.SerialNumber}) [{reg.IpAddress}]"
             };
             if (AddCamera(info))
+            {
+                if (!string.IsNullOrEmpty(reg.Name))
+                    _displayNames[reg.SerialNumber] = reg.Name;
                 added++;
+            }
         }
 
         // USB cameras — discover hardware and filter by serial
@@ -250,7 +274,13 @@ public sealed class CameraManager : IDisposable
             foreach (var info in allCameras.Where(c => usbSerials.Contains(c.SerialNumber)))
             {
                 if (AddCamera(info))
+                {
+                    var reg = usbCameras.FirstOrDefault(r =>
+                        string.Equals(r.SerialNumber, info.SerialNumber, StringComparison.OrdinalIgnoreCase));
+                    if (reg != null && !string.IsNullOrEmpty(reg.Name))
+                        _displayNames[info.SerialNumber] = reg.Name;
                     added++;
+                }
             }
         }
 

@@ -26,6 +26,8 @@ public partial class OverlayWindow : Window
 
     private LiveVideoSubscriber? _subscriber;
     private string? _activeCameraId;
+    private string? _activeCameraName;
+    private Dictionary<string, string> _nameToId = new(StringComparer.OrdinalIgnoreCase);
     private bool _running;
     private bool _showChart = true;
 
@@ -112,10 +114,11 @@ public partial class OverlayWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Populate camera list
-        var ids = _cameraManager.GetCameraIds();
-        CameraCombo.ItemsSource = ids;
-        if (ids.Count > 0)
+        // Populate camera list with display names
+        var cameras = _cameraManager.GetCamerasWithNames();
+        _nameToId = cameras.ToDictionary(c => c.DisplayName, c => c.Id, StringComparer.OrdinalIgnoreCase);
+        CameraCombo.ItemsSource = cameras.Select(c => c.DisplayName).ToList();
+        if (cameras.Count > 0)
             CameraCombo.SelectedIndex = 0;
 
         // Populate measurement device list (cmeas + laser)
@@ -195,14 +198,18 @@ public partial class OverlayWindow : Window
 
     private void StartFeed()
     {
-        var cameraId = CameraCombo.SelectedItem as string;
-        if (string.IsNullOrEmpty(cameraId)) return;
+        var displayName = CameraCombo.SelectedItem as string;
+        if (string.IsNullOrEmpty(displayName)) return;
+
+        // Resolve display name to camera ID
+        if (!_nameToId.TryGetValue(displayName, out var cameraId))
+            cameraId = displayName; // fallback: treat as raw ID
 
         // Start grabbing if not already
         var status = _cameraManager.GetCameraStatus(cameraId);
         if (!status.Connected)
         {
-            StatusText.Text = $"Camera '{cameraId}' not connected";
+            StatusText.Text = $"Camera '{displayName}' not connected";
             return;
         }
 
@@ -210,12 +217,13 @@ public partial class OverlayWindow : Window
         {
             if (!_cameraManager.StartGrabbingWithBroadcast(cameraId))
             {
-                StatusText.Text = $"Failed to start grabbing '{cameraId}'";
+                StatusText.Text = $"Failed to start grabbing '{displayName}'";
                 return;
             }
         }
 
         _activeCameraId = cameraId;
+        _activeCameraName = displayName;
         _subscriber = new LiveVideoSubscriber(cameraId, "overlay");
         _cameraManager.SubscribeToFrames(_subscriber);
         _subscriber.InitializeStatusFromManager(_cameraManager);
@@ -229,7 +237,7 @@ public partial class OverlayWindow : Window
 
         _running = true;
         StartStopButton.Content = "Stop";
-        StatusText.Text = $"Live: {cameraId}";
+        StatusText.Text = $"Live: {displayName}";
     }
 
     private void StopFeed()
@@ -248,6 +256,7 @@ public partial class OverlayWindow : Window
         }
 
         _activeCameraId = null;
+        _activeCameraName = null;
         _running = false;
         StartStopButton.Content = "Start";
         StatusText.Text = "Stopped";
@@ -568,6 +577,7 @@ public partial class OverlayWindow : Window
             return;
 
         var cfg = _clickToMoveConfig ?? new ClickToMoveConfig();
+        var cal = cfg.GetCalibration(_activeCameraName ?? _activeCameraId);
         if (_frameBitmap == null) return;
 
         var wpfPoint = e.GetPosition(SkiaCanvas);
@@ -590,16 +600,16 @@ public partial class OverlayWindow : Window
         double dy = frameY - frameH / 2.0;
 
         // Scale to calibration reference resolution
-        dx *= (double)cfg.CalibrationRefWidth / frameW;
-        dy *= (double)cfg.CalibrationRefHeight / frameH;
+        dx *= (double)cal.CalibrationRefWidth / frameW;
+        dy *= (double)cal.CalibrationRefHeight / frameH;
 
         // Convert to mm: pixel offset * mm_per_pixel / magnification
-        double mmX = dx * cfg.PixelToMmX / cfg.Magnification;
-        double mmY = dy * cfg.PixelToMmY / cfg.Magnification;
+        double mmX = dx * cal.PixelToMmX / cal.Magnification;
+        double mmY = dy * cal.PixelToMmY / cal.Magnification;
 
         // Apply invert flags
-        if (cfg.InvertX) mmX = -mmX;
-        if (cfg.InvertY) mmY = -mmY;
+        if (cal.InvertX) mmX = -mmX;
+        if (cal.InvertY) mmY = -mmY;
 
         var deviceName = cfg.MotionDevice;
         var currentPos = _motionManager.GetCurrentPosition(deviceName);
@@ -629,7 +639,7 @@ public partial class OverlayWindow : Window
                 Dispatcher.Invoke(() =>
                 {
                     _isMoving = false;
-                    StatusText.Text = _running ? $"Live: {_activeCameraId}" : "Idle";
+                    StatusText.Text = _running ? $"Live: {_activeCameraName ?? _activeCameraId}" : "Idle";
                 });
             }
         });
@@ -719,6 +729,7 @@ public partial class OverlayWindow : Window
         if (_lastMouseFramePos != null)
         {
             var cfg = _clickToMoveConfig ?? new ClickToMoveConfig();
+            var cal = cfg.GetCalibration(_activeCameraName ?? _activeCameraId);
             float mouseFrameX = (float)_lastMouseFramePos.Value.X;
             float mouseFrameY = (float)_lastMouseFramePos.Value.Y;
 
@@ -750,12 +761,12 @@ public partial class OverlayWindow : Window
             // Distance label in mm
             double dx = mouseFrameX - frameW / 2.0;
             double dy = mouseFrameY - frameH / 2.0;
-            dx *= (double)cfg.CalibrationRefWidth / frameW;
-            dy *= (double)cfg.CalibrationRefHeight / frameH;
-            double mmX = dx * cfg.PixelToMmX / cfg.Magnification;
-            double mmY = dy * cfg.PixelToMmY / cfg.Magnification;
-            if (cfg.InvertX) mmX = -mmX;
-            if (cfg.InvertY) mmY = -mmY;
+            dx *= (double)cal.CalibrationRefWidth / frameW;
+            dy *= (double)cal.CalibrationRefHeight / frameH;
+            double mmX = dx * cal.PixelToMmX / cal.Magnification;
+            double mmY = dy * cal.PixelToMmY / cal.Magnification;
+            if (cal.InvertX) mmX = -mmX;
+            if (cal.InvertY) mmY = -mmY;
             double dist = Math.Sqrt(mmX * mmX + mmY * mmY);
 
             using var labelPaint = new SKPaint

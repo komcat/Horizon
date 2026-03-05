@@ -120,6 +120,8 @@
               Background="{DynamicResource Theme.MenuBarBrush}"
               Foreground="{DynamicResource Theme.ForegroundBrush}">
             <MenuItem Header="_File" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
+                <MenuItem Header="_Open Config Folder" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="OpenConfigFolder_Click"/>
+                <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="E_xit" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="Exit_Click"/>
             </MenuItem>
             <MenuItem Header="_Camera" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">

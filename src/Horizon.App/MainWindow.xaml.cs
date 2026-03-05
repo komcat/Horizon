@@ -1303,6 +1303,15 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OpenConfigFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var configDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon", "config");
+        if (!Directory.Exists(configDir))
+            Directory.CreateDirectory(configDir);
+        System.Diagnostics.Process.Start("explorer.exe", configDir);
+    }
+
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 
     // --- Dock/Window state persistence ---
