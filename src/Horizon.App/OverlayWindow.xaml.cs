@@ -60,6 +60,9 @@ public partial class OverlayWindow : Window
     private Point? _lastMouseFramePos;
     private bool _isMoving;
 
+    // Pending preferences to apply after OnLoaded populates combos
+    private UserPreferences? _pendingPrefs;
+
     // Z Jog
     private static readonly (string Label, double Mm)[] JogSteps =
     [
@@ -117,9 +120,8 @@ public partial class OverlayWindow : Window
         // Populate camera list with display names
         var cameras = _cameraManager.GetCamerasWithNames();
         _nameToId = cameras.ToDictionary(c => c.DisplayName, c => c.Id, StringComparer.OrdinalIgnoreCase);
-        CameraCombo.ItemsSource = cameras.Select(c => c.DisplayName).ToList();
-        if (cameras.Count > 0)
-            CameraCombo.SelectedIndex = 0;
+        var cameraNames = cameras.Select(c => c.DisplayName).ToList();
+        CameraCombo.ItemsSource = cameraNames;
 
         // Populate measurement device list (cmeas + laser)
         var allMeasNames = new List<string>();
@@ -129,10 +131,52 @@ public partial class OverlayWindow : Window
             allMeasNames.AddRange(_laserManager.GetAllDeviceNames());
 
         if (allMeasNames.Count > 0)
-        {
             MeasCombo.ItemsSource = allMeasNames;
-            MeasCombo.SelectedIndex = 0;
+
+        // Apply saved preferences if provided
+        if (_pendingPrefs != null)
+        {
+            CrosshairCheckBox.IsChecked = _pendingPrefs.ShowCrosshair;
+            ClickToMoveCheckBox.IsChecked = _pendingPrefs.ClickToMoveEnabled;
+            ChartCheckBox.IsChecked = _pendingPrefs.ShowChartOverlay;
+
+            // Select last camera by name, fallback to first
+            var camIdx = string.IsNullOrEmpty(_pendingPrefs.LastSelectedCamera)
+                ? -1
+                : cameraNames.IndexOf(_pendingPrefs.LastSelectedCamera);
+            CameraCombo.SelectedIndex = camIdx >= 0 ? camIdx : (cameraNames.Count > 0 ? 0 : -1);
+
+            // Select last measurement device by name, fallback to first
+            var measIdx = string.IsNullOrEmpty(_pendingPrefs.LastSelectedMeasurementDevice)
+                ? -1
+                : allMeasNames.IndexOf(_pendingPrefs.LastSelectedMeasurementDevice);
+            MeasCombo.SelectedIndex = measIdx >= 0 ? measIdx : (allMeasNames.Count > 0 ? 0 : -1);
+
+            // Auto-start live feed
+            if (CameraCombo.SelectedIndex >= 0)
+                StartFeed();
         }
+        else
+        {
+            if (cameraNames.Count > 0)
+                CameraCombo.SelectedIndex = 0;
+            if (allMeasNames.Count > 0)
+                MeasCombo.SelectedIndex = 0;
+        }
+    }
+
+    public void ApplyPreferences(UserPreferences prefs)
+    {
+        _pendingPrefs = prefs;
+    }
+
+    public void SavePreferences(UserPreferences prefs)
+    {
+        prefs.ShowCrosshair = _showCrosshair;
+        prefs.ClickToMoveEnabled = _clickToMoveEnabled;
+        prefs.ShowChartOverlay = _showChart;
+        prefs.LastSelectedCamera = CameraCombo.SelectedItem as string;
+        prefs.LastSelectedMeasurementDevice = MeasCombo.SelectedItem as string;
     }
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)

@@ -125,6 +125,9 @@
                 <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="E_xit" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="Exit_Click"/>
             </MenuItem>
+            <MenuItem Header="_Edit" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
+                <MenuItem Header="_Settings..." Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="EditSettings_Click"/>
+            </MenuItem>
             <MenuItem Header="_Camera" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
                 <MenuItem Header="_Config" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="CameraConfig_Click"/>
                 <Separator Style="{StaticResource MenuSeparator}"/>

@@ -1,0 +1,69 @@
+<Window x:Class="Horizon.App.DatasetDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Load Dataset" Height="380" Width="460"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{DynamicResource Theme.BackgroundBrush}"
+        Foreground="{DynamicResource Theme.ForegroundBrush}">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="0" Text="Saved Datasets" FontSize="13" FontWeight="SemiBold"
+                   Foreground="{DynamicResource Theme.AccentBrush}" Margin="0,0,0,8"/>
+
+        <!-- Dataset list -->
+        <ListBox Grid.Row="1" x:Name="DatasetList"
+                 Background="{DynamicResource Theme.BackgroundAltBrush}"
+                 Foreground="{DynamicResource Theme.ForegroundBrush}"
+                 BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                 FontFamily="Consolas" FontSize="11"
+                 SelectionChanged="DatasetList_SelectionChanged">
+            <ListBox.Resources>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundBrush}"/>
+                    <Setter Property="Padding" Value="6,4"/>
+                    <Style.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource Theme.HighlightBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="#FF333337"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </ListBox.Resources>
+        </ListBox>
+
+        <!-- Info panel -->
+        <Border Grid.Row="2" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2"
+                Padding="8,4" Margin="0,6,0,0">
+            <StackPanel>
+                <TextBlock x:Name="InfoNameText" FontSize="11" FontFamily="Consolas"
+                           Foreground="{DynamicResource Theme.ForegroundBrush}" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="InfoPathText" FontSize="10" FontFamily="Consolas"
+                           Foreground="#FF808080" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                <TextBlock x:Name="InfoDetailText" FontSize="10" FontFamily="Consolas"
+                           Foreground="#FF4EC9B0" Margin="0,2,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Content="Open Folder" FontSize="10" Padding="10,5" Margin="0,0,6,0"
+                    Click="OpenFolder_Click"/>
+            <Button x:Name="LoadBtn" Content="Load" FontSize="10" Padding="14,5" Margin="0,0,6,0"
+                    Click="Load_Click" IsEnabled="False" Background="#FF0078D4" Foreground="White"/>
+            <Button Content="Cancel" FontSize="10" Padding="10,5" IsCancel="True"
+                    Click="Cancel_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

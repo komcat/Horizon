@@ -7,6 +7,7 @@ using Horizon.Camera;
 using Horizon.Camera.Models;
 using System.Collections.Specialized;
 using System.Windows.Input;
+using Horizon.Common;
 using Horizon.Core;
 using Horizon.CurrentMeasurement;
 using Horizon.CurrentMeasurement.Interfaces;
@@ -23,6 +24,7 @@ public partial class MainWindow : Window
 
     private List<RegisteredCamera> _registeredCameras = new();
     private OverlayWindow? _overlayWindow;
+    private UserPreferences _prefs = new();
 
     private static readonly string SettingsDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon");
@@ -62,6 +64,20 @@ public partial class MainWindow : Window
         // Initialize and auto-connect are handled by SplashWindow before MainWindow is shown
         LoadRegisteredCameras();
         RefreshHardwareTree();
+
+        // Load user preferences and apply auto-start behaviors
+        _prefs = UserPreferences.Load();
+
+        if (_prefs.AutoStartMeasurementPolling && _context.IsInitialized
+            && _context.CurrentMeasurementManager.GetAllDeviceNames().Count > 0)
+        {
+            _context.CurrentMeasurementManager.StartPolling();
+        }
+
+        if (_prefs.AutoOpenTopView)
+        {
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, OpenOverlayWithPrefs);
+        }
     }
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -78,6 +94,10 @@ public partial class MainWindow : Window
         StopAllJogPanels();
         StopAllTeachPanels();
         StopAllHexScanPanels();
+        StopAllTrainerPanels();
+        if (_overlayWindow is { IsVisible: true })
+            _overlayWindow.SavePreferences(_prefs);
+        _prefs.Save();
         _overlayWindow?.Close();
         SaveWindowState();
         SaveDockLayout();
@@ -974,9 +994,10 @@ public partial class MainWindow : Window
     {
         if (_overlayWindow != null)
         {
-            // Toggle: if already open, bring to front or close
             if (_overlayWindow.IsVisible)
             {
+                _overlayWindow.SavePreferences(_prefs);
+                _prefs.Save();
                 _overlayWindow.Close();
                 _overlayWindow = null;
                 return;
@@ -984,6 +1005,11 @@ public partial class MainWindow : Window
             _overlayWindow = null;
         }
 
+        OpenOverlayWithPrefs();
+    }
+
+    private void OpenOverlayWithPrefs()
+    {
         _overlayWindow = new OverlayWindow(
             _context.CameraManager,
             _context.CurrentMeasurementManager,
@@ -991,8 +1017,23 @@ public partial class MainWindow : Window
             _context.MotionManager,
             _context.LaserControllerManager);
 
-        _overlayWindow.Closed += (_, _) => _overlayWindow = null;
+        _overlayWindow.ApplyPreferences(_prefs);
+        _overlayWindow.Closed += (_, _) =>
+        {
+            if (_overlayWindow != null)
+            {
+                _overlayWindow.SavePreferences(_prefs);
+                _prefs.Save();
+            }
+            _overlayWindow = null;
+        };
         _overlayWindow.Show();
+    }
+
+    private void EditSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new SettingsWindow(_prefs) { Owner = this };
+        dlg.ShowDialog();
     }
 
     private void OpenCurrentChartPanel(string deviceName, List<string> channelKeys)
@@ -1174,6 +1215,21 @@ public partial class MainWindow : Window
         foreach (var doc in hexDocs)
         {
             if (doc.Content is HexScanPanel panel)
+                panel.StopPolling();
+        }
+    }
+
+    private void StopAllTrainerPanels()
+    {
+        var trainerDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId == "trainer")
+            .ToList();
+
+        foreach (var doc in trainerDocs)
+        {
+            if (doc.Content is TrainerPanel panel)
                 panel.StopPolling();
         }
     }
@@ -1367,21 +1423,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        var placeholder = new TextBlock
-        {
-            Text = "Trainer — Coming Soon",
-            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
-            FontSize = 16,
-            Foreground = System.Windows.Media.Brushes.Gray,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
-        };
+        var panel = new TrainerPanel(_context);
 
         var doc = new LayoutDocument
         {
             Title = "Trainer",
             ContentId = contentId,
-            Content = placeholder
+            Content = panel
         };
 
         var docPane = DockManager.Layout

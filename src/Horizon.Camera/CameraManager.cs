@@ -10,6 +10,7 @@ public sealed class CameraManager : IDisposable
     private readonly ConcurrentDictionary<string, ManagedCamera> _cameras = new();
     private readonly ConcurrentDictionary<string, SubscriberInfo> _subscribers = new();
     private readonly ConcurrentDictionary<string, string> _displayNames = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, CameraFrameData> _lastBroadcastFrames = new();
     private volatile bool _broadcastRunning;
     private CancellationTokenSource? _broadcastCts;
     private Task? _broadcastTask;
@@ -299,8 +300,18 @@ public sealed class CameraManager : IDisposable
         if (!_cameras.TryGetValue(cameraId, out var managed)) return false;
 
         var frame = new CameraFrameData();
-        if (!managed.Hardware.CaptureFrame(frame))
-            return false;
+        bool grabbed = managed.Hardware.CaptureFrame(frame);
+
+        // If direct capture failed (camera busy with continuous grabbing),
+        // use the latest broadcast frame instead
+        if (!grabbed)
+        {
+            if (_lastBroadcastFrames.TryGetValue(cameraId, out var cached) &&
+                cached.ImageData != null && cached.ImageData.Length > 0)
+                frame = cached;
+            else
+                return false;
+        }
 
         var filePath = Path.Combine(_imageOutputDirectory, filename);
         if (SaveFrameToBmp(frame, filePath))
@@ -334,6 +345,9 @@ public sealed class CameraManager : IDisposable
     private void BroadcastFrame(CameraFrameData frame)
     {
         if (!_broadcastRunning) return;
+
+        // Cache latest frame for snapshot capture while grabbing
+        _lastBroadcastFrames[frame.CameraId] = frame;
 
         foreach (var kvp in _subscribers)
         {
