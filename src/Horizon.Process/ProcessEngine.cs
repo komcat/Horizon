@@ -13,6 +13,34 @@ public sealed class ProcessEngine
     public Action<int, bool>? OnStepCompleted;
     public Action<int, int, int>? OnLoopIteration; // (stepIndex, current 1-based, total 0=infinite)
 
+    // Execution lock — only one caller (ProcessPanel or RunPanel) at a time
+    private int _executionLock;
+
+    /// <summary>True when ExecuteAsync is actively running.</summary>
+    public bool IsRunning => _executionLock != 0;
+
+    /// <summary>Name of the current owner (for diagnostics/UI).</summary>
+    public string? RunningOwner { get; private set; }
+
+    /// <summary>
+    /// Attempt to acquire exclusive execution rights.
+    /// Returns true if acquired, false if another caller already holds the lock.
+    /// </summary>
+    public bool TryAcquire(string owner)
+    {
+        if (Interlocked.CompareExchange(ref _executionLock, 1, 0) != 0)
+            return false;
+        RunningOwner = owner;
+        return true;
+    }
+
+    /// <summary>Release execution rights.</summary>
+    public void Release()
+    {
+        RunningOwner = null;
+        Interlocked.Exchange(ref _executionLock, 0);
+    }
+
     // Step-by-step mode
     private ManualResetEventSlim? _stepGate;
     public bool StepByStepMode { get; set; }
@@ -132,8 +160,7 @@ public sealed class ProcessEngine
         context.CancellationToken = ct;
         context.StepCount = CountSteps(steps);
 
-        if (StepByStepMode)
-            _stepGate = new ManualResetEventSlim(false);
+        _stepGate = new ManualResetEventSlim(false);
 
         try
         {
@@ -142,7 +169,7 @@ public sealed class ProcessEngine
         finally
         {
             context.EndTime = DateTimeOffset.UtcNow;
-            _stepGate?.Dispose();
+            _stepGate.Dispose();
             _stepGate = null;
         }
     }

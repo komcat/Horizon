@@ -10,7 +10,6 @@ using Horizon.Core;
 using Horizon.Process;
 using Horizon.Process.Interfaces;
 using Horizon.Process.Models;
-using Microsoft.Win32;
 using Serilog;
 
 namespace Horizon.App;
@@ -90,6 +89,54 @@ public partial class ProcessPanel : UserControl
                     ToolTip = plugin.Description
                 };
                 categoryItem.Items.Add(pluginItem);
+            }
+
+            CatalogTree.Items.Add(categoryItem);
+        }
+    }
+
+    private void CatalogSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var filter = CatalogSearchBox.Text.Trim();
+        if (string.IsNullOrEmpty(filter))
+        {
+            // Show all — restore full catalog
+            PopulateCatalog();
+            return;
+        }
+
+        CatalogTree.Items.Clear();
+        var categories = _registry.GetByCategory();
+
+        foreach (var (category, plugins) in categories.OrderBy(c => c.Key))
+        {
+            var matched = plugins.Where(p =>
+                p.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                p.Category.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                (p.Description ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+
+            if (matched.Count == 0) continue;
+
+            var categoryItem = new TreeViewItem
+            {
+                Header = $"{category} ({matched.Count})",
+                IsExpanded = true,
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 11,
+                Foreground = (Brush)FindResource("Theme.ForegroundBrush")
+            };
+
+            foreach (var plugin in matched)
+            {
+                categoryItem.Items.Add(new TreeViewItem
+                {
+                    Header = plugin.DisplayName,
+                    Tag = plugin,
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 11,
+                    Foreground = (Brush)FindResource("Theme.ForegroundBrush"),
+                    ToolTip = plugin.Description
+                });
             }
 
             CatalogTree.Items.Add(categoryItem);
@@ -253,6 +300,11 @@ public partial class ProcessPanel : UserControl
             MoveSelectedDown();
             e.Handled = true;
         }
+        else if (e.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            ToggleSelectedEnable();
+            e.Handled = true;
+        }
     }
 
     private void OnPropertyValuesChanged()
@@ -395,19 +447,13 @@ public partial class ProcessPanel : UserControl
 
         Directory.CreateDirectory(DefaultProcessDir);
 
-        var dlg = new SaveFileDialog
-        {
-            Title = "Save Process Program",
-            Filter = "Horizon Process (*.hproc)|*.hproc",
-            DefaultExt = ".hproc",
-            InitialDirectory = DefaultProcessDir,
-            FileName = "Untitled"
-        };
+        var dlg = new FilePickerDialog(FilePickerMode.Save, DefaultProcessDir, ".hproc", "Horizon Process", "Untitled")
+        { Owner = Window.GetWindow(this) };
 
-        if (dlg.ShowDialog() != true) return;
+        if (dlg.ShowDialog() != true || dlg.SelectedPath == null) return;
 
-        _currentFilePath = dlg.FileName;
-        SaveToFile(dlg.FileName);
+        _currentFilePath = dlg.SelectedPath;
+        SaveToFile(dlg.SelectedPath);
     }
 
     private void SaveToFile(string filePath)
@@ -436,28 +482,32 @@ public partial class ProcessPanel : UserControl
     {
         Directory.CreateDirectory(DefaultProcessDir);
 
-        var dlg = new OpenFileDialog
-        {
-            Title = "Open Process Program",
-            Filter = "Horizon Process (*.hproc)|*.hproc",
-            DefaultExt = ".hproc",
-            InitialDirectory = DefaultProcessDir
-        };
+        var dlg = new FilePickerDialog(FilePickerMode.Open, DefaultProcessDir, ".hproc", "Horizon Process")
+        { Owner = Window.GetWindow(this) };
 
-        if (dlg.ShowDialog() != true) return;
+        if (dlg.ShowDialog() != true || dlg.SelectedPath == null) return;
 
-        if (LoadProgram(dlg.FileName))
-            SaveLastProgramPath(dlg.FileName);
+        if (LoadProgram(dlg.SelectedPath))
+            SaveLastProgramPath(dlg.SelectedPath);
     }
 
     // --- Enable / Disable ---
 
     private void ToggleEnable_Click(object sender, RoutedEventArgs e)
     {
-        var idx = BuilderList.SelectedIndex;
-        if (idx < 0 || idx >= _builderSteps.Count) return;
+        ToggleSelectedEnable();
+    }
 
-        _builderSteps[idx].IsEnabled = !_builderSteps[idx].IsEnabled;
+    private void ToggleSelectedEnable()
+    {
+        var indices = GetSelectedIndices();
+        if (indices.Count == 0) return;
+
+        // Determine target state: if any selected item is enabled, disable all; otherwise enable all
+        bool anyEnabled = indices.Any(i => _builderSteps[i].IsEnabled);
+        foreach (var idx in indices)
+            _builderSteps[idx].IsEnabled = !anyEnabled;
+
         RefreshBuilderList();
     }
 
@@ -525,6 +575,14 @@ public partial class ProcessPanel : UserControl
             return;
         }
 
+        var engine = _context.ProcessEngine;
+        if (!engine.TryAcquire("ProcessPanel"))
+        {
+            StatusText.Text = $"Engine busy — {engine.RunningOwner} is running";
+            Log.Warning("Process: Cannot run — engine locked by {Owner}", engine.RunningOwner);
+            return;
+        }
+
         _isRunning = true;
         _cts = new CancellationTokenSource();
         RunBtn.IsEnabled = false;
@@ -537,7 +595,6 @@ public partial class ProcessPanel : UserControl
             enabledCount,
             _currentFilePath != null ? $" — {Path.GetFileName(_currentFilePath)}" : "");
 
-        var engine = _context.ProcessEngine;
         engine.StepByStepMode = StepModeCheck.IsChecked == true;
 
         try
@@ -648,6 +705,7 @@ public partial class ProcessPanel : UserControl
         finally
         {
             _isRunning = false;
+            engine.Release();
             RunBtn.IsEnabled = true;
             StopBtn.IsEnabled = false;
             ContinueBtn.IsEnabled = false;

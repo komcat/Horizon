@@ -44,44 +44,74 @@
         <ToolBar Grid.Row="0" Background="{DynamicResource Theme.MenuBarBrush}" Band="0" BandIndex="0">
             <Button Click="New_Click" Padding="8,3" FontFamily="Consolas" FontSize="11"
                     ToolTip="New program">
-                <TextBlock><Run FontFamily="Segoe MDL2 Assets" Text="&#xE7C3;" FontSize="12" Foreground="#5B9BD5"/> New</TextBlock>
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="pack://application:,,,/Assets/new_file_program.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <TextBlock Text=" New" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" VerticalAlignment="Center"/>
+                </StackPanel>
             </Button>
             <Button Click="Open_Click" Padding="8,3" FontFamily="Consolas" FontSize="11"
                     ToolTip="Open program">
-                <TextBlock><Run FontFamily="Segoe MDL2 Assets" Text="&#xE838;" FontSize="12" Foreground="#5B9BD5"/> Open</TextBlock>
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="pack://application:,,,/Assets/load_file_generic.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <TextBlock Text=" Open" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" VerticalAlignment="Center"/>
+                </StackPanel>
             </Button>
             <Button Click="Save_Click" Padding="8,3" FontFamily="Consolas" FontSize="11"
                     ToolTip="Save program">
-                <TextBlock><Run FontFamily="Segoe MDL2 Assets" Text="&#xE74E;" FontSize="12" Foreground="#5B9BD5"/> Save</TextBlock>
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="pack://application:,,,/Assets/save_file_generic.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <TextBlock Text=" Save" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" VerticalAlignment="Center"/>
+                </StackPanel>
             </Button>
             <Separator/>
             <Button Click="Delete_Click" Padding="8,3" FontFamily="Consolas" FontSize="11"
                     Foreground="#FF6B68" ToolTip="Delete selected step">
-                <TextBlock><Run FontFamily="Segoe MDL2 Assets" Text="&#xE74D;"/> Del</TextBlock>
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="pack://application:,,,/Assets/Delete.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <TextBlock Text=" Del" FontFamily="Consolas" FontSize="11" Foreground="#FF6B68" VerticalAlignment="Center"/>
+                </StackPanel>
             </Button>
             <Button Click="MoveUp_Click" Padding="8,3" FontFamily="Consolas" FontSize="11"
                     ToolTip="Move step up">
-                <TextBlock><Run FontFamily="Segoe MDL2 Assets" Text="&#xE74A;" FontSize="12" Foreground="#5B9BD5"/> Up</TextBlock>
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="pack://application:,,,/Assets/UpArrow.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <TextBlock Text=" Up" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" VerticalAlignment="Center"/>
+                </StackPanel>
             </Button>
             <Button Click="MoveDown_Click" Padding="8,3" FontFamily="Consolas" FontSize="11"
                     ToolTip="Move step down">
-                <TextBlock><Run FontFamily="Segoe MDL2 Assets" Text="&#xE74B;" FontSize="12" Foreground="#5B9BD5"/> Dn</TextBlock>
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="pack://application:,,,/Assets/DownArrow.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <TextBlock Text=" Dn" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" VerticalAlignment="Center"/>
+                </StackPanel>
             </Button>
             <Separator/>
             <Button x:Name="RunBtn" Click="Run_Click" Padding="10,3" FontFamily="Consolas" FontSize="11"
                     FontWeight="Bold" ToolTip="Run sequence">
-                <TextBlock><Run FontFamily="Segoe MDL2 Assets" Text="&#xE768;" Foreground="#00CC00"/> <Run Foreground="#00CC00" FontWeight="Bold">Run</Run></TextBlock>
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="pack://application:,,,/Assets/Run.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <TextBlock Text=" Run" Foreground="#00CC00" FontWeight="Bold" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+                </StackPanel>
             </Button>
             <Button x:Name="StopBtn" Click="Stop_Click" Padding="10,3" FontFamily="Consolas" FontSize="11"
                     IsEnabled="False" ToolTip="Stop execution">
-                <TextBlock><Run FontFamily="Segoe MDL2 Assets" Text="&#xE71A;" Foreground="#FF4444"/> <Run Foreground="#FF4444">Stop</Run></TextBlock>
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="pack://application:,,,/Assets/Stop.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <TextBlock Text=" Stop" Foreground="#FF4444" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+                </StackPanel>
             </Button>
             <Separator/>
-            <CheckBox x:Name="StepModeCheck" Content="Step Mode" VerticalAlignment="Center" Margin="4,0"
-                      FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}"/>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0">
+                <Image Source="pack://application:,,,/Assets/StepMode.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality" Margin="0,0,4,0"/>
+                <CheckBox x:Name="StepModeCheck" Content="Step Mode" VerticalAlignment="Center"
+                          FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}"/>
+            </StackPanel>
             <Button x:Name="ContinueBtn" Click="Continue_Click" Padding="8,3" FontFamily="Consolas" FontSize="11"
                     IsEnabled="False" ToolTip="Continue to next step">
-                <TextBlock><Run FontFamily="Segoe MDL2 Assets" Text="&#xE76C;" Foreground="#FFB900"/> <Run>Next</Run></TextBlock>
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="pack://application:,,,/Assets/NextStep.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <TextBlock Text=" Next" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" VerticalAlignment="Center"/>
+                </StackPanel>
             </Button>
         </ToolBar>
 
@@ -102,6 +132,29 @@
                                FontWeight="SemiBold" Padding="6,4"
                                Background="{DynamicResource Theme.MenuBarBrush}"
                                Foreground="{DynamicResource Theme.ForegroundBrush}"/>
+                    <Grid DockPanel.Dock="Top">
+                        <TextBox x:Name="CatalogSearchBox"
+                                 FontFamily="Consolas" FontSize="11"
+                                 Padding="4,3" Margin="0"
+                                 Background="#FF2D2D30" Foreground="#FFFFD700"
+                                 BorderBrush="#FF3F3F46" BorderThickness="0,0,0,1"
+                                 TextChanged="CatalogSearchBox_TextChanged"/>
+                        <TextBlock Text="&#xE721; Search plugins..."
+                                   FontFamily="Segoe MDL2 Assets, Consolas" FontSize="11"
+                                   Foreground="#FF808080" Padding="6,4"
+                                   IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=CatalogSearchBox}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
                     <TreeView x:Name="CatalogTree" Background="{DynamicResource Theme.BackgroundBrush}"
                               Foreground="{DynamicResource Theme.ForegroundBrush}"
                               FontFamily="Consolas" FontSize="11"

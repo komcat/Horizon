@@ -1,0 +1,468 @@
+<UserControl x:Class="Horizon.App.RunPanel"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Background="{DynamicResource Theme.BackgroundBrush}"
+        Foreground="{DynamicResource Theme.ForegroundBrush}">
+
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#FF3E3E40"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFF1F1F1"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#FF333337"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FFF1F1F1"/>
+
+        <Style x:Key="PanelBtn" TargetType="Button">
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource Theme.BackgroundAltBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Theme.BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="2" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.HighlightBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.AccentBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- TreeViewItem style for dark theme -->
+        <Style TargetType="TreeViewItem">
+            <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundBrush}"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1*" MinWidth="200"/>
+            <ColumnDefinition Width="5"/>
+            <ColumnDefinition Width="3*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- LEFT PANEL (25%) -->
+        <Border Grid.Column="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1" Margin="4">
+            <TabControl x:Name="MainTabs" FontFamily="Consolas" FontSize="11"
+                        Background="{DynamicResource Theme.BackgroundBrush}"
+                        BorderBrush="{DynamicResource Theme.BorderBrush}">
+                <TabControl.Template>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Background="{DynamicResource Theme.MenuBarBrush}"
+                                    BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="0,0,0,1">
+                                <TabPanel IsItemsHost="True" Margin="2,2,2,0"/>
+                            </Border>
+                            <Border Grid.Row="1" Background="{DynamicResource Theme.BackgroundBrush}"
+                                    BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="0">
+                                <ContentPresenter ContentSource="SelectedContent"/>
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </TabControl.Template>
+                <TabControl.Resources>
+                    <Style TargetType="TabItem">
+                        <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundBrush}"/>
+                        <Setter Property="FontFamily" Value="Consolas"/>
+                        <Setter Property="FontSize" Value="11"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="TabItem">
+                                    <Border x:Name="TabBd" Padding="10,4" Margin="0,0,1,0"
+                                            Background="{DynamicResource Theme.MenuBarBrush}"
+                                            BorderBrush="{DynamicResource Theme.BorderBrush}"
+                                            BorderThickness="1,1,1,0">
+                                        <ContentPresenter ContentSource="Header"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="TabBd" Property="Background" Value="{DynamicResource Theme.BackgroundBrush}"/>
+                                            <Setter TargetName="TabBd" Property="Margin" Value="0,0,1,-1"/>
+                                        </Trigger>
+                                        <MultiTrigger>
+                                            <MultiTrigger.Conditions>
+                                                <Condition Property="IsMouseOver" Value="True"/>
+                                                <Condition Property="IsSelected" Value="False"/>
+                                            </MultiTrigger.Conditions>
+                                            <Setter TargetName="TabBd" Property="Background" Value="{DynamicResource Theme.HighlightBrush}"/>
+                                        </MultiTrigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </TabControl.Resources>
+
+                <!-- ===== EXECUTE TAB ===== -->
+                <TabItem Header="Execute">
+                    <DockPanel Background="{DynamicResource Theme.BackgroundBrush}">
+                        <!-- Run / Pause / Stop buttons -->
+                        <Border DockPanel.Dock="Top" Background="{DynamicResource Theme.MenuBarBrush}" Padding="4">
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="RunBtn" Style="{StaticResource PanelBtn}" Click="Run_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Image Source="pack://application:,,,/Assets/Run.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        <TextBlock Text=" Run" Foreground="#00CC00" FontWeight="Bold" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="PauseBtn" Style="{StaticResource PanelBtn}" Click="Pause_Click"
+                                        IsEnabled="False" ToolTip="Pause after current step">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Image x:Name="PauseIconImg" Source="pack://application:,,,/Assets/Pause.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        <TextBlock x:Name="PauseLabel" Text=" Pause" Foreground="#FFB900" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="StopBtn" Style="{StaticResource PanelBtn}" Click="Stop_Click"
+                                        IsEnabled="False" ToolTip="Stop execution and hardware">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Image Source="pack://application:,,,/Assets/Stop.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        <TextBlock Text=" Stop" Foreground="#FF4444" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Enable Chain Execution checkbox -->
+                        <Border DockPanel.Dock="Top" Background="{DynamicResource Theme.MenuBarBrush}"
+                                Padding="6,3" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="0,0,0,1">
+                            <CheckBox x:Name="EnableChainCheck" Content="Enable Chain Execution"
+                                      FontFamily="Consolas" FontSize="11"
+                                      Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                      ToolTip="When enabled, Run executes the full chain instead of a single program"/>
+                        </Border>
+
+                        <!-- Header -->
+                        <TextBlock DockPanel.Dock="Top" x:Name="DeckNameText" Text="(No Deck Loaded)"
+                                   FontFamily="Consolas" FontSize="11" FontWeight="SemiBold"
+                                   Padding="6,6" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"/>
+
+                        <!-- TreeView: Deck > Slots > Programs -->
+                        <TreeView x:Name="ExecuteTree"
+                                  Background="{DynamicResource Theme.BackgroundBrush}"
+                                  Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                  BorderThickness="0"/>
+                    </DockPanel>
+                </TabItem>
+
+                <!-- ===== DECK TAB ===== -->
+                <TabItem Header="Deck">
+                    <DockPanel Background="{DynamicResource Theme.BackgroundBrush}">
+                        <!-- Deck management buttons -->
+                        <StackPanel DockPanel.Dock="Top" Background="{DynamicResource Theme.MenuBarBrush}">
+                            <StackPanel Orientation="Horizontal" Margin="4,4,4,0">
+                                <Button Style="{StaticResource PanelBtn}" Click="DeckNew_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Image Source="pack://application:,,,/Assets/new_file_deck.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        <TextBlock Text=" New" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource PanelBtn}" Click="DeckLoad_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Image Source="pack://application:,,,/Assets/load_file_generic.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        <TextBlock Text=" Load" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource PanelBtn}" Click="DeckSave_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Image Source="pack://application:,,,/Assets/save_file_generic.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        <TextBlock Text=" Save" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="4,2,4,4">
+                                <Button Style="{StaticResource PanelBtn}" Click="DeckEdit_Click">
+                                    <TextBlock>
+                                        <Run FontFamily="Segoe MDL2 Assets" Text="&#xE70F;" FontSize="12" Foreground="#FFB900"/>
+                                        <Run Text=" Edit Deck"/>
+                                    </TextBlock>
+                                </Button>
+                                <Button Style="{StaticResource PanelBtn}" Click="ChainEdit_Click">
+                                    <TextBlock>
+                                        <Run FontFamily="Segoe MDL2 Assets" Text="&#xE71B;" FontSize="12" Foreground="#00BFFF"/>
+                                        <Run Text=" Chain Exec"/>
+                                    </TextBlock>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Deck slots overview -->
+                        <TreeView x:Name="DeckTree"
+                                  Background="{DynamicResource Theme.BackgroundBrush}"
+                                  Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                  BorderThickness="0"/>
+                    </DockPanel>
+                </TabItem>
+            </TabControl>
+        </Border>
+
+        <!-- Splitter -->
+        <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
+                      Background="{DynamicResource Theme.BorderBrush}"/>
+
+        <!-- RIGHT PANEL (75%) -->
+        <Border Grid.Column="2" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1" Margin="4">
+            <Grid>
+                <!-- Empty state (default) -->
+                <TextBlock x:Name="EmptyRightText"
+                           Text="Select Edit Deck to configure slots and programs"
+                           FontFamily="Consolas" FontSize="12"
+                           Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                <!-- Chain Execution Editor (hidden by default) -->
+                <DockPanel x:Name="ChainEditorPanel" Visibility="Collapsed"
+                           Background="{DynamicResource Theme.BackgroundBrush}">
+
+                    <!-- Top bar -->
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource Theme.MenuBarBrush}"
+                            Padding="4" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="0,0,0,1">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Left" Style="{StaticResource PanelBtn}" Click="ChainEditorClose_Click">
+                                <TextBlock>
+                                    <Run FontFamily="Segoe MDL2 Assets" Text="&#xE72B;" FontSize="12" Foreground="#5B9BD5"/>
+                                    <Run Text=" Close"/>
+                                </TextBlock>
+                            </Button>
+                            <TextBlock Text="Chain Execution" FontFamily="Consolas" FontSize="12" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Margin="8,0,0,0"
+                                       Foreground="{DynamicResource Theme.ForegroundBrush}"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button x:Name="AddLinkBtn" Style="{StaticResource PanelBtn}" Click="AddLink_Click"
+                                        IsEnabled="False" ToolTip="Connect selected source → target">
+                                    <TextBlock>
+                                        <Run FontFamily="Segoe MDL2 Assets" Text="&#xE71B;" Foreground="#00BFFF"/>
+                                        <Run Text=" Add Link"/>
+                                    </TextBlock>
+                                </Button>
+                                <Button x:Name="RemoveLinkBtn" Style="{StaticResource PanelBtn}" Click="RemoveLink_Click"
+                                        IsEnabled="False" ToolTip="Remove selected link">
+                                    <TextBlock>
+                                        <Run FontFamily="Segoe MDL2 Assets" Text="&#xE74D;" Foreground="#FF6B68"/>
+                                        <Run Text=" Remove"/>
+                                    </TextBlock>
+                                </Button>
+                                <Button x:Name="ChainRunBtn" Style="{StaticResource PanelBtn}" Click="ChainRun_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Image Source="pack://application:,,,/Assets/Run.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        <TextBlock Text=" Run Chain" Foreground="#00CC00" FontWeight="Bold" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- Instruction bar -->
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource Theme.BackgroundAltBrush}"
+                            Padding="8,4" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="0,0,0,1">
+                        <TextBlock FontFamily="Consolas" FontSize="10" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"
+                                   Text="Click a block to select source (blue), click another for target (orange), then Add Link. Click a link label to edit its condition."/>
+                    </Border>
+
+                    <!-- Bottom: Link condition editor -->
+                    <Border x:Name="LinkEditorBar" DockPanel.Dock="Bottom" Visibility="Collapsed"
+                            Background="{DynamicResource Theme.BackgroundAltBrush}"
+                            Padding="8,6" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="0,1,0,0">
+                        <StackPanel>
+                            <TextBlock x:Name="LinkEditorTitle" FontFamily="Consolas" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="#5B9BD5" Margin="0,0,0,6"/>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Condition:" FontFamily="Consolas" FontSize="11"
+                                           Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBox x:Name="LinkConditionBox" Width="220" FontFamily="Consolas" FontSize="11"
+                                         Padding="4,3" Background="#FF2D2D30" Foreground="#FFF1F1F1"
+                                         BorderBrush="#FF3F3F46" BorderThickness="1" Margin="0,0,12,0"/>
+                                <TextBlock Text="Delay (sec):" FontFamily="Consolas" FontSize="11"
+                                           Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBox x:Name="LinkDelayBox" Text="3" Width="50" FontFamily="Consolas" FontSize="11"
+                                         Padding="4,3" Background="#FF2D2D30" Foreground="#FFF1F1F1"
+                                         BorderBrush="#FF3F3F46" BorderThickness="1" Margin="0,0,12,0"/>
+                                <Button Style="{StaticResource PanelBtn}" Click="ApplyLinkEdit_Click">
+                                    <TextBlock>
+                                        <Run FontFamily="Segoe MDL2 Assets" Text="&#xE73E;" Foreground="#00CC00"/>
+                                        <Run Text=" Apply"/>
+                                    </TextBlock>
+                                </Button>
+                            </StackPanel>
+                            <TextBlock Text="Examples: val1 > 0.000400,  result == pass,  count >= 10,  (empty = always proceed)"
+                                       FontFamily="Consolas" FontSize="10"
+                                       Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"
+                                       Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Canvas area for flow blocks and connections -->
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                                  Background="{DynamicResource Theme.BackgroundBrush}">
+                        <Canvas x:Name="ChainCanvas" MinWidth="400" MinHeight="400"
+                                Background="{DynamicResource Theme.BackgroundBrush}"/>
+                    </ScrollViewer>
+                </DockPanel>
+
+                <!-- Deck Editor (hidden by default) -->
+                <DockPanel x:Name="DeckEditorPanel" Visibility="Collapsed"
+                           Background="{DynamicResource Theme.BackgroundBrush}">
+
+                    <!-- Top bar with Close button -->
+                    <Border DockPanel.Dock="Top" Background="{DynamicResource Theme.MenuBarBrush}"
+                            Padding="4" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="0,0,0,1">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Left" Style="{StaticResource PanelBtn}" Click="DeckEditorClose_Click">
+                                <TextBlock>
+                                    <Run FontFamily="Segoe MDL2 Assets" Text="&#xE72B;" FontSize="12" Foreground="#5B9BD5"/>
+                                    <Run Text=" Close"/>
+                                </TextBlock>
+                            </Button>
+                            <TextBlock Text="Deck Editor" FontFamily="Consolas" FontSize="12" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Margin="8,0,0,0"
+                                       Foreground="{DynamicResource Theme.ForegroundBrush}"/>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- Deck editor body: Slots list on left, Programs on right -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1*" MinWidth="150"/>
+                            <ColumnDefinition Width="5"/>
+                            <ColumnDefinition Width="2*" MinWidth="200"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Slots list -->
+                        <DockPanel Grid.Column="0">
+                            <Border DockPanel.Dock="Top" Background="{DynamicResource Theme.MenuBarBrush}" Padding="4">
+                                <DockPanel>
+                                    <TextBlock Text="Slots" FontFamily="Consolas" FontSize="11" FontWeight="SemiBold"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource Theme.ForegroundBrush}"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Style="{StaticResource PanelBtn}" Click="SlotAdd_Click" Padding="6,2"
+                                                ToolTip="Add slot">
+                                            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE710;" FontSize="11" Foreground="#00CC00"/>
+                                        </Button>
+                                        <Button Style="{StaticResource PanelBtn}" Click="SlotRemove_Click" Padding="6,2"
+                                                ToolTip="Remove slot">
+                                            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE74D;" FontSize="11" Foreground="#FF6B68"/>
+                                        </Button>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+                            <ListBox x:Name="SlotListBox"
+                                     Background="{DynamicResource Theme.BackgroundBrush}"
+                                     Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                     FontFamily="Consolas" FontSize="11"
+                                     BorderThickness="0"
+                                     SelectionChanged="SlotList_SelectionChanged">
+                                <ListBox.Resources>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <Border x:Name="Bd" Background="Transparent" Padding="6,4" SnapsToDevicePixels="True">
+                                                        <ContentPresenter/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#FF3E3E40"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#FF333337"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.Resources>
+                            </ListBox>
+                        </DockPanel>
+
+                        <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
+                                      Background="{DynamicResource Theme.BorderBrush}"/>
+
+                        <!-- Programs in selected slot -->
+                        <DockPanel Grid.Column="2">
+                            <Border DockPanel.Dock="Top" Background="{DynamicResource Theme.MenuBarBrush}" Padding="4">
+                                <DockPanel>
+                                    <TextBlock x:Name="SlotProgramsHeader" Text="Programs" FontFamily="Consolas" FontSize="11"
+                                               FontWeight="SemiBold" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource Theme.ForegroundBrush}"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Style="{StaticResource PanelBtn}" Click="ProgramAdd_Click" Padding="6,2"
+                                                ToolTip="Add program">
+                                            <Image Source="pack://application:,,,/Assets/new_file_program.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        </Button>
+                                        <Button Style="{StaticResource PanelBtn}" Click="ProgramRemove_Click" Padding="6,2"
+                                                ToolTip="Remove program">
+                                            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE74D;" FontSize="11" Foreground="#FF6B68"/>
+                                        </Button>
+                                        <Button Style="{StaticResource PanelBtn}" Click="ProgramMoveUp_Click" Padding="6,2"
+                                                ToolTip="Move up">
+                                            <Image Source="pack://application:,,,/Assets/UpArrow.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        </Button>
+                                        <Button Style="{StaticResource PanelBtn}" Click="ProgramMoveDown_Click" Padding="6,2"
+                                                ToolTip="Move down">
+                                            <Image Source="pack://application:,,,/Assets/DownArrow.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        </Button>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+                            <ListBox x:Name="ProgramListBox"
+                                     Background="{DynamicResource Theme.BackgroundBrush}"
+                                     Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                     FontFamily="Consolas" FontSize="11"
+                                     BorderThickness="0">
+                                <ListBox.Resources>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <Border x:Name="Bd" Background="Transparent" Padding="6,3" SnapsToDevicePixels="True">
+                                                        <ContentPresenter/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#FF3E3E40"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#FF333337"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.Resources>
+                            </ListBox>
+                        </DockPanel>
+                    </Grid>
+                </DockPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

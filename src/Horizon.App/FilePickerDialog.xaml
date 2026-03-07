@@ -1,0 +1,151 @@
+<Window x:Class="Horizon.App.FilePickerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Open File" Height="480" Width="560"
+        WindowStartupLocation="CenterOwner"
+        Background="#FF1E1E1E" Foreground="#FFF1F1F1"
+        MinHeight="320" MinWidth="400">
+
+    <Window.Resources>
+        <Style x:Key="PickerBtn" TargetType="Button">
+            <Setter Property="Padding" Value="12,5"/>
+            <Setter Property="Margin" Value="3,0"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="#FFF1F1F1"/>
+            <Setter Property="Background" Value="#FF3E3E42"/>
+            <Setter Property="BorderBrush" Value="#FF3F3F46"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="2" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FF505054"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FF0078D4"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Breadcrumb / current path -->
+        <Border Grid.Row="0" Background="#FF2D2D30" BorderBrush="#FF3F3F46" BorderThickness="1"
+                CornerRadius="2" Padding="6,4" Margin="0,0,0,6">
+            <DockPanel>
+                <Button DockPanel.Dock="Left" Style="{StaticResource PickerBtn}" Padding="6,2" Margin="0,0,6,0"
+                        Click="NavigateUp_Click" ToolTip="Go up">
+                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE74A;" FontSize="11" Foreground="#5B9BD5"/>
+                </Button>
+                <TextBlock x:Name="PathText" Text="" FontFamily="Consolas" FontSize="11"
+                           Foreground="#FF9CDCFE" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            </DockPanel>
+        </Border>
+
+        <!-- File list -->
+        <Border Grid.Row="1" Background="#FF252526" BorderBrush="#FF3F3F46" BorderThickness="1" CornerRadius="2">
+            <ListBox x:Name="FileList" Background="Transparent" BorderThickness="0"
+                     FontFamily="Consolas" FontSize="11"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     MouseDoubleClick="FileList_MouseDoubleClick">
+                <ListBox.Resources>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border x:Name="Bd" Background="Transparent" Padding="6,4" SnapsToDevicePixels="True">
+                                        <ContentPresenter/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="#FF0078D4"/>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="#FF3E3E42"/>
+                                        </Trigger>
+                                        <MultiTrigger>
+                                            <MultiTrigger.Conditions>
+                                                <Condition Property="IsSelected" Value="True"/>
+                                                <Condition Property="IsMouseOver" Value="True"/>
+                                            </MultiTrigger.Conditions>
+                                            <Setter TargetName="Bd" Property="Background" Value="#FF0078D4"/>
+                                        </MultiTrigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.Resources>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="20"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="120"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding Icon}" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                       Foreground="{Binding IconColor}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Name}" Foreground="#FFF1F1F1"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Grid.Column="2" Text="{Binding Modified}" Foreground="#FF808080"
+                                       VerticalAlignment="Center" FontSize="10"/>
+                            <TextBlock Grid.Column="3" Text="{Binding Size}" Foreground="#FF808080"
+                                       VerticalAlignment="Center" TextAlignment="Right" FontSize="10"/>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Border>
+
+        <!-- File name + filter row -->
+        <Grid Grid.Row="2" Margin="0,6,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="File name:" FontFamily="Consolas" FontSize="11"
+                       Foreground="#FFF1F1F1" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBox x:Name="FileNameBox" Grid.Column="1" FontFamily="Consolas" FontSize="11"
+                     Padding="4,4" Background="#FF2D2D30" Foreground="#FFF1F1F1"
+                     BorderBrush="#FF3F3F46" BorderThickness="1"
+                     KeyDown="FileNameBox_KeyDown"/>
+        </Grid>
+
+        <!-- Filter label + buttons -->
+        <DockPanel Grid.Row="3" Margin="0,6,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button x:Name="ActionBtn" Style="{StaticResource PickerBtn}" Content="Open"
+                        Click="Action_Click" IsDefault="True" MinWidth="70"/>
+                <Button Style="{StaticResource PickerBtn}" Content="Cancel"
+                        Click="Cancel_Click" IsCancel="True" MinWidth="70"/>
+            </StackPanel>
+            <TextBlock x:Name="FilterText" Text="" FontFamily="Consolas" FontSize="10"
+                       Foreground="#FF808080" VerticalAlignment="Center"/>
+        </DockPanel>
+    </Grid>
+</Window>

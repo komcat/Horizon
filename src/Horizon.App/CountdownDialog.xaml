@@ -1,0 +1,42 @@
+<Window x:Class="Horizon.App.CountdownDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Next Program" SizeToContent="Height" Width="380"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#FF1E1E1E" Foreground="#FFF1F1F1">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Next program label -->
+        <TextBlock Grid.Row="0" x:Name="NextProgramText" Text="Next: program_name"
+                   FontFamily="Consolas" FontSize="13" FontWeight="SemiBold"
+                   Foreground="#FF5B9BD5" TextWrapping="Wrap" Margin="0,0,0,12"/>
+
+        <!-- Countdown display -->
+        <TextBlock Grid.Row="1" x:Name="CountdownText" Text="Starting in 3..."
+                   FontFamily="Consolas" FontSize="24" FontWeight="Bold"
+                   Foreground="#FFFFD700" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+
+        <!-- Progress bar -->
+        <ProgressBar Grid.Row="2" x:Name="CountdownBar" Height="6" Margin="0,0,0,16"
+                     Background="#FF2D2D30" Foreground="#FF0078D4" BorderThickness="0"
+                     Minimum="0" Maximum="100" Value="100"/>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center">
+            <Button x:Name="ContinueBtn" Content="Continue Now" Width="110" Padding="4,6" Margin="0,0,10,0"
+                    FontFamily="Consolas" FontSize="11"
+                    Click="Continue_Click"/>
+            <Button x:Name="StopBtn" Content="Stop" Width="110" Padding="4,6"
+                    FontFamily="Consolas" FontSize="11" Foreground="#FFFF4444"
+                    Click="Stop_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

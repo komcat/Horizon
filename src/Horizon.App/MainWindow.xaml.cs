@@ -74,6 +74,7 @@ public partial class MainWindow : Window
         StopAllCurrentChartPanels();
         StopAllLaserControllerPanels();
         StopAllProcessPanels();
+        StopAllRunPanels();
         StopAllJogPanels();
         StopAllTeachPanels();
         StopAllHexScanPanels();
@@ -1068,6 +1069,40 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RunPanel_Click(object sender, RoutedEventArgs e)
+    {
+        var contentId = "run_panel";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var panel = new RunPanel(_context);
+
+        var doc = new LayoutDocument
+        {
+            Title = "Run",
+            ContentId = contentId,
+            Content = panel
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+    }
+
     private void StopAllProcessPanels()
     {
         var processDocs = DockManager.Layout
@@ -1079,6 +1114,21 @@ public partial class MainWindow : Window
         foreach (var doc in processDocs)
         {
             if (doc.Content is ProcessPanel panel)
+                panel.StopExecution();
+        }
+    }
+
+    private void StopAllRunPanels()
+    {
+        var runDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId != null && d.ContentId.StartsWith("run_"))
+            .ToList();
+
+        foreach (var doc in runDocs)
+        {
+            if (doc.Content is RunPanel panel)
                 panel.StopExecution();
         }
     }
@@ -1290,6 +1340,90 @@ public partial class MainWindow : Window
             Title = "Hex Scan",
             ContentId = contentId,
             Content = panel
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+    }
+
+    private void TrainerPanel_Click(object sender, RoutedEventArgs e)
+    {
+        var contentId = "trainer";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var placeholder = new TextBlock
+        {
+            Text = "Trainer — Coming Soon",
+            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+            FontSize = 16,
+            Foreground = System.Windows.Media.Brushes.Gray,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var doc = new LayoutDocument
+        {
+            Title = "Trainer",
+            ContentId = contentId,
+            Content = placeholder
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+    }
+
+    private void VisionPanel_Click(object sender, RoutedEventArgs e)
+    {
+        var contentId = "vision";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var placeholder = new TextBlock
+        {
+            Text = "Vision — Coming Soon",
+            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+            FontSize = 16,
+            Foreground = System.Windows.Media.Brushes.Gray,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var doc = new LayoutDocument
+        {
+            Title = "Vision",
+            ContentId = contentId,
+            Content = placeholder
         };
 
         var docPane = DockManager.Layout

@@ -7,6 +7,7 @@
         xmlns:avalonDockTheme="clr-namespace:AvalonDock.Themes;assembly=AvalonDock.Themes.VS2013"
         mc:Ignorable="d"
         Title="Horizon" Height="700" Width="1100"
+        Icon="pack://application:,,,/Assets/HorizonApp.png"
         WindowStartupLocation="Manual"
         Background="{DynamicResource Theme.BackgroundBrush}"
         Foreground="{DynamicResource Theme.ForegroundBrush}">
@@ -138,6 +139,8 @@
                 <MenuItem Header="_Output" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ViewOutput_Click"/>
             </MenuItem>
             <MenuItem Header="_Production" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
+                <MenuItem Header="_Run Page" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="RunPanel_Click"/>
+                <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="_Top View &amp; Chart" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="TopViewChart_Click"/>
                 <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="_Process Editor" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ProcessEditor_Click"/>
@@ -167,9 +170,9 @@
                         <Setter Property="Margin" Value="2,0"/>
                         <Setter Property="FontFamily" Value="Consolas"/>
                         <Setter Property="FontSize" Value="11"/>
-                        <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundBrush}"/>
-                        <Setter Property="Background" Value="{DynamicResource Theme.BackgroundAltBrush}"/>
-                        <Setter Property="BorderBrush" Value="{DynamicResource Theme.BorderBrush}"/>
+                        <Setter Property="Foreground" Value="#FF1E1E1E"/>
+                        <Setter Property="Background" Value="#FFE8E8E8"/>
+                        <Setter Property="BorderBrush" Value="#FFBCBCBC"/>
                         <Setter Property="BorderThickness" Value="1"/>
                         <Setter Property="Cursor" Value="Hand"/>
                         <Setter Property="Template">
@@ -179,16 +182,17 @@
                                             Background="{TemplateBinding Background}"
                                             BorderBrush="{TemplateBinding BorderBrush}"
                                             BorderThickness="{TemplateBinding BorderThickness}"
-                                            CornerRadius="2"
+                                            CornerRadius="3"
                                             Padding="4,2">
                                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.HighlightBrush}"/>
+                                            <Setter TargetName="Bd" Property="Background" Value="#FFFFFFFF"/>
+                                            <Setter TargetName="Bd" Property="BorderBrush" Value="#FF0078D4"/>
                                         </Trigger>
                                         <Trigger Property="IsPressed" Value="True">
-                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.AccentBrush}"/>
+                                            <Setter TargetName="Bd" Property="Background" Value="#FFD0D0D0"/>
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
@@ -196,14 +200,56 @@
                         </Setter>
                     </Style>
                 </StackPanel.Resources>
-                <Button Style="{StaticResource QuickBtn}" Content="Run" Click="QuickButton_Click" Tag="0"/>
+                <Button Style="{StaticResource QuickBtn}" Click="RunPanel_Click" Width="80">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="pack://application:,,,/Assets/RunPage.png" Height="18" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <TextBlock Text=" Run" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center" Foreground="#FF1E1E1E"/>
+                    </StackPanel>
+                </Button>
                 <Button Style="{StaticResource QuickBtn}" Click="QuickButton_Click" Tag="1"/>
-                <Button Style="{StaticResource QuickBtn}" Content="Process" Click="ProcessEditor_Click"/>
-                <Button Style="{StaticResource QuickBtn}" Content="Jog" Click="JogPanel_Click"/>
-                <Button Style="{StaticResource QuickBtn}" Content="Teach" Click="TeachPointPanel_Click"/>
-                <Button Style="{StaticResource QuickBtn}" Content="HexScan" Click="HexScanPanel_Click"/>
+                <Button Style="{StaticResource QuickBtn}" Click="ProcessEditor_Click" Width="90">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="pack://application:,,,/Assets/ProcessPage.png" Height="18" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <TextBlock Text=" Process" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center" Foreground="#FF1E1E1E"/>
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource QuickBtn}" Click="JogPanel_Click" Width="75">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="pack://application:,,,/Assets/Jog.png" Height="18" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <TextBlock Text=" Jog" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center" Foreground="#FF1E1E1E"/>
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource QuickBtn}" Click="TeachPointPanel_Click" Width="85">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="pack://application:,,,/Assets/TeachPage.png" Height="18" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <TextBlock Text=" Teach" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center" Foreground="#FF1E1E1E"/>
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource QuickBtn}" Click="HexScanPanel_Click" Width="95">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="pack://application:,,,/Assets/HexScan.png" Height="18" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <TextBlock Text=" HexScan" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center" Foreground="#FF1E1E1E"/>
+                    </StackPanel>
+                </Button>
                 <Button Style="{StaticResource QuickBtn}" Click="QuickButton_Click" Tag="6"/>
-                <Button Style="{StaticResource QuickBtn}" Content="Hardware" Click="ViewHardware_Click"/>
+                <Button Style="{StaticResource QuickBtn}" Click="ViewHardware_Click" Width="100">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="pack://application:,,,/Assets/Hardware.png" Height="18" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <TextBlock Text=" Hardware" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center" Foreground="#FF1E1E1E"/>
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource QuickBtn}" Click="TrainerPanel_Click" Width="90">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="pack://application:,,,/Assets/Trainer.png" Height="18" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <TextBlock Text=" Trainer" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center" Foreground="#FF1E1E1E"/>
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource QuickBtn}" Click="VisionPanel_Click" Width="85">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="pack://application:,,,/Assets/Vision.png" Height="18" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <TextBlock Text=" Vision" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center" Foreground="#FF1E1E1E"/>
+                    </StackPanel>
+                </Button>
             </StackPanel>
         </Border>
 
