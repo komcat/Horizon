@@ -9,7 +9,12 @@
       "WebSearch",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:www.nuget.org)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(dotnet msbuild:*)",
+      "Bash(git status:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(wc:*)"
     ]
   }
 }
