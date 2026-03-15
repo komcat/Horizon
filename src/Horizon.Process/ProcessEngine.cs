@@ -1,6 +1,7 @@
 using Horizon.Process.Handlers;
 using Horizon.Process.Interfaces;
 using Horizon.Process.Models;
+using Serilog;
 
 namespace Horizon.Process;
 
@@ -29,14 +30,19 @@ public sealed class ProcessEngine
     public bool TryAcquire(string owner)
     {
         if (Interlocked.CompareExchange(ref _executionLock, 1, 0) != 0)
+        {
+            Log.Warning("[Process] TryAcquire failed for {Owner} — already locked by {RunningOwner}", owner, RunningOwner);
             return false;
+        }
         RunningOwner = owner;
+        Log.Information("[Process] Acquired by {Owner}", owner);
         return true;
     }
 
     /// <summary>Release execution rights.</summary>
     public void Release()
     {
+        Log.Information("[Process] Released by {Owner}", RunningOwner);
         RunningOwner = null;
         Interlocked.Exchange(ref _executionLock, 0);
     }
@@ -67,6 +73,7 @@ public sealed class ProcessEngine
     public void RegisterDevice(string deviceName, object? manager, string managerType)
     {
         _deviceRegistry[deviceName] = (manager, managerType);
+        Log.Information("[Process] Device registered: {DeviceName} -> {ManagerType}", deviceName, managerType);
     }
 
     /// <summary>
@@ -76,6 +83,7 @@ public sealed class ProcessEngine
     public void BuildDeviceRegistry(object context)
     {
         var contextType = context.GetType();
+        int motionCount = 0, ioCount = 0, pneumaticCount = 0, cameraCount = 0, cmeasCount = 0, laserCount = 0;
 
         // Register motion devices
         var motionMgr = contextType.GetProperty("MotionManager")?.GetValue(context);
@@ -85,7 +93,10 @@ public sealed class ProcessEngine
             if (getNames?.Invoke(motionMgr, null) is List<string> names)
             {
                 foreach (var name in names)
+                {
                     RegisterDevice(name, motionMgr, "motion");
+                    motionCount++;
+                }
             }
         }
 
@@ -97,7 +108,10 @@ public sealed class ProcessEngine
             if (getNames?.Invoke(ioMgr, null) is List<string> names)
             {
                 foreach (var name in names)
+                {
                     RegisterDevice(name, ioMgr, "io");
+                    ioCount++;
+                }
             }
         }
 
@@ -109,7 +123,10 @@ public sealed class ProcessEngine
             if (getNames?.Invoke(pneumaticMgr, null) is List<string> names)
             {
                 foreach (var name in names)
+                {
                     RegisterDevice(name, pneumaticMgr, "pneumatic");
+                    pneumaticCount++;
+                }
             }
         }
 
@@ -121,7 +138,10 @@ public sealed class ProcessEngine
             if (getIds?.Invoke(cameraMgr, null) is List<string> ids)
             {
                 foreach (var id in ids)
+                {
                     RegisterDevice(id, cameraMgr, "camera");
+                    cameraCount++;
+                }
             }
         }
 
@@ -133,7 +153,10 @@ public sealed class ProcessEngine
             if (getNames?.Invoke(cmeasMgr, null) is List<string> names)
             {
                 foreach (var name in names)
+                {
                     RegisterDevice(name, cmeasMgr, "currentmeasurement");
+                    cmeasCount++;
+                }
             }
         }
 
@@ -145,13 +168,21 @@ public sealed class ProcessEngine
             if (getNames?.Invoke(laserMgr, null) is List<string> names)
             {
                 foreach (var name in names)
+                {
                     RegisterDevice(name, laserMgr, "lasercontroller");
+                    laserCount++;
+                }
             }
         }
 
         // Always register system and context handlers (no device needed)
         RegisterDevice("system", null, "system");
         RegisterDevice("context", null, "context");
+
+        Log.Information(
+            "[Process] Device registry built — motion: {MotionCount}, io: {IoCount}, pneumatic: {PneumaticCount}, " +
+            "camera: {CameraCount}, currentmeasurement: {CmeasCount}, lasercontroller: {LaserCount}",
+            motionCount, ioCount, pneumaticCount, cameraCount, cmeasCount, laserCount);
     }
 
     public async Task<bool> ExecuteAsync(List<ProcessStep> steps, ProcessContext context, CancellationToken ct)
@@ -160,15 +191,26 @@ public sealed class ProcessEngine
         context.CancellationToken = ct;
         context.StepCount = CountSteps(steps);
 
+        Log.Information("[Process] Execution started — {StepCount} steps", context.StepCount);
+
         _stepGate = new ManualResetEventSlim(false);
 
+        bool success = false;
         try
         {
-            return await Task.Run(() => ExecuteSteps(steps, context, ct, 0), ct);
+            success = await Task.Run(() => ExecuteSteps(steps, context, ct, 0), ct);
+            return success;
         }
         finally
         {
             context.EndTime = DateTimeOffset.UtcNow;
+            var elapsed = (context.EndTime ?? DateTimeOffset.UtcNow) - context.StartTime;
+            if (ct.IsCancellationRequested)
+                Log.Information("[Process] Execution cancelled after {ElapsedMs:F0} ms", elapsed.TotalMilliseconds);
+            else
+                Log.Information("[Process] Execution {Result} in {ElapsedMs:F0} ms",
+                    success ? "succeeded" : "failed", elapsed.TotalMilliseconds);
+
             _stepGate.Dispose();
             _stepGate = null;
         }
@@ -214,6 +256,8 @@ public sealed class ProcessEngine
                 case LoopStep loop:
                 {
                     bool infinite = loop.Count <= 0;
+                    Log.Information("[Process] Loop start at step {StepIndex} — {LoopCount}",
+                        stepIndex, infinite ? "infinite" : loop.Count.ToString());
                     int iteration = 0;
                     while (infinite || iteration < loop.Count)
                     {
@@ -232,6 +276,8 @@ public sealed class ProcessEngine
                 case ConditionalStep cond:
                 {
                     bool conditionMet = EvaluateCondition(cond, context);
+                    Log.Information("[Process] Condition at step {StepIndex} — {ContextKey} {Comparison}: {Result}",
+                        stepIndex, cond.ContextKey, cond.Comparison, conditionMet ? "true" : "false");
                     var branch = conditionMet ? cond.ThenSteps : cond.ElseSteps;
 
                     if (branch.Count > 0)
@@ -268,10 +314,13 @@ public sealed class ProcessEngine
             }
             else
             {
+                Log.Error("[Process] Action failed — device not registered: {DeviceName}", action.DeviceName);
                 OnStepCompleted?.Invoke(-1, false);
                 return false;
             }
         }
+
+        Log.Information("[Process] Action start — {DeviceName}.{MethodName}", action.DeviceName, action.MethodName);
 
         // Execute with timeout
         var timeoutMs = action.Params.TryGetValue("timeout", out var t) && int.TryParse(t, out var ms) ? ms : 60000;
@@ -284,9 +333,17 @@ public sealed class ProcessEngine
         var completed = Task.WhenAny(task, delayTask).Result;
 
         if (completed == delayTask)
-            return false; // timeout
+        {
+            Log.Error("[Process] Action timed out after {TimeoutMs} ms — {DeviceName}.{MethodName}",
+                timeoutMs, action.DeviceName, action.MethodName);
+            return false;
+        }
 
-        return task.Result;
+        bool result = task.Result;
+        if (!result)
+            Log.Error("[Process] Action failed — {DeviceName}.{MethodName}", action.DeviceName, action.MethodName);
+
+        return result;
     }
 
     private static bool EvaluateCondition(ConditionalStep cond, ProcessContext context)

@@ -2,6 +2,7 @@ using System.Net;
 using Horizon.IO.Interfaces;
 using Horizon.IO.Models;
 using Horizon.IO.Native;
+using Serilog;
 
 namespace Horizon.IO.Adapters;
 
@@ -36,7 +37,12 @@ public sealed class EziIODevice : IIODevice
         lock (_lock)
         {
             if (_connected) return true;
+            Log.Information("[IO] Connecting to {DeviceName} at {IpAddress}", DeviceName, _ipAddress);
             _connected = EziNative.Connect(_ipAddress, _boardId);
+            if (_connected)
+                Log.Information("[IO] Connect OK: {DeviceName} ({IpAddress})", DeviceName, _ipAddress);
+            else
+                Log.Error("[IO] Connect FAILED: {DeviceName} ({IpAddress})", DeviceName, _ipAddress);
             return _connected;
         }
     }
@@ -48,6 +54,7 @@ public sealed class EziIODevice : IIODevice
             if (!_connected) return true;
             EziNative.FAS_Close(_boardId);
             _connected = false;
+            Log.Information("[IO] Disconnected: {DeviceName}", DeviceName);
             return true;
         }
     }
@@ -107,7 +114,10 @@ public sealed class EziIODevice : IIODevice
                 result = EziNative.FAS_SetOutput(_boardId, setMask, clearMask);
             }
 
-            return result == EziNative.FMM_OK ? IOError.Success : IOError.OperationFailed;
+            var error = result == EziNative.FMM_OK ? IOError.Success : IOError.OperationFailed;
+            if (error != IOError.Success)
+                Log.Error("[IO] SetOutput FAILED on {DeviceName} pin {Pin} = {State} (native result {Result})", DeviceName, pin, state, result);
+            return error;
         }
     }
 
@@ -117,7 +127,10 @@ public sealed class EziIODevice : IIODevice
         {
             // Also check input pins in case of bidirectional
             if (!_inputPinNames.TryGetValue(pinName, out pin))
+            {
+                Log.Warning("[IO] SetOutputByName unknown pin '{PinName}' on {DeviceName}", pinName, DeviceName);
                 return IOError.InvalidPin;
+            }
         }
         return SetOutput(pin, state);
     }

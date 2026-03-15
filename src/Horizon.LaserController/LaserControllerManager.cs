@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Horizon.LaserController.Adapters;
 using Horizon.LaserController.Interfaces;
 using Horizon.LaserController.Models;
+using Serilog;
 
 namespace Horizon.LaserController;
 
@@ -21,33 +22,41 @@ public sealed class LaserControllerManager : IDisposable
         };
 
         _devices[config.Name] = device;
+        Log.Information("[Laser] Device added: {DeviceName} (type: {ControllerType})", config.Name, config.ControllerType);
     }
 
     public bool ConnectAll()
     {
+        Log.Information("[Laser] ConnectAll: connecting {Count} device(s)", _devices.Count);
         bool allOk = true;
         foreach (var kvp in _devices)
         {
             if (!kvp.Value.Connect())
                 allOk = false;
         }
+        Log.Information("[Laser] ConnectAll: result={AllOk}", allOk);
         return allOk;
     }
 
     public void DisconnectAll()
     {
+        Log.Information("[Laser] DisconnectAll: disconnecting {Count} device(s)", _devices.Count);
         foreach (var kvp in _devices)
             kvp.Value.Disconnect();
     }
 
     public bool ConnectDevice(string name)
     {
-        return _devices.TryGetValue(name, out var device) && device.Connect();
+        var result = _devices.TryGetValue(name, out var device) && device.Connect();
+        Log.Information("[Laser] ConnectDevice {DeviceName}: result={Result}", name, result);
+        return result;
     }
 
     public bool DisconnectDevice(string name)
     {
-        return _devices.TryGetValue(name, out var device) && device.Disconnect();
+        var result = _devices.TryGetValue(name, out var device) && device.Disconnect();
+        Log.Information("[Laser] DisconnectDevice {DeviceName}: result={Result}", name, result);
+        return result;
     }
 
     public ILaserControllerDevice? GetDevice(string name)
@@ -62,7 +71,11 @@ public sealed class LaserControllerManager : IDisposable
     public LaserControllerError SetTemperature(string deviceName, double celsius)
     {
         if (!_devices.TryGetValue(deviceName, out var device))
+        {
+            Log.Warning("[Laser] SetTemperature: device not found: {DeviceName}", deviceName);
             return LaserControllerError.DeviceNotFound;
+        }
+        Log.Information("[Laser] SetTemperature {DeviceName}: setpoint={Celsius:F2} C", deviceName, celsius);
         return device.SetTemperature(celsius);
     }
 
@@ -77,14 +90,22 @@ public sealed class LaserControllerManager : IDisposable
     public LaserControllerError TECOn(string deviceName)
     {
         if (!_devices.TryGetValue(deviceName, out var device))
+        {
+            Log.Warning("[Laser] TECOn: device not found: {DeviceName}", deviceName);
             return LaserControllerError.DeviceNotFound;
+        }
+        Log.Information("[Laser] TECOn {DeviceName}", deviceName);
         return device.TECOn();
     }
 
     public LaserControllerError TECOff(string deviceName)
     {
         if (!_devices.TryGetValue(deviceName, out var device))
+        {
+            Log.Warning("[Laser] TECOff: device not found: {DeviceName}", deviceName);
             return LaserControllerError.DeviceNotFound;
+        }
+        Log.Information("[Laser] TECOff {DeviceName}", deviceName);
         return device.TECOff();
     }
 
@@ -92,7 +113,11 @@ public sealed class LaserControllerManager : IDisposable
     public LaserControllerError SetLaserCurrent(string deviceName, double milliamps)
     {
         if (!_devices.TryGetValue(deviceName, out var device))
+        {
+            Log.Warning("[Laser] SetLaserCurrent: device not found: {DeviceName}", deviceName);
             return LaserControllerError.DeviceNotFound;
+        }
+        Log.Information("[Laser] SetLaserCurrent {DeviceName}: setpoint={Milliamps:F3} mA", deviceName, milliamps);
         return device.SetLaserCurrent(milliamps);
     }
 
@@ -107,14 +132,22 @@ public sealed class LaserControllerManager : IDisposable
     public LaserControllerError LaserOn(string deviceName)
     {
         if (!_devices.TryGetValue(deviceName, out var device))
+        {
+            Log.Warning("[Laser] LaserOn: device not found: {DeviceName}", deviceName);
             return LaserControllerError.DeviceNotFound;
+        }
+        Log.Information("[Laser] LaserOn {DeviceName}", deviceName);
         return device.LaserOn();
     }
 
     public LaserControllerError LaserOff(string deviceName)
     {
         if (!_devices.TryGetValue(deviceName, out var device))
+        {
+            Log.Warning("[Laser] LaserOff: device not found: {DeviceName}", deviceName);
             return LaserControllerError.DeviceNotFound;
+        }
+        Log.Information("[Laser] LaserOff {DeviceName}", deviceName);
         return device.LaserOff();
     }
 

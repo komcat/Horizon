@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Basler.Pylon;
 using Horizon.Camera.Interfaces;
 using Horizon.Camera.Models;
+using Serilog;
 
 namespace Horizon.Camera;
 
@@ -11,6 +12,7 @@ public sealed class CameraManager : IDisposable
     private readonly ConcurrentDictionary<string, SubscriberInfo> _subscribers = new();
     private readonly ConcurrentDictionary<string, string> _displayNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, CameraFrameData> _lastBroadcastFrames = new();
+    private readonly ConcurrentDictionary<string, RegisteredCamera> _cameraConfigs = new(StringComparer.OrdinalIgnoreCase);
     private volatile bool _broadcastRunning;
     private CancellationTokenSource? _broadcastCts;
     private Task? _broadcastTask;
@@ -24,7 +26,10 @@ public sealed class CameraManager : IDisposable
     {
         var hw = CameraHardwareFactory.Create(info);
         var managed = new ManagedCamera(info, hw);
-        return _cameras.TryAdd(info.Id, managed);
+        var added = _cameras.TryAdd(info.Id, managed);
+        if (added)
+            Log.Information("[Camera] Camera added: Id={CameraId}, Type={CameraType}", info.Id, info.Type);
+        return added;
     }
 
     public bool RemoveCamera(string cameraId)
@@ -32,6 +37,7 @@ public sealed class CameraManager : IDisposable
         if (!_cameras.TryRemove(cameraId, out var managed))
             return false;
         managed.Hardware.Dispose();
+        Log.Information("[Camera] Camera removed: Id={CameraId}", cameraId);
         return true;
     }
 
@@ -42,6 +48,33 @@ public sealed class CameraManager : IDisposable
 
     public List<string> GetCameraIds() => _cameras.Keys.ToList();
     public int CameraCount => _cameras.Count;
+
+    public void StoreCameraConfig(string cameraId, RegisteredCamera config)
+    {
+        _cameraConfigs[cameraId] = config;
+    }
+
+    public RegisteredCamera? GetCameraConfig(string cameraId)
+    {
+        return _cameraConfigs.TryGetValue(cameraId, out var config) ? config : null;
+    }
+
+    /// <summary>
+    /// Raised when a camera's config is updated via UpdateCameraConfig.
+    /// Passes the camera ID so listeners can react (e.g. click-to-move recalibration).
+    /// </summary>
+    public event Action<string>? CameraConfigChanged;
+
+    /// <summary>
+    /// Update a camera's calibration config in memory and notify listeners.
+    /// Caller is responsible for persisting to disk (CameraConfigStore).
+    /// </summary>
+    public void UpdateCameraConfig(string cameraId, RegisteredCamera config)
+    {
+        _cameraConfigs[cameraId] = config;
+        CameraConfigChanged?.Invoke(cameraId);
+        Log.Information("[Camera] Config updated: Id={CameraId}", cameraId);
+    }
 
     /// <summary>
     /// Get the friendly display name for a camera (e.g. "cam1").
@@ -67,25 +100,39 @@ public sealed class CameraManager : IDisposable
     public bool ConnectCamera(string cameraId)
     {
         if (!_cameras.TryGetValue(cameraId, out var managed)) return false;
-        return managed.Hardware.Connect();
+        var result = managed.Hardware.Connect();
+        if (result)
+            Log.Information("[Camera] Connect OK: Id={CameraId}", cameraId);
+        else
+            Log.Error("[Camera] Connect FAILED: Id={CameraId}", cameraId);
+        return result;
     }
 
     public bool DisconnectCamera(string cameraId)
     {
         if (!_cameras.TryGetValue(cameraId, out var managed)) return false;
-        return managed.Hardware.Disconnect();
+        var result = managed.Hardware.Disconnect();
+        if (result)
+            Log.Information("[Camera] Disconnect OK: Id={CameraId}", cameraId);
+        else
+            Log.Error("[Camera] Disconnect FAILED: Id={CameraId}", cameraId);
+        return result;
     }
 
     public bool StartGrabbing(string cameraId)
     {
         if (!_cameras.TryGetValue(cameraId, out var managed)) return false;
-        return managed.Hardware.StartGrabbing();
+        var result = managed.Hardware.StartGrabbing();
+        Log.Information("[Camera] StartGrabbing {Result}: Id={CameraId}", result ? "OK" : "FAILED", cameraId);
+        return result;
     }
 
     public bool StopGrabbing(string cameraId)
     {
         if (!_cameras.TryGetValue(cameraId, out var managed)) return false;
-        return managed.Hardware.StopGrabbing();
+        var result = managed.Hardware.StopGrabbing();
+        Log.Information("[Camera] StopGrabbing {Result}: Id={CameraId}", result ? "OK" : "FAILED", cameraId);
+        return result;
     }
 
     public bool StartGrabbingWithBroadcast(string cameraId)
@@ -107,6 +154,7 @@ public sealed class CameraManager : IDisposable
         if (!_broadcastRunning)
             StartBroadcastSystem();
 
+        Log.Information("[Camera] StartGrabbingWithBroadcast OK: Id={CameraId}", cameraId);
         return true;
     }
 
@@ -132,6 +180,16 @@ public sealed class CameraManager : IDisposable
             return new CameraStatus { Id = cameraId };
 
         var hw = managed.Hardware;
+        var config = GetCameraConfig(cameraId);
+
+        // Get live image size from latest broadcast frame
+        int liveW = 0, liveH = 0;
+        if (_lastBroadcastFrames.TryGetValue(cameraId, out var lastFrame) && lastFrame.IsValid)
+        {
+            liveW = lastFrame.Width;
+            liveH = lastFrame.Height;
+        }
+
         return new CameraStatus
         {
             Id = cameraId,
@@ -142,7 +200,13 @@ public sealed class CameraManager : IDisposable
             ModelName = hw.ModelName,
             SerialNumber = hw.SerialNumber,
             DeviceInfo = managed.Info.DeviceInfo,
-            ExposureSettings = hw.IsConnected ? hw.GetExposureSettings() : new ExposureSettings()
+            ExposureSettings = hw.IsConnected ? hw.GetExposureSettings() : new ExposureSettings(),
+            ConfiguredWidth = config?.Width ?? 0,
+            ConfiguredHeight = config?.Height ?? 0,
+            MmPerPixel = config?.MmPerPixel ?? 0,
+            Magnification = config?.Magnification ?? 1.0,
+            LiveImageWidth = liveW,
+            LiveImageHeight = liveH
         };
     }
 
@@ -159,6 +223,7 @@ public sealed class CameraManager : IDisposable
         _broadcastRunning = true;
         _broadcastCts = new CancellationTokenSource();
         // Broadcast system is event-driven via FrameCallback, no polling thread needed
+        Log.Information("[Camera] Broadcast system started");
     }
 
     public void StopBroadcastSystem()
@@ -167,16 +232,19 @@ public sealed class CameraManager : IDisposable
         _broadcastCts?.Cancel();
         _broadcastCts?.Dispose();
         _broadcastCts = null;
+        Log.Information("[Camera] Broadcast system stopped");
     }
 
     public void SubscribeToFrames(ICameraFrameSubscriber subscriber)
     {
         _subscribers[subscriber.SubscriberId] = new SubscriberInfo(subscriber);
+        Log.Information("[Camera] Subscriber added: Id={SubscriberId}", subscriber.SubscriberId);
     }
 
     public void UnsubscribeFromFrames(string subscriberId)
     {
         _subscribers.TryRemove(subscriberId, out _);
+        Log.Information("[Camera] Subscriber removed: Id={SubscriberId}", subscriberId);
     }
 
     public int SubscriberCount => _subscribers.Count;
@@ -228,6 +296,7 @@ public sealed class CameraManager : IDisposable
         var cameras = DiscoverAllCameras();
         foreach (var info in cameras)
             AddCamera(info);
+        Log.Information("[Camera] DiscoverAndAddAllCameras: {Count} camera(s) discovered", cameras.Count);
         return cameras.Count > 0;
     }
 
@@ -259,6 +328,7 @@ public sealed class CameraManager : IDisposable
             {
                 if (!string.IsNullOrEmpty(reg.Name))
                     _displayNames[reg.SerialNumber] = reg.Name;
+                StoreCameraConfig(reg.SerialNumber, reg);
                 added++;
             }
         }
@@ -278,13 +348,18 @@ public sealed class CameraManager : IDisposable
                 {
                     var reg = usbCameras.FirstOrDefault(r =>
                         string.Equals(r.SerialNumber, info.SerialNumber, StringComparison.OrdinalIgnoreCase));
-                    if (reg != null && !string.IsNullOrEmpty(reg.Name))
-                        _displayNames[info.SerialNumber] = reg.Name;
+                    if (reg != null)
+                    {
+                        if (!string.IsNullOrEmpty(reg.Name))
+                            _displayNames[info.SerialNumber] = reg.Name;
+                        StoreCameraConfig(info.SerialNumber, reg);
+                    }
                     added++;
                 }
             }
         }
 
+        Log.Information("[Camera] DiscoverAndAddRegisteredCameras: {Count} camera(s) added", added);
         return added > 0;
     }
 
@@ -317,8 +392,10 @@ public sealed class CameraManager : IDisposable
         if (SaveFrameToBmp(frame, filePath))
         {
             _lastCapturedImagePath = filePath;
+            Log.Information("[Camera] Capture OK: Id={CameraId}, Path={FilePath}", cameraId, filePath);
             return true;
         }
+        Log.Error("[Camera] Capture FAILED: Id={CameraId}, Path={FilePath}", cameraId, filePath);
         return false;
     }
 

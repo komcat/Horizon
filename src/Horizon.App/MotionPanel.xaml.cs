@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Input;
 using System.Windows.Threading;
 using Horizon.Motion;
 using Horizon.Motion.Interfaces;
@@ -323,36 +324,53 @@ public partial class MotionPanel : UserControl
     private void LoadPresets()
     {
         var names = _motionManager.GetNamedPositionNames(_deviceName);
-        PresetCombo.ItemsSource = names;
-        if (names.Count > 0)
-            PresetCombo.SelectedIndex = 0;
-    }
+        var rows = new List<PresetRow>();
 
-    private void PresetCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (PresetCombo.SelectedItem is not string name)
+        foreach (var name in names)
         {
-            PresetCoordsText.Text = string.Empty;
-            return;
+            var pos = _motionManager.GetNamedPosition(_deviceName, name);
+            if (pos == null) continue;
+
+            var dist = Math.Sqrt(pos.X * pos.X + pos.Y * pos.Y + pos.Z * pos.Z);
+            rows.Add(new PresetRow
+            {
+                Name = name,
+                X = pos.X.ToString("F3"),
+                Y = pos.Y.ToString("F3"),
+                Z = pos.Z.ToString("F3"),
+                Distance = dist.ToString("F3"),
+                DistanceValue = dist
+            });
         }
 
-        var pos = _motionManager.GetNamedPosition(_deviceName, name);
-        if (pos == null)
-        {
-            PresetCoordsText.Text = string.Empty;
-            return;
-        }
-
-        // Show only relevant axes
-        var parts = _axisNames.Select(a => $"{a}={GetAxis(pos, a):F3}");
-        PresetCoordsText.Text = string.Join("  ", parts);
+        rows.Sort((a, b) => a.DistanceValue.CompareTo(b.DistanceValue));
+        PresetGrid.ItemsSource = rows;
+        if (rows.Count > 0)
+            PresetGrid.SelectedIndex = 0;
     }
 
     private void PresetMove_Click(object sender, RoutedEventArgs e)
     {
-        if (PresetCombo.SelectedItem is not string name) return;
-        var ok = _motionManager.MoveToNamedPosition(_deviceName, name, blocking: false);
-        Log.Information("Motion '{DeviceName}': Move to preset '{PresetName}' {Result}", _deviceName, name, ok ? "OK" : "FAILED");
+        if (PresetGrid.SelectedItem is not PresetRow row) return;
+        var ok = _motionManager.MoveToNamedPosition(_deviceName, row.Name, blocking: false);
+        Log.Information("Motion '{DeviceName}': Move to preset '{PresetName}' {Result}", _deviceName, row.Name, ok ? "OK" : "FAILED");
+    }
+
+    private void PresetGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (PresetGrid.SelectedItem is not PresetRow row) return;
+        var ok = _motionManager.MoveToNamedPosition(_deviceName, row.Name, blocking: false);
+        Log.Information("Motion '{DeviceName}': Move to preset '{PresetName}' {Result}", _deviceName, row.Name, ok ? "OK" : "FAILED");
+    }
+
+    private class PresetRow
+    {
+        public string Name { get; set; } = "";
+        public string X { get; set; } = "";
+        public string Y { get; set; } = "";
+        public string Z { get; set; } = "";
+        public string Distance { get; set; } = "";
+        public double DistanceValue { get; set; }
     }
 
     // --- Polling ---

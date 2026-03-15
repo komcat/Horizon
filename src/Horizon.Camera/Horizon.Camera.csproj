@@ -10,6 +10,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Horizon.Common\Horizon.Common.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="4.2.0" />
+  </ItemGroup>
 
   <!-- Basler Pylon .NET wrapper from local Pylon 8 installation (must match native runtime) -->
   <ItemGroup>

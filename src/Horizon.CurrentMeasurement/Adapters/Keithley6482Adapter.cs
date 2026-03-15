@@ -2,6 +2,7 @@ using System.Globalization;
 using Horizon.CurrentMeasurement.Interfaces;
 using Horizon.CurrentMeasurement.Models;
 using Horizon.CurrentMeasurement.Native;
+using Serilog;
 
 namespace Horizon.CurrentMeasurement.Adapters;
 
@@ -29,15 +30,22 @@ public sealed class Keithley6482Adapter : ICurrentMeasurementDevice
         {
             if (_connected) return true;
 
+            Log.Information("[CMeas] Keithley6482 connecting to {VisaResource}", _config.VisaResource);
+
             try
             {
                 var status = VisaNative.OpenDefaultRM(out _rmSession);
-                if (status < VisaNative.VI_SUCCESS) return false;
+                if (status < VisaNative.VI_SUCCESS)
+                {
+                    Log.Warning("[CMeas] Keithley6482 {Name} connect FAILED — OpenDefaultRM status 0x{Status:X8}", _config.Name, status);
+                    return false;
+                }
 
                 status = VisaNative.Open(_rmSession, _config.VisaResource, 0, 1000, out _instrSession);
                 if (status < VisaNative.VI_SUCCESS)
                 {
                     VisaNative.Close(_rmSession);
+                    Log.Warning("[CMeas] Keithley6482 {Name} connect FAILED — Open status 0x{Status:X8}", _config.Name, status);
                     return false;
                 }
 
@@ -51,11 +59,13 @@ public sealed class Keithley6482Adapter : ICurrentMeasurementDevice
                 // Return only the reading value (strip timestamp, units, etc.)
                 WriteCommand(":FORM:ELEM READ");
 
+                Log.Information("[CMeas] Keithley6482 {Name} connected OK", _config.Name);
                 return true;
             }
             catch
             {
                 Cleanup();
+                Log.Warning("[CMeas] Keithley6482 {Name} connect FAILED — exception during open", _config.Name);
                 return false;
             }
         }
@@ -66,6 +76,7 @@ public sealed class Keithley6482Adapter : ICurrentMeasurementDevice
         lock (_lock)
         {
             if (!_connected) return true;
+            Log.Information("[CMeas] Keithley6482 {Name} disconnecting", _config.Name);
             Cleanup();
             return true;
         }
@@ -218,6 +229,7 @@ public sealed class Keithley6482Adapter : ICurrentMeasurementDevice
 
             try
             {
+                Log.Information("[CMeas] Keithley6482 {Name} switching to FastMode (NPLC=0.1)", _config.Name);
                 // FAST mode (~50-80 Hz): NPLC=0.1, averaging=3, auto-zero ON
                 // Matches bobcat_engine COARSE/alignment mode
                 WriteCommand(":SENS1:CURR:NPLC 0.1");
@@ -253,6 +265,7 @@ public sealed class Keithley6482Adapter : ICurrentMeasurementDevice
 
             try
             {
+                Log.Information("[CMeas] Keithley6482 {Name} switching to DefaultMode (NPLC=1.0)", _config.Name);
                 // Default mode (~10 Hz): NPLC=1.0, accurate
                 WriteCommand(":INIT:CONT OFF");
                 WriteCommand(":DISP:ENAB ON");
@@ -282,6 +295,7 @@ public sealed class Keithley6482Adapter : ICurrentMeasurementDevice
 
             try
             {
+                Log.Information("[CMeas] Keithley6482 {Name} resetting (*RST)", _config.Name);
                 WriteCommand("*RST");
                 Thread.Sleep(500);
                 WriteCommand("*CLS");

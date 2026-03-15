@@ -9,6 +9,9 @@
     <ProjectReference Include="..\Horizon.Common\Horizon.Common.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Serilog" Version="4.2.0" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="$(ProgramFiles)\FASTECH\Ezi-MOTION Plus-E V6\Include_x64\EziMOTIONPlusE.dll" CopyToOutputDirectory="PreserveNewest" Link="EziMOTIONPlusE.dll" Condition="Exists('$(ProgramFiles)\FASTECH\Ezi-MOTION Plus-E V6\Include_x64\EziMOTIONPlusE.dll')" />
     <None Include="C:\Program Files (x86)\FASTECH\Ezi-MOTION Plus-E V6\Include_x64\EziMOTIONPlusE.dll" CopyToOutputDirectory="PreserveNewest" Link="EziMOTIONPlusE.dll" Condition="Exists('C:\Program Files (x86)\FASTECH\Ezi-MOTION Plus-E V6\Include_x64\EziMOTIONPlusE.dll')" />
   </ItemGroup>

@@ -177,7 +177,15 @@
                         <Button x:Name="StepBtn3" Style="{StaticResource StepButton}"
                                 Click="StepButton_Click" Tag="3">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="3. Retrace Bonding" VerticalAlignment="Center"/>
+                                <Ellipse x:Name="StepIndicator3" Width="10" Height="10" Fill="#FF555555"
+                                         Stroke="#FF777777" StrokeThickness="1" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="3. Secondary Devices" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="StepBtn4" Style="{StaticResource StepButton}"
+                                Click="StepButton_Click" Tag="4">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="4. Retrace Bonding" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
@@ -586,8 +594,203 @@
                             </Grid>
                         </Grid>
 
-                        <!-- ============ STEP 3: RETRACE BONDING (RUN) ============ -->
+                        <!-- ============ STEP 3: SECONDARY DEVICES ============ -->
                         <Grid x:Name="WizardStep3" Visibility="Collapsed">
+                            <Grid>
+                                <!-- 3a: Assignment table -->
+                                <Grid x:Name="Step3_Start" Visibility="Visible">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+
+                                    <StackPanel Grid.Row="0">
+                                        <TextBlock Text="Secondary Devices" FontSize="14" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Assign and teach secondary device positions for each bonding point. The gantry observes the secondary device's position via corner-based observation."
+                                                   FontSize="11" Foreground="#FFB0B0B0" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                    </StackPanel>
+
+                                    <DataGrid Grid.Row="1" x:Name="Step3Grid"
+                                              AutoGenerateColumns="False" IsReadOnly="True"
+                                              CanUserAddRows="False" CanUserDeleteRows="False"
+                                              SelectionMode="Single" SelectionUnit="FullRow"
+                                              HeadersVisibility="Column" GridLinesVisibility="None"
+                                              Background="{DynamicResource Theme.BackgroundBrush}"
+                                              Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                              RowBackground="{DynamicResource Theme.BackgroundBrush}"
+                                              AlternatingRowBackground="{DynamicResource Theme.BackgroundAltBrush}"
+                                              BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                                              FontFamily="Consolas" FontSize="11"
+                                              RowHeight="34">
+                                        <DataGrid.ColumnHeaderStyle>
+                                            <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource DgColumnHeader}"/>
+                                        </DataGrid.ColumnHeaderStyle>
+                                        <DataGrid.CellStyle>
+                                            <Style TargetType="DataGridCell" BasedOn="{StaticResource DgCell}"/>
+                                        </DataGrid.CellStyle>
+                                        <DataGrid.Columns>
+                                            <DataGridTemplateColumn Header="Teach" Width="60" IsReadOnly="True">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <Button Content="Teach" FontSize="9" Padding="6,1"
+                                                                Click="Step3_Teach_Click" Tag="{Binding}"
+                                                                Background="#FF0078D4" Foreground="White"/>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                            <DataGridTextColumn Header="Bond" Binding="{Binding BondName}" Width="100"/>
+                                            <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="110"/>
+                                            <DataGridTextColumn Header="Method" Binding="{Binding Method}" Width="70"/>
+                                            <DataGridTextColumn Header="XY Status" Binding="{Binding XYStatus}" Width="90"/>
+                                            <DataGridTemplateColumn Header="Z-Teach" Width="65" IsReadOnly="True">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <Button Content="Z" FontSize="9" Padding="6,1"
+                                                                Click="Step3_ZTeach_Click" Tag="{Binding}"
+                                                                IsEnabled="{Binding CanTeachZ}"/>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                            <DataGridTextColumn Header="Z Status" Binding="{Binding ZStatus}" Width="90"/>
+                                            <DataGridTemplateColumn Header="Clear" Width="55" IsReadOnly="True">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <Button Content="Clear" FontSize="9" Padding="6,1"
+                                                                Click="Step3_Clear_Click" Tag="{Binding}"
+                                                                Foreground="White" Background="#C62828"/>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </Grid>
+
+                                <!-- 3b: XY Capture (Phase 1: position secondary + Phase 2: gantry observation) -->
+                                <Grid x:Name="Step3_XYCapture" Visibility="Collapsed">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" x:Name="Step3CaptureTitle" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Grid.Row="1" x:Name="Step3CaptureInstruction" FontSize="11"
+                                               Foreground="#FFB0B0B0" TextWrapping="Wrap" Margin="0,0,0,12"/>
+
+                                    <StackPanel Grid.Row="2">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                            <TextBlock Text="Camera:" FontSize="11" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,6,0"/>
+                                            <ComboBox x:Name="Step3CameraCombo" Width="200" FontFamily="Consolas" FontSize="11"
+                                                      Padding="3,2"/>
+                                        </StackPanel>
+                                        <TextBlock x:Name="Step3LivePos" FontSize="12" FontFamily="Consolas"
+                                                   Foreground="#FFFFD54F" Margin="0,0,0,4"/>
+                                        <TextBlock x:Name="Step3DevicePos" FontSize="10" FontFamily="Consolas"
+                                                   Foreground="#FFB0B0B0" Margin="0,0,0,10"/>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button x:Name="Step3ConfirmDevicePosBtn" Content="Confirm Device Pos" Style="{StaticResource WizardAction}"
+                                                    Click="Step3_ConfirmDevicePos_Click" Background="#FF0078D4" Foreground="White"/>
+                                            <Button x:Name="Step3CaptureObsBtn" Content="Capture Obs Corner" Style="{StaticResource WizardAction}"
+                                                    Click="Step3_CaptureObs_Click" Background="#FF0078D4" Foreground="White"
+                                                    Visibility="Collapsed"/>
+                                            <Button Content="Cancel" Style="{StaticResource WizardAction}"
+                                                    Click="Step3_CancelXY_Click"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Captured obs corners -->
+                                    <StackPanel Grid.Row="3" Margin="0,16,0,0">
+                                        <TextBlock Text="Observation corners:" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,4"/>
+                                        <ItemsControl x:Name="Step3ObsCornersList">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                                                            Background="{DynamicResource Theme.BackgroundBrush}" CornerRadius="2"
+                                                            Padding="6,4" Margin="0,0,0,4">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Image Source="{Binding ImagePath}" Width="48" Height="36"
+                                                                   Stretch="UniformToFill" Margin="0,0,8,0"
+                                                                   RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                            <TextBlock FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource Theme.ForegroundBrush}">
+                                                                <Run Text="{Binding Label, Mode=OneWay}"/>
+                                                                <Run Text="  "/>
+                                                                <Run Text="{Binding Coords, Mode=OneWay}" Foreground="#FF4EC9B0"/>
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- 3c: XY Review -->
+                                <Grid x:Name="Step3_XYReview" Visibility="Collapsed">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Text="Review Observation" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Grid.Row="1" x:Name="Step3ReviewDeviceText" FontSize="11" FontFamily="Consolas"
+                                               Foreground="#FFB0B0B0" Margin="0,0,0,4"/>
+                                    <TextBlock Grid.Row="2" x:Name="Step3ReviewObsCenterText" FontSize="12" FontFamily="Consolas"
+                                               Foreground="#FF4EC9B0" Margin="0,0,0,8"/>
+                                    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Button Content="Accept" Style="{StaticResource WizardAction}"
+                                                Click="Step3_CompleteXY_Click" Background="#FF388E3C" Foreground="White"/>
+                                        <Button Content="Discard" Style="{StaticResource WizardAction}"
+                                                Click="Step3_DiscardXY_Click"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- 3d: Z Teach wizard -->
+                                <Grid x:Name="Step3_ZTeach" Visibility="Collapsed">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" x:Name="Step3ZTitle" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Grid.Row="1" x:Name="Step3ZInstruction" FontSize="11"
+                                               Foreground="#FFB0B0B0" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                                    <TextBlock Grid.Row="2" x:Name="Step3ZLivePos" FontSize="12" FontFamily="Consolas"
+                                               Foreground="#FFFFD54F" Margin="0,0,0,4"/>
+                                    <TextBlock Grid.Row="3" x:Name="Step3ZStatus" FontSize="11" FontFamily="Consolas"
+                                               Foreground="#FF4EC9B0" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                    <StackPanel Grid.Row="4" Orientation="Horizontal">
+                                        <Button x:Name="Step3ZRegisterObjBtn" Content="Register Zobj" Style="{StaticResource WizardAction}"
+                                                Click="Step3_RegisterZObj_Click" Background="#FF0078D4" Foreground="White"/>
+                                        <Button x:Name="Step3ZEnterTBtn" Content="Enter T" Style="{StaticResource WizardAction}"
+                                                Click="Step3_EnterT_Click" Visibility="Collapsed"/>
+                                        <Button x:Name="Step3ZRegisterBondBtn" Content="Register Zbond" Style="{StaticResource WizardAction}"
+                                                Click="Step3_RegisterZBond_Click" Visibility="Collapsed"
+                                                Background="#FF0078D4" Foreground="White"/>
+                                        <Button x:Name="Step3ZCompleteBtn" Content="Complete Z" Style="{StaticResource WizardAction}"
+                                                Click="Step3_CompleteZ_Click" Visibility="Collapsed"
+                                                Background="#FF388E3C" Foreground="White"/>
+                                        <Button Content="Cancel" Style="{StaticResource WizardAction}"
+                                                Click="Step3_CancelZ_Click"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </Grid>
+
+                        <!-- ============ STEP 4: RETRACE BONDING (RUN) ============ -->
+                        <Grid x:Name="WizardStep4" Visibility="Collapsed">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
@@ -660,6 +863,7 @@
                                     <DataGridTextColumn Header="Delta X" Binding="{Binding DeltaX, StringFormat=F4}" Width="90"/>
                                     <DataGridTextColumn Header="Delta Y" Binding="{Binding DeltaY, StringFormat=F4}" Width="90"/>
                                     <DataGridTextColumn Header="Scale" Binding="{Binding Scale, StringFormat=F6}" Width="90"/>
+                                    <DataGridTextColumn Header="2nd Dev" Binding="{Binding SecondaryInfo}" Width="80"/>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Grid>

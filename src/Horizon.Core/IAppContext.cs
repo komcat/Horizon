@@ -22,6 +22,7 @@ public interface IAppContext
     SafetyWatchManager? SafetyWatchManager { get; }
     MeasurementHub MeasurementHub { get; }
     TeachPointManager TeachPointManager { get; }
+    AxisTransformService AxisTransformService { get; }
     bool IsInitialized { get; }
     bool SimulationMode { get; set; }
     void Initialize();

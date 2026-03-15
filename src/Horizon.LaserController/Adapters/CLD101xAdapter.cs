@@ -2,6 +2,7 @@ using System.Globalization;
 using Horizon.LaserController.Interfaces;
 using Horizon.LaserController.Models;
 using Horizon.LaserController.Native;
+using Serilog;
 
 namespace Horizon.LaserController.Adapters;
 
@@ -37,12 +38,15 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
         {
             if (_connected) return true;
 
+            Log.Information("[Laser] CLD101x {DeviceName}: connecting to VISA resource {VisaResource}", _config.Name, _config.VisaResource);
+
             try
             {
                 var status = VisaNative.OpenDefaultRM(out _rmSession);
                 if (status < VisaNative.VI_SUCCESS)
                 {
                     _lastError = $"OpenDefaultRM failed: 0x{status:X8}";
+                    Log.Error("[Laser] CLD101x {DeviceName}: OpenDefaultRM failed 0x{Status:X8}", _config.Name, status);
                     return false;
                 }
 
@@ -50,6 +54,7 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
                 if (status < VisaNative.VI_SUCCESS)
                 {
                     _lastError = $"Open failed: 0x{status:X8}";
+                    Log.Error("[Laser] CLD101x {DeviceName}: VISA Open failed 0x{Status:X8}", _config.Name, status);
                     VisaNative.Close(_rmSession);
                     return false;
                 }
@@ -64,11 +69,13 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
                 _laserOn = QueryBoolState("output1:state?");
 
                 _lastError = string.Empty;
+                Log.Information("[Laser] CLD101x {DeviceName}: connected (TEC={TECOn}, Laser={LaserOn})", _config.Name, _tecOn, _laserOn);
                 return true;
             }
             catch (Exception ex)
             {
                 _lastError = ex.Message;
+                Log.Error(ex, "[Laser] CLD101x {DeviceName}: Connect exception", _config.Name);
                 Cleanup();
                 return false;
             }
@@ -80,6 +87,7 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
         lock (_lock)
         {
             if (!_connected) return true;
+            Log.Information("[Laser] CLD101x {DeviceName}: disconnecting", _config.Name);
             Cleanup();
             return true;
         }
@@ -95,11 +103,13 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
             {
                 WriteCommand($"source2:temperature:spoint {celsius.ToString("G6", CultureInfo.InvariantCulture)}");
                 _setpointTemp = celsius;
+                Log.Information("[Laser] CLD101x {DeviceName}: SetTemperature setpoint={Celsius:F2} C", _config.Name, celsius);
                 return LaserControllerError.Success;
             }
             catch (Exception ex)
             {
                 _lastError = ex.Message;
+                Log.Error(ex, "[Laser] CLD101x {DeviceName}: SetTemperature communication error", _config.Name);
                 return LaserControllerError.CommunicationError;
             }
         }
@@ -138,11 +148,13 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
             {
                 WriteCommand("output2:state on");
                 _tecOn = true;
+                Log.Information("[Laser] CLD101x {DeviceName}: TEC ON", _config.Name);
                 return LaserControllerError.Success;
             }
             catch (Exception ex)
             {
                 _lastError = ex.Message;
+                Log.Error(ex, "[Laser] CLD101x {DeviceName}: TECOn communication error", _config.Name);
                 return LaserControllerError.CommunicationError;
             }
         }
@@ -158,11 +170,13 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
             {
                 WriteCommand("output2:state off");
                 _tecOn = false;
+                Log.Information("[Laser] CLD101x {DeviceName}: TEC OFF", _config.Name);
                 return LaserControllerError.Success;
             }
             catch (Exception ex)
             {
                 _lastError = ex.Message;
+                Log.Error(ex, "[Laser] CLD101x {DeviceName}: TECOff communication error", _config.Name);
                 return LaserControllerError.CommunicationError;
             }
         }
@@ -180,11 +194,13 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
                 var amps = milliamps / 1000.0;
                 WriteCommand($"source1:current:level:amplitude {amps.ToString("G6", CultureInfo.InvariantCulture)}");
                 _setpointCurrent = milliamps;
+                Log.Information("[Laser] CLD101x {DeviceName}: SetLaserCurrent setpoint={Milliamps:F3} mA", _config.Name, milliamps);
                 return LaserControllerError.Success;
             }
             catch (Exception ex)
             {
                 _lastError = ex.Message;
+                Log.Error(ex, "[Laser] CLD101x {DeviceName}: SetLaserCurrent communication error", _config.Name);
                 return LaserControllerError.CommunicationError;
             }
         }
@@ -226,11 +242,13 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
             {
                 WriteCommand("output1:state on");
                 _laserOn = true;
+                Log.Information("[Laser] CLD101x {DeviceName}: Laser ON", _config.Name);
                 return LaserControllerError.Success;
             }
             catch (Exception ex)
             {
                 _lastError = ex.Message;
+                Log.Error(ex, "[Laser] CLD101x {DeviceName}: LaserOn communication error", _config.Name);
                 return LaserControllerError.CommunicationError;
             }
         }
@@ -246,11 +264,13 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
             {
                 WriteCommand("output1:state off");
                 _laserOn = false;
+                Log.Information("[Laser] CLD101x {DeviceName}: Laser OFF", _config.Name);
                 return LaserControllerError.Success;
             }
             catch (Exception ex)
             {
                 _lastError = ex.Message;
+                Log.Error(ex, "[Laser] CLD101x {DeviceName}: LaserOff communication error", _config.Name);
                 return LaserControllerError.CommunicationError;
             }
         }

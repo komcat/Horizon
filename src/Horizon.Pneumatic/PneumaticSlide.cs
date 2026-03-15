@@ -3,6 +3,7 @@ using Horizon.IO;
 using Horizon.IO.Models;
 using Horizon.Pneumatic.Interfaces;
 using Horizon.Pneumatic.Models;
+using Serilog;
 
 namespace Horizon.Pneumatic;
 
@@ -27,11 +28,12 @@ public sealed class PneumaticSlide : IPneumaticSlide
             _config.Output.PinName,
             true);
 
-        if (result == IOError.DeviceNotFound) return PneumaticError.DeviceNotFound;
-        if (result == IOError.InvalidPin) return PneumaticError.PinNotFound;
-        if (result != IOError.Success) return PneumaticError.OperationFailed;
+        if (result == IOError.DeviceNotFound) { Log.Error("[Pneumatic] '{Slide}' Extend: {Result}", SlideName, PneumaticError.DeviceNotFound); return PneumaticError.DeviceNotFound; }
+        if (result == IOError.InvalidPin) { Log.Error("[Pneumatic] '{Slide}' Extend: {Result}", SlideName, PneumaticError.PinNotFound); return PneumaticError.PinNotFound; }
+        if (result != IOError.Success) { Log.Error("[Pneumatic] '{Slide}' Extend: {Result}", SlideName, PneumaticError.OperationFailed); return PneumaticError.OperationFailed; }
 
         _lastMoveTimeMs = Stopwatch.GetTimestamp();
+        Log.Information("[Pneumatic] '{Slide}' Extend: {Result}", SlideName, PneumaticError.Success);
         return PneumaticError.Success;
     }
 
@@ -42,11 +44,12 @@ public sealed class PneumaticSlide : IPneumaticSlide
             _config.Output.PinName,
             false);
 
-        if (result == IOError.DeviceNotFound) return PneumaticError.DeviceNotFound;
-        if (result == IOError.InvalidPin) return PneumaticError.PinNotFound;
-        if (result != IOError.Success) return PneumaticError.OperationFailed;
+        if (result == IOError.DeviceNotFound) { Log.Error("[Pneumatic] '{Slide}' Retract: {Result}", SlideName, PneumaticError.DeviceNotFound); return PneumaticError.DeviceNotFound; }
+        if (result == IOError.InvalidPin) { Log.Error("[Pneumatic] '{Slide}' Retract: {Result}", SlideName, PneumaticError.PinNotFound); return PneumaticError.PinNotFound; }
+        if (result != IOError.Success) { Log.Error("[Pneumatic] '{Slide}' Retract: {Result}", SlideName, PneumaticError.OperationFailed); return PneumaticError.OperationFailed; }
 
         _lastMoveTimeMs = Stopwatch.GetTimestamp();
+        Log.Information("[Pneumatic] '{Slide}' Retract: {Result}", SlideName, PneumaticError.Success);
         return PneumaticError.Success;
     }
 
@@ -64,6 +67,7 @@ public sealed class PneumaticSlide : IPneumaticSlide
             Thread.Sleep(pollIntervalMs);
         }
 
+        Log.Error("[Pneumatic] '{Slide}' ExtendAndWait timed out after {TimeoutMs}ms", SlideName, _config.TimeoutMs);
         return PneumaticError.Timeout;
     }
 
@@ -81,6 +85,7 @@ public sealed class PneumaticSlide : IPneumaticSlide
             Thread.Sleep(pollIntervalMs);
         }
 
+        Log.Error("[Pneumatic] '{Slide}' RetractAndWait timed out after {TimeoutMs}ms", SlideName, _config.TimeoutMs);
         return PneumaticError.Timeout;
     }
 

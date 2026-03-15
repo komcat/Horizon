@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Horizon.CurrentMeasurement.Adapters;
 using Horizon.CurrentMeasurement.Interfaces;
 using Horizon.CurrentMeasurement.Models;
+using Serilog;
 
 namespace Horizon.CurrentMeasurement;
 
@@ -26,39 +27,53 @@ public sealed class CurrentMeasurementManager : IDisposable
         };
 
         _devices[config.Name] = device;
+        Log.Information("[CMeas] Device added: {Name} ({Type})", config.Name, config.Type);
     }
 
     public void RemoveDevice(string name)
     {
         if (_devices.TryRemove(name, out var device))
+        {
             device.Disconnect();
+            Log.Information("[CMeas] Device removed: {Name}", name);
+        }
     }
 
     public bool ConnectAll()
     {
+        Log.Information("[CMeas] ConnectAll starting for {Count} device(s)", _devices.Count);
         bool allOk = true;
         foreach (var kvp in _devices)
         {
             if (!kvp.Value.Connect())
                 allOk = false;
         }
+        if (allOk)
+            Log.Information("[CMeas] ConnectAll OK — all devices connected");
+        else
+            Log.Warning("[CMeas] ConnectAll partial failure — one or more devices failed to connect");
         return allOk;
     }
 
     public void DisconnectAll()
     {
+        Log.Information("[CMeas] DisconnectAll starting for {Count} device(s)", _devices.Count);
         foreach (var kvp in _devices)
             kvp.Value.Disconnect();
     }
 
     public bool ConnectDevice(string name)
     {
-        return _devices.TryGetValue(name, out var device) && device.Connect();
+        var result = _devices.TryGetValue(name, out var device) && device.Connect();
+        Log.Information("[CMeas] ConnectDevice {Name}: {Result}", name, result ? "OK" : "FAILED");
+        return result;
     }
 
     public bool DisconnectDevice(string name)
     {
-        return _devices.TryGetValue(name, out var device) && device.Disconnect();
+        var result = _devices.TryGetValue(name, out var device) && device.Disconnect();
+        Log.Information("[CMeas] DisconnectDevice {Name}: {Result}", name, result ? "OK" : "FAILED");
+        return result;
     }
 
     public CurrentMeasurementError ReadCurrent(string deviceName, int channel, out double current)
@@ -89,7 +104,9 @@ public sealed class CurrentMeasurementManager : IDisposable
     {
         if (!_devices.TryGetValue(deviceName, out var device))
             return CurrentMeasurementError.DeviceNotFound;
-        return device.Reset();
+        var result = device.Reset();
+        Log.Information("[CMeas] ResetDevice {Name}: {Result}", deviceName, result);
+        return result;
     }
 
     public ICurrentMeasurementDevice? GetDevice(string name)
@@ -106,10 +123,12 @@ public sealed class CurrentMeasurementManager : IDisposable
         _pollCts = new CancellationTokenSource();
         _pollTimer = new PeriodicTimer(TimeSpan.FromMilliseconds(intervalMs));
         _pollTask = PollLoopAsync(_pollCts.Token);
+        Log.Information("[CMeas] Polling started with interval {IntervalMs} ms", intervalMs);
     }
 
     public void StopPolling()
     {
+        Log.Information("[CMeas] Polling stopped");
         _pollCts?.Cancel();
         _pollTimer?.Dispose();
         _pollTimer = null;

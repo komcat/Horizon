@@ -60,6 +60,65 @@
                     </Grid>
                 </Border>
 
+                <!-- Sensor Config -->
+                <TextBlock Text="Sensor Config" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,8"/>
+                <Border Background="{DynamicResource Theme.BackgroundAltBrush}"
+                        BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                        CornerRadius="2" Padding="10" Margin="0,0,0,16">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="8"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Read-only: live image size from hardware -->
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Image Size:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="0,0,0,3"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="LiveImageSizeText" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,3"/>
+
+                        <!-- Read-only: configured resolution -->
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Configured:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="0,0,0,3"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="ResolutionText" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,3"/>
+
+                        <!-- Read-only: current values display -->
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="mm/pixel:" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="0,0,0,0"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="MmPerPixelText" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,0"/>
+
+                        <!-- Editable: mm/pixel input -->
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Set mm/px:" FontFamily="Consolas" FontSize="11"
+                                   Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" VerticalAlignment="Center"/>
+                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="MmPerPixelInput"
+                                 FontFamily="Consolas" FontSize="11"
+                                 Background="{DynamicResource Theme.BackgroundBrush}"
+                                 Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                 BorderBrush="{DynamicResource Theme.BorderBrush}"
+                                 Padding="3,2"/>
+
+                        <!-- Editable: magnification input -->
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Set Mag:" FontFamily="Consolas" FontSize="11"
+                                   Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" VerticalAlignment="Center" Margin="0,3,0,0"/>
+                        <TextBox Grid.Row="5" Grid.Column="1" x:Name="MagnificationInput"
+                                 FontFamily="Consolas" FontSize="11"
+                                 Background="{DynamicResource Theme.BackgroundBrush}"
+                                 Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                 BorderBrush="{DynamicResource Theme.BorderBrush}"
+                                 Padding="3,2" Margin="0,3,0,0"/>
+
+                        <Button Grid.Row="6" Grid.Column="1" Content="Save" x:Name="SaveSensorButton"
+                                HorizontalAlignment="Right" Padding="12,3" Margin="0,6,0,0"
+                                Click="SaveSensor_Click"/>
+                    </Grid>
+                </Border>
+
                 <!-- Exposure Settings -->
                 <TextBlock Text="Exposure Settings" FontSize="14" FontWeight="SemiBold"
                            Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,8"/>

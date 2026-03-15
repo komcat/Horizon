@@ -266,40 +266,67 @@
                 <avalonDock:LayoutPanel Orientation="Horizontal">
                     <!-- Center: Document area -->
                     <avalonDock:LayoutDocumentPane>
-                        <avalonDock:LayoutDocument Title="Welcome" ContentId="welcome">
-                            <TextBlock Text="Welcome to Horizon"
-                                       FontSize="18"
-                                       Foreground="{DynamicResource Theme.ForegroundBrush}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"/>
+                        <avalonDock:LayoutDocument Title="Hardware" ContentId="hardware" CanClose="True" CanFloat="True">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="250" MinWidth="150"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*" MinWidth="200"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Left: Hardware tree -->
+                                <Border Grid.Column="0" Background="{DynamicResource Theme.BackgroundAltBrush}">
+                                    <TreeView x:Name="HardwareTree"
+                                              Background="{DynamicResource Theme.BackgroundAltBrush}"
+                                              Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                              BorderThickness="0">
+                                        <TreeView.Resources>
+                                            <Style TargetType="TreeViewItem">
+                                                <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundBrush}"/>
+                                            </Style>
+                                        </TreeView.Resources>
+                                        <TreeViewItem x:Name="CamerasTreeItem" Header="Cameras" IsExpanded="True"
+                                                      MouseDoubleClick="CamerasCategory_MouseDoubleClick"/>
+                                        <TreeViewItem x:Name="MotionTreeItem" Header="Motion" IsExpanded="True"
+                                                      MouseDoubleClick="MotionCategory_MouseDoubleClick"/>
+                                        <TreeViewItem x:Name="IOTreeItem" Header="IO" IsExpanded="True"
+                                                      MouseDoubleClick="IOCategory_MouseDoubleClick"/>
+                                        <TreeViewItem x:Name="PneumaticTreeItem" Header="Pneumatic" IsExpanded="True"
+                                                      MouseDoubleClick="PneumaticCategory_MouseDoubleClick"/>
+                                        <TreeViewItem x:Name="CurrentMeasTreeItem" Header="Current Measurement" IsExpanded="True"/>
+                                        <TreeViewItem x:Name="LaserControllerTreeItem" Header="Laser Controller" IsExpanded="True"/>
+                                    </TreeView>
+                                </Border>
+
+                                <!-- Splitter -->
+                                <GridSplitter Grid.Column="1" Width="4"
+                                              HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                                              Background="{DynamicResource Theme.BorderBrush}"/>
+
+                                <!-- Right: Device detail panel -->
+                                <Border Grid.Column="2" Background="{DynamicResource Theme.BackgroundBrush}">
+                                    <Grid>
+                                        <!-- Header showing selected device -->
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        <Border Grid.Row="0" Background="{DynamicResource Theme.MenuBarBrush}"
+                                                BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="0,0,0,1"
+                                                Padding="8,4">
+                                            <TextBlock x:Name="HardwareDetailTitle" Text="Select a device"
+                                                       FontFamily="Consolas" FontSize="12"
+                                                       Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"/>
+                                        </Border>
+                                        <ContentControl x:Name="HardwareDetailContent" Grid.Row="1"/>
+                                    </Grid>
+                                </Border>
+                            </Grid>
                         </avalonDock:LayoutDocument>
                     </avalonDock:LayoutDocumentPane>
 
-                    <!-- Right: Hardware tree + Camera Config -->
+                    <!-- Right: Camera Config -->
                     <avalonDock:LayoutAnchorablePaneGroup DockWidth="300" Orientation="Vertical">
-                        <avalonDock:LayoutAnchorablePane>
-                            <avalonDock:LayoutAnchorable Title="Hardware" ContentId="hardware" CanClose="False">
-                            <Border Background="{DynamicResource Theme.BackgroundAltBrush}">
-                                <TreeView x:Name="HardwareTree"
-                                          Background="{DynamicResource Theme.BackgroundAltBrush}"
-                                          Foreground="{DynamicResource Theme.ForegroundBrush}"
-                                          BorderThickness="0">
-                                    <TreeView.Resources>
-                                        <Style TargetType="TreeViewItem">
-                                            <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundBrush}"/>
-                                        </Style>
-                                    </TreeView.Resources>
-                                    <TreeViewItem x:Name="CamerasTreeItem" Header="Cameras" IsExpanded="True"/>
-                                    <TreeViewItem x:Name="MotionTreeItem" Header="Motion" IsExpanded="True"/>
-                                    <TreeViewItem x:Name="IOTreeItem" Header="IO" IsExpanded="True"/>
-                                    <TreeViewItem x:Name="PneumaticTreeItem" Header="Pneumatic" IsExpanded="True"/>
-                                    <TreeViewItem x:Name="CurrentMeasTreeItem" Header="Current Measurement" IsExpanded="True"/>
-                                    <TreeViewItem x:Name="LaserControllerTreeItem" Header="Laser Controller" IsExpanded="True"/>
-                                </TreeView>
-                            </Border>
-                        </avalonDock:LayoutAnchorable>
-                        </avalonDock:LayoutAnchorablePane>
-
                         <avalonDock:LayoutAnchorablePane>
                             <avalonDock:LayoutAnchorable Title="Camera Config" ContentId="cameraConfig" CanClose="False">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto" Background="{DynamicResource Theme.BackgroundBrush}">
@@ -355,6 +382,9 @@
                                                 <DataGridTextColumn Header="Serial" Binding="{Binding SerialNumber}" Width="70"/>
                                                 <DataGridTextColumn Header="SDK" Binding="{Binding SdkType}" Width="45"/>
                                                 <DataGridTextColumn Header="IP" Binding="{Binding IpAddress}" Width="90"/>
+                                                <DataGridTextColumn Header="WxH" Binding="{Binding Resolution}" Width="55"/>
+                                                <DataGridTextColumn Header="mm/px" Binding="{Binding MmPx}" Width="45"/>
+                                                <DataGridTextColumn Header="Mag" Binding="{Binding Mag}" Width="35"/>
                                                 <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="50"/>
                                             </DataGrid.Columns>
                                         </DataGrid>
@@ -366,6 +396,10 @@
                                                 Padding="8" Margin="0,0,0,8" CornerRadius="2">
                                             <Grid>
                                                 <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
                                                     <RowDefinition Height="Auto"/>
                                                     <RowDefinition Height="Auto"/>
                                                     <RowDefinition Height="Auto"/>
@@ -416,7 +450,43 @@
                                                          BorderBrush="{DynamicResource Theme.BorderBrush}"
                                                          Padding="3,2" Margin="0,0,0,3" FontFamily="Consolas" FontSize="11"/>
 
-                                                <Button x:Name="MountButton" Grid.Row="6" Grid.Column="1"
+                                                <TextBlock Grid.Row="6" Grid.Column="0" Text="W:" VerticalAlignment="Center" FontSize="11"
+                                                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,4,3"/>
+                                                <TextBox x:Name="MountWidthBox" Grid.Row="6" Grid.Column="1"
+                                                         Background="{DynamicResource Theme.BackgroundBrush}"
+                                                         Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                                         BorderBrush="{DynamicResource Theme.BorderBrush}"
+                                                         Padding="3,2" Margin="0,0,0,3" FontFamily="Consolas" FontSize="11"
+                                                         Text="0"/>
+
+                                                <TextBlock Grid.Row="7" Grid.Column="0" Text="H:" VerticalAlignment="Center" FontSize="11"
+                                                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,4,3"/>
+                                                <TextBox x:Name="MountHeightBox" Grid.Row="7" Grid.Column="1"
+                                                         Background="{DynamicResource Theme.BackgroundBrush}"
+                                                         Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                                         BorderBrush="{DynamicResource Theme.BorderBrush}"
+                                                         Padding="3,2" Margin="0,0,0,3" FontFamily="Consolas" FontSize="11"
+                                                         Text="0"/>
+
+                                                <TextBlock Grid.Row="8" Grid.Column="0" Text="mm/px:" VerticalAlignment="Center" FontSize="11"
+                                                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,4,3"/>
+                                                <TextBox x:Name="MountMmPerPixelBox" Grid.Row="8" Grid.Column="1"
+                                                         Background="{DynamicResource Theme.BackgroundBrush}"
+                                                         Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                                         BorderBrush="{DynamicResource Theme.BorderBrush}"
+                                                         Padding="3,2" Margin="0,0,0,3" FontFamily="Consolas" FontSize="11"
+                                                         Text="0"/>
+
+                                                <TextBlock Grid.Row="9" Grid.Column="0" Text="Mag:" VerticalAlignment="Center" FontSize="11"
+                                                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,4,3"/>
+                                                <TextBox x:Name="MountMagBox" Grid.Row="9" Grid.Column="1"
+                                                         Background="{DynamicResource Theme.BackgroundBrush}"
+                                                         Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                                         BorderBrush="{DynamicResource Theme.BorderBrush}"
+                                                         Padding="3,2" Margin="0,0,0,3" FontFamily="Consolas" FontSize="11"
+                                                         Text="1"/>
+
+                                                <Button x:Name="MountButton" Grid.Row="10" Grid.Column="1"
                                                         Content="Mount" HorizontalAlignment="Right"
                                                         Padding="12,3" Margin="0,3,0,0"
                                                         Click="MountCamera_Click"/>

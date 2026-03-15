@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Horizon.Camera.Models;
+using Serilog;
 
 namespace Horizon.Camera;
 
@@ -32,14 +33,20 @@ public sealed class CameraConfigStore
             }
 
             if (!File.Exists(FilePath))
+            {
+                Log.Warning("[Camera] Config file not found: {FilePath}", FilePath);
                 return new List<RegisteredCamera>();
+            }
 
             var json = File.ReadAllText(FilePath);
-            return JsonSerializer.Deserialize<List<RegisteredCamera>>(json, JsonOptions)
-                   ?? new List<RegisteredCamera>();
+            var result = JsonSerializer.Deserialize<List<RegisteredCamera>>(json, JsonOptions)
+                         ?? new List<RegisteredCamera>();
+            Log.Information("[Camera] Config file loaded: {FilePath}, {Count} camera(s)", FilePath, result.Count);
+            return result;
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Error("[Camera] Failed to load config file: {FilePath} — {Message}", FilePath, ex.Message);
             return new List<RegisteredCamera>();
         }
     }
@@ -52,10 +59,11 @@ public sealed class CameraConfigStore
             Directory.CreateDirectory(dir);
             var json = JsonSerializer.Serialize(cameras, JsonOptions);
             File.WriteAllText(FilePath, json);
+            Log.Information("[Camera] Config saved: {FilePath}, {Count} camera(s)", FilePath, cameras.Count);
         }
-        catch
+        catch (Exception ex)
         {
-            // Swallow — caller can retry or log
+            Log.Error("[Camera] Failed to save config file: {FilePath} — {Message}", FilePath, ex.Message);
         }
     }
 }

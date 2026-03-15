@@ -23,6 +23,7 @@ public sealed class AppContext : IAppContext, IDisposable
     private SafetyEventLog? _safetyEventLog;
     private SafetyWatchManager? _safetyWatchManager;
     private TeachPointManager? _teachPointManager;
+    private AxisTransformService? _axisTransformService;
 
     private readonly CameraConfigStore _configStore = new();
     private readonly MeasurementHub _measurementHub = new();
@@ -58,6 +59,8 @@ public sealed class AppContext : IAppContext, IDisposable
 
     public TeachPointManager TeachPointManager =>
         _teachPointManager ?? throw new InvalidOperationException("AppContext is not initialized.");
+
+    public AxisTransformService AxisTransformService => _axisTransformService ?? new();
 
     public CameraConfigStore ConfigStore => _configStore;
 
@@ -137,6 +140,18 @@ public sealed class AppContext : IAppContext, IDisposable
         catch (Exception ex)
         {
             LogError($"Motion config load error: {ex.Message}");
+        }
+
+        // --- Axis transform service ---
+        _axisTransformService = new AxisTransformService();
+        try
+        {
+            var transformCount = _axisTransformService.LoadConfig(configDir);
+            Log($"Axis transforms loaded: {transformCount}");
+        }
+        catch (Exception ex)
+        {
+            LogError($"Axis transform config load error: {ex.Message}");
         }
 
         // --- Current Measurement subsystem ---
@@ -229,6 +244,7 @@ public sealed class AppContext : IAppContext, IDisposable
         _safetyEventLog = null;
 
         _teachPointManager = null;
+        _axisTransformService = null;
         _processEngine = null;
         _pluginRegistry = null;
 

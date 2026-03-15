@@ -7,6 +7,7 @@ using Horizon.Camera;
 using Horizon.Camera.Models;
 using Horizon.Common;
 using Horizon.Core;
+using Serilog;
 using Horizon.CurrentMeasurement;
 using Horizon.LaserController;
 using Horizon.Motion;
@@ -189,6 +190,8 @@ public partial class OverlayWindow : Window
         // If running, switch camera
         if (_running)
         {
+            var newCamera = CameraCombo.SelectedItem as string;
+            Log.Information("[TopView] Switching camera to '{Camera}'", newCamera);
             StopFeed();
             StartFeed();
         }
@@ -205,6 +208,7 @@ public partial class OverlayWindow : Window
     private void ChartCheckBox_Changed(object sender, RoutedEventArgs e)
     {
         _showChart = ChartCheckBox.IsChecked == true;
+        Log.Information("[TopView] Chart overlay {State}", _showChart ? "ON" : "OFF");
         // Guard: fires during InitializeComponent before SKElement is created
         SkiaCanvas?.InvalidateVisual();
     }
@@ -213,6 +217,8 @@ public partial class OverlayWindow : Window
     {
         if (MeasCombo.SelectedItem is not string deviceName || _hub == null)
             return;
+
+        Log.Information("[TopView] Measurement device selected: '{Device}'", deviceName);
 
         // Try current measurement device first
         if (_cmeasManager != null)
@@ -253,6 +259,7 @@ public partial class OverlayWindow : Window
         var status = _cameraManager.GetCameraStatus(cameraId);
         if (!status.Connected)
         {
+            Log.Warning("[TopView] Camera '{Camera}' not connected", displayName);
             StatusText.Text = $"Camera '{displayName}' not connected";
             return;
         }
@@ -261,6 +268,7 @@ public partial class OverlayWindow : Window
         {
             if (!_cameraManager.StartGrabbingWithBroadcast(cameraId))
             {
+                Log.Error("[TopView] Failed to start grabbing '{Camera}'", displayName);
                 StatusText.Text = $"Failed to start grabbing '{displayName}'";
                 return;
             }
@@ -282,10 +290,13 @@ public partial class OverlayWindow : Window
         _running = true;
         StartStopButton.Content = "Stop";
         StatusText.Text = $"Live: {displayName}";
+        Log.Information("[TopView] Started live feed: {Camera} ({CameraId})", displayName, cameraId);
     }
 
     private void StopFeed()
     {
+        var stoppedCamera = _activeCameraName ?? _activeCameraId;
+
         if (_renderTimer != null)
         {
             _renderTimer.Stop();
@@ -304,6 +315,9 @@ public partial class OverlayWindow : Window
         _running = false;
         StartStopButton.Content = "Start";
         StatusText.Text = "Stopped";
+
+        if (stoppedCamera != null)
+            Log.Information("[TopView] Stopped live feed: {Camera}", stoppedCamera);
     }
 
     private void RenderTick(object? sender, EventArgs e)
@@ -586,18 +600,21 @@ public partial class OverlayWindow : Window
     private void CrosshairCheckBox_Changed(object sender, RoutedEventArgs e)
     {
         _showCrosshair = CrosshairCheckBox.IsChecked == true;
+        Log.Information("[TopView] Crosshair {State}", _showCrosshair ? "ON" : "OFF");
         SkiaCanvas?.InvalidateVisual();
     }
 
     private void ClickToMoveCheckBox_Checked(object sender, RoutedEventArgs e)
     {
         _clickToMoveEnabled = true;
+        Log.Information("[TopView] Click-to-Move enabled");
     }
 
     private void ClickToMoveCheckBox_Unchecked(object sender, RoutedEventArgs e)
     {
         _clickToMoveEnabled = false;
         _lastMouseFramePos = null;
+        Log.Information("[TopView] Click-to-Move disabled");
     }
 
     private void SKElement_MouseMove(object sender, MouseEventArgs e)
@@ -621,7 +638,6 @@ public partial class OverlayWindow : Window
             return;
 
         var cfg = _clickToMoveConfig ?? new ClickToMoveConfig();
-        var cal = cfg.GetCalibration(_activeCameraName ?? _activeCameraId);
         if (_frameBitmap == null) return;
 
         var wpfPoint = e.GetPosition(SkiaCanvas);
@@ -634,31 +650,15 @@ public partial class OverlayWindow : Window
         var framePos = WpfPointToFramePixels(wpfPoint, dstRect, _frameBitmap.Width, _frameBitmap.Height);
         if (framePos == null) return;
 
-        int frameW = _frameBitmap.Width;
-        int frameH = _frameBitmap.Height;
-        double frameX = framePos.Value.X;
-        double frameY = framePos.Value.Y;
-
-        // Pixel offset from frame center
-        double dx = frameX - frameW / 2.0;
-        double dy = frameY - frameH / 2.0;
-
-        // Scale to calibration reference resolution
-        dx *= (double)cal.CalibrationRefWidth / frameW;
-        dy *= (double)cal.CalibrationRefHeight / frameH;
-
-        // Convert to mm: pixel offset * mm_per_pixel / magnification
-        double mmX = dx * cal.PixelToMmX / cal.Magnification;
-        double mmY = dy * cal.PixelToMmY / cal.Magnification;
-
-        // Apply invert flags
-        if (cal.InvertX) mmX = -mmX;
-        if (cal.InvertY) mmY = -mmY;
+        var (mmX, mmY) = CalculateWorldOffset(
+            framePos.Value.X, framePos.Value.Y,
+            _frameBitmap.Width, _frameBitmap.Height);
 
         var deviceName = cfg.MotionDevice;
         var currentPos = _motionManager.GetCurrentPosition(deviceName);
         if (currentPos == null)
         {
+            Log.Warning("[TopView] Click-to-Move: device '{Device}' position unavailable", deviceName);
             StatusText.Text = $"Move2Point: device '{deviceName}' position unavailable";
             return;
         }
@@ -668,6 +668,8 @@ public partial class OverlayWindow : Window
 
         _isMoving = true;
         StatusText.Text = $"Moving to X={newX:F3} Y={newY:F3} mm...";
+        Log.Information("[TopView] Click-to-Move: dX={DeltaX:F3} dY={DeltaY:F3} mm -> X={TargetX:F3} Y={TargetY:F3}",
+            mmX, mmY, newX, newY);
 
         // Fire-and-forget async move
         _ = Task.Run(() =>
@@ -677,6 +679,7 @@ public partial class OverlayWindow : Window
                 var moveX = Task.Run(() => _motionManager.MoveToAbs(deviceName, "X", newX, blocking: true));
                 var moveY = Task.Run(() => _motionManager.MoveToAbs(deviceName, "Y", newY, blocking: true));
                 Task.WaitAll(moveX, moveY);
+                Log.Information("[TopView] Click-to-Move complete: X={X:F3} Y={Y:F3}", newX, newY);
             }
             finally
             {
@@ -712,9 +715,18 @@ public partial class OverlayWindow : Window
         var distance = step * direction;
 
         var ok = _motionManager.MoveRelative(deviceName, "Z", distance, blocking: false);
-        StatusText.Text = ok
-            ? $"Jog Z {(direction > 0 ? "+" : "")}{distance} mm"
-            : $"Jog Z FAILED";
+        if (ok)
+        {
+            Log.Information("[TopView] Jog Z {Direction}{Distance} mm on '{Device}'",
+                direction > 0 ? "+" : "", distance, deviceName);
+            StatusText.Text = $"Jog Z {(direction > 0 ? "+" : "")}{distance} mm";
+        }
+        else
+        {
+            Log.Error("[TopView] Jog Z FAILED: {Direction}{Distance} mm on '{Device}'",
+                direction > 0 ? "+" : "", distance, deviceName);
+            StatusText.Text = "Jog Z FAILED";
+        }
 
         // Update Z position display after a short delay
         _ = Task.Run(() =>
@@ -772,8 +784,6 @@ public partial class OverlayWindow : Window
         // Mouse crosshair + distance line
         if (_lastMouseFramePos != null)
         {
-            var cfg = _clickToMoveConfig ?? new ClickToMoveConfig();
-            var cal = cfg.GetCalibration(_activeCameraName ?? _activeCameraId);
             float mouseFrameX = (float)_lastMouseFramePos.Value.X;
             float mouseFrameY = (float)_lastMouseFramePos.Value.Y;
 
@@ -803,14 +813,7 @@ public partial class OverlayWindow : Window
             canvas.DrawLine(centerCanvasX, centerCanvasY, mouseCanvasX, mouseCanvasY, dashPaint);
 
             // Distance label in mm
-            double dx = mouseFrameX - frameW / 2.0;
-            double dy = mouseFrameY - frameH / 2.0;
-            dx *= (double)cal.CalibrationRefWidth / frameW;
-            dy *= (double)cal.CalibrationRefHeight / frameH;
-            double mmX = dx * cal.PixelToMmX / cal.Magnification;
-            double mmY = dy * cal.PixelToMmY / cal.Magnification;
-            if (cal.InvertX) mmX = -mmX;
-            if (cal.InvertY) mmY = -mmY;
+            var (mmX, mmY) = CalculateWorldOffset(mouseFrameX, mouseFrameY, frameW, frameH);
             double dist = Math.Sqrt(mmX * mmX + mmY * mmY);
 
             using var labelPaint = new SKPaint
@@ -837,6 +840,66 @@ public partial class OverlayWindow : Window
             };
             canvas.DrawText("Moving...", destRect.Left + 10, destRect.Top + 24, movingPaint);
         }
+    }
+
+    /// <summary>
+    /// Calculate real-world mm offset from frame center to the given pixel position.
+    /// Resolves calibration from: (1) per-camera ClickToMoveConfig, (2) RegisteredCamera config, (3) defaults.
+    /// </summary>
+    private (double mmX, double mmY) CalculateWorldOffset(double frameX, double frameY, int frameW, int frameH)
+    {
+        var cal = ResolveCalibration();
+
+        double dx = frameX - frameW / 2.0;
+        double dy = frameY - frameH / 2.0;
+
+        // Scale to calibration reference resolution
+        dx *= (double)cal.CalibrationRefWidth / frameW;
+        dy *= (double)cal.CalibrationRefHeight / frameH;
+
+        // Convert to mm: pixel offset * mm_per_pixel / magnification
+        double mmX = dx * cal.PixelToMmX / cal.Magnification;
+        double mmY = dy * cal.PixelToMmY / cal.Magnification;
+
+        if (cal.InvertX) mmX = -mmX;
+        if (cal.InvertY) mmY = -mmY;
+
+        return (mmX, mmY);
+    }
+
+    /// <summary>
+    /// Resolve calibration with fallback: ClickToMoveConfig per-camera → RegisteredCamera config → ClickToMoveConfig defaults.
+    /// </summary>
+    private CameraCalibration ResolveCalibration()
+    {
+        var cfg = _clickToMoveConfig ?? new ClickToMoveConfig();
+        var cameraKey = _activeCameraName ?? _activeCameraId;
+
+        // If ClickToMoveConfig has an explicit per-camera entry, always use it
+        if (!string.IsNullOrEmpty(cameraKey) && cfg.Cameras.ContainsKey(cameraKey))
+            return cfg.GetCalibration(cameraKey);
+
+        // Check RegisteredCamera config for calibration data
+        if (!string.IsNullOrEmpty(_activeCameraId))
+        {
+            var regConfig = _cameraManager.GetCameraConfig(_activeCameraId);
+            if (regConfig != null && regConfig.MmPerPixel > 0)
+            {
+                return new CameraCalibration
+                {
+                    PixelToMmX = regConfig.MmPerPixel,
+                    PixelToMmY = regConfig.MmPerPixel,
+                    CalibrationRefWidth = regConfig.Width > 0 ? regConfig.Width : cfg.CalibrationRefWidth,
+                    CalibrationRefHeight = regConfig.Height > 0 ? regConfig.Height : cfg.CalibrationRefHeight,
+                    Magnification = regConfig.Magnification,
+                    InvertX = cfg.InvertX,
+                    InvertY = cfg.InvertY
+                };
+            }
+        }
+
+        // Fall back to ClickToMoveConfig defaults
+        return cfg.GetCalibration(cameraKey);
     }
 
     private Point? WpfPointToFramePixels(Point wpfPoint, SKRect destRect, int frameW, int frameH)

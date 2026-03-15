@@ -7,7 +7,10 @@ using Horizon.Camera;
 using Horizon.Camera.Models;
 using System.Collections.Specialized;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Shapes;
 using Horizon.Common;
+using Path = System.IO.Path;
 using Horizon.Core;
 using Horizon.CurrentMeasurement;
 using Horizon.CurrentMeasurement.Interfaces;
@@ -25,6 +28,8 @@ public partial class MainWindow : Window
     private List<RegisteredCamera> _registeredCameras = new();
     private OverlayWindow? _overlayWindow;
     private UserPreferences _prefs = new();
+    private string? _currentHardwareDetailId;
+    private LayoutDocument? _hardwareDoc;
 
     private static readonly string SettingsDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon");
@@ -60,6 +65,11 @@ public partial class MainWindow : Window
             if (args.Action == NotifyCollectionChangedAction.Add && OutputListBox.Items.Count > 0)
                 OutputListBox.ScrollIntoView(OutputListBox.Items[^1]);
         };
+
+        // Cache the hardware document reference for toggle logic
+        _hardwareDoc = DockManager.Layout.Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == "hardware");
 
         // Initialize and auto-connect are handled by SplashWindow before MainWindow is shown
         LoadRegisteredCameras();
@@ -105,63 +115,54 @@ public partial class MainWindow : Window
 
     private void StopAllIOPanels()
     {
-        var ioDocs = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocument>()
-            .Where(d => d.ContentId != null && d.ContentId.StartsWith("io_"))
-            .ToList();
-
-        foreach (var doc in ioDocs)
-        {
-            if (doc.Content is IOPanel panel)
-                panel.StopPolling();
-        }
+        if (HardwareDetailContent.Content is IOPanel ioPanel)
+            ioPanel.StopPolling();
     }
 
     private void StopAllMotionPanels()
     {
-        var motionDocs = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocument>()
-            .Where(d => d.ContentId != null && d.ContentId.StartsWith("motion_"))
-            .ToList();
-
-        foreach (var doc in motionDocs)
-        {
-            if (doc.Content is MotionPanel panel)
-                panel.StopPolling();
-        }
+        if (HardwareDetailContent.Content is MotionPanel motionPanel)
+            motionPanel.StopPolling();
     }
 
     private void StopAllPneumaticPanels()
     {
-        var pneuDocs = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocument>()
-            .Where(d => d.ContentId != null && d.ContentId.StartsWith("pneu_"))
-            .ToList();
-
-        foreach (var doc in pneuDocs)
-        {
-            if (doc.Content is PneumaticPanel panel)
-                panel.StopPolling();
-        }
+        if (HardwareDetailContent.Content is PneumaticPanel pneuPanel)
+            pneuPanel.StopPolling();
     }
 
     private void StopAllCurrentMeasPanels()
     {
-        var cmeasDocs = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocument>()
-            .Where(d => d.ContentId != null && d.ContentId.StartsWith("cmeas_"))
-            .ToList();
-
-        foreach (var doc in cmeasDocs)
-        {
-            if (doc.Content is CurrentMeasurementPanel panel)
-                panel.StopPolling();
-        }
+        if (HardwareDetailContent.Content is CurrentMeasurementPanel cmeasPanel)
+            cmeasPanel.StopPolling();
     }
+
+    private static TreeViewItem CreateStatusTreeItem(string label, string tag, Brush statusColor)
+    {
+        var dot = new Ellipse
+        {
+            Width = 10,
+            Height = 10,
+            Fill = statusColor,
+            Margin = new Thickness(0, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var text = new TextBlock
+        {
+            Text = label,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        panel.Children.Add(dot);
+        panel.Children.Add(text);
+
+        return new TreeViewItem { Header = panel, Tag = tag };
+    }
+
+    private static readonly Brush StatusGreen = new SolidColorBrush(Color.FromRgb(76, 175, 80));
+    private static readonly Brush StatusYellow = new SolidColorBrush(Color.FromRgb(255, 193, 7));
+    private static readonly Brush StatusRed = new SolidColorBrush(Color.FromRgb(244, 67, 54));
+    private static readonly Brush StatusGray = new SolidColorBrush(Color.FromRgb(158, 158, 158));
 
     private void RefreshCameraTree()
     {
@@ -179,7 +180,8 @@ public partial class MainWindow : Window
             if (status.Connected)
                 label += " [Connected]";
 
-            var item = new TreeViewItem { Header = label, Tag = status.Id };
+            var color = status.Connected ? StatusGreen : StatusRed;
+            var item = CreateStatusTreeItem(label, status.Id, color);
             item.ContextMenu = CreateCameraContextMenu(status.Id);
             item.MouseDoubleClick += CameraItem_MouseDoubleClick;
             CamerasTreeItem.Items.Add(item);
@@ -195,41 +197,16 @@ public partial class MainWindow : Window
         e.Handled = true;
 
         var contentId = $"camInfo_{cameraId}";
-
-        // If a tab for this camera already exists, activate it
-        var existing = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocument>()
-            .FirstOrDefault(d => d.ContentId == contentId);
-        if (existing != null)
-        {
-            existing.IsActive = true;
-            return;
-        }
+        if (_currentHardwareDetailId == contentId) return;
 
         var status = _context.CameraManager.GetCameraStatus(cameraId);
         var panel = new CameraInfoPanel(status, _context.CameraManager);
         panel.ConnectionChanged += () => { RefreshCameraTree(); RefreshConfigGrid(); };
         panel.StartFeedRequested += id => StartLiveFeed(id);
         panel.StopFeedRequested += id => StopLiveFeed(id);
+        panel.SensorConfigSaved += OnSensorConfigSaved;
 
-        var doc = new LayoutDocument
-        {
-            Title = $"Camera: {status.ModelName} ({cameraId})",
-            ContentId = contentId,
-            Content = panel
-        };
-
-        // Add to the first document pane
-        var docPane = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocumentPane>()
-            .FirstOrDefault();
-        if (docPane != null)
-        {
-            docPane.Children.Add(doc);
-            doc.IsActive = true;
-        }
+        SetHardwareDetail(panel, $"Camera: {status.ModelName} ({cameraId})", contentId);
     }
 
     private ContextMenu CreateCameraContextMenu(string cameraId)
@@ -440,6 +417,27 @@ public partial class MainWindow : Window
         RefreshConfigGrid();
     }
 
+    private void OnSensorConfigSaved(string cameraId, RegisteredCamera updatedConfig)
+    {
+        // Update the registered camera entry in the list
+        var existing = _registeredCameras.FirstOrDefault(
+            r => r.SerialNumber.Equals(cameraId, StringComparison.OrdinalIgnoreCase));
+        if (existing != null)
+        {
+            existing.MmPerPixel = updatedConfig.MmPerPixel;
+            existing.Magnification = updatedConfig.Magnification;
+            existing.Width = updatedConfig.Width;
+            existing.Height = updatedConfig.Height;
+        }
+
+        // Persist to disk
+        GetConfigStore()?.Save(_registeredCameras);
+
+        RefreshConfigGrid();
+        Log.Information("Sensor config saved for camera '{CameraId}': mm/px={MmPx}, Mag={Mag}",
+            cameraId, updatedConfig.MmPerPixel, updatedConfig.Magnification);
+    }
+
     private void RefreshConfigGrid()
     {
         var connectedSerials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -467,6 +465,9 @@ public partial class MainWindow : Window
             r.SdkType,
             r.ConnectionType,
             r.IpAddress,
+            Resolution = (r.Width > 0 && r.Height > 0) ? $"{r.Width}x{r.Height}" : "Auto",
+            MmPx = r.MmPerPixel > 0 ? r.MmPerPixel.ToString("G4") : "-",
+            Mag = r.Magnification.ToString("G4"),
             Status = connectedSerials.Contains(r.SerialNumber) ? "Online"
                    : knownSerials.Contains(r.SerialNumber) ? "Found"
                    : "Offline"
@@ -536,13 +537,23 @@ public partial class MainWindow : Window
         if (string.IsNullOrEmpty(name))
             name = $"{sdkType} {serial}";
 
+        int.TryParse(MountWidthBox.Text.Trim(), out var width);
+        int.TryParse(MountHeightBox.Text.Trim(), out var height);
+        double.TryParse(MountMmPerPixelBox.Text.Trim(), out var mmPerPixel);
+        if (!double.TryParse(MountMagBox.Text.Trim(), out var magnification))
+            magnification = 1.0;
+
         var entry = new RegisteredCamera
         {
             Name = name,
             SerialNumber = serial,
             SdkType = sdkType,
             ConnectionType = connType,
-            IpAddress = connType == "IP" ? ipAddress : string.Empty
+            IpAddress = connType == "IP" ? ipAddress : string.Empty,
+            Width = width,
+            Height = height,
+            MmPerPixel = mmPerPixel,
+            Magnification = magnification
         };
 
         _registeredCameras.Add(entry);
@@ -551,6 +562,10 @@ public partial class MainWindow : Window
         MountNameBox.Clear();
         MountSerialBox.Clear();
         MountIpBox.Clear();
+        MountWidthBox.Text = "0";
+        MountHeightBox.Text = "0";
+        MountMmPerPixelBox.Text = "0";
+        MountMagBox.Text = "1";
 
         Log.Information("Mounted camera: {Name} ({Serial}) [{SdkType}] {ConnType}{IpSuffix}",
             entry.Name, entry.SerialNumber, entry.SdkType, connType,
@@ -645,7 +660,30 @@ public partial class MainWindow : Window
 
     private void ViewHardware_Click(object sender, RoutedEventArgs e)
     {
-        ToggleAnchorable("hardware");
+        if (_hardwareDoc == null) return;
+
+        if (_hardwareDoc.Parent != null && _hardwareDoc.IsVisible)
+        {
+            // Hide by removing from parent pane (preserves Content)
+            var parent = _hardwareDoc.Parent as LayoutDocumentPane;
+            parent?.RemoveChild(_hardwareDoc);
+        }
+        else if (_hardwareDoc.Parent == null)
+        {
+            // Re-add to the first document pane
+            var pane = DockManager.Layout.Descendents()
+                .OfType<LayoutDocumentPane>()
+                .FirstOrDefault();
+            if (pane != null)
+            {
+                pane.Children.Add(_hardwareDoc);
+                _hardwareDoc.IsActive = true;
+            }
+        }
+        else
+        {
+            _hardwareDoc.IsActive = true;
+        }
     }
 
     private void ViewOutput_Click(object sender, RoutedEventArgs e)
@@ -663,6 +701,159 @@ public partial class MainWindow : Window
         RefreshLaserControllerTree();
     }
 
+    private void SetHardwareDetail(UIElement panel, string title, string contentId)
+    {
+        CleanupCurrentHardwareDetail();
+        HardwareDetailTitle.Text = title;
+        HardwareDetailContent.Content = panel;
+        _currentHardwareDetailId = contentId;
+
+        // Activate the Hardware document tab
+        var hwDoc = DockManager.Layout.Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == "hardware");
+        if (hwDoc != null) hwDoc.IsActive = true;
+    }
+
+    private void CleanupCurrentHardwareDetail()
+    {
+        var current = HardwareDetailContent.Content;
+        if (current == null) return;
+
+        // Stop polling on the previous panel
+        switch (current)
+        {
+            case MotionPanel mp: mp.StopPolling(); break;
+            case IOPanel ip: ip.StopPolling(); break;
+            case PneumaticPanel pp: pp.StopPolling(); break;
+            case CurrentMeasurementPanel cmp: cmp.StopPolling(); break;
+            case LaserControllerPanel lcp: lcp.StopPolling(); break;
+            case MotionOverviewPanel mop: mop.StopPolling(); break;
+            case IOOverviewPanel iop: iop.StopPolling(); break;
+            case PneumaticOverviewPanel pop: pop.StopPolling(); break;
+            case CameraOverviewPanel cop: cop.StopPolling(); break;
+        }
+
+        HardwareDetailContent.Content = null;
+        _currentHardwareDetailId = null;
+    }
+
+    // ── Category overview double-click handlers ──────────────────────
+
+    /// <summary>
+    /// Returns true if the double-click originated from a child TreeViewItem
+    /// (i.e. NOT directly on the parent header). Walks the visual tree from
+    /// OriginalSource up to the handler's TreeViewItem looking for an
+    /// intermediate TreeViewItem.
+    /// </summary>
+    private static bool IsChildTreeItemClick(MouseButtonEventArgs e, TreeViewItem parent)
+    {
+        var source = e.OriginalSource as DependencyObject;
+        while (source != null && source != parent)
+        {
+            if (source is TreeViewItem)
+                return true;
+            source = VisualTreeHelper.GetParent(source);
+        }
+        return false;
+    }
+
+    private void MotionCategory_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.Handled) return;
+        if (sender is not TreeViewItem item || item != MotionTreeItem) return;
+        if (IsChildTreeItemClick(e, MotionTreeItem)) return;
+        if (!_context.IsInitialized) return;
+        e.Handled = true;
+
+        var contentId = "overview_motion";
+        if (_currentHardwareDetailId == contentId) return;
+
+        var panel = new MotionOverviewPanel(_context.MotionManager);
+        panel.DeviceSelected += name =>
+        {
+            var ctrl = _context.MotionManager.GetController(name);
+            if (ctrl == null) return;
+            var mp = new MotionPanel(name, _context.MotionManager);
+            mp.ConnectionChanged += () => RefreshMotionTree();
+            SetHardwareDetail(mp, $"Motion: {name}", $"motion_{name}");
+        };
+        SetHardwareDetail(panel, "Motion — All Controllers", contentId);
+    }
+
+    private void IOCategory_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.Handled) return;
+        if (sender is not TreeViewItem item || item != IOTreeItem) return;
+        if (IsChildTreeItemClick(e, IOTreeItem)) return;
+        if (!_context.IsInitialized) return;
+        e.Handled = true;
+
+        var contentId = "overview_io";
+        if (_currentHardwareDetailId == contentId) return;
+
+        var panel = new IOOverviewPanel(_context.IOManager);
+        panel.DeviceSelected += name =>
+        {
+            var device = _context.IOManager.GetDevice(name);
+            if (device == null) return;
+            var ip = new IOPanel(name, _context.IOManager);
+            ip.ConnectionChanged += () => RefreshIOTree();
+            SetHardwareDetail(ip, $"IO: {name}", $"io_{name}");
+        };
+        SetHardwareDetail(panel, "IO — All Devices", contentId);
+    }
+
+    private void PneumaticCategory_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.Handled) return;
+        if (sender is not TreeViewItem item || item != PneumaticTreeItem) return;
+        if (IsChildTreeItemClick(e, PneumaticTreeItem)) return;
+        if (!_context.IsInitialized) return;
+        e.Handled = true;
+
+        var contentId = "overview_pneumatic";
+        if (_currentHardwareDetailId == contentId) return;
+
+        var panel = new PneumaticOverviewPanel(_context.PneumaticManager);
+        panel.DeviceSelected += name =>
+        {
+            var slide = _context.PneumaticManager.GetSlide(name);
+            if (slide == null) return;
+            var pp = new PneumaticPanel(name, _context.PneumaticManager);
+            pp.StatusChanged += () => RefreshPneumaticTree();
+            SetHardwareDetail(pp, $"Pneumatic: {name}", $"pneu_{name}");
+        };
+        SetHardwareDetail(panel, "Pneumatic — All Slides", contentId);
+    }
+
+    private void CamerasCategory_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.Handled) return;
+        if (sender is not TreeViewItem item || item != CamerasTreeItem) return;
+        if (IsChildTreeItemClick(e, CamerasTreeItem)) return;
+        if (!_context.IsInitialized) return;
+        e.Handled = true;
+
+        var contentId = "overview_cameras";
+        if (_currentHardwareDetailId == contentId) return;
+
+        var panel = new CameraOverviewPanel(_context.CameraManager);
+        panel.DeviceSelected += id =>
+        {
+            var status = _context.CameraManager.GetCameraStatus(id);
+            var cp = new CameraInfoPanel(status, _context.CameraManager);
+            cp.ConnectionChanged += () => { RefreshCameraTree(); RefreshConfigGrid(); };
+            cp.StartFeedRequested += camId => StartLiveFeed(camId);
+            cp.StopFeedRequested += camId => StopLiveFeed(camId);
+            cp.SensorConfigSaved += OnSensorConfigSaved;
+            SetHardwareDetail(cp, $"Camera: {status.ModelName} ({id})", $"camInfo_{id}");
+        };
+        SetHardwareDetail(panel, "Cameras — All Devices", contentId);
+    }
+
+    // ── Tree refresh + item handlers ──────────────────────────────
+
     private void RefreshMotionTree()
     {
         MotionTreeItem.Items.Clear();
@@ -675,7 +866,8 @@ public partial class MainWindow : Window
 
             var status = ctrl.IsConnected ? "Connected" : "Disconnected";
             var label = $"{name} [{status}] {ctrl.ControllerType}";
-            var item = new TreeViewItem { Header = label, Tag = name };
+            var color = ctrl.IsConnected ? StatusGreen : StatusRed;
+            var item = CreateStatusTreeItem(label, name, color);
             item.MouseDoubleClick += MotionItem_MouseDoubleClick;
             MotionTreeItem.Items.Add(item);
         }
@@ -690,16 +882,7 @@ public partial class MainWindow : Window
         e.Handled = true;
 
         var contentId = $"motion_{deviceName}";
-
-        var existing = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocument>()
-            .FirstOrDefault(d => d.ContentId == contentId);
-        if (existing != null)
-        {
-            existing.IsActive = true;
-            return;
-        }
+        if (_currentHardwareDetailId == contentId) return;
 
         var ctrl = _context.MotionManager.GetController(deviceName);
         if (ctrl == null) return;
@@ -707,22 +890,7 @@ public partial class MainWindow : Window
         var panel = new MotionPanel(deviceName, _context.MotionManager);
         panel.ConnectionChanged += () => RefreshMotionTree();
 
-        var doc = new LayoutDocument
-        {
-            Title = $"Motion: {deviceName}",
-            ContentId = contentId,
-            Content = panel
-        };
-
-        var docPane = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocumentPane>()
-            .FirstOrDefault();
-        if (docPane != null)
-        {
-            docPane.Children.Add(doc);
-            doc.IsActive = true;
-        }
+        SetHardwareDetail(panel, $"Motion: {deviceName}", contentId);
     }
 
     private void RefreshIOTree()
@@ -737,7 +905,8 @@ public partial class MainWindow : Window
 
             var status = device.IsConnected ? "Connected" : "Disconnected";
             var label = $"{name} [{status}] {device.InputCount}in/{device.OutputCount}out";
-            var item = new TreeViewItem { Header = label, Tag = name };
+            var color = device.IsConnected ? StatusGreen : StatusRed;
+            var item = CreateStatusTreeItem(label, name, color);
             item.MouseDoubleClick += IOItem_MouseDoubleClick;
             IOTreeItem.Items.Add(item);
         }
@@ -752,16 +921,7 @@ public partial class MainWindow : Window
         e.Handled = true;
 
         var contentId = $"io_{deviceName}";
-
-        var existing = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocument>()
-            .FirstOrDefault(d => d.ContentId == contentId);
-        if (existing != null)
-        {
-            existing.IsActive = true;
-            return;
-        }
+        if (_currentHardwareDetailId == contentId) return;
 
         var device = _context.IOManager.GetDevice(deviceName);
         if (device == null) return;
@@ -769,22 +929,7 @@ public partial class MainWindow : Window
         var panel = new IOPanel(deviceName, _context.IOManager);
         panel.ConnectionChanged += () => RefreshIOTree();
 
-        var doc = new LayoutDocument
-        {
-            Title = $"IO: {deviceName}",
-            ContentId = contentId,
-            Content = panel
-        };
-
-        var docPane = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocumentPane>()
-            .FirstOrDefault();
-        if (docPane != null)
-        {
-            docPane.Children.Add(doc);
-            doc.IsActive = true;
-        }
+        SetHardwareDetail(panel, $"IO: {deviceName}", contentId);
     }
 
     private void RefreshPneumaticTree()
@@ -799,7 +944,13 @@ public partial class MainWindow : Window
 
             var status = slide.GetStatus();
             var label = $"{name} — {status.Position}";
-            var item = new TreeViewItem { Header = label, Tag = name };
+            var color = status.Position switch
+            {
+                Horizon.Pneumatic.Models.PneumaticPosition.Extended => StatusGreen,
+                Horizon.Pneumatic.Models.PneumaticPosition.Retracted => StatusYellow,
+                _ => StatusGray
+            };
+            var item = CreateStatusTreeItem(label, name, color);
             item.MouseDoubleClick += PneumaticItem_MouseDoubleClick;
             PneumaticTreeItem.Items.Add(item);
         }
@@ -814,16 +965,7 @@ public partial class MainWindow : Window
         e.Handled = true;
 
         var contentId = $"pneu_{slideName}";
-
-        var existing = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocument>()
-            .FirstOrDefault(d => d.ContentId == contentId);
-        if (existing != null)
-        {
-            existing.IsActive = true;
-            return;
-        }
+        if (_currentHardwareDetailId == contentId) return;
 
         var slide = _context.PneumaticManager.GetSlide(slideName);
         if (slide == null) return;
@@ -831,22 +973,7 @@ public partial class MainWindow : Window
         var panel = new PneumaticPanel(slideName, _context.PneumaticManager);
         panel.StatusChanged += () => RefreshPneumaticTree();
 
-        var doc = new LayoutDocument
-        {
-            Title = $"Pneumatic: {slideName}",
-            ContentId = contentId,
-            Content = panel
-        };
-
-        var docPane = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocumentPane>()
-            .FirstOrDefault();
-        if (docPane != null)
-        {
-            docPane.Children.Add(doc);
-            doc.IsActive = true;
-        }
+        SetHardwareDetail(panel, $"Pneumatic: {slideName}", contentId);
     }
 
     private void RefreshCurrentMeasTree()
@@ -862,7 +989,8 @@ public partial class MainWindow : Window
             var status = device.IsConnected ? "Connected" : "Disconnected";
             var channels = string.Join(",", device.EnabledChannels.Select(ch => $"CH{ch}"));
             var label = $"{name} [{status}] {channels}";
-            var item = new TreeViewItem { Header = label, Tag = name };
+            var color = device.IsConnected ? StatusGreen : StatusRed;
+            var item = CreateStatusTreeItem(label, name, color);
             item.MouseDoubleClick += CurrentMeasItem_MouseDoubleClick;
             CurrentMeasTreeItem.Items.Add(item);
         }
@@ -877,16 +1005,7 @@ public partial class MainWindow : Window
         e.Handled = true;
 
         var contentId = $"cmeas_{deviceName}";
-
-        var existing = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocument>()
-            .FirstOrDefault(d => d.ContentId == contentId);
-        if (existing != null)
-        {
-            existing.IsActive = true;
-            return;
-        }
+        if (_currentHardwareDetailId == contentId) return;
 
         var device = _context.CurrentMeasurementManager.GetDevice(deviceName);
         if (device == null) return;
@@ -895,22 +1014,7 @@ public partial class MainWindow : Window
         panel.ConnectionChanged += () => RefreshCurrentMeasTree();
         panel.PopOutChartRequested += OpenCurrentChartPanel;
 
-        var doc = new LayoutDocument
-        {
-            Title = $"CMeas: {deviceName}",
-            ContentId = contentId,
-            Content = panel
-        };
-
-        var docPane = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocumentPane>()
-            .FirstOrDefault();
-        if (docPane != null)
-        {
-            docPane.Children.Add(doc);
-            doc.IsActive = true;
-        }
+        SetHardwareDetail(panel, $"CMeas: {deviceName}", contentId);
     }
 
     private void RefreshLaserControllerTree()
@@ -925,7 +1029,8 @@ public partial class MainWindow : Window
 
             var status = device.IsConnected ? "Connected" : "Disconnected";
             var label = $"{name} [{status}] {device.ControllerType}";
-            var item = new TreeViewItem { Header = label, Tag = name };
+            var color = device.IsConnected ? StatusGreen : StatusRed;
+            var item = CreateStatusTreeItem(label, name, color);
             item.MouseDoubleClick += LaserControllerItem_MouseDoubleClick;
             LaserControllerTreeItem.Items.Add(item);
         }
@@ -940,16 +1045,7 @@ public partial class MainWindow : Window
         e.Handled = true;
 
         var contentId = $"laser_{deviceName}";
-
-        var existing = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocument>()
-            .FirstOrDefault(d => d.ContentId == contentId);
-        if (existing != null)
-        {
-            existing.IsActive = true;
-            return;
-        }
+        if (_currentHardwareDetailId == contentId) return;
 
         var device = _context.LaserControllerManager.GetDevice(deviceName);
         if (device == null) return;
@@ -957,37 +1053,13 @@ public partial class MainWindow : Window
         var panel = new LaserControllerPanel(deviceName, _context.LaserControllerManager, _context.MeasurementHub);
         panel.ConnectionChanged += () => RefreshLaserControllerTree();
 
-        var doc = new LayoutDocument
-        {
-            Title = $"Laser: {deviceName}",
-            ContentId = contentId,
-            Content = panel
-        };
-
-        var docPane = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocumentPane>()
-            .FirstOrDefault();
-        if (docPane != null)
-        {
-            docPane.Children.Add(doc);
-            doc.IsActive = true;
-        }
+        SetHardwareDetail(panel, $"Laser: {deviceName}", contentId);
     }
 
     private void StopAllLaserControllerPanels()
     {
-        var laserDocs = DockManager.Layout
-            .Descendents()
-            .OfType<LayoutDocument>()
-            .Where(d => d.ContentId != null && d.ContentId.StartsWith("laser_"))
-            .ToList();
-
-        foreach (var doc in laserDocs)
-        {
-            if (doc.Content is LaserControllerPanel panel)
-                panel.StopPolling();
-        }
+        if (HardwareDetailContent.Content is LaserControllerPanel laserPanel)
+            laserPanel.StopPolling();
     }
 
     private void TopViewChart_Click(object sender, RoutedEventArgs e)
@@ -1515,10 +1587,10 @@ public partial class MainWindow : Window
         {
             if (!File.Exists(DockLayoutPath)) return;
 
-            // If the saved layout is from before the unified Hardware panel,
+            // If the saved layout uses the old design (hardware as anchorable or missing),
             // discard it so the XAML-defined layout takes effect.
             var xml = File.ReadAllText(DockLayoutPath);
-            if (!xml.Contains("\"hardware\""))
+            if (!xml.Contains("\"hardware\"") || !xml.Contains("LayoutDocument"))
             {
                 File.Delete(DockLayoutPath);
                 return;
@@ -1551,7 +1623,9 @@ public partial class MainWindow : Window
                     || (id != null && id.StartsWith("cmeas_"))
                     || (id != null && id.StartsWith("chart_"))
                     || (id != null && id.StartsWith("laser_"))
-                    || (id != null && id.StartsWith("jog_")))
+                    || (id != null && id.StartsWith("camInfo_"))
+                    || (id != null && id.StartsWith("jog_"))
+                    || (id != null && id.StartsWith("overview_")))
                 {
                     args.Cancel = true;
                     return;
@@ -1585,8 +1659,22 @@ public partial class MainWindow : Window
                     args.Content = args.Model.Content;
             };
             serializer.Deserialize(DockLayoutPath);
+
+            // Ensure the hardware document is visible after layout restore
+            var hwDoc = DockManager.Layout.Descendents()
+                .OfType<LayoutDocument>()
+                .FirstOrDefault(d => d.ContentId == "hardware");
+            if (hwDoc == null)
+            {
+                // Hardware document was lost during restore — delete stale layout and reload from XAML
+                File.Delete(DockLayoutPath);
+            }
         }
-        catch { }
+        catch
+        {
+            // If restore fails, delete stale layout so next launch uses XAML defaults
+            try { File.Delete(DockLayoutPath); } catch { }
+        }
     }
 
     private void SaveWindowState()
