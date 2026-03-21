@@ -62,6 +62,14 @@ Key config files: `io_devices.json`, `motor_devices.json`, `pneumatic_slides.jso
 
 Standalone Ezi-IO modules use a **combined I/O register**: bits `[0..InputCount-1]` = inputs, bits `[InputCount..InputCount+OutputCount-1]` = outputs. SetOutput/ReadAllOutputs in `EziIODevice` handle the bit offset automatically. Motor IO (`FAS_SetIOOutput`) does not use this offset.
 
+### TeachPointManager
+
+`Horizon.Core.TeachPointManager` manages named products containing taught positions per motion device/axis. Products are persisted as JSON in `%APPDATA%\Horizon\config\teach-points\`. `TeachPointStore` handles file I/O. The active product is tracked separately. Used by TrainerPanel and motion command handlers for position recall.
+
+### UserPreferences
+
+`Horizon.Common.UserPreferences` — user-level settings (auto-open top view, crosshair, click-to-move, chart overlay, last-selected devices). Loaded/saved via `ConfigLoader` as `user_preferences.json` in the config directory.
+
 ### MeasurementHub
 
 `Horizon.Core.MeasurementHub` — central pub/sub for measurement data. Channels are auto-created on first `Push(key, value, timestamp)`. Each `MeasurementChannel` is a lock-based circular buffer (500 samples). Channel key convention: `"{DeviceName}.CH{N}"` (e.g., `"Keithley-1.CH1"`). Consumers: CurrentReadingChart, OverlayWindow, CurrentChartPanel, LiveFeedPanel.
@@ -101,6 +109,8 @@ MainWindow creates document panels per hardware device: IOPanel, MotionPanel, Pn
 
 ProcessPanel includes a plugin catalog (TreeView by category), builder list with step highlighting (yellow=current, green=success, red=failure), PropertyTable for parameter editing, and a Context Watch DataGrid showing live variables during execution.
 
+TrainerPanel is a 3-step wizard for position accuracy training: (1) teach bonding positions via corner capture, (2) teach reference points to establish a coordinate frame, (3) retrace/align by re-visiting references and computing corrected positions. Uses `TeachPointManager` + `TrainerModels.cs` in Core. See `docs/position-accuracy-trainer.md` for coordinate math details.
+
 ## Conventions
 
 - Nullable enabled, implicit usings, AllowUnsafeBlocks in App only
@@ -111,3 +121,7 @@ ProcessPanel includes a plugin catalog (TreeView by category), builder list with
 - VISA instruments (Keithley, Thorlabs CLD101x) share `Native/VisaNative.cs` P/Invoke pattern
 - Logging: `ILogSink` interface in Core, `SerilogLogSink` adapter in App (rolling daily files + WPF output sink)
 - NuGet: AvalonDock 4.72.1, SkiaSharp.Views.WPF 3.116.1
+
+## Documentation
+
+Detailed per-module docs live in `docs/modules/` (one .md per project). Architecture overview in `docs/architecture.md`. Trainer design docs in `docs/position-accuracy-trainer.md` and `docs/multi-device-trainer-design.md`.

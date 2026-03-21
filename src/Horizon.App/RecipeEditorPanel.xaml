@@ -1,0 +1,290 @@
+<UserControl x:Class="Horizon.App.RecipeEditorPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{DynamicResource Theme.BackgroundBrush}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="180"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Toolbar -->
+        <ToolBarTray Grid.Row="0" Background="{DynamicResource Theme.MenuBarBrush}">
+            <ToolBar Background="{DynamicResource Theme.MenuBarBrush}" Band="1" BandIndex="1">
+                <Button x:Name="NewBtn" Content="New" Click="New_Click" Padding="6,2" FontFamily="Consolas" FontSize="11"
+                        Foreground="{DynamicResource Theme.ForegroundBrush}" Background="Transparent" BorderThickness="0"/>
+                <Button x:Name="OpenBtn" Content="Open" Click="Open_Click" Padding="6,2" FontFamily="Consolas" FontSize="11"
+                        Foreground="{DynamicResource Theme.ForegroundBrush}" Background="Transparent" BorderThickness="0"/>
+                <Button x:Name="SaveBtn" Content="Save" Click="Save_Click" Padding="6,2" FontFamily="Consolas" FontSize="11"
+                        Foreground="{DynamicResource Theme.ForegroundBrush}" Background="Transparent" BorderThickness="0"/>
+                <Button x:Name="SaveAsBtn" Content="Save As" Click="SaveAs_Click" Padding="6,2" FontFamily="Consolas" FontSize="11"
+                        Foreground="{DynamicResource Theme.ForegroundBrush}" Background="Transparent" BorderThickness="0"/>
+                <Separator/>
+                <Button x:Name="RunBtn" Content="Run" Click="Run_Click" Padding="8,2" FontFamily="Consolas" FontSize="11"
+                        Foreground="#90EE90" Background="Transparent" BorderThickness="0" FontWeight="Bold"/>
+                <Button x:Name="StopBtn" Content="Stop" Click="Stop_Click" Padding="8,2" FontFamily="Consolas" FontSize="11"
+                        Foreground="#FF6347" Background="Transparent" BorderThickness="0" IsEnabled="False"/>
+                <Separator/>
+                <CheckBox x:Name="StepModeCheck" Content="Step Mode" VerticalAlignment="Center"
+                          FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="4,0"/>
+                <Button x:Name="ContinueBtn" Content="Continue" Click="Continue_Click" Padding="6,2" FontFamily="Consolas" FontSize="11"
+                        Foreground="{DynamicResource Theme.ForegroundBrush}" Background="Transparent" BorderThickness="0" IsEnabled="False"/>
+            </ToolBar>
+        </ToolBarTray>
+
+        <!-- File path bar -->
+        <Border Grid.Row="1" Background="#252526" BorderBrush="#333348" BorderThickness="0,0,0,1" Padding="8,3">
+            <TextBlock x:Name="FilePathDisplay" FontFamily="Consolas" FontSize="11"
+                       Foreground="#808080" TextTrimming="CharacterEllipsis"
+                       Text="Untitled (not saved)"/>
+        </Border>
+
+        <!-- Script editor -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="40"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Line numbers gutter -->
+            <Border Grid.Column="0" Background="#1E1E2E" BorderBrush="#333348" BorderThickness="0,0,1,0">
+                <ScrollViewer x:Name="LineNumberScroll" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Hidden"
+                              IsHitTestVisible="False">
+                    <TextBlock x:Name="LineNumbers" FontFamily="Consolas" FontSize="12"
+                               Foreground="#606080" Padding="4,2,6,0"
+                               TextAlignment="Right"/>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Code editor (RichTextBox for syntax coloring) -->
+            <Grid Grid.Column="1">
+                <RichTextBox x:Name="Editor"
+                             FontFamily="Consolas" FontSize="12"
+                             Foreground="#D4D4D4" Background="#1E1E1E"
+                             CaretBrush="#AEAFAD"
+                             BorderThickness="0"
+                             VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Auto"
+                             AcceptsReturn="True" AcceptsTab="True"
+                             Padding="4,2,4,0"
+                             TextChanged="Editor_TextChanged"
+                             ScrollViewer.ScrollChanged="Editor_ScrollChanged"
+                             PreviewKeyDown="Editor_PreviewKeyDown"
+                             SelectionChanged="Editor_SelectionChanged"
+                             SpellCheck.IsEnabled="False"
+                             IsDocumentEnabled="True">
+                    <RichTextBox.Resources>
+                        <Style TargetType="Paragraph">
+                            <Setter Property="Margin" Value="0"/>
+                            <Setter Property="LineHeight" Value="1"/>
+                        </Style>
+                    </RichTextBox.Resources>
+                </RichTextBox>
+
+                <!-- Parameter hint tooltip -->
+                <Popup x:Name="ParamHintPopup" PlacementTarget="{Binding ElementName=Editor}"
+                       Placement="RelativePoint" StaysOpen="True" AllowsTransparency="True"
+                       IsHitTestVisible="False" PopupAnimation="None">
+                    <Border Background="#1E1E2E" BorderBrush="#454580" BorderThickness="1"
+                            CornerRadius="3" Padding="8,4" MaxWidth="500">
+                        <StackPanel>
+                            <TextBlock x:Name="ParamHintSignature" FontFamily="Consolas" FontSize="12"
+                                       Foreground="#D4D4D4" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="ParamHintDetail" FontFamily="Consolas" FontSize="11"
+                                       Foreground="#808080" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Popup>
+
+                <!-- Autocomplete popup -->
+                <Popup x:Name="AutoCompletePopup" PlacementTarget="{Binding ElementName=Editor}"
+                       Placement="RelativePoint" StaysOpen="False" AllowsTransparency="True"
+                       PopupAnimation="None">
+                    <Border Background="#252526" BorderBrush="#454545" BorderThickness="1"
+                            CornerRadius="2" MaxHeight="180" MinWidth="200">
+                        <ListBox x:Name="AutoCompleteList"
+                                 Background="#252526" Foreground="#D4D4D4"
+                                 BorderThickness="0" FontFamily="Consolas" FontSize="12"
+                                 SelectionChanged="AutoCompleteList_SelectionChanged"
+                                 MouseDoubleClick="AutoCompleteList_DoubleClick"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Hidden">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Margin="2,1">
+                                        <TextBlock Text="{Binding Icon}" Foreground="{Binding IconColor}"
+                                                   Width="18" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Text="{Binding Label}" Foreground="#D4D4D4"
+                                                   FontFamily="Consolas" FontSize="12"/>
+                                        <TextBlock Text="{Binding Detail}" Foreground="#606060"
+                                                   FontFamily="Consolas" FontSize="11" Margin="8,0,0,0"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                </Popup>
+            </Grid>
+        </Grid>
+
+        <!-- Splitter -->
+        <GridSplitter Grid.Row="3" Height="4" HorizontalAlignment="Stretch"
+                      Background="{DynamicResource Theme.BorderBrush}"/>
+
+        <!-- Bottom panel: Variables | Output + Errors (tabbed) -->
+        <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="250"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Variables watch -->
+            <Border Grid.Column="0" Background="{DynamicResource Theme.BackgroundAltBrush}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="Variables" FontFamily="Consolas" FontSize="11"
+                               Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"
+                               Padding="6,3" Background="{DynamicResource Theme.MenuBarBrush}"/>
+                    <DataGrid x:Name="WatchGrid" Grid.Row="1"
+                              AutoGenerateColumns="False" IsReadOnly="True"
+                              HeadersVisibility="None" GridLinesVisibility="None"
+                              Background="{DynamicResource Theme.BackgroundAltBrush}"
+                              RowBackground="{DynamicResource Theme.BackgroundAltBrush}"
+                              BorderThickness="0" FontFamily="Consolas" FontSize="11"
+                              CanUserReorderColumns="False" CanUserResizeRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Variable" Binding="{Binding Variable}" Width="100"
+                                                Foreground="#569CD6"/>
+                            <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="*"
+                                                Foreground="#D4D4D4"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <!-- Splitter -->
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                          Background="{DynamicResource Theme.BorderBrush}"/>
+
+            <!-- Output + Errors with tab headers -->
+            <Border Grid.Column="2" Background="{DynamicResource Theme.BackgroundAltBrush}">
+                <TabControl x:Name="BottomTabs" Background="{DynamicResource Theme.BackgroundAltBrush}"
+                            BorderThickness="0" FontFamily="Consolas" FontSize="11"
+                            Foreground="{DynamicResource Theme.ForegroundBrush}">
+                    <TabControl.Resources>
+                        <Style TargetType="TabItem">
+                            <Setter Property="Background" Value="{DynamicResource Theme.MenuBarBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundDisabledBrush}"/>
+                            <Setter Property="Padding" Value="8,3"/>
+                            <Setter Property="FontFamily" Value="Consolas"/>
+                            <Setter Property="FontSize" Value="11"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Foreground" Value="#1E1E1E"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TabControl.Resources>
+
+                    <!-- Output tab -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Output" VerticalAlignment="Center"/>
+                                <Button Content="Copy" Click="CopyOutput_Click" Padding="4,0" Margin="8,0,0,0"
+                                        FontFamily="Consolas" FontSize="10"
+                                        Foreground="#808080" Background="Transparent" BorderThickness="0"
+                                        VerticalAlignment="Center" Cursor="Hand"/>
+                            </StackPanel>
+                        </TabItem.Header>
+                        <ListBox x:Name="OutputList"
+                                 Background="#1E1E1E"
+                                 Foreground="#D4D4D4" BorderThickness="0"
+                                 FontFamily="Consolas" FontSize="11"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                            <ListBox.Resources>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Background" Value="#1E1E1E"/>
+                                    <Setter Property="Foreground" Value="#D4D4D4"/>
+                                    <Setter Property="Padding" Value="2,1"/>
+                                    <Setter Property="BorderThickness" Value="0"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="#264F78"/>
+                                            <Setter Property="Foreground" Value="#FFFFFF"/>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#2A2D2E"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.Resources>
+                        </ListBox>
+                    </TabItem>
+
+                    <!-- Errors tab -->
+                    <TabItem x:Name="ErrorsTab">
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="ErrorsTabText" Text="Errors (0)" VerticalAlignment="Center"/>
+                                <Button Content="Copy" Click="CopyErrors_Click" Padding="4,0" Margin="8,0,0,0"
+                                        FontFamily="Consolas" FontSize="10"
+                                        Foreground="#808080" Background="Transparent" BorderThickness="0"
+                                        VerticalAlignment="Center" Cursor="Hand"/>
+                            </StackPanel>
+                        </TabItem.Header>
+                        <ListBox x:Name="ErrorList"
+                                 Background="#1E1E1E"
+                                 Foreground="#F44747" BorderThickness="0"
+                                 FontFamily="Consolas" FontSize="11"
+                                 MouseDoubleClick="ErrorList_DoubleClick"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                            <ListBox.Resources>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Background" Value="#1E1E1E"/>
+                                    <Setter Property="Foreground" Value="#F44747"/>
+                                    <Setter Property="Padding" Value="2,1"/>
+                                    <Setter Property="BorderThickness" Value="0"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="#5A1D1D"/>
+                                            <Setter Property="Foreground" Value="#FF6B6B"/>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#2A2D2E"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.Resources>
+                        </ListBox>
+                    </TabItem>
+                </TabControl>
+            </Border>
+        </Grid>
+
+        <!-- Status bar -->
+        <Border Grid.Row="5" Background="{DynamicResource Theme.MenuBarBrush}" Padding="6,2">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <!-- Error indicator -->
+                <TextBlock x:Name="ErrorIndicator" Grid.Column="0" Text="" FontFamily="Consolas" FontSize="11"
+                           Foreground="#F44747" Margin="0,0,10,0"/>
+                <TextBlock x:Name="StatusText" Grid.Column="1" Text="Ready" FontFamily="Consolas" FontSize="11"
+                           Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"/>
+                <TextBlock x:Name="FileNameText" Grid.Column="2" Text="" FontFamily="Consolas" FontSize="11"
+                           Foreground="{DynamicResource Theme.ForegroundDisabledBrush}"/>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

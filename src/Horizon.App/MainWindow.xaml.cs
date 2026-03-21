@@ -101,6 +101,7 @@ public partial class MainWindow : Window
         StopAllLaserControllerPanels();
         StopAllProcessPanels();
         StopAllRunPanels();
+        StopAllRecipePanels();
         StopAllJogPanels();
         StopAllTeachPanels();
         StopAllHexScanPanels();
@@ -1216,6 +1217,55 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RecipeEditor_Click(object sender, RoutedEventArgs e)
+    {
+        var contentId = "recipe_editor";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var panel = new RecipeEditorPanel(_context);
+
+        var doc = new LayoutDocument
+        {
+            Title = "Recipe Editor",
+            ContentId = contentId,
+            Content = panel
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+    }
+
+    private void StopAllRecipePanels()
+    {
+        var recipeDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId != null && d.ContentId.StartsWith("recipe_"))
+            .ToList();
+
+        foreach (var doc in recipeDocs)
+        {
+            if (doc.Content is RecipeEditorPanel panel)
+                panel.StopExecution();
+        }
+    }
+
     private void StopAllProcessPanels()
     {
         var processDocs = DockManager.Layout
@@ -1635,6 +1685,12 @@ public partial class MainWindow : Window
                 if (id == "process_editor")
                 {
                     args.Content = new ProcessPanel(_context);
+                    return;
+                }
+
+                if (id == "recipe_editor")
+                {
+                    args.Content = new RecipeEditorPanel(_context);
                     return;
                 }
 

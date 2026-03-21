@@ -148,6 +148,8 @@
                 <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="_Process Editor" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ProcessEditor_Click"/>
                 <Separator Style="{StaticResource MenuSeparator}"/>
+                <MenuItem Header="_Recipe Editor" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="RecipeEditor_Click"/>
+                <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="_Teach Points" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="TeachPointPanel_Click"/>
                 <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="_Hex Scan" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="HexScanPanel_Click"/>

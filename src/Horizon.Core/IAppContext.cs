@@ -5,6 +5,7 @@ using Horizon.LaserController;
 using Horizon.Motion;
 using Horizon.Pneumatic;
 using Horizon.Process;
+using Horizon.Process.Recipe;
 using Horizon.Safety;
 
 namespace Horizon.Core;
@@ -19,6 +20,8 @@ public interface IAppContext
     LaserControllerManager LaserControllerManager { get; }
     ProcessEngine ProcessEngine { get; }
     ProcessPluginRegistry PluginRegistry { get; }
+    RecipeEngine RecipeEngine { get; }
+    HardwareExecutionLock ExecutionLock { get; }
     SafetyWatchManager? SafetyWatchManager { get; }
     MeasurementHub MeasurementHub { get; }
     TeachPointManager TeachPointManager { get; }
