@@ -9,217 +9,317 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Row 0: Product selector -->
+        <!-- Row 0: Active product display -->
         <Border Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
                 Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2"
                 Padding="6,4" Margin="0,0,0,4">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="180"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Product:" FontSize="11" VerticalAlignment="Center"
-                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,6,0"/>
-                <ComboBox x:Name="ProductCombo" Grid.Column="1" FontFamily="Consolas" FontSize="11"
-                          Padding="3,2" SelectionChanged="ProductCombo_SelectionChanged"/>
-                <Button Grid.Column="2" Content="+ New" FontSize="10" Padding="8,3" Margin="6,0,0,0"
-                        Click="NewProduct_Click"/>
-                <Button Grid.Column="3" Content="Rename" FontSize="10" Padding="8,3" Margin="4,0,0,0"
-                        Click="RenameProduct_Click"/>
-                <Button Grid.Column="4" Content="Delete" FontSize="10" Padding="8,3" Margin="4,0,0,0"
-                        Click="DeleteProduct_Click" Foreground="White" Background="#C62828"/>
-                <Button Grid.Column="5" Content="Set Active" FontSize="10" Padding="8,3" Margin="4,0,0,0"
-                        Click="SetActive_Click"/>
-            </Grid>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Product:" FontSize="11" VerticalAlignment="Center"
+                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,8,0"/>
+                <TextBlock x:Name="ActiveProductText" FontSize="11" FontFamily="Consolas"
+                           Foreground="#FF4EC9B0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                <TextBlock x:Name="NoProductHint" FontSize="11" FontFamily="Consolas"
+                           Foreground="#808080" VerticalAlignment="Center" Margin="12,0,0,0"
+                           Text="" Visibility="Collapsed"/>
+            </StackPanel>
         </Border>
 
-        <!-- Row 1: Active product indicator -->
-        <TextBlock Grid.Row="1" x:Name="ActiveProductText" FontSize="11" FontFamily="Consolas"
-                   Foreground="#FF4EC9B0" Margin="2,0,0,6"/>
+        <!-- Row 1: spacer -->
+        <Border Grid.Row="1" Height="2"/>
 
-        <!-- Row 2: Left device panel + DataGrid -->
-        <Grid Grid.Row="2" Margin="0,0,0,4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
+        <!-- Row 2: TabControl -->
+        <TabControl x:Name="MainTabControl" Grid.Row="2"
+                    Background="{DynamicResource Theme.BackgroundBrush}"
+                    BorderBrush="{DynamicResource Theme.BorderBrush}"
+                    SelectionChanged="MainTabControl_SelectionChanged">
+            <TabControl.Resources>
+                <Style TargetType="TabItem">
+                    <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundBrush}"/>
+                    <Setter Property="Padding" Value="10,4"/>
+                    <Setter Property="FontSize" Value="11"/>
+                    <Setter Property="FontFamily" Value="Consolas"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="TabItem">
+                                <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
+                                        Background="{DynamicResource Theme.BackgroundAltBrush}"
+                                        BorderBrush="{DynamicResource Theme.BorderBrush}"
+                                        BorderThickness="1,1,1,0" CornerRadius="3,3,0,0"
+                                        Margin="0,0,2,0">
+                                    <ContentPresenter ContentSource="Header"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="#FF3E3E42"/>
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter TargetName="Bd" Property="Background"
+                                                Value="{DynamicResource Theme.BackgroundBrush}"/>
+                                        <Setter Property="Foreground" Value="#FF4EC9B0"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </TabControl.Resources>
 
-            <!-- Left: Device selector buttons -->
-            <Border Grid.Column="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
-                    Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2"
-                    Padding="2" Margin="0,0,4,0" MinWidth="100">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel x:Name="DeviceButtonStack" Margin="2"/>
-                </ScrollViewer>
-            </Border>
+            <!-- ===== Points Tab ===== -->
+            <TabItem Header="Points">
+                <Grid Margin="0,4,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
-            <!-- Right: Live position + DataGrid -->
-            <Grid Grid.Column="1">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+                    <!-- Row 0: Device buttons + DataGrid -->
+                    <Grid Grid.Row="0" Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
 
-                <!-- Live position bar -->
-                <Border Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1,1,1,0"
-                        Background="#FF2D2D30" Padding="6,4">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Live:" FontSize="11" FontWeight="SemiBold" FontFamily="Consolas"
-                                   Foreground="#FF4EC9B0" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBlock x:Name="LivePositionText" FontSize="11" FontFamily="Consolas"
-                                   Foreground="#FFFFD54F" VerticalAlignment="Center"
-                                   Text="-- not connected --"/>
-                    </StackPanel>
-                </Border>
+                        <!-- Left: Device selector buttons -->
+                        <Border Grid.Column="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                                Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2"
+                                Padding="2" Margin="0,0,4,0" MinWidth="100">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel x:Name="DeviceButtonStack" Margin="2"/>
+                            </ScrollViewer>
+                        </Border>
 
-            <DataGrid Grid.Row="1" x:Name="PointsDataGrid"
-                      AutoGenerateColumns="False" IsReadOnly="False"
-                      CanUserAddRows="False" CanUserDeleteRows="False"
-                      SelectionMode="Single" SelectionUnit="FullRow"
-                      HeadersVisibility="Column" GridLinesVisibility="None"
-                      Background="{DynamicResource Theme.BackgroundAltBrush}"
-                      Foreground="{DynamicResource Theme.ForegroundBrush}"
-                      RowBackground="{DynamicResource Theme.BackgroundAltBrush}"
-                      AlternatingRowBackground="{DynamicResource Theme.BackgroundBrush}"
-                      BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
-                      FontFamily="Consolas" FontSize="11"
-                      CellEditEnding="PointsDataGrid_CellEditEnding">
-                <DataGrid.ColumnHeaderStyle>
-                    <Style TargetType="DataGridColumnHeader">
-                        <Setter Property="Background" Value="{DynamicResource Theme.MenuBarBrush}"/>
-                        <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundBrush}"/>
-                        <Setter Property="Padding" Value="4,3"/>
-                        <Setter Property="BorderBrush" Value="{DynamicResource Theme.BorderBrush}"/>
-                        <Setter Property="BorderThickness" Value="0,0,1,1"/>
-                        <Setter Property="FontSize" Value="11"/>
-                    </Style>
-                </DataGrid.ColumnHeaderStyle>
-                <DataGrid.CellStyle>
-                    <Style TargetType="DataGridCell">
-                        <Setter Property="Padding" Value="4,2"/>
-                        <Setter Property="BorderThickness" Value="0"/>
-                        <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundBrush}"/>
-                        <Style.Triggers>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Background" Value="{DynamicResource Theme.HighlightBrush}"/>
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </DataGrid.CellStyle>
-                <DataGrid.Columns>
-                    <DataGridTemplateColumn Header="Actions" Width="140" IsReadOnly="True">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
+                        <!-- Right: Live position + DataGrid -->
+                        <Grid Grid.Column="1">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Live position bar -->
+                            <Border Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1,1,1,0"
+                                    Background="#FF2D2D30" Padding="6,4">
                                 <StackPanel Orientation="Horizontal">
-                                    <Button Content="Go" FontSize="9" Padding="6,1" Margin="0,0,2,0"
-                                            Click="GoPoint_Click" Tag="{Binding}" ToolTip="Move device to this position"/>
-                                    <Button Content="Upd" FontSize="9" Padding="6,1" Margin="0,0,2,0"
-                                            Click="UpdatePoint_Click" Tag="{Binding}" ToolTip="Capture current device position"/>
-                                    <Button Content="Del" FontSize="9" Padding="6,1"
-                                            Click="DeletePoint_Click" Tag="{Binding}"
-                                            Foreground="White" Background="#C62828" ToolTip="Delete this position"/>
+                                    <TextBlock Text="Live:" FontSize="11" FontWeight="SemiBold" FontFamily="Consolas"
+                                               Foreground="#FF4EC9B0" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <TextBlock x:Name="LivePositionText" FontSize="11" FontFamily="Consolas"
+                                               Foreground="#FFFFD54F" VerticalAlignment="Center"
+                                               Text="-- not connected --"/>
                                 </StackPanel>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTextColumn Header="Position" Binding="{Binding PositionName}" IsReadOnly="True" Width="120"/>
-                    <DataGridTextColumn Header="X" Binding="{Binding X, StringFormat=F3, Mode=TwoWay}" Width="80"/>
-                    <DataGridTextColumn Header="Y" Binding="{Binding Y, StringFormat=F3, Mode=TwoWay}" Width="80"/>
-                    <DataGridTextColumn Header="Z" Binding="{Binding Z, StringFormat=F3, Mode=TwoWay}" Width="80"/>
-                    <DataGridTextColumn Header="U" Binding="{Binding U, StringFormat=F3, Mode=TwoWay}" Width="60"/>
-                    <DataGridTextColumn Header="V" Binding="{Binding V, StringFormat=F3, Mode=TwoWay}" Width="60"/>
-                    <DataGridTextColumn Header="W" Binding="{Binding W, StringFormat=F3, Mode=TwoWay}" Width="60"/>
-                </DataGrid.Columns>
-            </DataGrid>
-            </Grid>
-        </Grid>
+                            </Border>
 
-        <!-- Row 3: Create / Teach bar -->
-        <Border Grid.Row="3" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
-                Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2"
-                Padding="6,4">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="120"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="70"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="70"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="70"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="55"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="55"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="55"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Name:" FontSize="11" VerticalAlignment="Center"
-                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,4,0"/>
-                <TextBox x:Name="TeachNameBox" Grid.Column="1" FontFamily="Consolas" FontSize="11"
-                         Padding="3,2"
-                         Background="{DynamicResource Theme.BackgroundBrush}"
-                         Foreground="{DynamicResource Theme.ForegroundBrush}"
-                         BorderBrush="{DynamicResource Theme.BorderBrush}"/>
-                <TextBlock Grid.Column="2" Text="X:" FontSize="11" VerticalAlignment="Center"
-                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="8,0,4,0"/>
-                <TextBox x:Name="CreateXBox" Grid.Column="3" FontFamily="Consolas" FontSize="11"
-                         Padding="3,2" Text="0"
-                         Background="{DynamicResource Theme.BackgroundBrush}"
-                         Foreground="{DynamicResource Theme.ForegroundBrush}"
-                         BorderBrush="{DynamicResource Theme.BorderBrush}"/>
-                <TextBlock Grid.Column="4" Text="Y:" FontSize="11" VerticalAlignment="Center"
-                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="8,0,4,0"/>
-                <TextBox x:Name="CreateYBox" Grid.Column="5" FontFamily="Consolas" FontSize="11"
-                         Padding="3,2" Text="0"
-                         Background="{DynamicResource Theme.BackgroundBrush}"
-                         Foreground="{DynamicResource Theme.ForegroundBrush}"
-                         BorderBrush="{DynamicResource Theme.BorderBrush}"/>
-                <TextBlock Grid.Column="6" Text="Z:" FontSize="11" VerticalAlignment="Center"
-                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="8,0,4,0"/>
-                <TextBox x:Name="CreateZBox" Grid.Column="7" FontFamily="Consolas" FontSize="11"
-                         Padding="3,2" Text="0"
-                         Background="{DynamicResource Theme.BackgroundBrush}"
-                         Foreground="{DynamicResource Theme.ForegroundBrush}"
-                         BorderBrush="{DynamicResource Theme.BorderBrush}"/>
-                <TextBlock Grid.Column="8" Text="U:" FontSize="11" VerticalAlignment="Center"
-                           Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="8,0,4,0"/>
-                <TextBox x:Name="CreateUBox" Grid.Column="9" FontFamily="Consolas" FontSize="11"
-                         Padding="3,2" Text="0"
-                         Background="{DynamicResource Theme.BackgroundBrush}"
-                         Foreground="{DynamicResource Theme.ForegroundBrush}"
-                         BorderBrush="{DynamicResource Theme.BorderBrush}"/>
-                <TextBlock Grid.Column="10" Text="V:" FontSize="11" VerticalAlignment="Center"
-                           Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="8,0,4,0"/>
-                <TextBox x:Name="CreateVBox" Grid.Column="11" FontFamily="Consolas" FontSize="11"
-                         Padding="3,2" Text="0"
-                         Background="{DynamicResource Theme.BackgroundBrush}"
-                         Foreground="{DynamicResource Theme.ForegroundBrush}"
-                         BorderBrush="{DynamicResource Theme.BorderBrush}"/>
-                <TextBlock Grid.Column="12" Text="W:" FontSize="11" VerticalAlignment="Center"
-                           Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="8,0,4,0"/>
-                <TextBox x:Name="CreateWBox" Grid.Column="13" FontFamily="Consolas" FontSize="11"
-                         Padding="3,2" Text="0"
-                         Background="{DynamicResource Theme.BackgroundBrush}"
-                         Foreground="{DynamicResource Theme.ForegroundBrush}"
-                         BorderBrush="{DynamicResource Theme.BorderBrush}"/>
-                <Button Grid.Column="14" Content="Teach Current" FontSize="10" Padding="10,3" Margin="8,0,0,0"
-                        Click="TeachCurrent_Click" ToolTip="Capture current device position as new point"/>
-                <Button Grid.Column="15" Content="Create" FontSize="10" Padding="10,3" Margin="4,0,0,0"
-                        Click="CreatePoint_Click" ToolTip="Create point with manual coordinate values"/>
-            </Grid>
-        </Border>
+                            <DataGrid Grid.Row="1" x:Name="PointsDataGrid"
+                                      AutoGenerateColumns="False" IsReadOnly="False"
+                                      CanUserAddRows="False" CanUserDeleteRows="False"
+                                      SelectionMode="Single" SelectionUnit="FullRow"
+                                      HeadersVisibility="Column" GridLinesVisibility="None"
+                                      Background="{DynamicResource Theme.BackgroundAltBrush}"
+                                      Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                      RowBackground="{DynamicResource Theme.BackgroundAltBrush}"
+                                      AlternatingRowBackground="{DynamicResource Theme.BackgroundBrush}"
+                                      BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                                      FontFamily="Consolas" FontSize="11"
+                                      CellEditEnding="PointsDataGrid_CellEditEnding">
+                                <DataGrid.ColumnHeaderStyle>
+                                    <Style TargetType="DataGridColumnHeader">
+                                        <Setter Property="Background" Value="{DynamicResource Theme.MenuBarBrush}"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundBrush}"/>
+                                        <Setter Property="Padding" Value="4,3"/>
+                                        <Setter Property="BorderBrush" Value="{DynamicResource Theme.BorderBrush}"/>
+                                        <Setter Property="BorderThickness" Value="0,0,1,1"/>
+                                        <Setter Property="FontSize" Value="11"/>
+                                    </Style>
+                                </DataGrid.ColumnHeaderStyle>
+                                <DataGrid.CellStyle>
+                                    <Style TargetType="DataGridCell">
+                                        <Setter Property="Padding" Value="4,2"/>
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource Theme.ForegroundBrush}"/>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter Property="Background" Value="{DynamicResource Theme.HighlightBrush}"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGrid.CellStyle>
+                                <DataGrid.Columns>
+                                    <DataGridTemplateColumn Header="Actions" Width="140" IsReadOnly="True">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Button Content="Go" FontSize="9" Padding="6,1" Margin="0,0,2,0"
+                                                            Click="GoPoint_Click" Tag="{Binding}" ToolTip="Move device to this position"/>
+                                                    <Button Content="Upd" FontSize="9" Padding="6,1" Margin="0,0,2,0"
+                                                            Click="UpdatePoint_Click" Tag="{Binding}" ToolTip="Capture current device position"/>
+                                                    <Button Content="Del" FontSize="9" Padding="6,1"
+                                                            Click="DeletePoint_Click" Tag="{Binding}"
+                                                            Foreground="White" Background="#C62828" ToolTip="Delete this position"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Position" Binding="{Binding PositionName}" IsReadOnly="True" Width="120"/>
+                                    <DataGridTextColumn Header="X" Binding="{Binding X, StringFormat=F3, Mode=TwoWay}" Width="80"/>
+                                    <DataGridTextColumn Header="Y" Binding="{Binding Y, StringFormat=F3, Mode=TwoWay}" Width="80"/>
+                                    <DataGridTextColumn Header="Z" Binding="{Binding Z, StringFormat=F3, Mode=TwoWay}" Width="80"/>
+                                    <DataGridTextColumn Header="U" Binding="{Binding U, StringFormat=F3, Mode=TwoWay}" Width="60"/>
+                                    <DataGridTextColumn Header="V" Binding="{Binding V, StringFormat=F3, Mode=TwoWay}" Width="60"/>
+                                    <DataGridTextColumn Header="W" Binding="{Binding W, StringFormat=F3, Mode=TwoWay}" Width="60"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Grid>
+
+                    <!-- Row 1: Create / Teach bar -->
+                    <Border Grid.Row="1" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                            Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2"
+                            Padding="6,4">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="120"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="70"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="70"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="70"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="55"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="55"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="55"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Name:" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,4,0"/>
+                            <TextBox x:Name="TeachNameBox" Grid.Column="1" FontFamily="Consolas" FontSize="11"
+                                     Padding="3,2"
+                                     Background="{DynamicResource Theme.BackgroundBrush}"
+                                     Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                     BorderBrush="{DynamicResource Theme.BorderBrush}"/>
+                            <TextBlock Grid.Column="2" Text="X:" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="8,0,4,0"/>
+                            <TextBox x:Name="CreateXBox" Grid.Column="3" FontFamily="Consolas" FontSize="11"
+                                     Padding="3,2" Text="0"
+                                     Background="{DynamicResource Theme.BackgroundBrush}"
+                                     Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                     BorderBrush="{DynamicResource Theme.BorderBrush}"/>
+                            <TextBlock Grid.Column="4" Text="Y:" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="8,0,4,0"/>
+                            <TextBox x:Name="CreateYBox" Grid.Column="5" FontFamily="Consolas" FontSize="11"
+                                     Padding="3,2" Text="0"
+                                     Background="{DynamicResource Theme.BackgroundBrush}"
+                                     Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                     BorderBrush="{DynamicResource Theme.BorderBrush}"/>
+                            <TextBlock Grid.Column="6" Text="Z:" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="8,0,4,0"/>
+                            <TextBox x:Name="CreateZBox" Grid.Column="7" FontFamily="Consolas" FontSize="11"
+                                     Padding="3,2" Text="0"
+                                     Background="{DynamicResource Theme.BackgroundBrush}"
+                                     Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                     BorderBrush="{DynamicResource Theme.BorderBrush}"/>
+                            <TextBlock Grid.Column="8" Text="U:" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="8,0,4,0"/>
+                            <TextBox x:Name="CreateUBox" Grid.Column="9" FontFamily="Consolas" FontSize="11"
+                                     Padding="3,2" Text="0"
+                                     Background="{DynamicResource Theme.BackgroundBrush}"
+                                     Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                     BorderBrush="{DynamicResource Theme.BorderBrush}"/>
+                            <TextBlock Grid.Column="10" Text="V:" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="8,0,4,0"/>
+                            <TextBox x:Name="CreateVBox" Grid.Column="11" FontFamily="Consolas" FontSize="11"
+                                     Padding="3,2" Text="0"
+                                     Background="{DynamicResource Theme.BackgroundBrush}"
+                                     Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                     BorderBrush="{DynamicResource Theme.BorderBrush}"/>
+                            <TextBlock Grid.Column="12" Text="W:" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Theme.ForegroundDisabledBrush}" Margin="8,0,4,0"/>
+                            <TextBox x:Name="CreateWBox" Grid.Column="13" FontFamily="Consolas" FontSize="11"
+                                     Padding="3,2" Text="0"
+                                     Background="{DynamicResource Theme.BackgroundBrush}"
+                                     Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                     BorderBrush="{DynamicResource Theme.BorderBrush}"/>
+                            <Button Grid.Column="14" Content="Teach Current" FontSize="10" Padding="10,3" Margin="8,0,0,0"
+                                    Click="TeachCurrent_Click" ToolTip="Capture current device position as new point"/>
+                            <Button Grid.Column="15" Content="Create" FontSize="10" Padding="10,3" Margin="4,0,0,0"
+                                    Click="CreatePoint_Click" ToolTip="Create point with manual coordinate values"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ===== Move Map Tab ===== -->
+            <TabItem Header="Move Map">
+                <DockPanel Margin="0,4,0,0">
+                    <!-- Toolbar -->
+                    <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                            Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2"
+                            Padding="6,4" Margin="0,0,0,2">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Device:" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,6,0"/>
+                            <ComboBox x:Name="MoveMapDeviceCombo" Width="140" FontFamily="Consolas" FontSize="11"
+                                      Background="{DynamicResource Theme.BackgroundBrush}"
+                                      Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                      BorderBrush="{DynamicResource Theme.BorderBrush}"
+                                      SelectionChanged="MoveMapDeviceCombo_SelectionChanged"/>
+                            <Border Width="1" Background="#555" Margin="10,2"/>
+                            <Button x:Name="AddEdgeBtn" Content="Add Edge" FontSize="10" Padding="10,3"
+                                    Margin="10,0,0,0" IsEnabled="False" Click="AddEdge_Click"
+                                    ToolTip="Connect selected source and target nodes"/>
+                            <Button x:Name="RemoveEdgeBtn" Content="Remove Edge" FontSize="10" Padding="10,3"
+                                    Margin="4,0,0,0" IsEnabled="False" Click="RemoveEdge_Click"
+                                    ToolTip="Delete the selected edge"/>
+                            <Border Width="1" Background="#555" Margin="10,2"/>
+                            <Button Content="Auto Layout" FontSize="10" Padding="10,3"
+                                    Margin="10,0,0,0" Click="AutoLayout_Click"
+                                    ToolTip="Arrange nodes in a circular layout"/>
+                            <Border Width="1" Background="#555" Margin="10,2"/>
+                            <Button Content="-" FontSize="12" FontWeight="Bold" Padding="6,1"
+                                    Margin="10,0,0,0" Width="26" Click="ZoomOut_Click" ToolTip="Zoom out"/>
+                            <TextBlock x:Name="ZoomLevelText" Text="100%" FontSize="10" FontFamily="Consolas"
+                                       Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                       VerticalAlignment="Center" Margin="6,0" MinWidth="36"
+                                       TextAlignment="Center"/>
+                            <Button Content="+" FontSize="12" FontWeight="Bold" Padding="6,1"
+                                    Width="26" Click="ZoomIn_Click" ToolTip="Zoom in"/>
+                            <Button Content="1:1" FontSize="9" Padding="6,2"
+                                    Margin="4,0,0,0" Click="ZoomReset_Click" ToolTip="Reset zoom to 100%"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Instruction hint -->
+                    <TextBlock DockPanel.Dock="Top" x:Name="MoveMapHintText" FontSize="10" FontFamily="Consolas"
+                               Foreground="#808080" Margin="4,2,4,4"
+                               Text="Click a node to select source, then click another to select target. Drag nodes to reposition."/>
+
+                    <!-- Canvas area -->
+                    <Border BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                            Background="{DynamicResource Theme.BackgroundAltBrush}">
+                        <ScrollViewer x:Name="MoveMapScrollViewer"
+                                      HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                                      PreviewMouseWheel="MoveMapScrollViewer_PreviewMouseWheel">
+                            <Canvas x:Name="MoveMapCanvas" Width="400" Height="400"
+                                    Background="Transparent" ClipToBounds="False"
+                                    MouseDown="MoveMapCanvas_MouseDown"
+                                    MouseMove="MoveMapCanvas_MouseMove"
+                                    MouseUp="MoveMapCanvas_MouseUp">
+                                <Canvas.LayoutTransform>
+                                    <ScaleTransform x:Name="MoveMapScaleTransform" ScaleX="1" ScaleY="1"/>
+                                </Canvas.LayoutTransform>
+                            </Canvas>
+                        </ScrollViewer>
+                    </Border>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
     </Grid>
 </UserControl>
