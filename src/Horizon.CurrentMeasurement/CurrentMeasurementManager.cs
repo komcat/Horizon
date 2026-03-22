@@ -109,6 +109,24 @@ public sealed class CurrentMeasurementManager : IDisposable
         return result;
     }
 
+    public CurrentMeasurementError SetVoltage(string deviceName, double volts)
+    {
+        if (!_devices.TryGetValue(deviceName, out var device))
+            return CurrentMeasurementError.DeviceNotFound;
+        var result = device.SetVoltage(volts);
+        Log.Information("[CMeas] SetVoltage {Name}: {Volts}V — {Result}", deviceName, volts, result);
+        return result;
+    }
+
+    public CurrentMeasurementError SetVoltageEnabled(string deviceName, bool enabled)
+    {
+        if (!_devices.TryGetValue(deviceName, out var device))
+            return CurrentMeasurementError.DeviceNotFound;
+        var result = device.SetVoltageEnabled(enabled);
+        Log.Information("[CMeas] SetVoltageEnabled {Name}: {Enabled} — {Result}", deviceName, enabled, result);
+        return result;
+    }
+
     public ICurrentMeasurementDevice? GetDevice(string name)
     {
         _devices.TryGetValue(name, out var device);
@@ -126,13 +144,48 @@ public sealed class CurrentMeasurementManager : IDisposable
         Log.Information("[CMeas] Polling started with interval {IntervalMs} ms", intervalMs);
     }
 
+    /// <summary>
+    /// Start fast polling — configures NPLC=0.1 and runs a tight read loop (~20+ Hz).
+    /// Same behavior as the UI "Start" button on CurrentMeasurementPanel.
+    /// </summary>
+    public bool StartFastPolling(string deviceName)
+    {
+        if (!_devices.TryGetValue(deviceName, out var device) || !device.IsConnected)
+            return false;
+
+        StopPolling(); // stop any existing polling
+
+        var result = device.ConfigureFastMode();
+        if (result != CurrentMeasurementError.Success)
+        {
+            Log.Error("[CMeas] FastPoll: ConfigureFastMode failed for {Name} — {Error}", deviceName, result);
+            return false;
+        }
+
+        _pollCts = new CancellationTokenSource();
+        _pollTask = FastPollLoopAsync(deviceName, device, _pollCts.Token);
+        Log.Information("[CMeas] Fast polling started for {Name}", deviceName);
+        return true;
+    }
+
+    public void StopFastPolling(string deviceName)
+    {
+        StopPolling(); // stops any active poll task
+
+        // Restore default mode
+        if (_devices.TryGetValue(deviceName, out var device) && device.IsConnected)
+        {
+            device.ConfigureDefaultMode();
+            Log.Information("[CMeas] Fast polling stopped for {Name}, default mode restored", deviceName);
+        }
+    }
+
     public void StopPolling()
     {
-        Log.Information("[CMeas] Polling stopped");
         _pollCts?.Cancel();
         _pollTimer?.Dispose();
         _pollTimer = null;
-        try { _pollTask?.Wait(1000); } catch { }
+        try { _pollTask?.Wait(2000); } catch { }
         _pollCts?.Dispose();
         _pollCts = null;
         _pollTask = null;
@@ -164,6 +217,41 @@ public sealed class CurrentMeasurementManager : IDisposable
                 };
                 OnStatusUpdated?.Invoke(kvp.Key, status);
             }
+        }
+    }
+
+    private async Task FastPollLoopAsync(string deviceName, ICurrentMeasurementDevice device, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var (error, readings) = await Task.Run(() =>
+                {
+                    var err = device.ReadAllChannels(out var currents);
+                    return (err, currents);
+                }, ct);
+
+                if (ct.IsCancellationRequested) break;
+
+                if (error == CurrentMeasurementError.Success && readings != null)
+                {
+                    var status = new CurrentMeasurementStatus
+                    {
+                        ChannelReadings = readings,
+                        Unit = "A",
+                        Valid = true,
+                        Timestamp = DateTimeOffset.UtcNow
+                    };
+                    OnStatusUpdated?.Invoke(deviceName, status);
+                }
+                else
+                {
+                    try { await Task.Delay(50, ct); } catch { break; }
+                }
+            }
+            catch (OperationCanceledException) { break; }
+            catch { try { await Task.Delay(50, ct); } catch { break; } }
         }
     }
 

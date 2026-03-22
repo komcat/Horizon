@@ -514,8 +514,18 @@
                                                Foreground="{DynamicResource Theme.ForegroundBrush}"/>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <Button Style="{StaticResource PanelBtn}" Click="ProgramAdd_Click" Padding="6,2"
-                                                ToolTip="Add program">
-                                            <Image Source="pack://application:,,,/Assets/new_file_program.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                ToolTip="Add process program (.hproc)">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Image Source="pack://application:,,,/Assets/new_file_program.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                <TextBlock Text=" [P]" Foreground="#808080" FontFamily="Consolas" FontSize="10" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource PanelBtn}" Click="RecipeAdd_Click" Padding="6,2"
+                                                ToolTip="Add recipe script (.hrcp)">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Image Source="pack://application:,,,/Assets/new_file_program.png" Height="20" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                <TextBlock Text=" [R]" Foreground="#00BFFF" FontFamily="Consolas" FontSize="10" VerticalAlignment="Center"/>
+                                            </StackPanel>
                                         </Button>
                                         <Button Style="{StaticResource PanelBtn}" Click="ProgramRemove_Click" Padding="6,2"
                                                 ToolTip="Remove program">

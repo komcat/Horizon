@@ -166,6 +166,13 @@ public sealed class AppContext : IAppContext, IDisposable
 
         // --- Current Measurement subsystem ---
         _currentMeasurementManager = new CurrentMeasurementManager();
+        _currentMeasurementManager.OnStatusUpdated += (deviceName, status) =>
+        {
+            if (!status.Valid) return;
+            var now = DateTimeOffset.UtcNow;
+            for (int i = 0; i < status.ChannelReadings.Length; i++)
+                _measurementHub.Push($"{deviceName}.CH{i + 1}", status.ChannelReadings[i], now);
+        };
         try
         {
             var cmeasCount = CurrentMeasurementJsonLoader.LoadDevices(_currentMeasurementManager, configDir);
@@ -528,6 +535,62 @@ public sealed class AppContext : IAppContext, IDisposable
 
                 reg.Register(dev, "reset", (args, ctx, ct) =>
                     Task.FromResult(_currentMeasurementManager.ResetDevice(dev).ToString() == "Success"));
+
+                reg.Register(dev, "connect", (args, ctx, ct) =>
+                    Task.FromResult(_currentMeasurementManager.ConnectDevice(dev)));
+
+                reg.Register(dev, "disconnect", (args, ctx, ct) =>
+                {
+                    _currentMeasurementManager.DisconnectDevice(dev);
+                    return Task.FromResult(true);
+                });
+
+                reg.Register(dev, "setvoltage", (args, ctx, ct) =>
+                {
+                    var volts = Convert.ToDouble(args.GetValueOrDefault("volts", 0.0));
+                    return Task.FromResult(_currentMeasurementManager.SetVoltage(dev, volts).ToString() == "Success");
+                });
+
+                reg.Register(dev, "outputon", (args, ctx, ct) =>
+                    Task.FromResult(_currentMeasurementManager.SetVoltageEnabled(dev, true).ToString() == "Success"));
+
+                reg.Register(dev, "outputoff", (args, ctx, ct) =>
+                    Task.FromResult(_currentMeasurementManager.SetVoltageEnabled(dev, false).ToString() == "Success"));
+
+                reg.Register(dev, "startpolling", (args, ctx, ct) =>
+                {
+                    var interval = Convert.ToInt32(args.GetValueOrDefault("intervalMs", 500.0));
+                    _currentMeasurementManager.StartPolling(interval);
+                    return Task.FromResult(true);
+                });
+
+                reg.Register(dev, "stoppolling", (args, ctx, ct) =>
+                {
+                    _currentMeasurementManager.StopPolling();
+                    return Task.FromResult(true);
+                });
+
+                reg.Register(dev, "startfastpolling", (args, ctx, ct) =>
+                    Task.FromResult(_currentMeasurementManager.StartFastPolling(dev)));
+
+                reg.Register(dev, "stopfastpolling", (args, ctx, ct) =>
+                {
+                    _currentMeasurementManager.StopFastPolling(dev);
+                    return Task.FromResult(true);
+                });
+
+                reg.Register(dev, "initialize", (args, ctx, ct) =>
+                {
+                    // Connect → set voltage → output on → start fast polling
+                    if (!_currentMeasurementManager.ConnectDevice(dev))
+                        return Task.FromResult(false);
+                    var volts = Convert.ToDouble(args.GetValueOrDefault("volts", 1.0));
+                    if (_currentMeasurementManager.SetVoltage(dev, volts).ToString() != "Success")
+                        return Task.FromResult(false);
+                    if (_currentMeasurementManager.SetVoltageEnabled(dev, true).ToString() != "Success")
+                        return Task.FromResult(false);
+                    return Task.FromResult(_currentMeasurementManager.StartFastPolling(dev));
+                });
             }
         }
 
@@ -582,6 +645,28 @@ public sealed class AppContext : IAppContext, IDisposable
 
                 reg.Register(dev, "laseroff", (args, ctx, ct) =>
                     Task.FromResult(_laserControllerManager.LaserOff(dev).ToString() == "Success"));
+
+                reg.Register(dev, "connect", (args, ctx, ct) =>
+                    Task.FromResult(_laserControllerManager.ConnectDevice(dev)));
+
+                reg.Register(dev, "disconnect", (args, ctx, ct) =>
+                {
+                    _laserControllerManager.DisconnectDevice(dev);
+                    return Task.FromResult(true);
+                });
+
+                reg.Register(dev, "initialize", (args, ctx, ct) =>
+                {
+                    // Connect → set temperature → TEC on
+                    if (!_laserControllerManager.ConnectDevice(dev))
+                        return Task.FromResult(false);
+                    var temp = Convert.ToDouble(args.GetValueOrDefault("celsius", 25.0));
+                    if (_laserControllerManager.SetTemperature(dev, temp).ToString() != "Success")
+                        return Task.FromResult(false);
+                    if (_laserControllerManager.TECOn(dev).ToString() != "Success")
+                        return Task.FromResult(false);
+                    return Task.FromResult(true);
+                });
             }
         }
 

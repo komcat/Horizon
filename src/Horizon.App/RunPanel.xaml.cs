@@ -1418,19 +1418,37 @@ public partial class RunPanel : UserControl
             return;
         }
 
-        var dlg = new Microsoft.Win32.OpenFileDialog
-        {
-            InitialDirectory = Directory.Exists(DefaultProcessDir) ? DefaultProcessDir : DefaultRecipeDir,
-            Filter = "Horizon files (*.hproc;*.hrcp)|*.hproc;*.hrcp|Process (*.hproc)|*.hproc|Recipe (*.hrcp)|*.hrcp",
-            Multiselect = true,
-            Title = "Add Program or Recipe"
-        };
+        var dlg = new FilePickerDialog(FilePickerMode.Open, DefaultProcessDir, ".hproc", "Horizon Process")
+        { Owner = Window.GetWindow(this) };
         if (dlg.ShowDialog() != true) return;
 
-        foreach (var file in dlg.FileNames)
+        foreach (var file in dlg.SelectedPaths)
         {
             slot.Programs.Add(file);
-            Log.Information("[RunPanel] Added to slot {SlotName}: {Path}", slot.Name, file);
+            Log.Information("[RunPanel] Added program to slot {SlotName}: {Path}", slot.Name, file);
+        }
+
+        RefreshProgramList();
+    }
+
+    private void RecipeAdd_Click(object sender, RoutedEventArgs e)
+    {
+        Log.Information("[RunPanel] Add Recipe clicked");
+        var slot = GetSelectedSlot();
+        if (slot == null)
+        {
+            MessageBox.Show("Select a slot first.", "Info", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dlg = new FilePickerDialog(FilePickerMode.Open, DefaultRecipeDir, ".hrcp", "Horizon Recipe")
+        { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() != true) return;
+
+        foreach (var file in dlg.SelectedPaths)
+        {
+            slot.Programs.Add(file);
+            Log.Information("[RunPanel] Added recipe to slot {SlotName}: {Path}", slot.Name, file);
         }
 
         RefreshProgramList();

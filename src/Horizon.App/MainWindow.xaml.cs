@@ -8,6 +8,7 @@ using Horizon.Camera.Models;
 using System.Collections.Specialized;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using System.Windows.Shapes;
 using Horizon.Common;
 using Path = System.IO.Path;
@@ -30,6 +31,7 @@ public partial class MainWindow : Window
     private UserPreferences _prefs = new();
     private string? _currentHardwareDetailId;
     private LayoutDocument? _hardwareDoc;
+    private DispatcherTimer? _hwStatusTimer;
 
     private static readonly string SettingsDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon");
@@ -88,10 +90,16 @@ public partial class MainWindow : Window
         {
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, OpenOverlayWithPrefs);
         }
+
+        // Hardware status bar — poll TEC/Laser/Keithley every 1s
+        _hwStatusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _hwStatusTimer.Tick += HwStatusTimer_Tick;
+        _hwStatusTimer.Start();
     }
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        _hwStatusTimer?.Stop();
         StopLiveFeed();
         StopAllIOPanels();
         StopAllMotionPanels();
@@ -657,6 +665,84 @@ public partial class MainWindow : Window
             Log.Information("Disconnect '{CameraId}': {Result}", id, result ? "OK" : "FAILED");
         }
         RefreshCameraTree();
+    }
+
+    private void DockManager_DocumentClosing(object? sender, AvalonDock.DocumentClosingEventArgs e)
+    {
+        // Intercept Hardware tab close — hide instead of destroy so it can be re-shown
+        if (e.Document.ContentId == "hardware")
+        {
+            e.Cancel = true;
+            var parent = e.Document.Parent as LayoutDocumentPane;
+            parent?.RemoveChild(e.Document);
+        }
+    }
+
+    private void HwStatusTimer_Tick(object? sender, EventArgs e)
+    {
+        bool anyVisible = false;
+
+        // TEC temperature
+        try
+        {
+            var laserMgr = _context.LaserControllerManager;
+            var names = laserMgr.GetAllDeviceNames();
+            if (names.Count > 0)
+            {
+                var status = laserMgr.GetStatus(names[0]);
+                if (status.Connected)
+                {
+                    anyVisible = true;
+                    HwStatusTecTemp.Text = status.TECOn
+                        ? $"{status.CurrentTemperature:F1} C"
+                        : "OFF";
+                    HwStatusLaserCurrent.Text = status.LaserOn
+                        ? $"{status.CurrentLaserCurrent:F1} mA"
+                        : "OFF";
+                }
+                else
+                {
+                    HwStatusTecTemp.Text = "--";
+                    HwStatusLaserCurrent.Text = "--";
+                }
+            }
+        }
+        catch { HwStatusTecTemp.Text = "--"; HwStatusLaserCurrent.Text = "--"; }
+
+        // Keithley latest reading from MeasurementHub
+        try
+        {
+            var cmeasMgr = _context.CurrentMeasurementManager;
+            var names = cmeasMgr.GetAllDeviceNames();
+            if (names.Count > 0)
+            {
+                var hub = _context.MeasurementHub;
+                var key = $"{names[0]}.CH1";
+                var channel = hub.GetChannel(key);
+                if (channel != null && channel.LatestValue.HasValue)
+                {
+                    anyVisible = true;
+                    HwStatusKeithley.Text = FormatCurrentSI(channel.LatestValue.Value);
+                }
+                else
+                {
+                    HwStatusKeithley.Text = "--";
+                }
+            }
+        }
+        catch { HwStatusKeithley.Text = "--"; }
+
+        HwStatusBar.Visibility = anyVisible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static string FormatCurrentSI(double amps)
+    {
+        var abs = Math.Abs(amps);
+        if (abs >= 1) return $"{amps:F3} A";
+        if (abs >= 1e-3) return $"{amps * 1e3:F3} mA";
+        if (abs >= 1e-6) return $"{amps * 1e6:F3} uA";
+        if (abs >= 1e-9) return $"{amps * 1e9:F3} nA";
+        return $"{amps * 1e12:F3} pA";
     }
 
     private void ViewHardware_Click(object sender, RoutedEventArgs e)

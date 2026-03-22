@@ -113,6 +113,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -236,7 +237,12 @@
                         <TextBlock Text=" HexScan" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center" Foreground="#FF1E1E1E"/>
                     </StackPanel>
                 </Button>
-                <Button Style="{StaticResource QuickBtn}" Click="QuickButton_Click" Tag="6"/>
+                <Button Style="{StaticResource QuickBtn}" Click="RecipeEditor_Click" Width="85">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="pack://application:,,,/Assets/new_file_program.png" Height="18" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <TextBlock Text=" Recipe" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center" Foreground="#FF1E1E1E"/>
+                    </StackPanel>
+                </Button>
                 <Button Style="{StaticResource QuickBtn}" Click="ViewHardware_Click" Width="100">
                     <StackPanel Orientation="Horizontal">
                         <Image Source="pack://application:,,,/Assets/Hardware.png" Height="18" RenderOptions.BitmapScalingMode="HighQuality"/>
@@ -259,7 +265,29 @@
         </Border>
 
         <!-- AvalonDock DockingManager -->
-        <avalonDock:DockingManager Grid.Row="2" x:Name="DockManager">
+        <!-- Hardware Status Bar -->
+        <Border Grid.Row="2" x:Name="HwStatusBar" Visibility="Collapsed"
+                Background="#FF1B1B1B"
+                BorderBrush="{DynamicResource Theme.BorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="8,2">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="TEC:" FontFamily="Consolas" FontSize="11"
+                           Foreground="#808080" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBlock x:Name="HwStatusTecTemp" Text="--" FontFamily="Consolas" FontSize="11"
+                           Foreground="#4EC9B0" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                <TextBlock Text="Laser:" FontFamily="Consolas" FontSize="11"
+                           Foreground="#808080" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBlock x:Name="HwStatusLaserCurrent" Text="--" FontFamily="Consolas" FontSize="11"
+                           Foreground="#DCDCAA" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                <TextBlock Text="Keithley:" FontFamily="Consolas" FontSize="11"
+                           Foreground="#808080" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBlock x:Name="HwStatusKeithley" Text="--" FontFamily="Consolas" FontSize="11"
+                           Foreground="#9CDCFE" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <avalonDock:DockingManager Grid.Row="3" x:Name="DockManager" DocumentClosing="DockManager_DocumentClosing">
             <avalonDock:DockingManager.Theme>
                 <avalonDockTheme:Vs2013DarkTheme/>
             </avalonDock:DockingManager.Theme>

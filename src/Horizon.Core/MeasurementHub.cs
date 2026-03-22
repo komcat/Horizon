@@ -27,6 +27,21 @@ public sealed class MeasurementChannel
         _values = new double[capacity];
     }
 
+    public int Count { get { lock (_lock) return _count; } }
+
+    public double? LatestValue
+    {
+        get
+        {
+            lock (_lock)
+            {
+                if (_count == 0) return null;
+                int idx = (_head - 1 + _capacity) % _capacity;
+                return _values[idx];
+            }
+        }
+    }
+
     public void Push(double value, DateTimeOffset timestamp)
     {
         lock (_lock)

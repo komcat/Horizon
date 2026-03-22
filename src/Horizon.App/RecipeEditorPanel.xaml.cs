@@ -11,7 +11,6 @@ using AvalonDock.Layout;
 using Horizon.Core;
 using Horizon.Process.Recipe;
 using Horizon.Process.Recipe.Ast;
-using Microsoft.Win32;
 
 namespace Horizon.App;
 
@@ -29,6 +28,8 @@ public partial class RecipeEditorPanel : UserControl
     private string _autoCompletePrefix = "";
     private bool _autoCompleteAfterDot;
     private DateTime _lastWatchRefresh = DateTime.MinValue;
+    private FileSystemWatcher? _fileWatcher;
+    private DateTime _lastSaveTime = DateTime.MinValue;
 
     private static readonly string[] LanguageKeywords = { "set", "loop", "if", "else", "true", "false", "expr", "system" };
 
@@ -490,14 +491,10 @@ public partial class RecipeEditorPanel : UserControl
     private void Open_Click(object sender, RoutedEventArgs e)
     {
         Directory.CreateDirectory(RecipeDir);
-        var dlg = new OpenFileDialog
-        {
-            Filter = "Recipe files (*.hrcp)|*.hrcp|All files (*.*)|*.*",
-            InitialDirectory = RecipeDir
-        };
-
-        if (dlg.ShowDialog() == true)
-            LoadFile(dlg.FileName);
+        var dlg = new FilePickerDialog(FilePickerMode.Open, RecipeDir, ".hrcp", "Horizon Recipe")
+        { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() == true && dlg.SelectedPath != null)
+            LoadFile(dlg.SelectedPath);
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
@@ -511,15 +508,12 @@ public partial class RecipeEditorPanel : UserControl
     private void SaveAs_Click(object sender, RoutedEventArgs e)
     {
         Directory.CreateDirectory(RecipeDir);
-        var dlg = new SaveFileDialog
-        {
-            Filter = "Recipe files (*.hrcp)|*.hrcp",
-            InitialDirectory = RecipeDir,
-            DefaultExt = ".hrcp"
-        };
-
-        if (dlg.ShowDialog() == true)
-            SaveFile(dlg.FileName);
+        var defaultName = _currentFilePath != null
+            ? Path.GetFileNameWithoutExtension(_currentFilePath) : "";
+        var dlg = new FilePickerDialog(FilePickerMode.Save, RecipeDir, ".hrcp", "Horizon Recipe", defaultName)
+        { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() == true && dlg.SelectedPath != null)
+            SaveFile(dlg.SelectedPath);
     }
 
     private void LoadFile(string path)
@@ -532,6 +526,7 @@ public partial class RecipeEditorPanel : UserControl
             UpdateFileDisplay();
             StatusText.Text = $"Loaded: {Path.GetFileName(path)}";
             SaveLastRecipePath(path);
+            WatchFile(path);
         }
         catch (Exception ex)
         {
@@ -543,17 +538,62 @@ public partial class RecipeEditorPanel : UserControl
     {
         try
         {
+            _lastSaveTime = DateTime.UtcNow;
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, GetEditorText());
             _currentFilePath = path;
             UpdateFileDisplay();
             StatusText.Text = $"Saved: {Path.GetFileName(path)}";
             SaveLastRecipePath(path);
+            WatchFile(path);
         }
         catch (Exception ex)
         {
             StatusText.Text = $"Save error: {ex.Message}";
         }
+    }
+
+    private void WatchFile(string path)
+    {
+        _fileWatcher?.Dispose();
+        _fileWatcher = null;
+
+        var dir = Path.GetDirectoryName(path);
+        var name = Path.GetFileName(path);
+        if (dir == null || name == null) return;
+
+        _fileWatcher = new FileSystemWatcher(dir, name)
+        {
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size,
+            EnableRaisingEvents = true
+        };
+        _fileWatcher.Changed += OnFileChanged;
+    }
+
+    private void OnFileChanged(object sender, FileSystemEventArgs e)
+    {
+        // Skip if we just saved (within 2 seconds)
+        if ((DateTime.UtcNow - _lastSaveTime).TotalSeconds < 2) return;
+
+        // Brief delay to let the write finish
+        Thread.Sleep(100);
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (_isRunning) return; // don't reload while executing
+            if (_currentFilePath == null || !File.Exists(_currentFilePath)) return;
+
+            try
+            {
+                var text = File.ReadAllText(_currentFilePath);
+                var current = GetEditorText();
+                if (text.Replace("\r\n", "\n") == current.Replace("\r\n", "\n")) return;
+
+                SetEditorText(text);
+                StatusText.Text = $"Reloaded: {Path.GetFileName(_currentFilePath)}";
+            }
+            catch { /* file may be locked briefly */ }
+        });
     }
 
     private void LoadLastRecipe()
@@ -688,6 +728,8 @@ public partial class RecipeEditorPanel : UserControl
     public void StopExecution()
     {
         _cts?.Cancel();
+        _fileWatcher?.Dispose();
+        _fileWatcher = null;
     }
 
     private void SetRunning(bool running)

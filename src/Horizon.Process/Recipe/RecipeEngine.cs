@@ -591,6 +591,19 @@ public sealed class RecipeEngine
             P("store", "string", false, "Variable to store reading", null));
         _methods.RegisterParams("currentmeasurement", "readall");
         _methods.RegisterParams("currentmeasurement", "reset");
+        _methods.RegisterParams("currentmeasurement", "connect");
+        _methods.RegisterParams("currentmeasurement", "disconnect");
+        _methods.RegisterParams("currentmeasurement", "setvoltage",
+            P("volts", "number", true, "Bias voltage", "0"));
+        _methods.RegisterParams("currentmeasurement", "outputon");
+        _methods.RegisterParams("currentmeasurement", "outputoff");
+        _methods.RegisterParams("currentmeasurement", "startpolling",
+            P("intervalMs", "number", false, "Poll interval in ms", "500"));
+        _methods.RegisterParams("currentmeasurement", "stoppolling");
+        _methods.RegisterParams("currentmeasurement", "startfastpolling");
+        _methods.RegisterParams("currentmeasurement", "stopfastpolling");
+        _methods.RegisterParams("currentmeasurement", "initialize",
+            P("volts", "number", false, "Bias voltage", "1"));
 
         // Laser Controller
         _methods.RegisterParams("lasercontroller", "settemperature",
@@ -605,6 +618,10 @@ public sealed class RecipeEngine
             P("store", "string", false, "Variable to store reading", null));
         _methods.RegisterParams("lasercontroller", "laseron");
         _methods.RegisterParams("lasercontroller", "laseroff");
+        _methods.RegisterParams("lasercontroller", "connect");
+        _methods.RegisterParams("lasercontroller", "disconnect");
+        _methods.RegisterParams("lasercontroller", "initialize",
+            P("celsius", "number", false, "TEC temperature setpoint", "25"));
 
         // Camera
         _methods.RegisterParams("camera", "capture",
