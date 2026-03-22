@@ -687,6 +687,8 @@ public partial class RecipeEditorPanel : UserControl
             // Execute
             AddOutput("--- Recipe started ---");
             bool success = await engine.ExecuteAsync(program, _runContext, _cts.Token);
+            // Flush pending dispatcher callbacks so all step/log output appears before completion
+            await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Background);
             AddOutput(success ? "--- Recipe completed ---" : "--- Recipe failed ---");
             StatusText.Text = success ? "Completed" : "Failed";
             RefreshWatch(force: true);
