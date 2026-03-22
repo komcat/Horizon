@@ -22,8 +22,11 @@
     </Reference>
   </ItemGroup>
 
-  <!-- IDS peak .NET SDK references from install directory -->
-  <ItemGroup>
+  <!-- IDS peak .NET SDK — only included when the SDK is installed -->
+  <PropertyGroup>
+    <HAS_IDS_PEAK Condition="Exists('C:\Program Files\IDS\ids_peak\generic_sdk\api\binding\dotnet\x86_64\ids_peak_dotnet.dll')">true</HAS_IDS_PEAK>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(HAS_IDS_PEAK)' == 'true'">
     <Reference Include="ids_peak_dotnet">
       <HintPath>C:\Program Files\IDS\ids_peak\generic_sdk\api\binding\dotnet\x86_64\ids_peak_dotnet.dll</HintPath>
     </Reference>
@@ -33,6 +36,10 @@
     <Reference Include="ids_peak_afl_dotnet">
       <HintPath>C:\Program Files\IDS\ids_peak\generic_sdk\afl\binding\dotnet\x86_64\ids_peak_afl_dotnet.dll</HintPath>
     </Reference>
+    <Compile Include="Adapters\IDSPeakCameraAdapter.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(HAS_IDS_PEAK)' != 'true'">
+    <Compile Remove="Adapters\IDSPeakCameraAdapter.cs" />
   </ItemGroup>
 
 </Project>

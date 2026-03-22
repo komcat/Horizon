@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Horizon.Camera;
 using Horizon.Camera.Models;
@@ -63,6 +64,12 @@ public partial class OverlayWindow : Window
 
     // Pending preferences to apply after OnLoaded populates combos
     private UserPreferences? _pendingPrefs;
+
+    // Thumbnail sidebar
+    private readonly List<CameraThumbnailState> _thumbnails = new();
+    private DispatcherTimer? _thumbnailTimer;
+    private byte[]? _thumbnailRgbBuffer;
+    private bool _suppressComboChange;
 
     // Z Jog
     private static readonly (string Label, double Mm)[] JogSteps =
@@ -164,6 +171,9 @@ public partial class OverlayWindow : Window
             if (allMeasNames.Count > 0)
                 MeasCombo.SelectedIndex = 0;
         }
+
+        // Build thumbnail sidebar
+        BuildThumbnails(cameras);
     }
 
     public void ApplyPreferences(UserPreferences prefs)
@@ -183,14 +193,21 @@ public partial class OverlayWindow : Window
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         StopFeed();
+        CleanupThumbnails();
     }
 
     private void CameraCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_suppressComboChange) return;
+
+        var newCamera = CameraCombo.SelectedItem as string;
+
+        // Sync thumbnail highlight
+        UpdateThumbnailHighlight(newCamera);
+
         // If running, switch camera
         if (_running)
         {
-            var newCamera = CameraCombo.SelectedItem as string;
             Log.Information("[TopView] Switching camera to '{Camera}'", newCamera);
             StopFeed();
             StartFeed();
@@ -953,5 +970,196 @@ public partial class OverlayWindow : Window
         if (abs < 0.001) return $"{value * 1000:F2} m";
         if (abs < 1000) return $"{value:F2}";
         return $"{value:F0}";
+    }
+
+    // --- Thumbnail sidebar ---
+
+    private void BuildThumbnails(List<(string Id, string DisplayName)> cameras)
+    {
+        ThumbnailStack.Children.Clear();
+        _thumbnails.Clear();
+
+        var selectedName = CameraCombo.SelectedItem as string;
+
+        foreach (var (id, displayName) in cameras)
+        {
+            var image = new Image
+            {
+                Height = 170,
+                Stretch = Stretch.Uniform
+            };
+            RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.LowQuality);
+
+            var nameLabel = new TextBlock
+            {
+                Text = displayName,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xCC, 0xCC, 0xCC)),
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 11,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 2, 0, 0),
+                TextTrimming = TextTrimming.CharacterEllipsis
+            };
+
+            var innerStack = new StackPanel { Orientation = Orientation.Vertical };
+            innerStack.Children.Add(image);
+            innerStack.Children.Add(nameLabel);
+
+            bool isActive = string.Equals(displayName, selectedName, StringComparison.OrdinalIgnoreCase);
+
+            var border = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E)),
+                BorderBrush = isActive
+                    ? new SolidColorBrush(Color.FromRgb(0x00, 0x78, 0xD7))
+                    : new SolidColorBrush(Color.FromArgb(0x40, 0x60, 0x60, 0x60)),
+                BorderThickness = isActive ? new Thickness(3) : new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Margin = new Thickness(2, 2, 2, 2),
+                Padding = new Thickness(4),
+                Cursor = Cursors.Hand,
+                Child = innerStack
+            };
+
+            var thumbState = new CameraThumbnailState
+            {
+                CameraId = id,
+                DisplayName = displayName,
+                ImageElement = image,
+                ContainerBorder = border,
+                IsActive = isActive
+            };
+
+            // Click handler
+            border.MouseLeftButtonDown += (_, _) => OnThumbnailClicked(thumbState);
+
+            // Create subscriber and start grabbing
+            var status = _cameraManager.GetCameraStatus(id);
+            if (status.Connected)
+            {
+                var subscriber = new LiveVideoSubscriber(id, "thumbnail", minFrameIntervalMs: 100);
+                _cameraManager.SubscribeToFrames(subscriber);
+                subscriber.InitializeStatusFromManager(_cameraManager);
+                thumbState.Subscriber = subscriber;
+
+                if (!status.Grabbing)
+                    _cameraManager.StartGrabbingWithBroadcast(id);
+            }
+
+            _thumbnails.Add(thumbState);
+            ThumbnailStack.Children.Add(border);
+        }
+
+        // Start thumbnail render timer at 10 FPS
+        if (_thumbnails.Count > 0)
+        {
+            _thumbnailTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+            _thumbnailTimer.Tick += ThumbnailRenderTick;
+            _thumbnailTimer.Start();
+        }
+    }
+
+    private unsafe void ThumbnailRenderTick(object? sender, EventArgs e)
+    {
+        foreach (var thumb in _thumbnails)
+        {
+            if (thumb.Subscriber == null || !thumb.Subscriber.HasNewFrame)
+                continue;
+
+            // Lazy-allocate shared buffer; grow if a frame doesn't fit
+            _thumbnailRgbBuffer ??= new byte[2560 * 2048 * 3];
+            if (!thumb.Subscriber.GetLatestFrameInto(_thumbnailRgbBuffer, out int w, out int h, out int ch))
+            {
+                // Buffer too small — grow to fit and retry next tick
+                var frame = thumb.Subscriber.GetLatestFrame();
+                if (frame != null)
+                    _thumbnailRgbBuffer = new byte[frame.Width * frame.Height * frame.Channels];
+                continue;
+            }
+
+            // Ensure WriteableBitmap matches frame size
+            if (thumb.Bitmap == null || thumb.Bitmap.PixelWidth != w || thumb.Bitmap.PixelHeight != h)
+            {
+                thumb.Bitmap = new WriteableBitmap(w, h, 96, 96, PixelFormats.Bgr32, null);
+                thumb.ImageElement.Source = thumb.Bitmap;
+            }
+
+            thumb.Bitmap.Lock();
+            try
+            {
+                byte* dst = (byte*)thumb.Bitmap.BackBuffer;
+                int pixelCount = w * h;
+                fixed (byte* src = _thumbnailRgbBuffer)
+                {
+                    int si = 0, di = 0;
+                    for (int i = 0; i < pixelCount; i++)
+                    {
+                        dst[di + 0] = src[si + 2]; // B
+                        dst[di + 1] = src[si + 1]; // G
+                        dst[di + 2] = src[si + 0]; // R
+                        dst[di + 3] = 255;          // A
+                        si += ch;
+                        di += 4;
+                    }
+                }
+                thumb.Bitmap.AddDirtyRect(new System.Windows.Int32Rect(0, 0, w, h));
+            }
+            finally
+            {
+                thumb.Bitmap.Unlock();
+            }
+        }
+    }
+
+    private void OnThumbnailClicked(CameraThumbnailState clickedThumb)
+    {
+        // Update highlight
+        UpdateThumbnailHighlight(clickedThumb.DisplayName);
+
+        // Sync ComboBox (suppress re-entry)
+        _suppressComboChange = true;
+        CameraCombo.SelectedItem = clickedThumb.DisplayName;
+        _suppressComboChange = false;
+
+        // Switch main feed
+        if (_running)
+        {
+            StopFeed();
+            StartFeed();
+        }
+        else
+        {
+            StartFeed();
+        }
+    }
+
+    private void UpdateThumbnailHighlight(string? displayName)
+    {
+        foreach (var t in _thumbnails)
+        {
+            t.IsActive = string.Equals(t.DisplayName, displayName, StringComparison.OrdinalIgnoreCase);
+            t.ContainerBorder.BorderBrush = t.IsActive
+                ? new SolidColorBrush(Color.FromRgb(0x00, 0x78, 0xD7))
+                : new SolidColorBrush(Color.FromArgb(0x40, 0x60, 0x60, 0x60));
+            t.ContainerBorder.BorderThickness = t.IsActive
+                ? new Thickness(3) : new Thickness(1);
+        }
+    }
+
+    private void CleanupThumbnails()
+    {
+        if (_thumbnailTimer != null)
+        {
+            _thumbnailTimer.Stop();
+            _thumbnailTimer.Tick -= ThumbnailRenderTick;
+            _thumbnailTimer = null;
+        }
+
+        foreach (var thumb in _thumbnails)
+        {
+            if (thumb.Subscriber != null)
+                _cameraManager.UnsubscribeFromFrames(thumb.Subscriber.SubscriberId);
+        }
+        _thumbnails.Clear();
     }
 }

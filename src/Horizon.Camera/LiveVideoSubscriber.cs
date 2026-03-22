@@ -14,17 +14,18 @@ public sealed class LiveVideoSubscriber : ICameraFrameSubscriber
     private string _targetCameraId;
     private readonly string _componentName;
 
-    public LiveVideoSubscriber(string cameraId, string componentName = "")
+    public LiveVideoSubscriber(string cameraId, string componentName = "", int minFrameIntervalMs = 0)
     {
         _targetCameraId = cameraId;
         _componentName = componentName;
+        MinFrameIntervalMs = minFrameIntervalMs;
         SubscriberId = string.IsNullOrEmpty(componentName)
             ? $"LiveVideo_{cameraId}"
             : $"LiveVideo_{componentName}_{cameraId}";
     }
 
     public string SubscriberId { get; private set; }
-    public int MinFrameIntervalMs => 0; // Accept all frames, let the UI poll at its own rate
+    public int MinFrameIntervalMs { get; }
     public bool HasNewFrame => _hasNewFrame;
     public bool IsCameraConnected => _cameraConnected;
     public bool IsCameraGrabbing => _cameraGrabbing;
