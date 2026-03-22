@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
@@ -7,9 +8,11 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using Horizon.Core;
 using Horizon.Process;
 using Horizon.Process.Models;
+using Horizon.Process.Recipe;
 using Serilog;
 
 namespace Horizon.App;
@@ -49,7 +52,12 @@ public partial class RunPanel : UserControl
     private CancellationTokenSource? _cts;
     private bool _isRunning;
     private bool _isPaused;
+    private bool _isRunningRecipe;
     private ProcessContext? _lastContext;
+    private RecipeContext? _activeRecipeContext;
+
+    // Execution monitor
+    private readonly ObservableCollection<RunWatchItem> _monitorWatchItems = new();
 
     // Chain editor state
     private int _chainSourceIdx = -1;
@@ -81,6 +89,9 @@ public partial class RunPanel : UserControl
     private static readonly string DefaultProcessDir =
         System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon", "processes");
 
+    private static readonly string DefaultRecipeDir =
+        System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon", "recipes");
+
     private static readonly string LastDeckFile =
         System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon", "decks", ".lastdeck");
 
@@ -94,6 +105,7 @@ public partial class RunPanel : UserControl
     {
         _context = context;
         InitializeComponent();
+        MonitorWatchGrid.ItemsSource = _monitorWatchItems;
         Directory.CreateDirectory(DefaultDeckDir);
         RestoreLastDeck();
     }
@@ -158,67 +170,140 @@ public partial class RunPanel : UserControl
             return;
         }
 
-        var engine = _context.ProcessEngine;
-        if (!engine.TryAcquire("RunPanel"))
-        {
-            Log.Warning("[RunPanel] Cannot run — engine locked by {Owner}", engine.RunningOwner);
-            MessageBox.Show($"Engine is busy — {engine.RunningOwner} is running.",
-                "Busy", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
+        var isRecipe = System.IO.Path.GetExtension(programPath)
+            .Equals(".hrcp", StringComparison.OrdinalIgnoreCase);
 
-        _isRunning = true;
-        _isPaused = false;
-        _cts = new CancellationTokenSource();
-        SetButtonStates(running: true);
-
-        var slotNode = (TreeViewItem)ExecuteTree.Items[slotIndex];
-        var progNode = (TreeViewItem)slotNode.Items[progIndex];
-
-        try
+        if (isRecipe)
         {
-            progNode.Foreground = YellowBrush;
-            Log.Information("[RunPanel] Running: {Path}", System.IO.Path.GetFileName(programPath));
+            var engine = _context.RecipeEngine;
+            if (!engine.TryAcquire("RunPanel"))
+            {
+                MessageBox.Show($"Recipe engine busy — {engine.RunningOwner} is running.",
+                    "Busy", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
-            var (success, ctx) = await RunProgramAsync(engine, _context.PluginRegistry, programPath, _cts.Token);
-            _lastContext = ctx;
-
-            progNode.Foreground = success ? GreenBrush : RedBrush;
-            Log.Information("[RunPanel] Program {Name} — {Result}",
-                System.IO.Path.GetFileName(programPath), success ? "OK" : "FAIL");
-        }
-        catch (OperationCanceledException)
-        {
-            progNode.Foreground = RedBrush;
-            Log.Warning("[RunPanel] Cancelled by user");
-        }
-        catch (Exception ex)
-        {
-            progNode.Foreground = RedBrush;
-            Log.Error(ex, "[RunPanel] Execution error");
-        }
-        finally
-        {
-            _isRunning = false;
+            _isRunning = true;
+            _isRunningRecipe = true;
             _isPaused = false;
-            engine.StepByStepMode = false;
-            engine.OnStepStarted = null;
-            engine.OnStepCompleted = null;
-            engine.OnLoopIteration = null;
-            engine.Release();
-            SetButtonStates(running: false);
+            _cts = new CancellationTokenSource();
+            SetButtonStates(running: true);
+            StartMonitor(System.IO.Path.GetFileName(programPath));
+
+            var slotNode = (TreeViewItem)ExecuteTree.Items[slotIndex];
+            var progNode = (TreeViewItem)slotNode.Items[progIndex];
+
+            try
+            {
+                progNode.Foreground = YellowBrush;
+                Log.Information("[RunPanel] Running recipe: {Path}", System.IO.Path.GetFileName(programPath));
+
+                var (success, rctx) = await RunRecipeAsync(engine, programPath, _cts.Token);
+                _lastContext = RecipeToProcessContext(rctx);
+                progNode.Foreground = success ? GreenBrush : RedBrush;
+                MonitorStatusText.Text = success ? "Completed" : "Failed";
+            }
+            catch (OperationCanceledException)
+            {
+                progNode.Foreground = RedBrush;
+                MonitorStatusText.Text = "Stopped";
+                Log.Warning("[RunPanel] Recipe cancelled by user");
+            }
+            catch (Exception ex)
+            {
+                progNode.Foreground = RedBrush;
+                MonitorStatusText.Text = "Error";
+                Log.Error(ex, "[RunPanel] Recipe execution error");
+            }
+            finally
+            {
+                _isRunning = false;
+                _isRunningRecipe = false;
+                _isPaused = false;
+                _activeRecipeContext = null;
+                engine.StepByStepMode = false;
+                engine.OnStepStarted = null;
+                engine.OnStepCompleted = null;
+                engine.OnLoopIteration = null;
+                engine.OnLog = null;
+                engine.OnContextChanged = null;
+                engine.Release();
+                SetButtonStates(running: false);
+                RefreshMonitorWatch();
+            }
+        }
+        else
+        {
+            var engine = _context.ProcessEngine;
+            if (!engine.TryAcquire("RunPanel"))
+            {
+                Log.Warning("[RunPanel] Cannot run — engine locked by {Owner}", engine.RunningOwner);
+                MessageBox.Show($"Engine is busy — {engine.RunningOwner} is running.",
+                    "Busy", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            _isRunning = true;
+            _isRunningRecipe = false;
+            _isPaused = false;
+            _cts = new CancellationTokenSource();
+            SetButtonStates(running: true);
+            StartMonitor(System.IO.Path.GetFileName(programPath));
+
+            var slotNode = (TreeViewItem)ExecuteTree.Items[slotIndex];
+            var progNode = (TreeViewItem)slotNode.Items[progIndex];
+
+            try
+            {
+                progNode.Foreground = YellowBrush;
+                Log.Information("[RunPanel] Running: {Path}", System.IO.Path.GetFileName(programPath));
+
+                var (success, ctx) = await RunProgramAsync(engine, _context.PluginRegistry, programPath, _cts.Token);
+                _lastContext = ctx;
+
+                progNode.Foreground = success ? GreenBrush : RedBrush;
+                MonitorStatusText.Text = success ? "Completed" : "Failed";
+                RefreshMonitorWatchFromProcess(ctx);
+                Log.Information("[RunPanel] Program {Name} — {Result}",
+                    System.IO.Path.GetFileName(programPath), success ? "OK" : "FAIL");
+            }
+            catch (OperationCanceledException)
+            {
+                progNode.Foreground = RedBrush;
+                MonitorStatusText.Text = "Stopped";
+                Log.Warning("[RunPanel] Cancelled by user");
+            }
+            catch (Exception ex)
+            {
+                progNode.Foreground = RedBrush;
+                MonitorStatusText.Text = "Error";
+                Log.Error(ex, "[RunPanel] Execution error");
+            }
+            finally
+            {
+                _isRunning = false;
+                _isPaused = false;
+                engine.StepByStepMode = false;
+                engine.OnStepStarted = null;
+                engine.OnStepCompleted = null;
+                engine.OnLoopIteration = null;
+                engine.Release();
+                SetButtonStates(running: false);
+            }
         }
     }
 
     private void Pause_Click(object sender, RoutedEventArgs e)
     {
         if (!_isRunning) return;
-        var engine = _context.ProcessEngine;
 
         if (!_isPaused)
         {
             Log.Information("[RunPanel] Pause — will pause after current step");
-            engine.StepByStepMode = true;
+            if (_isRunningRecipe)
+                _context.RecipeEngine.StepByStepMode = true;
+            else
+                _context.ProcessEngine.StepByStepMode = true;
             _isPaused = true;
             PauseIconImg.Source = new BitmapImage(new Uri("pack://application:,,,/Assets/StepMode.png"));
             PauseLabel.Text = " Continue";
@@ -227,8 +312,16 @@ public partial class RunPanel : UserControl
         else
         {
             Log.Information("[RunPanel] Resume");
-            engine.StepByStepMode = false;
-            engine.ContinueStep();
+            if (_isRunningRecipe)
+            {
+                _context.RecipeEngine.StepByStepMode = false;
+                _context.RecipeEngine.ContinueStep();
+            }
+            else
+            {
+                _context.ProcessEngine.StepByStepMode = false;
+                _context.ProcessEngine.ContinueStep();
+            }
             _isPaused = false;
             PauseIconImg.Source = new BitmapImage(new Uri("pack://application:,,,/Assets/Pause.png"));
             PauseLabel.Text = " Pause";
@@ -241,18 +334,26 @@ public partial class RunPanel : UserControl
         if (!_isRunning) return;
         Log.Information("[RunPanel] Stop — cancelling and stopping hardware");
         _cts?.Cancel();
-        var engine = _context.ProcessEngine;
-        engine.StepByStepMode = false;
-        engine.ContinueStep();
+        if (_isRunningRecipe)
+        {
+            _context.RecipeEngine.StepByStepMode = false;
+            _context.RecipeEngine.ContinueStep();
+        }
+        else
+        {
+            _context.ProcessEngine.StepByStepMode = false;
+            _context.ProcessEngine.ContinueStep();
+        }
         StopAllHardware();
     }
 
     public void StopExecution()
     {
         _cts?.Cancel();
-        var engine = _context.ProcessEngine;
-        engine.StepByStepMode = false;
-        engine.ContinueStep();
+        _context.ProcessEngine.StepByStepMode = false;
+        _context.ProcessEngine.ContinueStep();
+        _context.RecipeEngine.StepByStepMode = false;
+        _context.RecipeEngine.ContinueStep();
         StopAllHardware();
     }
 
@@ -313,7 +414,9 @@ public partial class RunPanel : UserControl
         for (int i = 0; i < programs.Count; i++)
         {
             var (slotName, path, _, _) = programs[i];
-            var displayName = $"[{slotName}] {System.IO.Path.GetFileNameWithoutExtension(path)}";
+            var isRecipe = path.EndsWith(".hrcp", StringComparison.OrdinalIgnoreCase);
+            var typeTag = isRecipe ? " [R]" : "";
+            var displayName = $"[{slotName}] {System.IO.Path.GetFileNameWithoutExtension(path)}{typeTag}";
 
             var label = new TextBlock
             {
@@ -699,11 +802,21 @@ public partial class RunPanel : UserControl
             return;
         }
 
+        var recipeEngine = _context.RecipeEngine;
+        if (!recipeEngine.TryAcquire("RunPanel-Chain"))
+        {
+            engine.Release();
+            MessageBox.Show($"Recipe engine busy — {recipeEngine.RunningOwner} is running.",
+                "Busy", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         _isRunning = true;
         _isPaused = false;
         _cts = new CancellationTokenSource();
         SetButtonStates(running: true);
         ChainRunBtn.IsEnabled = false;
+        StartMonitor("Chain Execution");
         RefreshExecuteTree();
         RefreshChainCanvas();
 
@@ -740,8 +853,23 @@ public partial class RunPanel : UserControl
                 Log.Information("[RunPanel] Chain executing: [{SlotName}] {Program}",
                     slotName, System.IO.Path.GetFileName(programPath));
 
-                var (success, ctx) = await RunProgramAsync(engine, registry, programPath, _cts.Token);
-                _lastContext = ctx;
+                var ext = System.IO.Path.GetExtension(programPath);
+                var isRecipe = ext.Equals(".hrcp", StringComparison.OrdinalIgnoreCase);
+                _isRunningRecipe = isRecipe;
+
+                bool success;
+                if (isRecipe)
+                {
+                    var (s, rctx) = await RunRecipeAsync(recipeEngine, programPath, _cts.Token, _lastContext);
+                    _lastContext = RecipeToProcessContext(rctx);
+                    success = s;
+                }
+                else
+                {
+                    var (s, ctx) = await RunProgramAsync(engine, registry, programPath, _cts.Token);
+                    _lastContext = ctx;
+                    success = s;
+                }
 
                 // Update block color
                 if (currentIdx < _chainBlocks.Count)
@@ -808,25 +936,37 @@ public partial class RunPanel : UserControl
                 currentIdx = nextIdx;
             }
 
+            MonitorStatusText.Text = chainSuccess ? "Chain Completed" : "Chain Stopped/Failed";
             Log.Information("[RunPanel] Chain execution {Result}", chainSuccess ? "completed" : "stopped/failed");
         }
         catch (OperationCanceledException)
         {
+            MonitorStatusText.Text = "Chain Stopped";
             Log.Warning("[RunPanel] Chain cancelled by user");
         }
         catch (Exception ex)
         {
+            MonitorStatusText.Text = "Chain Error";
             Log.Error(ex, "[RunPanel] Chain execution error");
         }
         finally
         {
             _isRunning = false;
+            _isRunningRecipe = false;
             _isPaused = false;
+            _activeRecipeContext = null;
             engine.StepByStepMode = false;
             engine.OnStepStarted = null;
             engine.OnStepCompleted = null;
             engine.OnLoopIteration = null;
             engine.Release();
+            recipeEngine.StepByStepMode = false;
+            recipeEngine.OnStepStarted = null;
+            recipeEngine.OnStepCompleted = null;
+            recipeEngine.OnLoopIteration = null;
+            recipeEngine.OnLog = null;
+            recipeEngine.OnContextChanged = null;
+            recipeEngine.Release();
             SetButtonStates(running: false);
             ChainRunBtn.IsEnabled = true;
         }
@@ -934,16 +1074,145 @@ public partial class RunPanel : UserControl
         if (processSteps.Count == 0) return (true, ctx);
 
         engine.OnStepStarted = (idx, device, method) =>
+        {
             Log.Information("[RunPanel]   Step {Index}: {Device}.{Method}", idx, device, method);
+            Dispatcher.BeginInvoke(() => MonitorStatusText.Text = $"Step {idx}: {device}.{method}");
+        };
         engine.OnStepCompleted = (idx, success) =>
         {
             if (!success) Log.Warning("[RunPanel]   Step {Index} failed", idx);
+            Dispatcher.BeginInvoke(() => RefreshMonitorWatchFromProcess(ctx));
         };
         engine.OnLoopIteration = (idx, current, total) =>
+        {
             Log.Information("[RunPanel]   Loop step {Index}: iteration {Current}/{Total}", idx, current, total == 0 ? "inf" : total);
+            Dispatcher.BeginInvoke(() => MonitorStatusText.Text = $"Loop step {idx}: {current}/{(total == 0 ? "inf" : total)}");
+        };
 
         var result = await Task.Run(() => engine.ExecuteAsync(processSteps, ctx, ct));
         return (result, ctx);
+    }
+
+    private async Task<(bool Success, RecipeContext Context)> RunRecipeAsync(
+        RecipeEngine engine, string filePath, CancellationToken ct, ProcessContext? seedFrom = null)
+    {
+        var ctx = new RecipeContext { CancellationToken = ct };
+
+        if (seedFrom != null)
+        {
+            foreach (var (key, value, _) in seedFrom.GetSnapshot())
+            {
+                if (double.TryParse(value, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var num))
+                    ctx.Set(key, num);
+                else
+                    ctx.Set(key, value);
+            }
+        }
+
+        if (!File.Exists(filePath))
+        {
+            Log.Error("[RunPanel] Recipe file not found: {Path}", filePath);
+            return (false, ctx);
+        }
+
+        string source;
+        try
+        {
+            source = File.ReadAllText(filePath);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "[RunPanel] Failed to read recipe: {Path}", filePath);
+            return (false, ctx);
+        }
+
+        var (program, errors) = RecipeEngine.Parse(source);
+        if (program == null)
+        {
+            foreach (var err in errors)
+                Log.Error("[RunPanel] Parse error in {File} line {Line}: {Message}",
+                    System.IO.Path.GetFileName(filePath), err.Line, err.Message);
+            return (false, ctx);
+        }
+
+        _activeRecipeContext = ctx;
+
+        engine.OnStepStarted = (line, device, method) =>
+        {
+            Log.Information("[RunPanel]   Recipe step {Line}: {Device}.{Method}", line, device, method);
+            Dispatcher.BeginInvoke(() => MonitorStatusText.Text = $"Line {line}: {device}.{method}");
+        };
+        engine.OnStepCompleted = (line, success, desc) =>
+        {
+            if (!success) Log.Warning("[RunPanel]   Recipe step {Line} failed: {Desc}", line, desc);
+            Dispatcher.BeginInvoke(() => RefreshMonitorWatch());
+        };
+        engine.OnLoopIteration = (line, current, total) =>
+        {
+            Log.Information("[RunPanel]   Recipe loop {Line}: iteration {Current}/{Total}", line, current, total == 0 ? "inf" : total);
+            Dispatcher.BeginInvoke(() => MonitorStatusText.Text = $"Loop L{line}: {current}/{(total > 0 ? total : "inf")}");
+        };
+        engine.OnLog = msg =>
+        {
+            Log.Information("[RunPanel] [recipe] {Message}", msg);
+            Dispatcher.BeginInvoke(() => AddMonitorOutput(msg));
+        };
+
+        var result = await engine.ExecuteAsync(program, ctx, ct);
+        return (result, ctx);
+    }
+
+    private static ProcessContext RecipeToProcessContext(RecipeContext recipe)
+    {
+        var pc = new ProcessContext();
+        foreach (var (key, value, _) in recipe.GetSnapshot())
+            pc.SetValue(key, value);
+        return pc;
+    }
+
+    // ── Execution Monitor ────────────────────────────────────────────
+
+    private void StartMonitor(string fileName)
+    {
+        _monitorWatchItems.Clear();
+        MonitorOutputList.Items.Clear();
+        MonitorStatusText.Text = $"Running {fileName}...";
+        ShowRightPanel(RightPanel.ExecutionMonitor);
+    }
+
+    private void RefreshMonitorWatch()
+    {
+        if (_activeRecipeContext == null) return;
+        var snapshot = _activeRecipeContext.GetSnapshot();
+        _monitorWatchItems.Clear();
+        foreach (var (key, value, _) in snapshot)
+        {
+            if (key.EndsWith(".unit")) continue;
+            _monitorWatchItems.Add(new RunWatchItem { Variable = key, Value = value });
+        }
+    }
+
+    private void RefreshMonitorWatchFromProcess(ProcessContext ctx)
+    {
+        var snapshot = ctx.GetSnapshot();
+        _monitorWatchItems.Clear();
+        foreach (var (key, value, _) in snapshot)
+            _monitorWatchItems.Add(new RunWatchItem { Variable = key, Value = value });
+    }
+
+    private void AddMonitorOutput(string message)
+    {
+        MonitorOutputList.Items.Add(message);
+        if (MonitorOutputList.Items.Count > 500)
+            MonitorOutputList.Items.RemoveAt(0);
+        MonitorOutputList.ScrollIntoView(MonitorOutputList.Items[^1]);
+    }
+
+    private void MonitorClear_Click(object sender, RoutedEventArgs e)
+    {
+        MonitorOutputList.Items.Clear();
+        _monitorWatchItems.Clear();
     }
 
     // ── Tree selection helper ───────────────────────────────────────
@@ -998,13 +1267,14 @@ public partial class RunPanel : UserControl
 
     // ── Right panel switching ───────────────────────────────────────
 
-    private enum RightPanel { Empty, DeckEditor, Chain }
+    private enum RightPanel { Empty, DeckEditor, Chain, ExecutionMonitor }
 
     private void ShowRightPanel(RightPanel panel)
     {
         EmptyRightText.Visibility = panel == RightPanel.Empty ? Visibility.Visible : Visibility.Collapsed;
         DeckEditorPanel.Visibility = panel == RightPanel.DeckEditor ? Visibility.Visible : Visibility.Collapsed;
         ChainEditorPanel.Visibility = panel == RightPanel.Chain ? Visibility.Visible : Visibility.Collapsed;
+        ExecutionMonitorPanel.Visibility = panel == RightPanel.ExecutionMonitor ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ── Deck tab buttons ────────────────────────────────────────────
@@ -1148,14 +1418,19 @@ public partial class RunPanel : UserControl
             return;
         }
 
-        var dlg = new FilePickerDialog(FilePickerMode.Open, DefaultProcessDir, ".hproc", "Horizon Process")
-        { Owner = Window.GetWindow(this) };
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            InitialDirectory = Directory.Exists(DefaultProcessDir) ? DefaultProcessDir : DefaultRecipeDir,
+            Filter = "Horizon files (*.hproc;*.hrcp)|*.hproc;*.hrcp|Process (*.hproc)|*.hproc|Recipe (*.hrcp)|*.hrcp",
+            Multiselect = true,
+            Title = "Add Program or Recipe"
+        };
         if (dlg.ShowDialog() != true) return;
 
-        foreach (var file in dlg.SelectedPaths)
+        foreach (var file in dlg.FileNames)
         {
             slot.Programs.Add(file);
-            Log.Information("[RunPanel] Added program to slot {SlotName}: {Path}", slot.Name, file);
+            Log.Information("[RunPanel] Added to slot {SlotName}: {Path}", slot.Name, file);
         }
 
         RefreshProgramList();
@@ -1243,9 +1518,28 @@ public partial class RunPanel : UserControl
 
             foreach (var prog in slot.Programs)
             {
+                var isRecipe = System.IO.Path.GetExtension(prog)
+                    .Equals(".hrcp", StringComparison.OrdinalIgnoreCase);
+                var header = new StackPanel { Orientation = Orientation.Horizontal };
+                header.Children.Add(new TextBlock
+                {
+                    Text = isRecipe ? "[R] " : "[P] ",
+                    Foreground = isRecipe ? new SolidColorBrush(Color.FromRgb(0x00, 0xBF, 0xFF))
+                                          : new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80)),
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 11
+                });
+                header.Children.Add(new TextBlock
+                {
+                    Text = System.IO.Path.GetFileNameWithoutExtension(prog),
+                    Foreground = (Brush)FindResource("Theme.ForegroundBrush"),
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 11
+                });
+
                 slotNode.Items.Add(new TreeViewItem
                 {
-                    Header = System.IO.Path.GetFileNameWithoutExtension(prog),
+                    Header = header,
                     ToolTip = prog,
                     FontWeight = FontWeights.Normal
                 });
@@ -1271,9 +1565,28 @@ public partial class RunPanel : UserControl
 
             foreach (var prog in slot.Programs)
             {
+                var isRecipe = System.IO.Path.GetExtension(prog)
+                    .Equals(".hrcp", StringComparison.OrdinalIgnoreCase);
+                var header = new StackPanel { Orientation = Orientation.Horizontal };
+                header.Children.Add(new TextBlock
+                {
+                    Text = isRecipe ? "[R] " : "[P] ",
+                    Foreground = isRecipe ? new SolidColorBrush(Color.FromRgb(0x00, 0xBF, 0xFF))
+                                          : new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80)),
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 11
+                });
+                header.Children.Add(new TextBlock
+                {
+                    Text = System.IO.Path.GetFileNameWithoutExtension(prog),
+                    Foreground = (Brush)FindResource("Theme.ForegroundBrush"),
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 11
+                });
+
                 slotNode.Items.Add(new TreeViewItem
                 {
-                    Header = System.IO.Path.GetFileNameWithoutExtension(prog),
+                    Header = header,
                     ToolTip = prog,
                     FontWeight = FontWeights.Normal
                 });
@@ -1305,7 +1618,18 @@ public partial class RunPanel : UserControl
         SlotProgramsHeader.Text = $"Programs - {slot.Name}";
         ProgramListBox.ItemsSource = null;
         ProgramListBox.ItemsSource = slot.Programs
-            .Select(p => System.IO.Path.GetFileNameWithoutExtension(p))
+            .Select(p =>
+            {
+                var isRecipe = System.IO.Path.GetExtension(p)
+                    .Equals(".hrcp", StringComparison.OrdinalIgnoreCase);
+                return $"{(isRecipe ? "[R] " : "[P] ")}{System.IO.Path.GetFileNameWithoutExtension(p)}";
+            })
             .ToList();
     }
+}
+
+public class RunWatchItem
+{
+    public string Variable { get; set; } = "";
+    public string Value { get; set; } = "";
 }
