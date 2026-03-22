@@ -36,7 +36,6 @@
     <Reference Include="ids_peak_afl_dotnet">
       <HintPath>C:\Program Files\IDS\ids_peak\generic_sdk\afl\binding\dotnet\x86_64\ids_peak_afl_dotnet.dll</HintPath>
     </Reference>
-    <Compile Include="Adapters\IDSPeakCameraAdapter.cs" />
   </ItemGroup>
   <ItemGroup Condition="'$(HAS_IDS_PEAK)' != 'true'">
     <Compile Remove="Adapters\IDSPeakCameraAdapter.cs" />

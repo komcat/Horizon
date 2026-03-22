@@ -16,7 +16,9 @@ public sealed class UnifiedMotionManager
 
     public UnifiedMotionManager()
     {
+#if HAS_ACS_SDK
         _managers["ACS"] = new ACSControllerManager();
+#endif
         _managers["PI"] = new PIControllerManager();
     }
 

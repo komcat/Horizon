@@ -11,12 +11,22 @@
   <ItemGroup>
     <PackageReference Include="Serilog" Version="4.2.0" />
   </ItemGroup>
-  <!-- ACS SPiiPlus .NET 8 managed wrapper -->
-  <ItemGroup>
+  <!-- ACS SPiiPlus .NET 8 managed wrapper — only when SDK is installed -->
+  <PropertyGroup>
+    <HAS_ACS Condition="Exists('C:\Program Files (x86)\ACS Motion Control\SPiiPlus Runtime Kit\Redist\x64\ACS.SPiiPlusNET8.dll')">true</HAS_ACS>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(HAS_ACS)' == 'true'">
     <Reference Include="ACS.SPiiPlusNET8">
       <HintPath>C:\Program Files (x86)\ACS Motion Control\SPiiPlus Runtime Kit\Redist\x64\ACS.SPiiPlusNET8.dll</HintPath>
       <Private>true</Private>
     </Reference>
+  </ItemGroup>
+  <PropertyGroup Condition="'$(HAS_ACS)' == 'true'">
+    <DefineConstants>$(DefineConstants);HAS_ACS_SDK</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(HAS_ACS)' != 'true'">
+    <Compile Remove="Adapters\ACSMotionController.cs" />
+    <Compile Remove="Adapters\ACSControllerManager.cs" />
   </ItemGroup>
   <!-- PI GCS2 native DLL copied to output -->
   <ItemGroup>
