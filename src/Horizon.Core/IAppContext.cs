@@ -5,6 +5,7 @@ using Horizon.LaserController;
 using Horizon.Motion;
 using Horizon.Pneumatic;
 using Horizon.Process;
+using Horizon.Core.Interlock;
 using Horizon.Process.Recipe;
 using Horizon.Safety;
 
@@ -27,6 +28,7 @@ public interface IAppContext
     TeachPointManager TeachPointManager { get; }
     ProductManager ProductManager { get; }
     AxisTransformService AxisTransformService { get; }
+    InterlockService? InterlockService { get; }
     bool IsInitialized { get; }
     bool SimulationMode { get; set; }
     void Initialize();

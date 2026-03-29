@@ -19,6 +19,7 @@ public partial class RecipeEditorPanel : UserControl
     private readonly IAppContext _context;
     private readonly ObservableCollection<WatchItem> _watchItems = new();
     private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _linkedCts;
     private RecipeContext? _runContext;
     private string? _currentFilePath;
     private bool _isRunning;
@@ -776,6 +777,8 @@ public partial class RecipeEditorPanel : UserControl
             BottomTabs.SelectedIndex = 0; // Switch to Output tab
 
             _cts = new CancellationTokenSource();
+            var sw = _context.SafetyWatchManager;
+            _linkedCts = sw != null ? sw.LinkExecutionCts(_cts.Token) : _cts;
             engine.StepByStepMode = StepModeCheck.IsChecked == true;
 
             // Wire callbacks
@@ -811,7 +814,8 @@ public partial class RecipeEditorPanel : UserControl
 
             // Execute
             AddOutput($"--- {label} started ---");
-            bool success = await engine.ExecuteAsync(program, _runContext!, _cts.Token);
+            _context.MotionManager.MotionSourceContext = 2; // Recipe
+            bool success = await engine.ExecuteAsync(program, _runContext!, _linkedCts!.Token);
             await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Background);
             AddOutput(success ? $"--- {label} completed ---" : $"--- {label} failed ---");
             StatusText.Text = success ? "Completed" : "Failed";
@@ -835,6 +839,8 @@ public partial class RecipeEditorPanel : UserControl
             engine.OnLog = null;
             engine.OnContextChanged = null;
             engine.Release();
+            if (_linkedCts != _cts) _linkedCts?.Dispose();
+            _linkedCts = null;
             _cts?.Dispose();
             _cts = null;
             ClearEditorLineHighlight();

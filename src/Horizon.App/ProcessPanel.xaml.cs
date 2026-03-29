@@ -22,6 +22,7 @@ public partial class ProcessPanel : UserControl
     private readonly List<PluginStepNode> _builderSteps = new();
 
     private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _linkedCts;
     private bool _isRunning;
     private string? _currentFilePath;
 
@@ -589,6 +590,8 @@ public partial class ProcessPanel : UserControl
 
         _isRunning = true;
         _cts = new CancellationTokenSource();
+        var sw = _context.SafetyWatchManager;
+        _linkedCts = sw != null ? sw.LinkExecutionCts(_cts.Token) : _cts;
         RunBtn.IsEnabled = false;
         StopBtn.IsEnabled = true;
         ContinueBtn.IsEnabled = StepModeCheck.IsChecked == true;
@@ -687,13 +690,17 @@ public partial class ProcessPanel : UserControl
                 Dispatcher.Invoke(() => StatusText.Text = iterLabel);
             };
 
-            var ctx = new ProcessContext { CancellationToken = _cts.Token };
+            var ctx = new ProcessContext { CancellationToken = _linkedCts!.Token };
             _runContext = ctx;
             _prevWatchValues.Clear();
             _watchItems.Clear();
             WatchCountText.Text = "";
 
-            var result = await Task.Run(() => engine.ExecuteAsync(processSteps, ctx, _cts.Token));
+            var result = await Task.Run(() =>
+            {
+                _context.MotionManager.MotionSourceContext = 1; // Process
+                return engine.ExecuteAsync(processSteps, ctx, _linkedCts.Token);
+            });
             Dispatcher.Invoke(RefreshContextWatch);
             StatusText.Text = result ? "Completed successfully" : "Completed with errors";
             if (result)
@@ -717,6 +724,8 @@ public partial class ProcessPanel : UserControl
         {
             _isRunning = false;
             engine.Release();
+            if (_linkedCts != _cts) _linkedCts?.Dispose();
+            _linkedCts = null;
             RunBtn.IsEnabled = true;
             StopBtn.IsEnabled = false;
             ContinueBtn.IsEnabled = false;

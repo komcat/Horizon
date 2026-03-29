@@ -133,8 +133,13 @@
             </Border>
         </StackPanel>
 
-        <!-- ═══ RIGHT COLUMN: Jog Controls ═══ -->
-        <StackPanel Grid.Column="1">
+        <!-- ═══ RIGHT COLUMN: Jog Controls + Quick Access ═══ -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+        <StackPanel Grid.Row="0">
 
             <!-- XYZ Section -->
             <TextBlock Text="XYZ MOVEMENT" Style="{StaticResource SectionHeader}"/>
@@ -230,6 +235,12 @@
                 </StackPanel>
             </Border>
 
+            <!-- Interlock override -->
+            <CheckBox x:Name="InterlockOverrideCheck" Content="Interlock Override (teach mode)"
+                      FontFamily="Consolas" FontSize="11" Foreground="#DCDCAA"
+                      Margin="0,6,0,2" Click="InterlockOverride_Click"
+                      ToolTip="Allow jog motion even when interlocks are active (e.g. slides extended during teaching)"/>
+
             <!-- STOP button -->
             <Button x:Name="StopButton" Content="STOP ALL" Height="32" Margin="0,4,0,0"
                     FontFamily="Consolas" FontSize="13" FontWeight="Bold"
@@ -252,5 +263,34 @@
                 </Button.Template>
             </Button>
         </StackPanel>
+
+        <!-- ═══ Quick Access Tabs ═══ -->
+        <TabControl Grid.Row="1" Margin="0,8,0,0"
+                    Background="{DynamicResource Theme.BackgroundBrush}"
+                    FontFamily="Consolas" FontSize="11"
+                    Foreground="{DynamicResource Theme.ForegroundBrush}">
+
+            <!-- Pneumatic tab -->
+            <TabItem Header="Pneumatic">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <WrapPanel x:Name="PneumaticButtonPanel" Margin="4"/>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- IO Output tab -->
+            <TabItem Header="IO Output">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <WrapPanel x:Name="IOOutputButtonPanel" Margin="4"/>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- Camera tab -->
+            <TabItem Header="Camera">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="CameraSettingsPanel" Margin="4"/>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+        </Grid>
     </Grid>
 </UserControl>

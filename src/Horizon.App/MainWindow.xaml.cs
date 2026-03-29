@@ -95,11 +95,35 @@ public partial class MainWindow : Window
         _hwStatusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _hwStatusTimer.Tick += HwStatusTimer_Tick;
         _hwStatusTimer.Start();
+
+        // Subscribe to safety watchdog events for indicator
+        var safetyWatch = _context.SafetyWatchManager;
+        if (safetyWatch != null)
+        {
+            safetyWatch.SafetyTriggered += OnSafetyTriggered;
+            safetyWatch.SafetyCleared += OnSafetyCleared;
+            UpdateSafetyIndicator(); // Set initial state
+        }
+
+        // Subscribe to interlock events for indicator
+        var interlock = _context.InterlockService;
+        if (interlock != null)
+        {
+            interlock.InterlockStateChanged += () => Dispatcher.BeginInvoke(UpdateInterlockIndicator);
+            interlock.InterlockBlocked += (d, a, r) => Dispatcher.BeginInvoke(UpdateInterlockIndicator);
+        }
+        UpdateInterlockIndicator();
     }
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         _hwStatusTimer?.Stop();
+        var safetyWatch = _context.SafetyWatchManager;
+        if (safetyWatch != null)
+        {
+            safetyWatch.SafetyTriggered -= OnSafetyTriggered;
+            safetyWatch.SafetyCleared -= OnSafetyCleared;
+        }
         StopLiveFeed();
         StopAllIOPanels();
         StopAllMotionPanels();
@@ -740,6 +764,9 @@ public partial class MainWindow : Window
             }
         }
         catch { HwStatusKeithley.Text = "--"; }
+
+        // Update interlock indicator (live state depends on slide positions)
+        UpdateInterlockIndicator();
 
         // Always show status bar (product indicator is always relevant)
         HwStatusBar.Visibility = Visibility.Visible;
@@ -1805,6 +1832,155 @@ public partial class MainWindow : Window
         var doc = new LayoutDocument
         {
             Title = "Needle-Camera Trainer",
+            ContentId = contentId,
+            Content = panel
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+    }
+
+    // ── Safety indicator + panel ──────────────────────────────────────
+
+    private void OnSafetyTriggered(string title, string message, bool isCritical)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            UpdateSafetyIndicator();
+
+            // Show modal alert for critical triggers
+            if (isCritical)
+            {
+                MessageBox.Show(this,
+                    $"{title}\n\n{message}\n\nAll motion stopped. Operations blocked until acknowledged.",
+                    "SAFETY FAULT",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        });
+    }
+
+    private void OnSafetyCleared()
+    {
+        Dispatcher.BeginInvoke(UpdateSafetyIndicator);
+    }
+
+    private void UpdateSafetyIndicator()
+    {
+        var sw = _context.SafetyWatchManager;
+        if (sw == null)
+        {
+            SafetyIndicatorDot.Fill = Brushes.Gray;
+            SafetyIndicatorText.Text = " N/A";
+            SafetyIndicatorText.Foreground = Brushes.Gray;
+            return;
+        }
+
+        if (sw.IsCriticalFlagRaised)
+        {
+            SafetyIndicatorDot.Fill = Brushes.Red;
+            SafetyIndicatorText.Text = " FAULT";
+            SafetyIndicatorText.Foreground = Brushes.Red;
+        }
+        else if (sw.IsSafetyFlagRaised)
+        {
+            SafetyIndicatorDot.Fill = Brushes.Orange;
+            SafetyIndicatorText.Text = " Warn";
+            SafetyIndicatorText.Foreground = Brushes.Orange;
+        }
+        else
+        {
+            SafetyIndicatorDot.Fill = new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0));
+            SafetyIndicatorText.Text = " Safe";
+            SafetyIndicatorText.Foreground = new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0));
+        }
+    }
+
+    private void SafetyIndicator_Click(object sender, MouseButtonEventArgs e)
+    {
+        OpenSafetyPanel();
+    }
+
+    private void SafetyPanel_Click(object sender, RoutedEventArgs e)
+    {
+        OpenSafetyPanel();
+    }
+
+    // ── Interlock indicator ────────────────────────────────────────
+
+    private void UpdateInterlockIndicator()
+    {
+        var ils = _context.InterlockService;
+        if (ils == null || !ils.Enabled)
+        {
+            InterlockIndicatorDot.Fill = Brushes.Gray;
+            InterlockIndicatorText.Text = " Intlk";
+            InterlockIndicatorText.Foreground = Brushes.Gray;
+            return;
+        }
+
+        if (ils.OverrideMode)
+        {
+            InterlockIndicatorDot.Fill = Brushes.Orange;
+            InterlockIndicatorText.Text = " OVRD";
+            InterlockIndicatorText.Foreground = Brushes.Orange;
+            return;
+        }
+
+        try
+        {
+            var statuses = ils.GetAllRuleStatuses();
+            bool anyBlocking = statuses.Any(s => s.RuleEnabled && !s.IsSatisfied);
+            if (anyBlocking)
+            {
+                InterlockIndicatorDot.Fill = new SolidColorBrush(Color.FromRgb(0xDC, 0xDC, 0x00));
+                InterlockIndicatorText.Text = " Intlk";
+                InterlockIndicatorText.Foreground = new SolidColorBrush(Color.FromRgb(0xDC, 0xDC, 0x00));
+            }
+            else
+            {
+                InterlockIndicatorDot.Fill = new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0));
+                InterlockIndicatorText.Text = " Intlk";
+                InterlockIndicatorText.Foreground = new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0));
+            }
+        }
+        catch
+        {
+            InterlockIndicatorDot.Fill = Brushes.Gray;
+            InterlockIndicatorText.Foreground = Brushes.Gray;
+        }
+    }
+
+    private void InterlockIndicator_Click(object sender, MouseButtonEventArgs e)
+    {
+        OpenSafetyPanel();
+    }
+
+    private void OpenSafetyPanel()
+    {
+        var contentId = "safety_panel";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var panel = new SafetyPanel(_context);
+
+        var doc = new LayoutDocument
+        {
+            Title = "Safety",
             ContentId = contentId,
             Content = panel
         };

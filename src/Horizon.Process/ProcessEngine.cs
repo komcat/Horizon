@@ -24,11 +24,22 @@ public sealed class ProcessEngine
     public string? RunningOwner { get; private set; }
 
     /// <summary>
+    /// Optional gate function. If set and returns true, TryAcquire is blocked.
+    /// Used by safety watchdog to prevent new executions while safety flag is raised.
+    /// </summary>
+    public Func<bool>? SafetyGate { get; set; }
+
+    /// <summary>
     /// Attempt to acquire exclusive execution rights.
     /// Returns true if acquired, false if another caller already holds the lock.
     /// </summary>
     public bool TryAcquire(string owner)
     {
+        if (SafetyGate?.Invoke() == true)
+        {
+            Log.Warning("[Process] TryAcquire blocked for {Owner} — safety flag raised", owner);
+            return false;
+        }
         if (Interlocked.CompareExchange(ref _executionLock, 1, 0) != 0)
         {
             Log.Warning("[Process] TryAcquire failed for {Owner} — already locked by {RunningOwner}", owner, RunningOwner);

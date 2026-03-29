@@ -14,6 +14,38 @@ public sealed class UnifiedMotionManager
 
     public event Action? PresetsChanged;
 
+    /// <summary>
+    /// Optional interlock check delegate. If set, called before every motion command.
+    /// Args: (device, axis, source) → (allowed, reason).
+    /// Injected by AppContext from InterlockService.
+    /// </summary>
+    public Func<string, string, int, (bool Allowed, string? Reason)>? InterlockCheck { get; set; }
+
+    /// <summary>Reason string from the last interlock block, or null if last motion was allowed.</summary>
+    public string? LastInterlockReason { get; private set; }
+
+    /// <summary>Fired when a motion command is blocked by an interlock. Args: (device, axis, reason).</summary>
+    public event Action<string, string, string>? MotionBlocked;
+
+    /// <summary>Current motion source context. Set by callers before motion commands.</summary>
+    public int MotionSourceContext { get; set; } // 0=Jog, 1=Process, 2=Recipe, 3=Manual
+
+    private bool CheckInterlock(string device, string axis)
+    {
+        var check = InterlockCheck;
+        if (check == null) { LastInterlockReason = null; return true; }
+        var (allowed, reason) = check(device, axis, MotionSourceContext);
+        if (!allowed)
+        {
+            LastInterlockReason = reason;
+            Log.Warning("[Motion] Interlock blocked: {Device}.{Axis} — {Reason}", device, axis, reason);
+            MotionBlocked?.Invoke(device, axis, reason ?? "Interlock");
+            return false;
+        }
+        LastInterlockReason = null;
+        return true;
+    }
+
     public UnifiedMotionManager()
     {
 #if HAS_ACS_SDK
@@ -72,6 +104,7 @@ public sealed class UnifiedMotionManager
 
     public bool MoveToAbs(string device, string axis, double position, bool blocking = true)
     {
+        if (!CheckInterlock(device, axis)) return false;
         var controller = GetController(device);
         var ok = controller?.MoveToPosition(axis, position, blocking) ?? false;
         if (ok)
@@ -90,9 +123,18 @@ public sealed class UnifiedMotionManager
             Log.Error("[Motion] '{Device}' MoveAbs6 FAILED: controller not found", device);
             return false;
         }
+        // Pre-check all axes before moving any (atomic interlock check)
+        var axes = controller.AxisNames;
+        for (int i = 0; i < Math.Min(axes.Count, 6); i++)
+        {
+            if (!CheckInterlock(device, axes[i]))
+            {
+                Log.Warning("[Motion] '{Device}' MoveAbs6 BLOCKED: interlock on axis {Axis}", device, axes[i]);
+                return false;
+            }
+        }
         Log.Information("[Motion] '{Device}' MoveAbs6 X={X:F4} Y={Y:F4} Z={Z:F4} U={U:F4} V={V:F4} W={W:F4}",
             device, pos.X, pos.Y, pos.Z, pos.U, pos.V, pos.W);
-        var axes = controller.AxisNames;
         var values = new[] { pos.X, pos.Y, pos.Z, pos.U, pos.V, pos.W };
         for (int i = 0; i < Math.Min(axes.Count, 6); i++)
             if (!controller.MoveToPosition(axes[i], values[i], blocking))
@@ -117,6 +159,7 @@ public sealed class UnifiedMotionManager
 
     public bool MoveRelative(string device, string axis, double distance, bool blocking = true)
     {
+        if (!CheckInterlock(device, axis)) return false;
         var controller = GetController(device);
         var ok = controller?.MoveRelative(axis, distance, blocking) ?? false;
         if (ok)

@@ -161,6 +161,8 @@
                 <MenuItem Header="_Hex Scan" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="HexScanPanel_Click"/>
                 <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="_Needle-Camera Trainer" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="NeedleCameraTrainer_Click"/>
+                <Separator Style="{StaticResource MenuSeparator}"/>
+                <MenuItem Header="_Safety Panel" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="SafetyPanel_Click"/>
             </MenuItem>
             <MenuItem Header="_Help" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
                 <MenuItem Header="_Expression Syntax" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="HelpExpressionSyntax_Click"/>
@@ -268,6 +270,30 @@
                         <TextBlock Text=" Vision" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center" Foreground="#FF1E1E1E"/>
                     </StackPanel>
                 </Button>
+
+                <!-- Safety indicator -->
+                <Border Margin="8,0,0,0" VerticalAlignment="Center" Cursor="Hand"
+                        Background="Transparent" MouseLeftButtonDown="SafetyIndicator_Click"
+                        ToolTip="Safety Status — Click to open Safety Panel">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse x:Name="SafetyIndicatorDot" Width="14" Height="14"
+                                 Fill="#4EC9B0" Stroke="#2D5A2D" StrokeThickness="1"/>
+                        <TextBlock x:Name="SafetyIndicatorText" Text=" Safe" FontFamily="Consolas" FontSize="11"
+                                   VerticalAlignment="Center" Foreground="#4EC9B0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Interlock indicator -->
+                <Border Margin="6,0,0,0" VerticalAlignment="Center" Cursor="Hand"
+                        Background="Transparent" MouseLeftButtonDown="InterlockIndicator_Click"
+                        ToolTip="Motion Interlocks — Click to open Safety Panel">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse x:Name="InterlockIndicatorDot" Width="14" Height="14"
+                                 Fill="#808080" Stroke="#4A4A2A" StrokeThickness="1"/>
+                        <TextBlock x:Name="InterlockIndicatorText" Text=" Intlk" FontFamily="Consolas" FontSize="11"
+                                   VerticalAlignment="Center" Foreground="#808080"/>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </Border>
 

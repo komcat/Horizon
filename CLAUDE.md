@@ -45,7 +45,7 @@ Property `ILogSink? LogSink` is set by App.xaml.cs (Serilog adapter) — manager
 
 `ConfigLoader.LoadJson<T>(dir, name)` with `.local.json` override (System.Text.Json, case-insensitive, comments/trailing commas allowed). Config dir: `%APPDATA%\Horizon\config\`.
 
-Key config files: `io_devices.json`, `motor_devices.json`, `pneumatic_slides.json`, `safety_watch.json`, `current_measurement_devices.json`, `laser_controller_devices.json`.
+Key config files: `io_devices.json`, `motor_devices.json`, `pneumatic_slides.json`, `safety_watch.json`, `motion_interlocks.json`, `current_measurement_devices.json`, `laser_controller_devices.json`.
 
 ### Hardware Adapters (all via interfaces)
 
@@ -111,13 +111,44 @@ Three usage patterns:
 
 `NeedleCameraCalibrationModels` + `NeedleCameraCalibrationStore` in Core — stores per-product needle-to-camera offset calibration data. Used by `NeedleCameraTrainerPanel` for teaching the XY offset between needle and camera positions via a pneumatic slide.
 
+### Safety Watchdog
+
+`Horizon.Safety.SafetyWatchManager` — background IO pin polling (50ms) with enforcement actions. Config: `safety_watch.json` with `watchedInputs` (device, pin, trigger edge, severity) and `emergencyActions` (stopMotion, retractPneumatics, cancelExecution, blockNewExecution, killIO). When a watched input triggers:
+
+1. Cancels shared `CancellationTokenSource` → stops ProcessEngine + RecipeEngine
+2. Calls `UnifiedMotionManager.StopAllDevices()`
+3. Kills configured IO outputs (specific pins or all)
+4. Retracts all pneumatic slides
+5. Blocks new execution via `SafetyGate` on both engines until `AcknowledgeSafetyFlag()`
+
+Enforcement delegates injected from `AppContext` (delegate injection pattern — Safety module can't reference Motion/Pneumatic). UI panels link execution tokens via `LinkExecutionCts(panelToken)`. SafetyPanel provides watched input management (add/remove/save) and event log. MainWindow toolbar shows green/orange/red safety indicator.
+
+### Motion Interlocks
+
+`Horizon.Core.Interlock.InterlockService` — pre-motion collision prevention. Config: `motion_interlocks.json` with rules specifying which pneumatic slides must be retracted before specific motions are allowed. Delegate `Func<string, string, int, (bool, string?)>` injected into `UnifiedMotionManager.InterlockCheck` from `AppContext`.
+
+Key concepts:
+- **AxisBlock**: `All`, `XY`, `Z` — which axes the rule restricts
+- **EnforcementLayer**: `ScriptOnly` (default), `JogOnly`, `All` — jog is typically unrestricted for teaching
+- **MotionSource**: Tagged by callers (0=Jog, 1=Process, 2=Recipe, 3=Manual) via `MotionSourceContext`
+- **OverrideMode**: Allows motion despite interlocks (logged as warning, not persisted, resets on restart)
+- **Fail-safe**: Disconnected/unknown slide state = condition NOT met = motion blocked
+
+SafetyPanel "Interlocks" tab shows live rule statuses with add/remove/save. JogPanel has "Interlock Override" checkbox. MainWindow toolbar shows green/yellow/orange interlock indicator.
+
+### Camera Defaults
+
+On connect, `CameraManager.ConnectCamera()` applies `new ExposureSettings()` defaults: AutoGain=off, Gain=0, AutoExposure=off, ExposureTime=10ms, FrameRate=10fps. Applied regardless of connection source (startup, manual reconnect). IDS Peak adapter does not implement FrameRate control (Pylon does).
+
 ### ProcessProgram Persistence
 
 `ProcessProgram` model with `ProcessProgramStep` entries (PluginId, Parameters dict, Enabled flag, Uid, CustomName). Serialized as JSON `.hproc` files in `%APPDATA%\Horizon\processes\`. Last-opened file tracked in `.lastprogram`.
 
 ### UI Panels (AvalonDock)
 
-MainWindow creates document panels per hardware device: IOPanel, MotionPanel, PneumaticPanel, CurrentMeasurementPanel, CurrentChartPanel, LaserControllerPanel, LiveFeedPanel, CameraInfoWindow, OverlayWindow. Each panel polls its hardware independently (DispatcherTimer) and exposes LogMessage/StatusChanged events for the output log and hardware tree. RunPanel executes process programs with deck management. RecipeEditorPanel edits/runs `.hrcp` recipe scripts. TeachPointPanel manages taught positions with a MoveMap graph editor. NeedleCameraTrainerPanel calibrates needle-to-camera XY offset.
+MainWindow creates document panels per hardware device: IOPanel, MotionPanel, PneumaticPanel, CurrentMeasurementPanel, CurrentChartPanel, LaserControllerPanel, LiveFeedPanel, CameraInfoWindow, OverlayWindow. Each panel polls its hardware independently (DispatcherTimer) and exposes LogMessage/StatusChanged events for the output log and hardware tree. RunPanel executes process programs with deck management. RecipeEditorPanel edits/runs `.hrcp` recipe scripts. TeachPointPanel manages taught positions with a MoveMap graph editor. NeedleCameraTrainerPanel calibrates needle-to-camera XY offset. SafetyPanel has two tabs: "Safety Watch" (watched inputs, add/remove, event log) and "Interlocks" (rules, override toggle, live status).
+
+JogPanel includes quick-access tabs below the STOP button: Pneumatic (extend/retract buttons per slide), IO Output (toggle per output pin), Camera (exposure + gain sliders per camera). Interlock Override checkbox allows jog during teaching with slides extended.
 
 ProcessPanel includes a plugin catalog (TreeView by category), builder list with step highlighting (yellow=current, green=success, red=failure), PropertyTable for parameter editing, and a Context Watch DataGrid showing live variables during execution.
 

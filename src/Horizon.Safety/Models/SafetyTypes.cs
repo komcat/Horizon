@@ -44,4 +44,35 @@ public record SafetyWatchConfig
 {
     public int PollIntervalMs { get; init; } = 50;
     public List<WatchedInput> WatchedInputs { get; init; } = new();
+    /// <summary>
+    /// Enforcement actions to execute on safety trigger. Null = passive mode (backward compatible).
+    /// </summary>
+    public EmergencyActions? EmergencyActions { get; init; }
+}
+
+/// <summary>
+/// Defines what enforcement actions to take when a safety input triggers.
+/// </summary>
+public record EmergencyActions
+{
+    public bool StopMotion { get; init; }
+    public bool RetractPneumatics { get; init; }
+    public bool CancelExecution { get; init; }
+    public bool BlockNewExecution { get; init; } = true;
+    public IOKillAction? KillIO { get; init; }
+}
+
+/// <summary>
+/// Defines which IO output pins to turn off on safety trigger.
+/// </summary>
+public record IOKillAction
+{
+    public bool KillAll { get; init; }
+    public List<IOPinTarget> Pins { get; init; } = new();
+}
+
+public record IOPinTarget
+{
+    public string DeviceName { get; init; } = string.Empty;
+    public string PinName { get; init; } = string.Empty;
 }

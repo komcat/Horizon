@@ -84,6 +84,12 @@ public enum ErrorCode : ushort
     SafetyCriticalFault         = 0x0F01,
     SafetyWatchStartFailed      = 0x0F02,
     SafetyAcknowledgeRequired   = 0x0F03,
+    SafetyEnforcementExecuted   = 0x0F04,
+    SafetyExecutionBlocked      = 0x0F05,
+
+    // Interlock (0x0F1x)
+    InterlockMotionBlocked      = 0x0F10,
+    InterlockOverrideActive     = 0x0F11,
 }
 
 public static class ErrorCodeExtensions

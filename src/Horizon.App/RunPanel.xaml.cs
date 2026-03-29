@@ -50,6 +50,7 @@ public partial class RunPanel : UserControl
 
     // Execution state
     private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _linkedCts;
     private bool _isRunning;
     private bool _isPaused;
     private bool _isRunningRecipe;
@@ -199,6 +200,8 @@ public partial class RunPanel : UserControl
             _isRunningRecipe = true;
             _isPaused = false;
             _cts = new CancellationTokenSource();
+            var sw = _context.SafetyWatchManager;
+            _linkedCts = sw != null ? sw.LinkExecutionCts(_cts.Token) : _cts;
             SetButtonStates(running: true);
             StartMonitor(System.IO.Path.GetFileName(programPath));
 
@@ -210,7 +213,7 @@ public partial class RunPanel : UserControl
                 progNode.Foreground = YellowBrush;
                 Log.Information("[RunPanel] Running recipe: {Path}", System.IO.Path.GetFileName(programPath));
 
-                var (success, rctx) = await RunRecipeAsync(engine, programPath, _cts.Token);
+                var (success, rctx) = await RunRecipeAsync(engine, programPath, _linkedCts.Token);
                 _lastContext = RecipeToProcessContext(rctx);
                 progNode.Foreground = success ? GreenBrush : RedBrush;
                 MonitorStatusText.Text = success ? "Completed" : "Failed";
@@ -233,6 +236,8 @@ public partial class RunPanel : UserControl
                 _isRunningRecipe = false;
                 _isPaused = false;
                 _activeRecipeContext = null;
+                if (_linkedCts != _cts) _linkedCts?.Dispose();
+                _linkedCts = null;
                 engine.StepByStepMode = false;
                 engine.OnStepStarted = null;
                 engine.OnStepCompleted = null;
@@ -259,6 +264,8 @@ public partial class RunPanel : UserControl
             _isRunningRecipe = false;
             _isPaused = false;
             _cts = new CancellationTokenSource();
+            var sw2 = _context.SafetyWatchManager;
+            _linkedCts = sw2 != null ? sw2.LinkExecutionCts(_cts.Token) : _cts;
             SetButtonStates(running: true);
             StartMonitor(System.IO.Path.GetFileName(programPath));
 
@@ -270,7 +277,7 @@ public partial class RunPanel : UserControl
                 progNode.Foreground = YellowBrush;
                 Log.Information("[RunPanel] Running: {Path}", System.IO.Path.GetFileName(programPath));
 
-                var (success, ctx) = await RunProgramAsync(engine, _context.PluginRegistry, programPath, _cts.Token);
+                var (success, ctx) = await RunProgramAsync(engine, _context.PluginRegistry, programPath, _linkedCts.Token);
                 _lastContext = ctx;
 
                 progNode.Foreground = success ? GreenBrush : RedBrush;
@@ -295,6 +302,8 @@ public partial class RunPanel : UserControl
             {
                 _isRunning = false;
                 _isPaused = false;
+                if (_linkedCts != _cts) _linkedCts?.Dispose();
+                _linkedCts = null;
                 engine.StepByStepMode = false;
                 engine.OnStepStarted = null;
                 engine.OnStepCompleted = null;
@@ -826,6 +835,8 @@ public partial class RunPanel : UserControl
         _isRunning = true;
         _isPaused = false;
         _cts = new CancellationTokenSource();
+        var sw3 = _context.SafetyWatchManager;
+        _linkedCts = sw3 != null ? sw3.LinkExecutionCts(_cts.Token) : _cts;
         SetButtonStates(running: true);
         ChainRunBtn.IsEnabled = false;
         StartMonitor("Chain Execution");
@@ -842,7 +853,7 @@ public partial class RunPanel : UserControl
         {
             while (currentIdx >= 0 && currentIdx < programs.Count && !visited.Contains(currentIdx))
             {
-                if (_cts.Token.IsCancellationRequested) { chainSuccess = false; break; }
+                if (_linkedCts.Token.IsCancellationRequested) { chainSuccess = false; break; }
 
                 visited.Add(currentIdx);
                 var (slotName, programPath, si, pi) = programs[currentIdx];
@@ -872,13 +883,13 @@ public partial class RunPanel : UserControl
                 bool success;
                 if (isRecipe)
                 {
-                    var (s, rctx) = await RunRecipeAsync(recipeEngine, programPath, _cts.Token, _lastContext);
+                    var (s, rctx) = await RunRecipeAsync(recipeEngine, programPath, _linkedCts.Token, _lastContext);
                     _lastContext = RecipeToProcessContext(rctx);
                     success = s;
                 }
                 else
                 {
-                    var (s, ctx) = await RunProgramAsync(engine, registry, programPath, _cts.Token);
+                    var (s, ctx) = await RunProgramAsync(engine, registry, programPath, _linkedCts.Token);
                     _lastContext = ctx;
                     success = s;
                 }
@@ -967,6 +978,8 @@ public partial class RunPanel : UserControl
             _isRunningRecipe = false;
             _isPaused = false;
             _activeRecipeContext = null;
+            if (_linkedCts != _cts) _linkedCts?.Dispose();
+            _linkedCts = null;
             engine.StepByStepMode = false;
             engine.OnStepStarted = null;
             engine.OnStepCompleted = null;
@@ -1101,7 +1114,11 @@ public partial class RunPanel : UserControl
             Dispatcher.BeginInvoke(() => MonitorStatusText.Text = $"Loop step {idx}: {current}/{(total == 0 ? "inf" : total)}");
         };
 
-        var result = await Task.Run(() => engine.ExecuteAsync(processSteps, ctx, ct));
+        var result = await Task.Run(() =>
+        {
+            _context.MotionManager.MotionSourceContext = 1; // Process
+            return engine.ExecuteAsync(processSteps, ctx, ct);
+        });
         return (result, ctx);
     }
 
@@ -1171,6 +1188,7 @@ public partial class RunPanel : UserControl
             Dispatcher.BeginInvoke(() => AddMonitorOutput(msg));
         };
 
+        _context.MotionManager.MotionSourceContext = 2; // Recipe
         var result = await engine.ExecuteAsync(program, ctx, ct);
         return (result, ctx);
     }

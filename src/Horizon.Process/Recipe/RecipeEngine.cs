@@ -22,8 +22,16 @@ public sealed class RecipeEngine
     public string? RunningOwner { get; private set; }
     public bool IsRunning => _executionLock != 0;
 
+    /// <summary>
+    /// Optional gate function. If set and returns true, TryAcquire is blocked.
+    /// Used by safety watchdog to prevent new executions while safety flag is raised.
+    /// </summary>
+    public Func<bool>? SafetyGate { get; set; }
+
     public bool TryAcquire(string owner)
     {
+        if (SafetyGate?.Invoke() == true)
+            return false;
         if (Interlocked.CompareExchange(ref _executionLock, 1, 0) != 0)
             return false;
         RunningOwner = owner;

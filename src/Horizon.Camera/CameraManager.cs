@@ -102,7 +102,12 @@ public sealed class CameraManager : IDisposable
         if (!_cameras.TryGetValue(cameraId, out var managed)) return false;
         var result = managed.Hardware.Connect();
         if (result)
-            Log.Information("[Camera] Connect OK: Id={CameraId}", cameraId);
+        {
+            var defaults = new ExposureSettings();
+            managed.Hardware.SetExposureSettings(defaults);
+            Log.Information("[Camera] Connect OK: Id={CameraId} (defaults: gain={Gain}, fps={Fps})",
+                cameraId, defaults.Gain, defaults.FrameRate);
+        }
         else
             Log.Error("[Camera] Connect FAILED: Id={CameraId}", cameraId);
         return result;

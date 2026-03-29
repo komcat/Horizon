@@ -4,7 +4,9 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Horizon.Camera.Models;
 using Horizon.Core;
+using Horizon.Pneumatic.Models;
 using Serilog;
 
 namespace Horizon.App;
@@ -59,6 +61,10 @@ public partial class JogPanel : UserControl
         Loaded += (_, _) =>
         {
             _positionTimer.Start();
+            InterlockOverrideCheck.IsChecked = _context.InterlockService?.OverrideMode ?? false;
+            BuildPneumaticButtons();
+            BuildIOOutputButtons();
+            BuildCameraSettings();
             Focus();
         };
         Unloaded += (_, _) => _positionTimer.Stop();
@@ -267,11 +273,36 @@ public partial class JogPanel : UserControl
         var device = _selectedDevice;
         Task.Run(() =>
         {
+            _context.MotionManager.MotionSourceContext = 0; // Jog
             bool ok = _context.MotionManager.MoveRelative(device, deviceAxis, distanceMm, blocking: false);
             if (!ok)
-                Log.Error("Jog: MoveRelative failed — {Device}.{Axis} {Distance:+0.000;-0.000} mm",
-                    device, deviceAxis, distanceMm);
+            {
+                var reason = _context.MotionManager.LastInterlockReason;
+                if (reason != null)
+                {
+                    Log.Warning("Jog: INTERLOCK — {Device}.{Axis}: {Reason}", device, deviceAxis, reason);
+                    Dispatcher.BeginInvoke(() =>
+                        MessageBox.Show(reason, "Motion Blocked", MessageBoxButton.OK, MessageBoxImage.Warning));
+                }
+                else
+                {
+                    Log.Error("Jog: MoveRelative failed — {Device}.{Axis} {Distance:+0.000;-0.000} mm",
+                        device, deviceAxis, distanceMm);
+                }
+            }
         });
+    }
+
+    private void InterlockOverride_Click(object sender, RoutedEventArgs e)
+    {
+        var ils = _context.InterlockService;
+        if (ils == null)
+        {
+            InterlockOverrideCheck.IsChecked = false;
+            return;
+        }
+        ils.OverrideMode = InterlockOverrideCheck.IsChecked == true;
+        Log.Information("Jog: Interlock override {State}", ils.OverrideMode ? "ENABLED" : "disabled");
     }
 
     private void StopAll_Click(object sender, RoutedEventArgs e)
@@ -384,6 +415,301 @@ public partial class JogPanel : UserControl
             timer.Stop();
         };
         timer.Start();
+    }
+
+    // ── Quick Access: Pneumatic ────────────────────────────────────
+
+    private void BuildPneumaticButtons()
+    {
+        PneumaticButtonPanel.Children.Clear();
+        var mgr = _context.PneumaticManager;
+        foreach (var name in mgr.GetAllSlideNames())
+        {
+            var slideName = name;
+            var panel = new StackPanel { Margin = new Thickness(2), Width = 130 };
+
+            var label = new TextBlock
+            {
+                Text = slideName,
+                FontFamily = new FontFamily("Consolas"), FontSize = 10,
+                Foreground = (Brush)FindResource("Theme.ForegroundBrush"),
+                Margin = new Thickness(0, 0, 0, 2)
+            };
+
+            var statusText = new TextBlock
+            {
+                FontFamily = new FontFamily("Consolas"), FontSize = 10,
+                Foreground = Brushes.Gray,
+                Margin = new Thickness(0, 0, 0, 2)
+            };
+
+            var btnPanel = new StackPanel { Orientation = Orientation.Horizontal };
+
+            var extBtn = new Button
+            {
+                Content = "Extend", Width = 60, Height = 22, Margin = new Thickness(0, 0, 2, 0),
+                FontFamily = new FontFamily("Consolas"), FontSize = 10,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x90, 0xEE, 0x90)),
+                Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A)),
+                BorderBrush = (Brush)FindResource("Theme.BorderBrush"), Cursor = Cursors.Hand
+            };
+            extBtn.Click += (_, _) =>
+            {
+                Task.Run(() =>
+                {
+                    mgr.ExtendAndWait(slideName);
+                    Dispatcher.BeginInvoke(() => UpdateSlideStatus(slideName, statusText));
+                });
+            };
+
+            var retBtn = new Button
+            {
+                Content = "Retract", Width = 60, Height = 22,
+                FontFamily = new FontFamily("Consolas"), FontSize = 10,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x63, 0x47)),
+                Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A)),
+                BorderBrush = (Brush)FindResource("Theme.BorderBrush"), Cursor = Cursors.Hand
+            };
+            retBtn.Click += (_, _) =>
+            {
+                Task.Run(() =>
+                {
+                    mgr.RetractAndWait(slideName);
+                    Dispatcher.BeginInvoke(() => UpdateSlideStatus(slideName, statusText));
+                });
+            };
+
+            btnPanel.Children.Add(extBtn);
+            btnPanel.Children.Add(retBtn);
+            panel.Children.Add(label);
+            panel.Children.Add(statusText);
+            panel.Children.Add(btnPanel);
+            PneumaticButtonPanel.Children.Add(panel);
+
+            UpdateSlideStatus(slideName, statusText);
+        }
+
+        if (mgr.GetAllSlideNames().Count == 0)
+        {
+            PneumaticButtonPanel.Children.Add(new TextBlock
+            {
+                Text = "No pneumatic slides configured",
+                FontFamily = new FontFamily("Consolas"), FontSize = 11,
+                Foreground = Brushes.Gray
+            });
+        }
+    }
+
+    private void UpdateSlideStatus(string slideName, TextBlock statusText)
+    {
+        var slide = _context.PneumaticManager.GetSlide(slideName);
+        if (slide == null) { statusText.Text = "N/A"; return; }
+        var pos = slide.GetPosition();
+        statusText.Text = pos.ToString();
+        statusText.Foreground = pos switch
+        {
+            PneumaticPosition.Extended => Brushes.LimeGreen,
+            PneumaticPosition.Retracted => new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0)),
+            _ => Brushes.Orange
+        };
+    }
+
+    // ── Quick Access: IO Output ─────────────────────────────────────
+
+    private void BuildIOOutputButtons()
+    {
+        IOOutputButtonPanel.Children.Clear();
+        var ioMgr = _context.IOManager;
+
+        foreach (var deviceName in ioMgr.GetAllDeviceNames())
+        {
+            var device = ioMgr.GetDevice(deviceName);
+            if (device == null) continue;
+
+            for (int pin = 0; pin < device.OutputCount; pin++)
+            {
+                var pinName = device.GetPinName(false, pin) ?? $"Output_{pin}";
+                var devName = deviceName;
+                var pinIdx = pin;
+
+                var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2) };
+
+                var label = new TextBlock
+                {
+                    Text = $"{pinName}",
+                    FontFamily = new FontFamily("Consolas"), FontSize = 10,
+                    Foreground = (Brush)FindResource("Theme.ForegroundBrush"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Width = 100, Margin = new Thickness(0, 0, 4, 0)
+                };
+
+                var toggle = new ToggleButton
+                {
+                    Content = "OFF", Width = 50, Height = 20,
+                    FontFamily = new FontFamily("Consolas"), FontSize = 10,
+                    Style = (Style)FindResource("ToggleBtn")
+                };
+
+                // Read current state
+                if (device.IsConnected)
+                {
+                    device.ReadAllOutputs(out uint outputs);
+                    bool isOn = (outputs & (1u << pin)) != 0;
+                    toggle.IsChecked = isOn;
+                    toggle.Content = isOn ? "ON" : "OFF";
+                }
+
+                toggle.Click += (_, _) =>
+                {
+                    bool newState = toggle.IsChecked == true;
+                    ioMgr.SetOutput(devName, pinIdx, newState);
+                    toggle.Content = newState ? "ON" : "OFF";
+                };
+
+                panel.Children.Add(label);
+                panel.Children.Add(toggle);
+                IOOutputButtonPanel.Children.Add(panel);
+            }
+        }
+
+        if (IOOutputButtonPanel.Children.Count == 0)
+        {
+            IOOutputButtonPanel.Children.Add(new TextBlock
+            {
+                Text = "No IO output pins configured",
+                FontFamily = new FontFamily("Consolas"), FontSize = 11,
+                Foreground = Brushes.Gray
+            });
+        }
+    }
+
+    // ── Quick Access: Camera Exposure ───────────────────────────────
+
+    private void BuildCameraSettings()
+    {
+        CameraSettingsPanel.Children.Clear();
+        var camMgr = _context.CameraManager;
+
+        foreach (var id in camMgr.GetCameraIds())
+        {
+            var cameraId = id;
+            var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = cameraId,
+                FontFamily = new FontFamily("Consolas"), FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                Foreground = (Brush)FindResource("Theme.ForegroundBrush"),
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+
+            // Exposure slider
+            var expRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 2) };
+            expRow.Children.Add(new TextBlock
+            {
+                Text = "Exposure:", Width = 70,
+                FontFamily = new FontFamily("Consolas"), FontSize = 10,
+                Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center
+            });
+
+            ExposureSettings settings;
+            try { settings = camMgr.GetExposureSettings(cameraId); }
+            catch { settings = new ExposureSettings(); }
+
+            var expLabel = new TextBlock
+            {
+                Text = FormatExposure(settings.ExposureTimeUs),
+                FontFamily = new FontFamily("Consolas"), FontSize = 10,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x14, 0xFF, 0xEC)),
+                VerticalAlignment = VerticalAlignment.Center,
+                Width = 70
+            };
+
+            var expSlider = new Slider
+            {
+                Minimum = 1, Maximum = 5, Width = 200,
+                Value = Math.Log10(Math.Max(settings.ExposureTimeUs, 10)),
+                VerticalAlignment = VerticalAlignment.Center,
+                TickFrequency = 0.1, IsSnapToTickEnabled = false,
+                Margin = new Thickness(4, 0, 4, 0)
+            };
+            expSlider.ValueChanged += (_, args) =>
+            {
+                var us = Math.Pow(10, args.NewValue);
+                expLabel.Text = FormatExposure(us);
+            };
+            expSlider.PreviewMouseLeftButtonUp += (_, _) =>
+            {
+                var us = Math.Pow(10, expSlider.Value);
+                var current = camMgr.GetExposureSettings(cameraId);
+                camMgr.ApplyExposureSettings(cameraId, current with { ExposureTimeUs = us });
+                Log.Information("Jog: Camera {Id} exposure set to {Us:F0} µs", cameraId, us);
+            };
+
+            expRow.Children.Add(expSlider);
+            expRow.Children.Add(expLabel);
+            panel.Children.Add(expRow);
+
+            // Gain slider
+            var gainRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 2) };
+            gainRow.Children.Add(new TextBlock
+            {
+                Text = "Gain:", Width = 70,
+                FontFamily = new FontFamily("Consolas"), FontSize = 10,
+                Foreground = Brushes.Gray, VerticalAlignment = VerticalAlignment.Center
+            });
+
+            var gainLabel = new TextBlock
+            {
+                Text = $"{settings.Gain:F1}",
+                FontFamily = new FontFamily("Consolas"), FontSize = 10,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x14, 0xFF, 0xEC)),
+                VerticalAlignment = VerticalAlignment.Center,
+                Width = 70
+            };
+
+            var gainSlider = new Slider
+            {
+                Minimum = 0, Maximum = 24, Width = 200,
+                Value = settings.Gain,
+                VerticalAlignment = VerticalAlignment.Center,
+                TickFrequency = 0.5, IsSnapToTickEnabled = false,
+                Margin = new Thickness(4, 0, 4, 0)
+            };
+            gainSlider.ValueChanged += (_, args) =>
+            {
+                gainLabel.Text = $"{args.NewValue:F1}";
+            };
+            gainSlider.PreviewMouseLeftButtonUp += (_, _) =>
+            {
+                var current = camMgr.GetExposureSettings(cameraId);
+                camMgr.ApplyExposureSettings(cameraId, current with { Gain = gainSlider.Value });
+                Log.Information("Jog: Camera {Id} gain set to {Gain:F1}", cameraId, gainSlider.Value);
+            };
+
+            gainRow.Children.Add(gainSlider);
+            gainRow.Children.Add(gainLabel);
+            panel.Children.Add(gainRow);
+
+            CameraSettingsPanel.Children.Add(panel);
+        }
+
+        if (camMgr.GetCameraIds().Count == 0)
+        {
+            CameraSettingsPanel.Children.Add(new TextBlock
+            {
+                Text = "No cameras configured",
+                FontFamily = new FontFamily("Consolas"), FontSize = 11,
+                Foreground = Brushes.Gray
+            });
+        }
+    }
+
+    private static string FormatExposure(double us)
+    {
+        if (us >= 1000) return $"{us / 1000:F1} ms";
+        return $"{us:F0} µs";
     }
 
     public void StopPolling() => _positionTimer.Stop();

@@ -9,7 +9,9 @@ using Horizon.Pneumatic;
 using Horizon.Motion.Models;
 using Horizon.Process;
 using Horizon.Process.Recipe;
+using Horizon.Core.Interlock;
 using Horizon.Safety;
+using Horizon.Safety.Models;
 
 namespace Horizon.Core;
 
@@ -30,6 +32,7 @@ public sealed class AppContext : IAppContext, IDisposable
     private TeachPointManager? _teachPointManager;
     private ProductManager? _productManager;
     private AxisTransformService? _axisTransformService;
+    private InterlockService? _interlockService;
 
     private readonly CameraConfigStore _configStore = new();
     private readonly MeasurementHub _measurementHub = new();
@@ -75,6 +78,8 @@ public sealed class AppContext : IAppContext, IDisposable
         _productManager ?? throw new InvalidOperationException("AppContext is not initialized.");
 
     public AxisTransformService AxisTransformService => _axisTransformService ?? new();
+
+    public InterlockService? InterlockService => _interlockService;
 
     public CameraConfigStore ConfigStore => _configStore;
 
@@ -228,6 +233,22 @@ public sealed class AppContext : IAppContext, IDisposable
             LogError($"Safety config load error: {ex.Message}");
         }
 
+        // --- Motion interlock subsystem (depends on Pneumatic + IO) ---
+        _interlockService = new InterlockService(_pneumaticManager, _ioManager);
+        try
+        {
+            var interlockCount = _interlockService.LoadConfig(configDir);
+            Log($"Motion interlock rules loaded: {interlockCount}");
+        }
+        catch (Exception ex)
+        {
+            LogError($"Motion interlock config load error: {ex.Message}");
+        }
+
+        // Wire interlock delegate into motion manager
+        _motionManager.InterlockCheck = (device, axis, source) =>
+            _interlockService.CheckMotionAllowed(device, axis, (Interlock.MotionSource)source);
+
         // --- Process engine ---
         _processEngine = new ProcessEngine();
         _processEngine.BuildDeviceRegistry(this);
@@ -240,6 +261,48 @@ public sealed class AppContext : IAppContext, IDisposable
         _recipeEngine.RegisterBuiltins();
         BuildRecipeMethodRegistry();
         Log("Recipe engine initialized");
+
+        // --- Wire safety enforcement (after all subsystems initialized) ---
+        if (_safetyWatchManager != null)
+        {
+            _safetyWatchManager.SetEnforcementActions(
+                stopAllMotion: () => _motionManager?.StopAllDevices(),
+                retractAllPneumatics: () => _pneumaticManager?.StopAll(),
+                killIO: (killAction) =>
+                {
+                    if (_ioManager == null) return;
+                    if (killAction.KillAll)
+                    {
+                        foreach (var deviceName in _ioManager.GetAllDeviceNames())
+                        {
+                            var device = _ioManager.GetDevice(deviceName);
+                            if (device == null || !device.IsConnected) continue;
+                            for (int pin = 0; pin < device.OutputCount; pin++)
+                                device.SetOutput(pin, false);
+                        }
+                    }
+                    else
+                    {
+                        foreach (var pinTarget in killAction.Pins)
+                            _ioManager.SetOutputByName(pinTarget.DeviceName, pinTarget.PinName, false);
+                    }
+                },
+                releaseStepGates: () =>
+                {
+                    _processEngine?.ContinueStep();
+                    _recipeEngine?.ContinueStep();
+                }
+            );
+
+            // Safety gate blocks new execution while flag raised
+            Func<bool> safetyGate = () =>
+                _safetyWatchManager!.IsSafetyFlagRaised
+                && _safetyWatchManager.EmergencyActionsConfig?.BlockNewExecution == true;
+            _processEngine.SafetyGate = safetyGate;
+            _recipeEngine.SafetyGate = safetyGate;
+
+            Log("Safety enforcement wired");
+        }
 
         // --- Plugin registry ---
         _pluginRegistry = new ProcessPluginRegistry();
@@ -298,6 +361,7 @@ public sealed class AppContext : IAppContext, IDisposable
         _productManager = null;
         _teachPointManager = null;
         _axisTransformService = null;
+        _interlockService = null;
         _processEngine = null;
         _pluginRegistry = null;
         _recipeEngine = null;
