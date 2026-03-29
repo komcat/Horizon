@@ -46,6 +46,13 @@ public partial class TeachPointPanel : UserControl
     // Pan state
     private bool _mmPanning;
     private Point _mmPanStartMouse;
+
+    // Step execution highlight
+    private string? _mmHighlightPosition;
+    private SolidColorBrush? _mmHighlightBrush;
+    private static readonly SolidColorBrush MmHighlightYellow = new(Color.FromRgb(0xFF, 0xD7, 0x00));
+    private static readonly SolidColorBrush MmHighlightGreen = new(Color.FromRgb(0x32, 0xCD, 0x32));
+    private static readonly SolidColorBrush MmHighlightRed = new(Color.FromRgb(0xFF, 0x45, 0x00));
     private double _mmPanStartOffsetX, _mmPanStartOffsetY;
 
     private static readonly SolidColorBrush MmNodeBg = new(Color.FromRgb(0x2D, 0x2D, 0x30));
@@ -88,6 +95,9 @@ public partial class TeachPointPanel : UserControl
                         DrawMoveMapGraph();
                     }
                 });
+
+        // Subscribe to process step notifications for MoveMap highlighting
+        _context.ProcessStepNotify += OnProcessStepNotify;
     }
 
     // ========== Live position polling ==========
@@ -569,8 +579,15 @@ public partial class TeachPointPanel : UserControl
         bool isSource = node.PositionName.Equals(_mmSource, StringComparison.OrdinalIgnoreCase);
         bool isTarget = node.PositionName.Equals(_mmTarget, StringComparison.OrdinalIgnoreCase);
 
-        var borderBrush = isSource ? MmSourceBrush : isTarget ? MmTargetBrush : MmNodeBorder;
-        double thickness = (isSource || isTarget) ? 2.0 : 1.0;
+        bool isHighlighted = _mmHighlightPosition != null &&
+                             node.PositionName.Equals(_mmHighlightPosition, StringComparison.OrdinalIgnoreCase) &&
+                             _mmHighlightBrush != null;
+
+        var borderBrush = isHighlighted ? _mmHighlightBrush!
+            : isSource ? MmSourceBrush
+            : isTarget ? MmTargetBrush
+            : MmNodeBorder;
+        double thickness = isHighlighted ? 2.5 : (isSource || isTarget) ? 2.0 : 1.0;
 
         var text = new TextBlock
         {
@@ -880,6 +897,74 @@ public partial class TeachPointPanel : UserControl
     private void ZoomIn_Click(object sender, RoutedEventArgs e) => ApplyZoom(_mmZoom + ZoomStep);
     private void ZoomOut_Click(object sender, RoutedEventArgs e) => ApplyZoom(_mmZoom - ZoomStep);
     private void ZoomReset_Click(object sender, RoutedEventArgs e) => ApplyZoom(1.0);
+
+    // --- Process step highlighting ---
+
+    private void OnProcessStepNotify(string device, string? position, bool? success)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (MainTabControl.SelectedIndex != 1) return;
+
+            // Clear signal
+            if (string.IsNullOrEmpty(device))
+            {
+                _mmHighlightPosition = null;
+                _mmHighlightBrush = null;
+                ApplyNodeHighlight();
+                return;
+            }
+
+            // Only highlight if the device matches the currently displayed device
+            if (!device.Equals(_selectedDevice, StringComparison.OrdinalIgnoreCase)) return;
+            if (string.IsNullOrEmpty(position)) return;
+
+            _mmHighlightPosition = position;
+            _mmHighlightBrush = success switch
+            {
+                null => MmHighlightYellow,
+                true => MmHighlightGreen,
+                false => MmHighlightRed
+            };
+            ApplyNodeHighlight();
+        });
+    }
+
+    private void ApplyNodeHighlight()
+    {
+        foreach (UIElement child in MoveMapCanvas.Children)
+        {
+            if (child is not Border b || b.Tag is not string name) continue;
+
+            bool isHighlighted = _mmHighlightPosition != null &&
+                                 name.Equals(_mmHighlightPosition, StringComparison.OrdinalIgnoreCase);
+            bool isSource = _mmSource != null &&
+                            name.Equals(_mmSource, StringComparison.OrdinalIgnoreCase);
+            bool isTarget = _mmTarget != null &&
+                            name.Equals(_mmTarget, StringComparison.OrdinalIgnoreCase);
+
+            if (isHighlighted && _mmHighlightBrush != null)
+            {
+                b.BorderBrush = _mmHighlightBrush;
+                b.BorderThickness = new Thickness(2.5);
+            }
+            else if (isSource)
+            {
+                b.BorderBrush = MmSourceBrush;
+                b.BorderThickness = new Thickness(2.0);
+            }
+            else if (isTarget)
+            {
+                b.BorderBrush = MmTargetBrush;
+                b.BorderThickness = new Thickness(2.0);
+            }
+            else
+            {
+                b.BorderBrush = MmNodeBorder;
+                b.BorderThickness = new Thickness(1.0);
+            }
+        }
+    }
 
     // --- Toolbar buttons ---
 

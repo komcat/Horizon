@@ -26,6 +26,9 @@
                 <Separator/>
                 <Button x:Name="RunBtn" Content="Run" Click="Run_Click" Padding="8,2" FontFamily="Consolas" FontSize="11"
                         Foreground="#90EE90" Background="Transparent" BorderThickness="0" FontWeight="Bold"/>
+                <Button x:Name="RunSelBtn" Content="Run Sel" Click="RunSelection_Click" Padding="8,2" FontFamily="Consolas" FontSize="11"
+                        Foreground="#87CEEB" Background="Transparent" BorderThickness="0" FontWeight="Bold"
+                        ToolTip="Run selected lines only (keeps variables from previous run)"/>
                 <Button x:Name="StopBtn" Content="Stop" Click="Stop_Click" Padding="8,2" FontFamily="Consolas" FontSize="11"
                         Foreground="#FF6347" Background="Transparent" BorderThickness="0" IsEnabled="False"/>
                 <Separator/>
@@ -43,12 +46,54 @@
                        Text="Untitled (not saved)"/>
         </Border>
 
-        <!-- Script editor -->
+        <!-- Recipe file tree + Script editor -->
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="40"/>
+                <ColumnDefinition Width="180" MinWidth="100"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
+
+            <!-- Left panel: Recipe file tree -->
+            <Border Grid.Column="0" Background="#1E1E2E" BorderBrush="#333348" BorderThickness="0,0,1,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Background="#252530" Padding="6,3">
+                        <TextBlock x:Name="RecipeTreeHeader" Text="Recipes" FontFamily="Consolas" FontSize="11"
+                                   Foreground="#808080"/>
+                    </Border>
+                    <TreeView x:Name="RecipeTree" Grid.Row="1"
+                              Background="#1E1E2E" Foreground="#D4D4D4"
+                              BorderThickness="0" FontFamily="Consolas" FontSize="11"
+                              Padding="0,2">
+                        <TreeView.Resources>
+                            <Style TargetType="TreeViewItem">
+                                <Setter Property="Foreground" Value="#D4D4D4"/>
+                                <Setter Property="Padding" Value="2,1"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TreeView.Resources>
+                    </TreeView>
+                </Grid>
+            </Border>
+
+            <!-- Splitter between tree and editor -->
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                          Background="{DynamicResource Theme.BorderBrush}"/>
+
+            <!-- Script editor -->
+            <Grid Grid.Column="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="40"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
 
             <!-- Line numbers gutter -->
             <Border Grid.Column="0" Background="#1E1E2E" BorderBrush="#333348" BorderThickness="0,0,1,0">
@@ -84,6 +129,11 @@
                         </Style>
                     </RichTextBox.Resources>
                 </RichTextBox>
+
+                <!-- Execution line highlight overlay -->
+                <Border x:Name="ExecLineOverlay" IsHitTestVisible="False"
+                        VerticalAlignment="Top" HorizontalAlignment="Stretch"
+                        Height="16" Visibility="Collapsed"/>
 
                 <!-- Parameter hint tooltip -->
                 <Popup x:Name="ParamHintPopup" PlacementTarget="{Binding ElementName=Editor}"
@@ -127,6 +177,7 @@
                         </ListBox>
                     </Border>
                 </Popup>
+            </Grid>
             </Grid>
         </Grid>
 

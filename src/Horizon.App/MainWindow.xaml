@@ -143,6 +143,11 @@
                 <MenuItem Header="_Output" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="ViewOutput_Click"/>
             </MenuItem>
             <MenuItem Header="_Production" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
+                <MenuItem Header="_Load Product..." Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="LoadProduct_Click"/>
+                <MenuItem Header="_New Product..." Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="NewProduct_Click"/>
+                <MenuItem Header="Re_name Product..." Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="RenameProduct_Click"/>
+                <MenuItem Header="_Delete Product" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="DeleteProduct_Click"/>
+                <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="_Run Page" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="RunPanel_Click"/>
                 <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="_Top View &amp; Chart" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="TopViewChart_Click"/>
@@ -154,6 +159,8 @@
                 <MenuItem Header="_Teach Points" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="TeachPointPanel_Click"/>
                 <Separator Style="{StaticResource MenuSeparator}"/>
                 <MenuItem Header="_Hex Scan" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="HexScanPanel_Click"/>
+                <Separator Style="{StaticResource MenuSeparator}"/>
+                <MenuItem Header="_Needle-Camera Trainer" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="NeedleCameraTrainer_Click"/>
             </MenuItem>
             <MenuItem Header="_Help" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource TopLevelHeaderMenuItemTemplate}">
                 <MenuItem Header="_Expression Syntax" Foreground="{DynamicResource Theme.ForegroundBrush}" Template="{StaticResource SubMenuItemTemplate}" Click="HelpExpressionSyntax_Click"/>
@@ -272,6 +279,12 @@
                 BorderThickness="0,0,0,1"
                 Padding="8,2">
             <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Product:" FontFamily="Consolas" FontSize="11"
+                           Foreground="#808080" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBlock x:Name="HwStatusProduct" Text="No Product" FontFamily="Consolas" FontSize="11"
+                           Foreground="#CE9178" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                <TextBlock Text="|" FontFamily="Consolas" FontSize="11"
+                           Foreground="#404040" VerticalAlignment="Center" Margin="0,0,16,0"/>
                 <TextBlock Text="TEC:" FontFamily="Consolas" FontSize="11"
                            Foreground="#808080" VerticalAlignment="Center" Margin="0,0,4,0"/>
                 <TextBlock x:Name="HwStatusTecTemp" Text="--" FontFamily="Consolas" FontSize="11"

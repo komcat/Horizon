@@ -29,11 +29,15 @@ public partial class ProcessPanel : UserControl
     private readonly ObservableCollection<ContextWatchItem> _watchItems = new();
     private Dictionary<string, string> _prevWatchValues = new(StringComparer.OrdinalIgnoreCase);
 
-    private static readonly string DefaultProcessDir =
+    private static readonly string SharedProcessDir =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon", "processes");
 
     private static readonly string LastProgramFile =
-        Path.Combine(DefaultProcessDir, ".lastprogram");
+        Path.Combine(SharedProcessDir, ".lastprogram");
+
+    private string DefaultProcessDir => _context.IsInitialized
+        ? _context.ProductManager.GetProcessDir()
+        : SharedProcessDir;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -652,6 +656,9 @@ public partial class ProcessPanel : UserControl
                     StatusText.Text = $"Step {idx}: {label}";
                     if (bi >= 0) HighlightStep(bi, Brushes.Yellow);
                 });
+
+                var pos = bi >= 0 ? _builderSteps[bi].ParamValues.GetValueOrDefault("target_position") : null;
+                _context.RaiseProcessStepNotify(device, pos, null);
             };
 
             engine.OnStepCompleted = (idx, success) =>
@@ -667,6 +674,10 @@ public partial class ProcessPanel : UserControl
                     if (bi >= 0) HighlightStep(bi, success ? Brushes.LimeGreen : Brushes.OrangeRed);
                     RefreshContextWatch();
                 });
+
+                var pos = bi >= 0 ? _builderSteps[bi].ParamValues.GetValueOrDefault("target_position") : null;
+                var dev = bi >= 0 ? _builderSteps[bi].ParamValues.GetValueOrDefault("device") ?? "" : "";
+                _context.RaiseProcessStepNotify(dev, pos, success);
             };
 
             engine.OnLoopIteration = (stepIdx, current, total) =>
@@ -713,6 +724,7 @@ public partial class ProcessPanel : UserControl
             engine.OnStepCompleted = null;
             engine.OnLoopIteration = null;
             ClearHighlights();
+            _context.RaiseProcessStepNotify("", null, null);
         }
     }
 

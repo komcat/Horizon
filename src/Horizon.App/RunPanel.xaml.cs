@@ -83,17 +83,29 @@ public partial class RunPanel : UserControl
     private static readonly Brush DimGray = new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80));
     private static readonly Brush CanvasLabelBg = new SolidColorBrush(Color.FromArgb(0xDD, 0x1E, 0x1E, 0x1E));
 
-    private static readonly string DefaultDeckDir =
+    private static readonly string SharedDeckDir =
         System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon", "decks");
 
-    private static readonly string DefaultProcessDir =
+    private static readonly string SharedProcessDir =
         System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon", "processes");
 
-    private static readonly string DefaultRecipeDir =
+    private static readonly string SharedRecipeDir =
         System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon", "recipes");
 
     private static readonly string LastDeckFile =
         System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon", "decks", ".lastdeck");
+
+    private string DefaultDeckDir => _context.IsInitialized
+        ? _context.ProductManager.GetDeckDir()
+        : SharedDeckDir;
+
+    private string DefaultProcessDir => _context.IsInitialized
+        ? _context.ProductManager.GetProcessDir()
+        : SharedProcessDir;
+
+    private string DefaultRecipeDir => _context.IsInitialized
+        ? _context.ProductManager.GetRecipeDir()
+        : SharedRecipeDir;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {

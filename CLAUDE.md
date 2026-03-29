@@ -34,7 +34,7 @@ Horizon.App (WPF shell)
 
 `Horizon.Core.AppContext` owns all managers and orchestrates initialization:
 1. Loads JSON configs from `%APPDATA%\Horizon\config\`
-2. Creates managers (CameraManager, UnifiedMotionManager, EziIOManager, CurrentMeasurementManager, LaserControllerManager, PneumaticManager, SafetyWatchManager)
+2. Creates managers (CameraManager, UnifiedMotionManager, EziIOManager, CurrentMeasurementManager, LaserControllerManager, PneumaticManager, SafetyWatchManager, ProductManager, AxisTransformService)
 3. Discovers process plugins via `ProcessPluginRegistry.DiscoverPlugins()`
 4. Builds ProcessEngine device registry via reflection
 5. SplashWindow runs hardware connections async, then MainWindow opens
@@ -99,13 +99,25 @@ Three usage patterns:
 2. **Parameter prefix**: Any handler parameter with `expr:EXPRESSION` computes inline (e.g., `expr:distance * 0.5`)
 3. **Log interpolation**: `{=EXPRESSION}` in SystemCommandHandler log messages (e.g., `Distance = {=posA - posB}`)
 
+### Recipe Engine
+
+`Horizon.Process.Recipe.RecipeEngine` — tree-walking interpreter for `.hrcp` recipe scripts (separate from ProcessEngine). Has its own lexer (`RecipeLexer`), parser (`RecipeParser` → AST), and `RecipeMethodRegistry` for binding hardware methods. Supports cancellation, timeout, breakpoints, step-by-step debugging, and UI callbacks. Shares `HardwareExecutionLock` with ProcessEngine to prevent concurrent execution.
+
+### ProductManager
+
+`Horizon.Core.ProductManager` — manages per-product directories under `%APPDATA%\Horizon\products\{name}/` with subdirs `recipes/`, `processes/`, `decks/`, and `positions.json`. Active product tracked in `products/active.json`. When a product is loaded, its positions sync into `TeachPointManager`. Falls back to shared directories (`%APPDATA%\Horizon\recipes/`, `processes/`, `decks/`) when no product is active. Auto-migrates old `teach-points/` folder on first run.
+
+### NeedleCameraCalibration
+
+`NeedleCameraCalibrationModels` + `NeedleCameraCalibrationStore` in Core — stores per-product needle-to-camera offset calibration data. Used by `NeedleCameraTrainerPanel` for teaching the XY offset between needle and camera positions via a pneumatic slide.
+
 ### ProcessProgram Persistence
 
 `ProcessProgram` model with `ProcessProgramStep` entries (PluginId, Parameters dict, Enabled flag, Uid, CustomName). Serialized as JSON `.hproc` files in `%APPDATA%\Horizon\processes\`. Last-opened file tracked in `.lastprogram`.
 
 ### UI Panels (AvalonDock)
 
-MainWindow creates document panels per hardware device: IOPanel, MotionPanel, PneumaticPanel, CurrentMeasurementPanel, CurrentChartPanel, LaserControllerPanel, LiveFeedPanel, CameraInfoWindow, OverlayWindow. Each panel polls its hardware independently (DispatcherTimer) and exposes LogMessage/StatusChanged events for the output log and hardware tree.
+MainWindow creates document panels per hardware device: IOPanel, MotionPanel, PneumaticPanel, CurrentMeasurementPanel, CurrentChartPanel, LaserControllerPanel, LiveFeedPanel, CameraInfoWindow, OverlayWindow. Each panel polls its hardware independently (DispatcherTimer) and exposes LogMessage/StatusChanged events for the output log and hardware tree. RunPanel executes process programs with deck management. RecipeEditorPanel edits/runs `.hrcp` recipe scripts. TeachPointPanel manages taught positions with a MoveMap graph editor. NeedleCameraTrainerPanel calibrates needle-to-camera XY offset.
 
 ProcessPanel includes a plugin catalog (TreeView by category), builder list with step highlighting (yellow=current, green=success, red=failure), PropertyTable for parameter editing, and a Context Watch DataGrid showing live variables during execution.
 

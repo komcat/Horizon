@@ -114,6 +114,7 @@ public partial class MainWindow : Window
         StopAllTeachPanels();
         StopAllHexScanPanels();
         StopAllTrainerPanels();
+        StopAllNeedleCameraTrainerPanels();
         if (_overlayWindow is { IsVisible: true })
             _overlayWindow.SavePreferences(_prefs);
         _prefs.Save();
@@ -680,7 +681,15 @@ public partial class MainWindow : Window
 
     private void HwStatusTimer_Tick(object? sender, EventArgs e)
     {
-        bool anyVisible = false;
+        bool anyHwVisible = false;
+
+        // Product name
+        try
+        {
+            var productName = _context.ProductManager.ActiveProductName;
+            HwStatusProduct.Text = string.IsNullOrEmpty(productName) ? "No Product" : productName;
+        }
+        catch { HwStatusProduct.Text = "No Product"; }
 
         // TEC temperature
         try
@@ -692,7 +701,7 @@ public partial class MainWindow : Window
                 var status = laserMgr.GetStatus(names[0]);
                 if (status.Connected)
                 {
-                    anyVisible = true;
+                    anyHwVisible = true;
                     HwStatusTecTemp.Text = status.TECOn
                         ? $"{status.CurrentTemperature:F1} C"
                         : "OFF";
@@ -721,7 +730,7 @@ public partial class MainWindow : Window
                 var channel = hub.GetChannel(key);
                 if (channel != null && channel.LatestValue.HasValue)
                 {
-                    anyVisible = true;
+                    anyHwVisible = true;
                     HwStatusKeithley.Text = FormatCurrentSI(channel.LatestValue.Value);
                 }
                 else
@@ -732,7 +741,8 @@ public partial class MainWindow : Window
         }
         catch { HwStatusKeithley.Text = "--"; }
 
-        HwStatusBar.Visibility = anyVisible ? Visibility.Visible : Visibility.Collapsed;
+        // Always show status bar (product indicator is always relevant)
+        HwStatusBar.Visibility = Visibility.Visible;
     }
 
     private static string FormatCurrentSI(double amps)
@@ -743,6 +753,116 @@ public partial class MainWindow : Window
         if (abs >= 1e-6) return $"{amps * 1e6:F3} uA";
         if (abs >= 1e-9) return $"{amps * 1e9:F3} nA";
         return $"{amps * 1e12:F3} pA";
+    }
+
+    // --- Product Management ---
+
+    private void LoadProduct_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_context.IsInitialized) return;
+
+        var products = _context.ProductManager.GetProductNames();
+        if (products.Count == 0)
+        {
+            MessageBox.Show("No products found. Use 'New Product...' to create one.",
+                "Load Product", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dlg = new ProductPickerDialog(products, _context.ProductManager.ActiveProductName)
+        {
+            Owner = this
+        };
+
+        if (dlg.ShowDialog() == true && !string.IsNullOrEmpty(dlg.SelectedProduct))
+        {
+            _context.ProductManager.LoadProduct(dlg.SelectedProduct);
+            Log.Information("Product loaded: {Product}", dlg.SelectedProduct);
+        }
+    }
+
+    private void NewProduct_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_context.IsInitialized) return;
+
+        var dlg = new InputDialog("New Product", "Product name:")
+        {
+            Owner = this
+        };
+
+        if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.ResultText))
+        {
+            var name = dlg.ResultText.Trim();
+            if (_context.ProductManager.GetProductNames().Any(
+                    n => n.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            {
+                MessageBox.Show($"Product '{name}' already exists.",
+                    "New Product", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            _context.ProductManager.CreateProduct(name);
+            _context.ProductManager.LoadProduct(name);
+            Log.Information("Product created and loaded: {Product}", name);
+        }
+    }
+
+    private void RenameProduct_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_context.IsInitialized) return;
+
+        var current = _context.ProductManager.ActiveProductName;
+        if (string.IsNullOrEmpty(current))
+        {
+            MessageBox.Show("No product is currently loaded.",
+                "Rename Product", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dlg = new InputDialog("Rename Product", $"Rename '{current}' to:", current)
+        {
+            Owner = this
+        };
+
+        if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.ResultText))
+        {
+            var newName = dlg.ResultText.Trim();
+            if (newName.Equals(current, StringComparison.OrdinalIgnoreCase)) return;
+
+            if (_context.ProductManager.GetProductNames().Any(
+                    n => n.Equals(newName, StringComparison.OrdinalIgnoreCase)))
+            {
+                MessageBox.Show($"Product '{newName}' already exists.",
+                    "Rename Product", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            _context.ProductManager.RenameProduct(current, newName);
+            Log.Information("Product renamed: {Old} -> {New}", current, newName);
+        }
+    }
+
+    private void DeleteProduct_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_context.IsInitialized) return;
+
+        var current = _context.ProductManager.ActiveProductName;
+        if (string.IsNullOrEmpty(current))
+        {
+            MessageBox.Show("No product is currently loaded.",
+                "Delete Product", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"Delete product '{current}'?\n\nThis will permanently remove all positions, recipes, processes, and decks associated with this product.",
+            "Delete Product", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            _context.ProductManager.DeleteProduct(current);
+            Log.Information("Product deleted: {Product}", current);
+        }
     }
 
     private void ViewHardware_Click(object sender, RoutedEventArgs e)
@@ -1442,6 +1562,21 @@ public partial class MainWindow : Window
         }
     }
 
+    private void StopAllNeedleCameraTrainerPanels()
+    {
+        var ncDocs = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .Where(d => d.ContentId == "needle_camera_trainer")
+            .ToList();
+
+        foreach (var doc in ncDocs)
+        {
+            if (doc.Content is NeedleCameraTrainerPanel panel)
+                panel.StopPolling();
+        }
+    }
+
     private void StopAllCurrentChartPanels()
     {
         var chartDocs = DockManager.Layout
@@ -1651,6 +1786,40 @@ public partial class MainWindow : Window
         }
     }
 
+    private void NeedleCameraTrainer_Click(object sender, RoutedEventArgs e)
+    {
+        var contentId = "needle_camera_trainer";
+
+        var existing = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocument>()
+            .FirstOrDefault(d => d.ContentId == contentId);
+        if (existing != null)
+        {
+            existing.IsActive = true;
+            return;
+        }
+
+        var panel = new NeedleCameraTrainerPanel(_context);
+
+        var doc = new LayoutDocument
+        {
+            Title = "Needle-Camera Trainer",
+            ContentId = contentId,
+            Content = panel
+        };
+
+        var docPane = DockManager.Layout
+            .Descendents()
+            .OfType<LayoutDocumentPane>()
+            .FirstOrDefault();
+        if (docPane != null)
+        {
+            docPane.Children.Add(doc);
+            doc.IsActive = true;
+        }
+    }
+
     private void VisionPanel_Click(object sender, RoutedEventArgs e)
     {
         var contentId = "vision";
@@ -1789,6 +1958,12 @@ public partial class MainWindow : Window
                 if (id == "hex_scan")
                 {
                     args.Content = new HexScanPanel(_context);
+                    return;
+                }
+
+                if (id == "needle_camera_trainer")
+                {
+                    args.Content = new NeedleCameraTrainerPanel(_context);
                     return;
                 }
 

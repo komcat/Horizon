@@ -236,7 +236,9 @@ public sealed class ProcessEngine
             if (StepByStepMode || Breakpoints.Contains(stepIndex))
             {
                 _stepGate?.Reset();
-                _stepGate?.Wait(ct);
+                if (_stepGate != null)
+                    WaitHandle.WaitAny(new[] { _stepGate.WaitHandle, ct.WaitHandle });
+                if (ct.IsCancellationRequested) return false;
             }
 
             switch (step)

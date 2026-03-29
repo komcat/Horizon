@@ -28,6 +28,7 @@ public sealed class AppContext : IAppContext, IDisposable
     private SafetyEventLog? _safetyEventLog;
     private SafetyWatchManager? _safetyWatchManager;
     private TeachPointManager? _teachPointManager;
+    private ProductManager? _productManager;
     private AxisTransformService? _axisTransformService;
 
     private readonly CameraConfigStore _configStore = new();
@@ -70,6 +71,9 @@ public sealed class AppContext : IAppContext, IDisposable
     public TeachPointManager TeachPointManager =>
         _teachPointManager ?? throw new InvalidOperationException("AppContext is not initialized.");
 
+    public ProductManager ProductManager =>
+        _productManager ?? throw new InvalidOperationException("AppContext is not initialized.");
+
     public AxisTransformService AxisTransformService => _axisTransformService ?? new();
 
     public CameraConfigStore ConfigStore => _configStore;
@@ -77,6 +81,10 @@ public sealed class AppContext : IAppContext, IDisposable
     public bool IsInitialized => _cameraManager != null;
 
     public bool SimulationMode { get; set; }
+
+    public event Action<string, string?, bool?>? ProcessStepNotify;
+    public void RaiseProcessStepNotify(string device, string? position, bool? success)
+        => ProcessStepNotify?.Invoke(device, position, success);
 
     public ILogSink? LogSink { get; set; }
 
@@ -258,6 +266,27 @@ public sealed class AppContext : IAppContext, IDisposable
         {
             LogError($"Teach point load error: {ex.Message}");
         }
+
+        // --- Product management ---
+        _productManager = new ProductManager(_teachPointManager, LogSink);
+        try
+        {
+            _productManager.Load();
+            var activeProduct = _productManager.ActiveProductName;
+            if (!string.IsNullOrEmpty(activeProduct))
+            {
+                _productManager.LoadProduct(activeProduct);
+                Log($"Product manager loaded, active product: {activeProduct}");
+            }
+            else
+            {
+                Log("Product manager loaded, no active product");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogError($"Product manager load error: {ex.Message}");
+        }
     }
 
     public void Shutdown()
@@ -266,6 +295,7 @@ public sealed class AppContext : IAppContext, IDisposable
         _safetyWatchManager = null;
         _safetyEventLog = null;
 
+        _productManager = null;
         _teachPointManager = null;
         _axisTransformService = null;
         _processEngine = null;

@@ -1,0 +1,319 @@
+<UserControl x:Class="Horizon.App.NeedleCameraTrainerPanel"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Background="{DynamicResource Theme.BackgroundBrush}"
+        Foreground="{DynamicResource Theme.ForegroundBrush}">
+
+    <Grid Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- Header bar -->
+            <RowDefinition Height="*"/>      <!-- Main content -->
+            <RowDefinition Height="Auto"/>  <!-- Status bar -->
+        </Grid.RowDefinitions>
+
+        <!-- Row 0: Header Bar -->
+        <Border Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2"
+                Padding="6,4" Margin="0,0,0,4">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Product:" FontSize="11" VerticalAlignment="Center"
+                           Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,4,0"/>
+                <TextBlock x:Name="ActiveProductText" FontSize="11" FontFamily="Consolas"
+                           Foreground="#FF4EC9B0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                <Border Width="1" Background="#555" Margin="12,2"/>
+                <TextBlock Text="Live:" FontSize="11" FontWeight="SemiBold" FontFamily="Consolas"
+                           Foreground="#FF4EC9B0" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBlock x:Name="LivePositionText" FontSize="11" FontFamily="Consolas"
+                           Foreground="#FFFFD54F" VerticalAlignment="Center"
+                           Text="-- not connected --"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Row 1: Main content = sidebar + wizard area -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="130"/>  <!-- Step sidebar -->
+                <ColumnDefinition Width="*"/>     <!-- Wizard content -->
+            </Grid.ColumnDefinitions>
+
+            <!-- Step Sidebar -->
+            <Border Grid.Column="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                    Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2"
+                    Padding="4" Margin="0,0,4,0">
+                <StackPanel x:Name="StepSidebar">
+                    <Button x:Name="SideStep1" Content="1. Camera Focus" FontSize="10" FontFamily="Consolas"
+                            Padding="6,6" Margin="0,0,0,2" HorizontalContentAlignment="Left"
+                            Background="#FF2D2D30" Foreground="#FFF1F1F1" BorderBrush="#FF3F3F46"
+                            Click="SideStep_Click" Tag="1"/>
+                    <Button x:Name="SideStep2" Content="2. Deploy Needle" FontSize="10" FontFamily="Consolas"
+                            Padding="6,6" Margin="0,0,0,2" HorizontalContentAlignment="Left"
+                            Background="#FF2D2D30" Foreground="#FFF1F1F1" BorderBrush="#FF3F3F46"
+                            Click="SideStep_Click" Tag="2"/>
+                    <Button x:Name="SideStep3" Content="3. Needle Pos" FontSize="10" FontFamily="Consolas"
+                            Padding="6,6" Margin="0,0,0,2" HorizontalContentAlignment="Left"
+                            Background="#FF2D2D30" Foreground="#FFF1F1F1" BorderBrush="#FF3F3F46"
+                            Click="SideStep_Click" Tag="3"/>
+                    <Button x:Name="SideStep4" Content="4. Return &amp; Mark" FontSize="10" FontFamily="Consolas"
+                            Padding="6,6" Margin="0,0,0,2" HorizontalContentAlignment="Left"
+                            Background="#FF2D2D30" Foreground="#FFF1F1F1" BorderBrush="#FF3F3F46"
+                            Click="SideStep_Click" Tag="4"/>
+                    <Button x:Name="SideStep5" Content="5. Measure &amp; Save" FontSize="10" FontFamily="Consolas"
+                            Padding="6,6" Margin="0,0,0,2" HorizontalContentAlignment="Left"
+                            Background="#FF2D2D30" Foreground="#FFF1F1F1" BorderBrush="#FF3F3F46"
+                            Click="SideStep_Click" Tag="5"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Wizard Content Area -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>    <!-- Wizard panels -->
+                    <RowDefinition Height="120"/>  <!-- Log area -->
+                </Grid.RowDefinitions>
+
+                <!-- Wizard Panels (overlapping, visibility toggled) -->
+
+                <!-- Panel 0: Config -->
+                <Border x:Name="PanelConfig" Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                        Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2" Padding="12">
+                    <StackPanel>
+                        <TextBlock Text="Needle-Camera Calibration Setup" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#FF4EC9B0" Margin="0,0,0,12"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120"/>
+                                <ColumnDefinition Width="200"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Motion Device:" FontSize="11"
+                                       VerticalAlignment="Center" Margin="0,0,0,6"/>
+                            <ComboBox x:Name="ConfigDeviceCombo" Grid.Row="0" Grid.Column="1" FontFamily="Consolas" FontSize="11"
+                                      Margin="0,0,0,6"
+                                      Background="{DynamicResource Theme.BackgroundBrush}"
+                                      Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                      BorderBrush="{DynamicResource Theme.BorderBrush}"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Pneumatic Slide:" FontSize="11"
+                                       VerticalAlignment="Center" Margin="0,0,0,6"/>
+                            <ComboBox x:Name="ConfigPneumaticCombo" Grid.Row="1" Grid.Column="1" FontFamily="Consolas" FontSize="11"
+                                      Margin="0,0,0,6"
+                                      Background="{DynamicResource Theme.BackgroundBrush}"
+                                      Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                      BorderBrush="{DynamicResource Theme.BorderBrush}"/>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Estimate Offset X:" FontSize="11"
+                                       VerticalAlignment="Center" Margin="0,0,0,6"/>
+                            <TextBox x:Name="ConfigOffsetXBox" Grid.Row="2" Grid.Column="1" FontFamily="Consolas" FontSize="11"
+                                     Padding="3,2" Text="0" Margin="0,0,0,6"
+                                     Background="{DynamicResource Theme.BackgroundBrush}"
+                                     Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                     BorderBrush="{DynamicResource Theme.BorderBrush}"/>
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Estimate Offset Y:" FontSize="11"
+                                       VerticalAlignment="Center" Margin="0,0,0,6"/>
+                            <TextBox x:Name="ConfigOffsetYBox" Grid.Row="3" Grid.Column="1" FontFamily="Consolas" FontSize="11"
+                                     Padding="3,2" Text="0" Margin="0,0,0,6"
+                                     Background="{DynamicResource Theme.BackgroundBrush}"
+                                     Foreground="{DynamicResource Theme.ForegroundBrush}"
+                                     BorderBrush="{DynamicResource Theme.BorderBrush}"/>
+
+                            <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Vertical" Margin="0,4,0,0">
+                                <TextBlock x:Name="PreviousCalText" FontSize="10" FontFamily="Consolas"
+                                           Foreground="#808080" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                <TextBlock x:Name="NoProductWarning" FontSize="11" Foreground="#FFE57373"
+                                           Text="No active product selected. Load a product first."
+                                           Visibility="Collapsed" Margin="0,0,0,8"/>
+                                <Button x:Name="BeginCalibrationBtn" Content="Begin Calibration" FontSize="11" Padding="16,6"
+                                        HorizontalAlignment="Left" Click="BeginCalibration_Click"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Panel 1: Camera Focus (steps 1-2) -->
+                <Border x:Name="PanelCameraFocus" Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                        Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2" Padding="12"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="Step 1: Focus Camera on Target" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#FF4EC9B0" Margin="0,0,0,8"/>
+                        <TextBlock Text="Move the gantry so the camera crosshair is centered on the dispensing target position. Adjust focus as needed."
+                                   FontSize="11" Foreground="#808080" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                        <TextBlock x:Name="CamFocusLivePos" FontSize="11" FontFamily="Consolas"
+                                   Foreground="#FFFFD54F" Margin="0,0,0,12"
+                                   Text="X=0.0000  Y=0.0000  Z=0.0000"/>
+                        <Button Content="Register Camera Position" FontSize="11" Padding="16,6"
+                                HorizontalAlignment="Left" Click="RegisterCamera_Click"/>
+                        <TextBlock x:Name="CamFocusCapturedText" FontSize="10" FontFamily="Consolas"
+                                   Foreground="#FF4EC9B0" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Panel 2: Deploy Needle (steps 3-4) -->
+                <Border x:Name="PanelDeploy" Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                        Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2" Padding="12"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="Steps 3-4: Deploy Needle" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#FF4EC9B0" Margin="0,0,0,8"/>
+                        <TextBlock x:Name="DeployStatus1" FontSize="11" FontFamily="Consolas" Margin="0,0,0,4"
+                                   Text="  Moving XY by offset..." Foreground="#808080"/>
+                        <TextBlock x:Name="DeployStatus2" FontSize="11" FontFamily="Consolas" Margin="0,0,0,4"
+                                   Text="  Extending dispenser..." Foreground="#808080"/>
+                        <TextBlock x:Name="DeployStatus3" FontSize="11" FontFamily="Consolas" Margin="0,0,0,12"
+                                   Text="" Foreground="#FF4EC9B0"/>
+                        <Button x:Name="DeployStopBtn" Content="Stop" FontSize="11" Padding="16,6"
+                                HorizontalAlignment="Left" Foreground="White" Background="#C62828"
+                                Click="DeployStop_Click" Visibility="Collapsed"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Panel 3: Needle XY (steps 5-6) -->
+                <Border x:Name="PanelNeedleXY" Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                        Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2" Padding="12"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="Step 5: Position Needle XY" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#FF4EC9B0" Margin="0,0,0,8"/>
+                        <TextBlock x:Name="NeedleXYInstruction" FontSize="11" Foreground="#808080" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        <StackPanel x:Name="NeedleXYAutoPanel" Orientation="Horizontal" Margin="0,0,0,8" Visibility="Collapsed">
+                            <Button Content="Auto-Move to Previous XY" FontSize="11" Padding="12,5"
+                                    Click="AutoMoveNeedleXY_Click" Margin="0,0,8,0"/>
+                            <Button Content="Skip - Manual Jog" FontSize="11" Padding="12,5"
+                                    Click="SkipAutoNeedleXY_Click"/>
+                        </StackPanel>
+                        <TextBlock x:Name="NeedleXYLivePos" FontSize="11" FontFamily="Consolas"
+                                   Foreground="#FFFFD54F" Margin="0,0,0,12"
+                                   Text="X=0.0000  Y=0.0000  Z=0.0000"/>
+                        <Button x:Name="ConfirmNeedleXYBtn" Content="Confirm Needle XY Position" FontSize="11" Padding="16,6"
+                                HorizontalAlignment="Left" Click="ConfirmNeedleXY_Click"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Panel 4: Needle Z (steps 7-9) -->
+                <Border x:Name="PanelNeedleZ" Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                        Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2" Padding="12"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="Step 7: Lower Needle to Surface" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#FF4EC9B0" Margin="0,0,0,8"/>
+                        <TextBlock x:Name="NeedleZInstruction" FontSize="11" Foreground="#808080" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        <StackPanel x:Name="NeedleZAutoPanel" Orientation="Horizontal" Margin="0,0,0,8" Visibility="Collapsed">
+                            <Button Content="Auto-Move Z to Previous" FontSize="11" Padding="12,5"
+                                    Click="AutoMoveNeedleZ_Click" Margin="0,0,8,0"/>
+                            <Button Content="Skip - Manual Jog Z" FontSize="11" Padding="12,5"
+                                    Click="SkipAutoNeedleZ_Click"/>
+                        </StackPanel>
+                        <TextBlock Text="CAUTION: Moving Z down - watch for collision" FontSize="10"
+                                   Foreground="#FFE57373" Margin="0,0,0,8"/>
+                        <TextBlock x:Name="NeedleZLivePos" FontSize="11" FontFamily="Consolas"
+                                   Foreground="#FFFFD54F" Margin="0,0,0,12"
+                                   Text="Z=0.0000"/>
+                        <Button x:Name="ConfirmNeedleZBtn" Content="Confirm Needle Z Position" FontSize="11" Padding="16,6"
+                                HorizontalAlignment="Left" Click="ConfirmNeedleZ_Click"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Panel 5: Mark Surface (step 10) -->
+                <Border x:Name="PanelMark" Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                        Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2" Padding="12"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="Step 10: Verify Surface Mark" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#FF4EC9B0" Margin="0,0,0,8"/>
+                        <TextBlock Text="The needle should now be touching the surface and leaving a mark. Verify a mark is visible, then continue."
+                                   FontSize="11" Foreground="#808080" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                        <Button Content="Continue - Mark is OK" FontSize="11" Padding="16,6"
+                                HorizontalAlignment="Left" Click="MarkOk_Click"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Panel 6: Return Sequence (steps 11-13) -->
+                <Border x:Name="PanelReturn" Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                        Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2" Padding="12"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="Steps 11-13: Return Sequence" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#FF4EC9B0" Margin="0,0,0,8"/>
+                        <TextBlock x:Name="ReturnStatus1" FontSize="11" FontFamily="Consolas" Margin="0,0,0,4"
+                                   Text="  Moving Z up to starting height..." Foreground="#808080"/>
+                        <TextBlock x:Name="ReturnStatus2" FontSize="11" FontFamily="Consolas" Margin="0,0,0,4"
+                                   Text="  Retracting dispenser..." Foreground="#808080"/>
+                        <TextBlock x:Name="ReturnStatus3" FontSize="11" FontFamily="Consolas" Margin="0,0,0,12"
+                                   Text="  Moving XY back to camera position..." Foreground="#808080"/>
+                        <Button x:Name="ReturnStopBtn" Content="Stop" FontSize="11" Padding="16,6"
+                                HorizontalAlignment="Left" Foreground="White" Background="#C62828"
+                                Click="ReturnStop_Click" Visibility="Collapsed"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Panel 7: Measure Mark (steps 14-15) -->
+                <Border x:Name="PanelMeasure" Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                        Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2" Padding="12"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="Step 14: Measure Needle Mark" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#FF4EC9B0" Margin="0,0,0,8"/>
+                        <TextBlock Text="The camera should now be viewing the area where the needle marked. Jog the gantry to center the crosshair on the needle mark."
+                                   FontSize="11" Foreground="#808080" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                        <TextBlock x:Name="MeasureLivePos" FontSize="11" FontFamily="Consolas"
+                                   Foreground="#FFFFD54F" Margin="0,0,0,12"
+                                   Text="X=0.0000  Y=0.0000  Z=0.0000"/>
+                        <Button x:Name="CaptureMarkBtn" Content="Capture Mark Position" FontSize="11" Padding="16,6"
+                                HorizontalAlignment="Left" Click="CaptureMarkPosition_Click"/>
+                        <TextBlock x:Name="MeasureOffsetText" FontSize="12" FontFamily="Consolas"
+                                   Foreground="#FFFFD54F" FontWeight="SemiBold" Margin="0,12,0,8"/>
+                        <Button x:Name="AcceptMeasureBtn" Content="Accept &amp; Continue" FontSize="11" Padding="16,6"
+                                HorizontalAlignment="Left" Click="AcceptMeasure_Click" Visibility="Collapsed"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Panel 8: Save (step 16) -->
+                <Border x:Name="PanelSave" Grid.Row="0" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                        Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2" Padding="12"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="Calibration Complete" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#FF4EC9B0" Margin="0,0,0,12"/>
+                        <TextBlock x:Name="SaveSummaryText" FontSize="11" FontFamily="Consolas"
+                                   Foreground="{DynamicResource Theme.ForegroundBrush}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Save Calibration" FontSize="11" Padding="16,6"
+                                    Click="SaveCalibration_Click" Margin="0,0,8,0"/>
+                            <Button Content="Restart" FontSize="11" Padding="16,6"
+                                    Click="Restart_Click"/>
+                        </StackPanel>
+                        <TextBlock x:Name="SaveStatusText" FontSize="10" FontFamily="Consolas"
+                                   Foreground="#FF4EC9B0" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Log Area -->
+                <Border Grid.Row="1" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                        Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2"
+                        Margin="0,4,0,0">
+                    <ListBox x:Name="LogList" FontSize="10" FontFamily="Consolas"
+                             Background="Transparent" Foreground="#808080"
+                             BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- Row 2: Status Bar -->
+        <Border Grid.Row="2" BorderBrush="{DynamicResource Theme.BorderBrush}" BorderThickness="1"
+                Background="{DynamicResource Theme.BackgroundAltBrush}" CornerRadius="2"
+                Padding="6,3" Margin="0,4,0,0">
+            <TextBlock x:Name="StatusBarText" FontSize="10" FontFamily="Consolas"
+                       Foreground="#808080" Text="Step 0: Configure calibration settings"/>
+        </Border>
+    </Grid>
+</UserControl>

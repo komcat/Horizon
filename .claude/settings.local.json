@@ -14,7 +14,11 @@
       "Bash(git status:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(test -f \"C:/Program Files \\(x86\\)/ACS Motion Control/SPiiPlus Runtime Kit/Redist/x64/ACS.SPiiPlusNET8.dll\")",
+      "Bash(test -f \"C:/Program Files \\(x86\\)/Physik Instrumente \\(PI\\)/Software Suite/Development/C#/API/PI_GCS2_DLL_x64.dll\")",
+      "Bash(find /c/Users/Fabrinet/source/repos/komcat/komcat/Horizon -type f \\\\\\(-name *.json -o -name *.config \\\\\\))"
     ]
   }
 }

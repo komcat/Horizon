@@ -25,9 +25,17 @@ public interface IAppContext
     SafetyWatchManager? SafetyWatchManager { get; }
     MeasurementHub MeasurementHub { get; }
     TeachPointManager TeachPointManager { get; }
+    ProductManager ProductManager { get; }
     AxisTransformService AxisTransformService { get; }
     bool IsInitialized { get; }
     bool SimulationMode { get; set; }
     void Initialize();
     void Reinitialize();
+
+    /// <summary>
+    /// Fired by ProcessPanel when a step starts/completes.
+    /// Args: (deviceName, positionName, success: null=started, true=ok, false=fail, ""=clear all)
+    /// </summary>
+    event Action<string, string?, bool?>? ProcessStepNotify;
+    void RaiseProcessStepNotify(string device, string? position, bool? success);
 }

@@ -107,7 +107,8 @@ public sealed class RecipeEngine
                 if (StepByStepMode || Breakpoints.Contains(node.Line))
                 {
                     _stepGate!.Reset();
-                    _stepGate.Wait(ct);
+                    WaitHandle.WaitAny(new[] { _stepGate!.WaitHandle, ct.WaitHandle });
+                    ct.ThrowIfCancellationRequested();
                 }
             }
 

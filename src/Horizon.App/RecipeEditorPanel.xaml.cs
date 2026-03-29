@@ -48,15 +48,25 @@ public partial class RecipeEditorPanel : UserControl
     private static readonly SolidColorBrush ColorError = Freeze(new SolidColorBrush(Color.FromRgb(0xF4, 0x47, 0x47)));      // red
     private static readonly SolidColorBrush ColorErrorBg = Freeze(new SolidColorBrush(Color.FromRgb(0x5A, 0x1D, 0x1D)));    // dark red bg
 
+    // Execution line highlight overlay brushes
+    private static readonly SolidColorBrush ExecLineYellow = Freeze(new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xD7, 0x00)));
+    private static readonly SolidColorBrush ExecLineGreen = Freeze(new SolidColorBrush(Color.FromArgb(0x40, 0x32, 0xCD, 0x32)));
+    private static readonly SolidColorBrush ExecLineRed = Freeze(new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0x45, 0x00)));
+    private int _executingLine = -1;
+
     private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
 
-    private static readonly string RecipeDir = Path.Combine(
+    private static readonly string SharedRecipeDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Horizon", "recipes");
 
     private static readonly string LastRecipeFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Horizon", "recipes", ".lastrecipe");
+
+    private string RecipeDir => _context.IsInitialized
+        ? _context.ProductManager.GetRecipeDir()
+        : SharedRecipeDir;
 
     public RecipeEditorPanel(IAppContext context)
     {
@@ -74,6 +84,15 @@ public partial class RecipeEditorPanel : UserControl
 
         SetEditorText("# New recipe\n");
         LoadLastRecipe();
+
+        // Populate recipe file tree and wire double-click
+        RecipeTree.MouseDoubleClick += RecipeTree_MouseDoubleClick;
+        RefreshRecipeTree();
+
+        // Refresh tree when product changes
+        if (_context.IsInitialized)
+            _context.ProductManager.ActiveProductChanged += () =>
+                Dispatcher.BeginInvoke(RefreshRecipeTree);
 
         // Defer tab title update until we're in the visual tree
         Loaded += (_, _) => UpdateFileDisplay();
@@ -516,6 +535,63 @@ public partial class RecipeEditorPanel : UserControl
             SaveFile(dlg.SelectedPath);
     }
 
+    private void RefreshRecipeTree()
+    {
+        RecipeTree.Items.Clear();
+
+        var productName = _context.IsInitialized
+            ? _context.ProductManager.ActiveProductName
+            : string.Empty;
+
+        var dir = RecipeDir;
+
+        RecipeTreeHeader.Text = string.IsNullOrEmpty(productName)
+            ? "Recipes (shared)"
+            : $"Recipes ({productName})";
+
+        if (!Directory.Exists(dir)) return;
+
+        var files = Directory.GetFiles(dir, "*.hrcp")
+            .OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var file in files)
+        {
+            var fileName = Path.GetFileNameWithoutExtension(file)!;
+            var item = new TreeViewItem
+            {
+                Header = fileName,
+                Tag = file,
+                FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+                FontSize = 11,
+                Foreground = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(0xD4, 0xD4, 0xD4)),
+                Padding = new Thickness(2, 1, 2, 1)
+            };
+
+            // Highlight the currently loaded file
+            if (_currentFilePath != null &&
+                file.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                item.Foreground = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(0x4E, 0xC9, 0xB0));
+                item.FontWeight = FontWeights.SemiBold;
+            }
+
+            RecipeTree.Items.Add(item);
+        }
+    }
+
+    private void RecipeTree_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (RecipeTree.SelectedItem is TreeViewItem item && item.Tag is string filePath)
+        {
+            e.Handled = true;
+            if (File.Exists(filePath))
+                LoadFile(filePath);
+        }
+    }
+
     private void LoadFile(string path)
     {
         try
@@ -527,6 +603,7 @@ public partial class RecipeEditorPanel : UserControl
             StatusText.Text = $"Loaded: {Path.GetFileName(path)}";
             SaveLastRecipePath(path);
             WatchFile(path);
+            RefreshRecipeTree();
         }
         catch (Exception ex)
         {
@@ -546,6 +623,7 @@ public partial class RecipeEditorPanel : UserControl
             StatusText.Text = $"Saved: {Path.GetFileName(path)}";
             SaveLastRecipePath(path);
             WatchFile(path);
+            RefreshRecipeTree();
         }
         catch (Exception ex)
         {
@@ -624,6 +702,66 @@ public partial class RecipeEditorPanel : UserControl
 
     private async void Run_Click(object sender, RoutedEventArgs e)
     {
+        // Run entire script with fresh context
+        var (program, errors) = RecipeEngine.Parse(GetEditorText());
+        if (program == null || errors.Count > 0)
+        {
+            OutputList.Items.Clear();
+            foreach (var err in errors)
+                AddOutput($"[ERR] Line {err.Line}:{err.Column} — {err.Message}");
+            StatusText.Text = $"Parse failed: {errors.Count} error(s)";
+            BottomTabs.SelectedIndex = 1;
+            return;
+        }
+
+        _runContext = new RecipeContext();
+        OutputList.Items.Clear();
+        _watchItems.Clear();
+        await ExecuteRecipeAsync(program, "Recipe");
+    }
+
+    private async void RunSelection_Click(object sender, RoutedEventArgs e)
+    {
+        // Get selected text; fall back to current line if no selection
+        var selection = new TextRange(Editor.Selection.Start, Editor.Selection.End).Text.Trim();
+        if (string.IsNullOrWhiteSpace(selection))
+        {
+            StatusText.Text = "Select lines to run";
+            return;
+        }
+
+        // Determine the line offset so highlights match the editor
+        var fullText = GetEditorText();
+        var fullLines = fullText.Split('\n');
+        var selStart = GetTextCharOffset(Editor.Document.ContentStart, Editor.Selection.Start);
+        int startLine = 1;
+        int charCount = 0;
+        for (int i = 0; i < fullLines.Length; i++)
+        {
+            if (charCount + fullLines[i].Length >= selStart) { startLine = i + 1; break; }
+            charCount += fullLines[i].Length + 1;
+        }
+
+        // Build a full-file source with blank lines padding so line numbers match the editor
+        var paddedSource = string.Join("\n",
+            Enumerable.Repeat("", startLine - 1).Concat(selection.Replace("\r\n", "\n").Split('\n')));
+
+        var (program, errors) = RecipeEngine.Parse(paddedSource);
+        if (program == null || errors.Count > 0)
+        {
+            foreach (var err in errors)
+                AddOutput($"[ERR] Line {err.Line}:{err.Column} — {err.Message}");
+            StatusText.Text = $"Selection parse failed: {errors.Count} error(s)";
+            return;
+        }
+
+        // Reuse existing context so variables from previous runs persist
+        _runContext ??= new RecipeContext();
+        await ExecuteRecipeAsync(program, $"Selection L{startLine}");
+    }
+
+    private async Task ExecuteRecipeAsync(ProgramNode program, string label)
+    {
         var engine = _context.RecipeEngine;
 
         if (!engine.TryAcquire("RecipeEditor"))
@@ -635,24 +773,9 @@ public partial class RecipeEditorPanel : UserControl
         try
         {
             SetRunning(true);
-            OutputList.Items.Clear();
-            _watchItems.Clear();
             BottomTabs.SelectedIndex = 0; // Switch to Output tab
 
-            // Parse
-            var (program, errors) = RecipeEngine.Parse(GetEditorText());
-            if (program == null || errors.Count > 0)
-            {
-                foreach (var err in errors)
-                    AddOutput($"[ERR] Line {err.Line}:{err.Column} — {err.Message}");
-                StatusText.Text = $"Parse failed: {errors.Count} error(s)";
-                BottomTabs.SelectedIndex = 1; // Switch to Errors tab
-                return;
-            }
-
-            // Setup context
             _cts = new CancellationTokenSource();
-            _runContext = new RecipeContext();
             engine.StepByStepMode = StepModeCheck.IsChecked == true;
 
             // Wire callbacks
@@ -660,6 +783,7 @@ public partial class RecipeEditorPanel : UserControl
                 Dispatcher.BeginInvoke(() =>
                 {
                     StatusText.Text = $"Line {line}: {device}.{method}";
+                    HighlightEditorLine(line, null);
                 });
 
             engine.OnStepCompleted = (line, success, description) =>
@@ -673,6 +797,7 @@ public partial class RecipeEditorPanel : UserControl
                     if (!isVerbose)
                         AddOutput($"  [{line}] {description}");
                     RefreshWatch();
+                    HighlightEditorLine(line, success);
                 });
 
             engine.OnLoopIteration = (line, current, total) =>
@@ -682,20 +807,19 @@ public partial class RecipeEditorPanel : UserControl
             engine.OnLog = message =>
                 Dispatcher.BeginInvoke(() => AddOutput(message));
 
-            engine.OnContextChanged = null; // watch refreshes on step complete, no need for per-change
+            engine.OnContextChanged = null;
 
             // Execute
-            AddOutput("--- Recipe started ---");
-            bool success = await engine.ExecuteAsync(program, _runContext, _cts.Token);
-            // Flush pending dispatcher callbacks so all step/log output appears before completion
+            AddOutput($"--- {label} started ---");
+            bool success = await engine.ExecuteAsync(program, _runContext!, _cts.Token);
             await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Background);
-            AddOutput(success ? "--- Recipe completed ---" : "--- Recipe failed ---");
+            AddOutput(success ? $"--- {label} completed ---" : $"--- {label} failed ---");
             StatusText.Text = success ? "Completed" : "Failed";
             RefreshWatch(force: true);
         }
         catch (OperationCanceledException)
         {
-            AddOutput("--- Recipe stopped ---");
+            AddOutput($"--- {label} stopped ---");
             StatusText.Text = "Stopped";
         }
         catch (Exception ex)
@@ -713,6 +837,7 @@ public partial class RecipeEditorPanel : UserControl
             engine.Release();
             _cts?.Dispose();
             _cts = null;
+            ClearEditorLineHighlight();
             SetRunning(false);
         }
     }
@@ -738,9 +863,80 @@ public partial class RecipeEditorPanel : UserControl
     {
         _isRunning = running;
         RunBtn.IsEnabled = !running;
+        RunSelBtn.IsEnabled = !running;
         StopBtn.IsEnabled = running;
         ContinueBtn.IsEnabled = running && StepModeCheck.IsChecked == true;
         Editor.IsReadOnly = running;
+    }
+
+    // --- Execution line highlighting (overlay-based, no FlowDocument mutation) ---
+
+    private void HighlightEditorLine(int lineNumber, bool? success)
+    {
+        _executingLine = lineNumber;
+
+        ExecLineOverlay.Background = success switch
+        {
+            null => ExecLineYellow,
+            true => ExecLineGreen,
+            false => ExecLineRed
+        };
+
+        PositionExecOverlay();
+        ExecLineOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void PositionExecOverlay()
+    {
+        if (_executingLine < 0) return;
+
+        var para = Editor.Document.Blocks.FirstBlock as Paragraph;
+        if (para == null) return;
+
+        // Find any Run on the target line
+        int currentLine = 1;
+        Run? targetRun = null;
+        foreach (var inline in para.Inlines)
+        {
+            if (inline is not Run run) continue;
+
+            if (currentLine == _executingLine)
+            {
+                targetRun = run;
+                if (run.Text != "\n") break; // prefer content runs over newline
+            }
+
+            if (run.Text == "\n")
+                currentLine++;
+        }
+
+        if (targetRun == null) return;
+
+        var rect = targetRun.ContentStart.GetCharacterRect(LogicalDirection.Forward);
+        if (rect == Rect.Empty || double.IsInfinity(rect.Top)) return;
+
+        // Scroll to line if needed
+        if (rect.Top < 0 || rect.Top > Editor.ActualHeight - 20)
+        {
+            Editor.ScrollToVerticalOffset(
+                Editor.VerticalOffset + rect.Top - Editor.ActualHeight / 3);
+            LineNumberScroll.ScrollToVerticalOffset(Editor.VerticalOffset);
+
+            // Re-query position after scroll
+            rect = targetRun.ContentStart.GetCharacterRect(LogicalDirection.Forward);
+            if (rect == Rect.Empty || double.IsInfinity(rect.Top)) return;
+        }
+
+        // Position the overlay at the line's Y coordinate
+        double lineHeight = Math.Max(16, Editor.FontSize * 1.35);
+        ExecLineOverlay.Height = lineHeight;
+        ExecLineOverlay.Margin = new Thickness(0, rect.Top, 0, 0);
+    }
+
+    private void ClearEditorLineHighlight()
+    {
+        _executingLine = -1;
+        ExecLineOverlay.Visibility = Visibility.Collapsed;
     }
 
     // --- Editor events ---
@@ -793,6 +989,10 @@ public partial class RecipeEditorPanel : UserControl
     {
         // Sync line number gutter scroll with editor scroll
         LineNumberScroll.ScrollToVerticalOffset(Editor.VerticalOffset);
+
+        // Reposition execution highlight overlay
+        if (_executingLine > 0)
+            PositionExecOverlay();
     }
 
     private void UpdateLineNumbers()
