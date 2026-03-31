@@ -113,6 +113,63 @@ public partial class MainWindow : Window
             interlock.InterlockBlocked += (d, a, r) => Dispatcher.BeginInvoke(UpdateInterlockIndicator);
         }
         UpdateInterlockIndicator();
+
+        // Wire dispense UI prompt delegate (non-modal so user can jog/interact)
+        var dispenseExecutor = _context.DispenseExecutor;
+        if (dispenseExecutor != null)
+        {
+            dispenseExecutor.PromptUser = (title, message) =>
+            {
+                var tcs = new TaskCompletionSource<string?>();
+                Dispatcher.BeginInvoke(() =>
+                {
+                    var dlg = new Window
+                    {
+                        Title = title,
+                        Width = 420, Height = 180,
+                        WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                        Topmost = true,
+                        ResizeMode = ResizeMode.NoResize,
+                        Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E)),
+                        Foreground = Brushes.White,
+                        FontFamily = new FontFamily("Consolas"),
+                        WindowStyle = WindowStyle.ToolWindow
+                    };
+
+                    var stack = new StackPanel { Margin = new Thickness(16) };
+                    stack.Children.Add(new TextBlock
+                    {
+                        Text = message, TextWrapping = TextWrapping.Wrap,
+                        FontSize = 12, Foreground = Brushes.White, Margin = new Thickness(0, 0, 0, 16)
+                    });
+
+                    var btnPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+                    var okBtn = new Button
+                    {
+                        Content = "OK", Width = 80, Height = 28, Margin = new Thickness(0, 0, 8, 0),
+                        FontFamily = new FontFamily("Consolas"), FontSize = 12,
+                        Foreground = new SolidColorBrush(Color.FromRgb(0x90, 0xEE, 0x90))
+                    };
+                    var cancelBtn = new Button
+                    {
+                        Content = "Cancel", Width = 80, Height = 28,
+                        FontFamily = new FontFamily("Consolas"), FontSize = 12,
+                        Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x63, 0x47))
+                    };
+
+                    okBtn.Click += (_, _) => { tcs.TrySetResult("ok"); dlg.Close(); };
+                    cancelBtn.Click += (_, _) => { tcs.TrySetResult(null); dlg.Close(); };
+                    dlg.Closed += (_, _) => tcs.TrySetResult(null);
+
+                    btnPanel.Children.Add(okBtn);
+                    btnPanel.Children.Add(cancelBtn);
+                    stack.Children.Add(btnPanel);
+                    dlg.Content = stack;
+                    dlg.Show(); // Non-modal
+                });
+                return tcs.Task;
+            };
+        }
     }
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -2140,6 +2197,38 @@ public partial class MainWindow : Window
                 if (id == "needle_camera_trainer")
                 {
                     args.Content = new NeedleCameraTrainerPanel(_context);
+                    return;
+                }
+
+                if (id == "trainer")
+                {
+                    args.Content = new TrainerPanel(_context);
+                    return;
+                }
+
+                if (id == "run_panel")
+                {
+                    args.Content = new RunPanel(_context);
+                    return;
+                }
+
+                if (id == "safety_panel")
+                {
+                    args.Content = new SafetyPanel(_context);
+                    return;
+                }
+
+                if (id == "vision")
+                {
+                    args.Content = new TextBlock
+                    {
+                        Text = "Vision — Coming Soon",
+                        FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+                        FontSize = 16,
+                        Foreground = System.Windows.Media.Brushes.Gray,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
                     return;
                 }
 

@@ -74,8 +74,7 @@
                 <Button x:Name="NavBondingAccuracy" Content="Pos. Bonding Accuracy"
                         Style="{StaticResource NavButton}" Click="NavButton_Click" Tag="bonding"
                         Background="#FF3E3E42"/>
-                <Button Content="(Coming Soon)" Style="{StaticResource NavButton}" IsEnabled="False"
-                        Foreground="#FF606060"/>
+                <Button Content="Needle-Camera Cal" Style="{StaticResource NavButton}" Click="NavButton_Click" Tag="needlecam"/>
                 <Button Content="(Coming Soon)" Style="{StaticResource NavButton}" IsEnabled="False"
                         Foreground="#FF606060"/>
             </StackPanel>
@@ -227,7 +226,8 @@
                                             <TextBlock Text="  Corners:" FontSize="11" VerticalAlignment="Center"
                                                        Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,6,0"/>
                                             <ComboBox x:Name="CornerCountCombo" Width="50" FontFamily="Consolas" FontSize="11"
-                                                      Padding="3,2" SelectedIndex="0">
+                                                      Padding="3,2" SelectedIndex="1">
+                                                <ComboBoxItem Content="1"/>
                                                 <ComboBoxItem Content="2"/>
                                                 <ComboBoxItem Content="3"/>
                                             </ComboBox>
@@ -414,13 +414,14 @@
                                     <StackPanel Grid.Row="0">
                                         <TextBlock Text="Reference Points" FontSize="14" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,0,4"/>
-                                        <TextBlock Text="Teach 2-3 reference landmarks for coordinate frame computation. Each ref uses 2-3 corner points to compute center."
+                                        <TextBlock Text="Teach 2-3 reference landmarks for coordinate frame computation. Each ref uses 1-3 corner points to compute center."
                                                    FontSize="11" Foreground="#FFB0B0B0" TextWrapping="Wrap" Margin="0,0,0,10"/>
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                             <TextBlock Text="Corners:" FontSize="11" VerticalAlignment="Center"
                                                        Foreground="{DynamicResource Theme.ForegroundBrush}" Margin="0,0,6,0"/>
                                             <ComboBox x:Name="RefCornerCountCombo" Width="50" FontFamily="Consolas" FontSize="11"
-                                                      Padding="3,2" SelectedIndex="0">
+                                                      Padding="3,2" SelectedIndex="1">
+                                                <ComboBoxItem Content="1"/>
                                                 <ComboBoxItem Content="2"/>
                                                 <ComboBoxItem Content="3"/>
                                             </ComboBox>

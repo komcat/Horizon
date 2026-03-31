@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using AvalonDock.Layout;
 using Horizon.Core;
 using Horizon.Motion.Models;
 
@@ -266,7 +267,47 @@ public partial class TrainerPanel : UserControl
 
     private void NavButton_Click(object sender, RoutedEventArgs e)
     {
-        // Only one trainer type for now
+        if (sender is not Button btn || btn.Tag is not string tag) return;
+
+        if (tag == "needlecam")
+        {
+            // Open NeedleCameraTrainerPanel as a separate AvalonDock document
+            var mainWindow = Window.GetWindow(this) as MainWindow;
+            if (mainWindow == null) return;
+
+            // Use the Production menu handler via reflection-free approach:
+            // Find or create the document directly on the DockManager
+            var dockMgr = mainWindow.DockManager;
+            var contentId = "needle_camera_trainer";
+
+            var existing = dockMgr.Layout
+                .Descendents()
+                .OfType<AvalonDock.Layout.LayoutDocument>()
+                .FirstOrDefault(d => d.ContentId == contentId);
+            if (existing != null)
+            {
+                existing.IsActive = true;
+                return;
+            }
+
+            var panel = new NeedleCameraTrainerPanel(_context);
+            var doc = new AvalonDock.Layout.LayoutDocument
+            {
+                Title = "Needle-Camera Cal",
+                ContentId = contentId,
+                Content = panel
+            };
+
+            var docPane = dockMgr.Layout
+                .Descendents()
+                .OfType<AvalonDock.Layout.LayoutDocumentPane>()
+                .FirstOrDefault();
+            if (docPane != null)
+            {
+                docPane.Children.Add(doc);
+                doc.IsActive = true;
+            }
+        }
     }
 
     private void StepButton_Click(object sender, RoutedEventArgs e)
@@ -398,7 +439,7 @@ public partial class TrainerPanel : UserControl
         }
 
         _pendingBondName = name;
-        _cornerTarget = CornerCountCombo.SelectedIndex == 0 ? 2 : 3;
+        _cornerTarget = CornerCountCombo.SelectedIndex switch { 0 => 1, 1 => 2, _ => 3 };
         _cornerCurrent = 1;
         _centerImagePath = null;
         _capturedCorners.Clear();
@@ -414,8 +455,12 @@ public partial class TrainerPanel : UserControl
         Step1_Capture.Visibility = Visibility.Visible;
         Step1_Review.Visibility = Visibility.Collapsed;
 
-        CaptureTitle.Text = $"Capture Point {_cornerCurrent} of {_cornerTarget}";
-        CaptureInstruction.Text = $"Jog to perimeter Point {_cornerCurrent}, then click Capture.";
+        CaptureTitle.Text = _cornerTarget == 1
+            ? "Capture Fiducial Center"
+            : $"Capture Point {_cornerCurrent} of {_cornerTarget}";
+        CaptureInstruction.Text = _cornerTarget == 1
+            ? "Jog to fiducial center, then click Capture."
+            : $"Jog to perimeter Point {_cornerCurrent}, then click Capture.";
     }
 
     private void CaptureCorner_Click(object sender, RoutedEventArgs e)
@@ -467,19 +512,21 @@ public partial class TrainerPanel : UserControl
     {
         var (cx, cy, cz) = TrainerMath.ComputeCenter(_capturedCorners);
 
-        // Move to computed center
-        var device = DeviceCombo.SelectedItem as string;
-        if (!string.IsNullOrEmpty(device) && _context.IsInitialized)
+        // Skip move for single-point fiducial — user is already at the position
+        if (_capturedCorners.Count > 1)
         {
-            AppendLog($"Moving to center ({cx:F4},{cy:F4},{cz:F4})...");
-            CaptureTitle.Text = "Moving to center...";
-            CaptureInstruction.Text = $"Moving to computed center ({cx:F4},{cy:F4}) to capture reference image.";
+            var device = DeviceCombo.SelectedItem as string;
+            if (!string.IsNullOrEmpty(device) && _context.IsInitialized)
+            {
+                AppendLog($"Moving to center ({cx:F4},{cy:F4},{cz:F4})...");
+                CaptureTitle.Text = "Moving to center...";
+                CaptureInstruction.Text = $"Moving to computed center ({cx:F4},{cy:F4}) to capture reference image.";
 
-            var target = new PositionStruct { X = cx, Y = cy, Z = cz };
-            _context.MotionManager.MoveToAbs6(device, target, blocking: false);
+                var target = new PositionStruct { X = cx, Y = cy, Z = cz };
+                _context.MotionManager.MoveToAbs6(device, target, blocking: false);
 
-            // Wait for motion to settle
-            await Task.Delay(1500);
+                await Task.Delay(1500);
+            }
         }
 
         // Capture center reference image
@@ -572,7 +619,7 @@ public partial class TrainerPanel : UserControl
         if (idx < 0) return;
 
         _pendingBondName = bp.Name;
-        _cornerTarget = bp.Corners.Count >= 3 ? 3 : 2;
+        _cornerTarget = Math.Clamp(bp.Corners.Count, 1, 3);
         _cornerCurrent = 1;
         _capturedCorners.Clear();
         _cornerDisplayItems.Clear();
@@ -607,7 +654,7 @@ public partial class TrainerPanel : UserControl
         if (_currentSet == null) { ShowNoSet(); return; }
 
         _pendingRefIndex = _refPoints.Count + 1;
-        _refCornerTarget = RefCornerCountCombo.SelectedIndex == 0 ? 2 : 3;
+        _refCornerTarget = RefCornerCountCombo.SelectedIndex switch { 0 => 1, 1 => 2, _ => 3 };
         _refCornerCurrent = 1;
         _refCenterImagePath = null;
         _capturedRefCorners.Clear();
@@ -623,8 +670,12 @@ public partial class TrainerPanel : UserControl
         Step2_Capture.Visibility = Visibility.Visible;
         Step2_Review.Visibility = Visibility.Collapsed;
 
-        RefCaptureTitle.Text = $"Teach Reference {_pendingRefIndex} — Point {_refCornerCurrent} of {_refCornerTarget}";
-        RefCaptureInstruction.Text = $"Jog to perimeter Point {_refCornerCurrent} of Reference {_pendingRefIndex}, then click Capture.";
+        RefCaptureTitle.Text = _refCornerTarget == 1
+            ? $"Teach Reference {_pendingRefIndex} — Fiducial Center"
+            : $"Teach Reference {_pendingRefIndex} — Point {_refCornerCurrent} of {_refCornerTarget}";
+        RefCaptureInstruction.Text = _refCornerTarget == 1
+            ? $"Jog to fiducial center of Reference {_pendingRefIndex}, then click Capture."
+            : $"Jog to perimeter Point {_refCornerCurrent} of Reference {_pendingRefIndex}, then click Capture.";
     }
 
     private void CaptureRef_Click(object sender, RoutedEventArgs e)
@@ -668,17 +719,21 @@ public partial class TrainerPanel : UserControl
     {
         var (cx, cy, cz) = TrainerMath.ComputeRefCenter(_capturedRefCorners);
 
-        var device = DeviceCombo.SelectedItem as string;
-        if (!string.IsNullOrEmpty(device) && _context.IsInitialized)
+        // Skip move for single-point fiducial — user is already at the position
+        if (_capturedRefCorners.Count > 1)
         {
-            AppendLog($"Moving to Ref{_pendingRefIndex} center ({cx:F4},{cy:F4},{cz:F4})...");
-            RefCaptureTitle.Text = "Moving to center...";
-            RefCaptureInstruction.Text = $"Moving to computed center ({cx:F4},{cy:F4}) to capture reference image.";
+            var device = DeviceCombo.SelectedItem as string;
+            if (!string.IsNullOrEmpty(device) && _context.IsInitialized)
+            {
+                AppendLog($"Moving to Ref{_pendingRefIndex} center ({cx:F4},{cy:F4},{cz:F4})...");
+                RefCaptureTitle.Text = "Moving to center...";
+                RefCaptureInstruction.Text = $"Moving to computed center ({cx:F4},{cy:F4}) to capture reference image.";
 
-            var target = new PositionStruct { X = cx, Y = cy, Z = cz };
-            _context.MotionManager.MoveToAbs6(device, target, blocking: false);
+                var target = new PositionStruct { X = cx, Y = cy, Z = cz };
+                _context.MotionManager.MoveToAbs6(device, target, blocking: false);
 
-            await Task.Delay(1500);
+                await Task.Delay(1500);
+            }
         }
 
         _refCenterImagePath = null;
@@ -772,7 +827,7 @@ public partial class TrainerPanel : UserControl
         if (idx < 0) return;
 
         _pendingRefIndex = int.TryParse(rp.Name.Replace("Ref", ""), out var n) ? n : _refPoints.Count;
-        _refCornerTarget = rp.Corners.Count >= 3 ? 3 : 2;
+        _refCornerTarget = Math.Clamp(rp.Corners.Count, 1, 3);
         _refCornerCurrent = 1;
         _capturedRefCorners.Clear();
         _refCornerDisplayItems.Clear();
