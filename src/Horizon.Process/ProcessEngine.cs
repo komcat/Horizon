@@ -63,6 +63,8 @@ public sealed class ProcessEngine
     public bool StepByStepMode { get; set; }
     public HashSet<int> Breakpoints { get; } = new();
 
+    private readonly SystemCommandHandler _systemHandler = new();
+
     public ProcessEngine()
     {
         // Register built-in handlers
@@ -70,10 +72,19 @@ public sealed class ProcessEngine
         _dispatcher.RegisterHandler(new IOCommandHandler());
         _dispatcher.RegisterHandler(new PneumaticCommandHandler());
         _dispatcher.RegisterHandler(new CameraCommandHandler());
-        _dispatcher.RegisterHandler(new SystemCommandHandler());
+        _dispatcher.RegisterHandler(_systemHandler);
         _dispatcher.RegisterHandler(new ContextCommandHandler());
         _dispatcher.RegisterHandler(new CurrentMeasurementCommandHandler());
         _dispatcher.RegisterHandler(new LaserControllerCommandHandler());
+    }
+
+    /// <summary>
+    /// Register a custom system command that can be invoked via process plugins.
+    /// </summary>
+    public void RegisterSystemCommand(string methodName,
+        Func<Dictionary<string, string>, ProcessContext, (bool Success, string Error)> handler)
+    {
+        _systemHandler.CustomCommands[methodName] = handler;
     }
 
     public void RegisterHandler(ICommandHandler handler)

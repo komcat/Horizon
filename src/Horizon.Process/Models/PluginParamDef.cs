@@ -10,7 +10,8 @@ public enum PluginParamType
     MotionDevice,
     CameraDevice,
     NamedPosition,
-    Axis
+    Axis,
+    PneumaticDevice
 }
 
 public sealed record PluginParamDef(

@@ -660,15 +660,18 @@ public partial class NeedleCameraTrainerPanel : UserControl
         _markPos = pos;
         AppendLog($"Mark position captured: X={pos.X:F4}  Y={pos.Y:F4}  Z={pos.Z:F4}");
 
-        // Compute offsets
+        // Compute total offsets (estimate + residual)
         if (_cameraPos != null && _needleZPos != null)
         {
-            _offsetX = _markPos.X - _cameraPos.X;
-            _offsetY = _markPos.Y - _cameraPos.Y;
+            var residualX = _markPos.X - _cameraPos.X;
+            var residualY = _markPos.Y - _cameraPos.Y;
+            _offsetX = _config.EstimateOffsetX + residualX;
+            _offsetY = _config.EstimateOffsetY + residualY;
             _offsetZ = _cameraPos.Z - _needleZPos.Z;
 
-            MeasureOffsetText.Text = $"Offset X = {_offsetX:F4}    Y = {_offsetY:F4}    Z = {_offsetZ:F4}";
-            AppendLog($"Computed offsets: X={_offsetX:F4}  Y={_offsetY:F4}  Z={_offsetZ:F4}");
+            MeasureOffsetText.Text = $"Total offset: X={_offsetX:F4}  Y={_offsetY:F4}  Z={_offsetZ:F4}\n" +
+                                     $"(residual: X={residualX:F4}  Y={residualY:F4})";
+            AppendLog($"Total offset: X={_offsetX:F4}  Y={_offsetY:F4}  Z={_offsetZ:F4}");
         }
 
         CaptureMarkBtn.IsEnabled = false;
@@ -703,9 +706,9 @@ public partial class NeedleCameraTrainerPanel : UserControl
             sb.AppendLine($"  X={_markPos.X:F4}  Y={_markPos.Y:F4}  Z={_markPos.Z:F4}");
         sb.AppendLine();
         sb.AppendLine("─────────────────────────────────");
-        sb.AppendLine($"Offset X:  {_offsetX:F4}");
-        sb.AppendLine($"Offset Y:  {_offsetY:F4}");
-        sb.AppendLine($"Offset Z:  {_offsetZ:F4}");
+        sb.AppendLine($"Total Offset X:  {_offsetX:F4}");
+        sb.AppendLine($"Total Offset Y:  {_offsetY:F4}");
+        sb.AppendLine($"Offset Z:        {_offsetZ:F4}");
 
         SaveSummaryText.Text = sb.ToString();
     }

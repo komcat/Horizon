@@ -150,6 +150,20 @@ public sealed class ACSMotionController : IMotionController
         catch { return false; }
     }
 
+    public bool SetVelocity(string axis, double speed)
+    {
+        if (!_connected || !_axisMap.TryGetValue(axis, out var acsAxis)) return false;
+        try { _api.SetVelocity(acsAxis, speed); return true; }
+        catch { return false; }
+    }
+
+    public double GetVelocity(string axis)
+    {
+        if (!_connected || !_axisMap.TryGetValue(axis, out var acsAxis)) return 0;
+        try { return _api.GetVelocity(acsAxis); }
+        catch { return 0; }
+    }
+
     private void WaitForMotionComplete(Axis axis, int timeoutMs = 30000)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();

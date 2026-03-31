@@ -11,6 +11,7 @@ using Horizon.Process;
 using Horizon.Process.Recipe;
 using Horizon.Core.Interlock;
 using Horizon.Safety;
+using Horizon.Core.Dispensing;
 using Horizon.Safety.Models;
 
 namespace Horizon.Core;
@@ -33,6 +34,7 @@ public sealed class AppContext : IAppContext, IDisposable
     private ProductManager? _productManager;
     private AxisTransformService? _axisTransformService;
     private InterlockService? _interlockService;
+    private DispenseExecutor? _dispenseExecutor;
 
     private readonly CameraConfigStore _configStore = new();
     private readonly MeasurementHub _measurementHub = new();
@@ -80,6 +82,8 @@ public sealed class AppContext : IAppContext, IDisposable
     public AxisTransformService AxisTransformService => _axisTransformService ?? new();
 
     public InterlockService? InterlockService => _interlockService;
+
+    public DispenseExecutor? DispenseExecutor => _dispenseExecutor;
 
     public CameraConfigStore ConfigStore => _configStore;
 
@@ -350,6 +354,47 @@ public sealed class AppContext : IAppContext, IDisposable
         {
             LogError($"Product manager load error: {ex.Message}");
         }
+
+        // --- Dispensing executor (depends on product manager + pneumatic + motion) ---
+        if (_pneumaticManager != null && _productManager != null && _motionManager != null)
+        {
+            var calStore = new NeedleCameraCalibrationStore();
+            var profileStore = new DispenseProfileStore();
+            _dispenseExecutor = new DispenseExecutor(
+                _motionManager, _pneumaticManager, calStore, profileStore, _productManager);
+
+            // Register dispense as a custom system command for process plugins
+            var executor = _dispenseExecutor;
+            _processEngine!.RegisterSystemCommand("dispense", (parms, ctx) =>
+            {
+                var name = parms.GetValueOrDefault("name");
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    Serilog.Log.Error("[Dispense] Missing 'name' parameter");
+                    return (false, "Missing 'name' parameter");
+                }
+
+                Serilog.Log.Information("[Dispense] Process plugin executing: {Name}", name);
+                var args = parms.ToDictionary(kv => kv.Key, kv => (object)kv.Value);
+                try
+                {
+                    var result = executor.ExecuteAsync(name, args, ctx.CancellationToken).GetAwaiter().GetResult();
+                    if (!result)
+                        Serilog.Log.Error("[Dispense] Failed for: {Name}", name);
+                    return (result, result ? "" : $"Dispense '{name}' failed — check log for details");
+                }
+                catch (OperationCanceledException)
+                {
+                    return (false, "Cancelled");
+                }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Error(ex, "[Dispense] Error: {Message}", ex.Message);
+                    return (false, $"Dispense error: {ex.Message}");
+                }
+            });
+            Log("Dispensing executor initialized");
+        }
     }
 
     public void Shutdown()
@@ -362,6 +407,7 @@ public sealed class AppContext : IAppContext, IDisposable
         _teachPointManager = null;
         _axisTransformService = null;
         _interlockService = null;
+        _dispenseExecutor = null;
         _processEngine = null;
         _pluginRegistry = null;
         _recipeEngine = null;
@@ -794,6 +840,22 @@ public sealed class AppContext : IAppContext, IDisposable
                     return Task.FromResult(_cameraManager.ApplyExposureSettings(dev, settings));
                 });
             }
+        }
+
+        // --- Dispensing (compound command for recipe scripts) ---
+        if (_dispenseExecutor != null)
+        {
+            var executor = _dispenseExecutor;
+            reg.Register("system", "dispense", async (args, ctx, ct) =>
+            {
+                var name = args.GetValueOrDefault("name")?.ToString();
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    Serilog.Log.Error("[Dispense] Missing 'name' parameter");
+                    return false;
+                }
+                return await executor.ExecuteAsync(name, args, ct);
+            });
         }
     }
 

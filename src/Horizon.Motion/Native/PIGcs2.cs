@@ -60,6 +60,14 @@ internal static class PIGcs2
     internal static extern int qSVO(int iId,
         [MarshalAs(UnmanagedType.LPStr)] string szAxes, [MarshalAs(UnmanagedType.LPArray)] int[] pbValarray);
 
+    [DllImport(DllName, EntryPoint = "PI_VEL")]
+    internal static extern int VEL(int iId,
+        [MarshalAs(UnmanagedType.LPStr)] string szAxes, [MarshalAs(UnmanagedType.LPArray)] double[] pdValarray);
+
+    [DllImport(DllName, EntryPoint = "PI_qVEL")]
+    internal static extern int qVEL(int iId,
+        [MarshalAs(UnmanagedType.LPStr)] string szAxes, [MarshalAs(UnmanagedType.LPArray)] double[] pdValarray);
+
     [DllImport(DllName, EntryPoint = "PI_GetError")]
     internal static extern int GetError(int iId);
 

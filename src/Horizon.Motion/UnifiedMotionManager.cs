@@ -187,6 +187,21 @@ public sealed class UnifiedMotionManager
         return ok;
     }
 
+    public bool SetVelocity(string device, string axis, double speed)
+    {
+        var ok = GetController(device)?.SetVelocity(axis, speed) ?? false;
+        if (ok)
+            Log.Information("[Motion] '{Device}' SetVelocity {Axis} = {Speed:F3}", device, axis, speed);
+        else
+            Log.Error("[Motion] '{Device}' SetVelocity {Axis} = {Speed:F3} FAILED", device, axis, speed);
+        return ok;
+    }
+
+    public double GetVelocity(string device, string axis)
+    {
+        return GetController(device)?.GetVelocity(axis) ?? 0;
+    }
+
     public void StopAllDevices()
     {
         Log.Warning("[Motion] StopAllDevices — emergency stop all motion");

@@ -19,6 +19,9 @@ public interface IMotionController
     bool StopAxis(string axis);
     bool StopAll();
 
+    bool SetVelocity(string axis, double speed);
+    double GetVelocity(string axis);
+
     string ControllerType { get; }
     string DeviceName { get; }
     List<string> AxisNames { get; }

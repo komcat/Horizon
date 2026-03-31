@@ -7,6 +7,12 @@ public sealed class SystemCommandHandler : ICommandHandler
 {
     public string ManagerType => "system";
 
+    /// <summary>
+    /// Extensible command handlers registered from outside (e.g. AppContext).
+    /// Key: method name (lowercase). Value: (params, context) → (success, errorMessage).
+    /// </summary>
+    public Dictionary<string, Func<Dictionary<string, string>, ProcessContext, (bool Success, string Error)>> CustomCommands { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public bool ExecuteCommand(
         object? manager,
         string deviceName,
@@ -68,6 +74,13 @@ public sealed class SystemCommandHandler : ICommandHandler
                 }
 
                 default:
+                    // Check custom registered commands
+                    if (CustomCommands.TryGetValue(methodName, out var customHandler))
+                    {
+                        var (success, err) = customHandler(parameters, context);
+                        errorMessage = err;
+                        return success;
+                    }
                     errorMessage = $"Unknown system command: {methodName}";
                     return false;
             }

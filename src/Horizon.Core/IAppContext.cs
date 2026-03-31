@@ -1,4 +1,5 @@
 using Horizon.Camera;
+using Horizon.Core.Dispensing;
 using Horizon.CurrentMeasurement;
 using Horizon.IO;
 using Horizon.LaserController;
@@ -29,6 +30,7 @@ public interface IAppContext
     ProductManager ProductManager { get; }
     AxisTransformService AxisTransformService { get; }
     InterlockService? InterlockService { get; }
+    DispenseExecutor? DispenseExecutor { get; }
     bool IsInitialized { get; }
     bool SimulationMode { get; set; }
     void Initialize();

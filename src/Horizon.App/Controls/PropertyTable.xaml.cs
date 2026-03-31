@@ -186,6 +186,9 @@ public partial class PropertyTable : UserControl
             case PluginParamType.CameraDevice:
                 return CreateDeviceCombo(GetCameraDeviceNames(), currentValue, param);
 
+            case PluginParamType.PneumaticDevice:
+                return CreateDeviceCombo(GetPneumaticDeviceNames(), currentValue, param);
+
             case PluginParamType.NamedPosition:
                 return CreateDependentCombo(param, currentValue, GetNamedPositions);
 
@@ -439,6 +442,13 @@ public partial class PropertyTable : UserControl
     {
         if (!_context.IsInitialized) return new();
         try { return _context.CameraManager.GetCameraIds(); }
+        catch { return new(); }
+    }
+
+    private List<string> GetPneumaticDeviceNames()
+    {
+        if (!_context.IsInitialized) return new();
+        try { return _context.PneumaticManager.GetAllSlideNames(); }
         catch { return new(); }
     }
 

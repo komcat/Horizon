@@ -124,6 +124,33 @@ public sealed class PIMotionController : IMotionController
         return PIGcs2.STP(_connectionId) != 0;
     }
 
+    public bool SetVelocity(string axis, double speed)
+    {
+        // PI velocity is set via VEL command
+        if (!IsConnected) return false;
+        try
+        {
+            var axes = axis + "\n";
+            var values = new[] { speed };
+            return PIGcs2.VEL(_connectionId, axes, values) != 0;
+        }
+        catch { return false; }
+    }
+
+    public double GetVelocity(string axis)
+    {
+        if (!IsConnected) return 0;
+        try
+        {
+            var axes = axis + "\n";
+            var values = new double[1];
+            if (PIGcs2.qVEL(_connectionId, axes, values) != 0)
+                return values[0];
+            return 0;
+        }
+        catch { return 0; }
+    }
+
     private void WaitForMotionComplete(string axis, int timeoutMs = 30000)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();

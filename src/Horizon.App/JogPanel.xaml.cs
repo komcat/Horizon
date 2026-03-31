@@ -19,6 +19,7 @@ public partial class JogPanel : UserControl
     private string? _selectedDevice;
     private double _currentStepMicrons = 10.0;
     private bool _keyboardActive;
+    private bool _initialized;
 
     // Axis+direction → button mapping for keyboard flash feedback
     private readonly Dictionary<string, Button> _jogButtons = new();
@@ -29,13 +30,13 @@ public partial class JogPanel : UserControl
     private static readonly double[] StepSizes =
     {
         0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0,
-        100.0, 200.0, 500.0, 1000.0, 2000.0
+        100.0, 200.0, 250.0, 500.0, 1000.0, 2000.0, 5000.0
     };
 
     private static readonly string[] StepLabels =
     {
         "0.1µ", "0.5µ", "1µ", "2µ", "5µ", "10µ", "20µ", "50µ",
-        "100µ", "200µ", "500µ", "1mm", "2mm"
+        "100µ", "200µ", "250µ", "500µ", "1mm", "2mm", "5mm"
     };
 
     public JogPanel(IAppContext context)
@@ -61,11 +62,14 @@ public partial class JogPanel : UserControl
         Loaded += (_, _) =>
         {
             _positionTimer.Start();
-            InterlockOverrideCheck.IsChecked = _context.InterlockService?.OverrideMode ?? false;
-            BuildPneumaticButtons();
-            BuildIOOutputButtons();
-            BuildCameraSettings();
-            Focus();
+            if (!_initialized)
+            {
+                _initialized = true;
+                InterlockOverrideCheck.IsChecked = _context.InterlockService?.OverrideMode ?? false;
+                try { BuildPneumaticButtons(); } catch { }
+                try { BuildIOOutputButtons(); } catch { }
+                try { BuildCameraSettings(); } catch { }
+            }
         };
         Unloaded += (_, _) => _positionTimer.Stop();
 
@@ -377,8 +381,8 @@ public partial class JogPanel : UserControl
             case Key.S: JogWithFlash("Y",  1); e.Handled = true; break;
             case Key.A: JogWithFlash("X", -1); e.Handled = true; break;
             case Key.D: JogWithFlash("X",  1); e.Handled = true; break;
-            case Key.R: JogWithFlash("Z",  1); e.Handled = true; break;
-            case Key.F: JogWithFlash("Z", -1); e.Handled = true; break;
+            case Key.R: JogWithFlash("Z", -1); e.Handled = true; break;
+            case Key.F: JogWithFlash("Z",  1); e.Handled = true; break;
             case Key.Q: CycleStep(-1);         e.Handled = true; break;
             case Key.E: CycleStep( 1);         e.Handled = true; break;
             case Key.Escape:
