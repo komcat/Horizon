@@ -25,6 +25,9 @@ public interface IHorizonEngine : IAsyncDisposable
     /// <summary>Laser-controller domain (Thorlabs CLD101x). Valid after <see cref="InitializeAsync"/>.</summary>
     ILaserFacet Laser { get; }
 
+    /// <summary>Camera domain (Basler Pylon, IDS Peak, uEye). Valid after <see cref="InitializeAsync"/>.</summary>
+    ICameraFacet Camera { get; }
+
     /// <summary>Loads configuration and builds device objects. Performs no I/O.</summary>
     Task InitializeAsync(CancellationToken ct = default);
 

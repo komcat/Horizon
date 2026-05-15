@@ -1,3 +1,4 @@
+using Horizon.Camera;
 using Horizon.Common;
 using Horizon.CurrentMeasurement;
 using Horizon.IO;
@@ -31,6 +32,9 @@ public sealed class HorizonEngine : IHorizonEngine
     private LaserControllerManager? _laserManager;
     private LaserFacet? _laserFacet;
 
+    private CameraManager? _cameraManager;
+    private CameraFacet? _cameraFacet;
+
     public EngineState State
     {
         get { lock (_gate) return _state; }
@@ -50,6 +54,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
     public ILaserFacet Laser =>
         _laserFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
+
+    public ICameraFacet Camera =>
+        _cameraFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
 
     public event Action<HardwareStatusChanged>? StatusChanged;
     public event Action<LogEntry>? LogEmitted;
@@ -133,6 +140,21 @@ public sealed class HorizonEngine : IHorizonEngine
         }
         _laserFacet = new LaserFacet(_laserManager, RaiseStatusChanged, Log);
 
+        // --- Camera domain ---
+        _cameraManager = new CameraManager();
+        try
+        {
+            var registered = new CameraConfigStore().Load();
+            if (registered.Count > 0)
+                _cameraManager.DiscoverAndAddRegisteredCameras(registered);
+            Log(LogLevel.Info, $"Cameras added: {_cameraManager.CameraCount}");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"Camera config load failed: {ex.Message}");
+        }
+        _cameraFacet = new CameraFacet(_cameraManager, RaiseStatusChanged, Log);
+
         lock (_gate) _state = EngineState.Initialized;
         Log(LogLevel.Info, "Engine initialized.");
         return Task.CompletedTask;
@@ -168,6 +190,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
         if (_laserFacet != null)
             await _laserFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
+
+        if (_cameraFacet != null)
+            await _cameraFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
 
         lock (_gate) _state = EngineState.Connected;
         Log(LogLevel.Info, "ConnectAll complete.");
@@ -238,6 +263,18 @@ public sealed class HorizonEngine : IHorizonEngine
             }
         }
 
+        if (_cameraFacet != null)
+        {
+            foreach (var id in _cameraFacet.CameraIds)
+            {
+                var s = _cameraFacet.GetState(id);
+                var detail = s.Grabbing
+                    ? $"{s.Width}x{s.Height} grabbing frames={s.FramesReceived}"
+                    : (s.Connected ? "idle" : "no data");
+                devices.Add(new DeviceStatus("Camera", id, _cameraFacet.IsConnected(id), detail));
+            }
+        }
+
         return new HardwareStatusSnapshot(state, devices);
     }
 
@@ -248,6 +285,12 @@ public sealed class HorizonEngine : IHorizonEngine
             if (_state == EngineState.ShuttingDown) return;
             _state = EngineState.ShuttingDown;
         }
+
+        if (_cameraFacet != null)
+            await _cameraFacet.DisposeAsync().ConfigureAwait(false);   // stops the camera poll loop, unsubscribes
+        _cameraManager?.Dispose();
+        _cameraManager = null;
+        _cameraFacet = null;
 
         if (_laserFacet != null)
             await _laserFacet.DisposeAsync().ConfigureAwait(false);   // stops the laser poll loop

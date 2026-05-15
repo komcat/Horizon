@@ -16,6 +16,7 @@ internal sealed class ConsoleApp
     private const string PneumaticSlides = "Pneumatic slides";
     private const string CurrentMeasurement = "Current measurement";
     private const string LaserControllers = "Laser controllers";
+    private const string Cameras = "Cameras";
     private const string Reconnect = "Reconnect hardware";
     private const string Exit = "Exit";
 
@@ -33,7 +34,7 @@ internal sealed class ConsoleApp
                 new SelectionPrompt<string>()
                     .Title("\n[aqua]Horizon engine[/] — choose an action:")
                     .AddChoices(ShowStatus, IoDevices, MotionDevices, PneumaticSlides,
-                                CurrentMeasurement, LaserControllers, Reconnect, Exit));
+                                CurrentMeasurement, LaserControllers, Cameras, Reconnect, Exit));
 
             switch (choice)
             {
@@ -59,6 +60,10 @@ internal sealed class ConsoleApp
 
                 case LaserControllers:
                     await LaserMenuAsync();
+                    break;
+
+                case Cameras:
+                    await CameraMenuAsync();
                     break;
 
                 case Reconnect:
@@ -666,6 +671,121 @@ internal sealed class ConsoleApp
         table.AddRow("Laser", state.LaserOn ? "[red]ON (emitting)[/]" : "[grey]off[/]");
         table.AddRow("Temperature", $"{state.Temperature:F2} C  (setpoint {state.SetpointTemperature:F2} C)");
         table.AddRow("Laser current", $"{state.LaserCurrent:F2} mA  (setpoint {state.SetpointLaserCurrent:F2} mA)");
+        AnsiConsole.Write(table);
+    }
+
+    private async Task CameraMenuAsync()
+    {
+        var cameras = _engine.Camera.CameraIds;
+        if (cameras.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No cameras configured (check camera-config.json).[/]");
+            return;
+        }
+
+        while (true)
+        {
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("\n[aqua]Cameras[/] — select a camera:")
+                    .AddChoices(cameras.Append(Back)));
+
+            if (choice == Back) return;
+            await CameraDeviceMenuAsync(choice);
+        }
+    }
+
+    private async Task CameraDeviceMenuAsync(string id)
+    {
+        const string Connect = "Connect";
+        const string Disconnect = "Disconnect";
+        const string StartGrab = "Start grabbing";
+        const string StopGrab = "Stop grabbing";
+        const string Snapshot = "Snapshot to file";
+        const string SetExposure = "Set exposure";
+        const string Refresh = "Refresh";
+
+        while (true)
+        {
+            RenderCameraDevice(id);
+
+            var connected = _engine.Camera.IsConnected(id);
+            var choices = new List<string>();
+            if (connected)
+                choices.AddRange(new[] { StartGrab, StopGrab, Snapshot, SetExposure, Disconnect });
+            else
+                choices.Add(Connect);
+            choices.Add(Refresh);
+            choices.Add(Back);
+
+            var action = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"\n[aqua]{Markup.Escape(id)}[/] — action:")
+                    .AddChoices(choices));
+
+            switch (action)
+            {
+                case Connect:
+                    ReportResult(await _engine.Camera.ConnectAsync(id), $"Connect {id}");
+                    break;
+                case Disconnect:
+                    ReportResult(await _engine.Camera.DisconnectAsync(id), $"Disconnect {id}");
+                    break;
+                case StartGrab:
+                    ReportResult(await _engine.Camera.StartGrabbingAsync(id), $"Start grabbing {id}");
+                    await Task.Delay(300);
+                    break;
+                case StopGrab:
+                    ReportResult(await _engine.Camera.StopGrabbingAsync(id), $"Stop grabbing {id}");
+                    break;
+                case Snapshot:
+                    var snap = await _engine.Camera.SnapToFileAsync(id);
+                    if (snap.IsSuccess)
+                        AnsiConsole.MarkupLineInterpolated($"[green]Saved[/] — {snap.Value}");
+                    else
+                        AnsiConsole.MarkupLineInterpolated($"[red]Snapshot failed[/] — {snap.Message}");
+                    break;
+                case SetExposure:
+                    var us = AnsiConsole.Prompt(new TextPrompt<double>("Exposure (us):").DefaultValue(10000d));
+                    var gain = AnsiConsole.Prompt(new TextPrompt<double>("Gain:").DefaultValue(0d));
+                    var exposure = new CameraExposure(us, gain, false, false, 10.0);
+                    ReportResult(await _engine.Camera.ApplyExposureAsync(id, exposure), $"Set exposure {id}");
+                    break;
+                case Refresh:
+                    break;
+                case Back:
+                    return;
+            }
+        }
+    }
+
+    private void RenderCameraDevice(string id)
+    {
+        var info = _engine.Camera.GetCamera(id);
+        if (info == null)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]Unknown camera: {id}[/]");
+            return;
+        }
+
+        var connected = _engine.Camera.IsConnected(id);
+        var state = _engine.Camera.GetState(id);
+
+        var connectedText = connected ? "[green]yes[/]" : "[red]no[/]";
+        var grabText = state.Grabbing ? "[yellow]grabbing[/]" : "[grey]idle[/]";
+        AnsiConsole.MarkupLine(
+            $"\n[aqua]{Markup.Escape(info.DisplayName)}[/]  type: {Markup.Escape(info.CameraType)}  " +
+            $"connected: {connectedText}  {grabText}");
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Property");
+        table.AddColumn("Value");
+        table.AddRow("Id", Markup.Escape(info.Id));
+        table.AddRow("Model", Markup.Escape(string.IsNullOrEmpty(info.Model) ? "—" : info.Model));
+        table.AddRow("Serial", Markup.Escape(string.IsNullOrEmpty(info.SerialNumber) ? "—" : info.SerialNumber));
+        table.AddRow("Resolution", state.Width > 0 ? $"{state.Width} x {state.Height}" : "—");
+        table.AddRow("Exposure", $"{state.Exposure.ExposureUs:F0} us  gain {state.Exposure.Gain:F1}");
+        table.AddRow("Frames received", state.FramesReceived.ToString());
         AnsiConsole.Write(table);
     }
 
