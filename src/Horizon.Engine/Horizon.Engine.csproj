@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="MVTec.HalconDotNet" Version="24050.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Horizon.Common\Horizon.Common.csproj" />
     <ProjectReference Include="..\Horizon.IO\Horizon.IO.csproj" />
     <ProjectReference Include="..\Horizon.Motion\Horizon.Motion.csproj" />

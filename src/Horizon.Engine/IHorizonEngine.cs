@@ -28,6 +28,9 @@ public interface IHorizonEngine : IAsyncDisposable
     /// <summary>Camera domain (Basler Pylon, IDS Peak, uEye). Valid after <see cref="InitializeAsync"/>.</summary>
     ICameraFacet Camera { get; }
 
+    /// <summary>Vision domain (HALCON over camera frames). Valid after <see cref="InitializeAsync"/>.</summary>
+    IVisionFacet Vision { get; }
+
     /// <summary>Loads configuration and builds device objects. Performs no I/O.</summary>
     Task InitializeAsync(CancellationToken ct = default);
 

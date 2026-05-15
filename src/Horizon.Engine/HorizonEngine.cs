@@ -35,6 +35,8 @@ public sealed class HorizonEngine : IHorizonEngine
     private CameraManager? _cameraManager;
     private CameraFacet? _cameraFacet;
 
+    private VisionFacet? _visionFacet;
+
     public EngineState State
     {
         get { lock (_gate) return _state; }
@@ -57,6 +59,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
     public ICameraFacet Camera =>
         _cameraFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
+
+    public IVisionFacet Vision =>
+        _visionFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
 
     public event Action<HardwareStatusChanged>? StatusChanged;
     public event Action<LogEntry>? LogEmitted;
@@ -155,6 +160,9 @@ public sealed class HorizonEngine : IHorizonEngine
         }
         _cameraFacet = new CameraFacet(_cameraManager, RaiseStatusChanged, Log);
 
+        // --- Vision domain (HALCON over camera frames) ---
+        _visionFacet = new VisionFacet(_cameraFacet, Log);
+
         lock (_gate) _state = EngineState.Initialized;
         Log(LogLevel.Info, "Engine initialized.");
         return Task.CompletedTask;
@@ -193,6 +201,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
         if (_cameraFacet != null)
             await _cameraFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
+
+        if (_visionFacet != null)
+            progress?.Report($"Vision: HALCON {_visionFacet.HalconVersion}");
 
         lock (_gate) _state = EngineState.Connected;
         Log(LogLevel.Info, "ConnectAll complete.");
@@ -275,6 +286,12 @@ public sealed class HorizonEngine : IHorizonEngine
             }
         }
 
+        if (_visionFacet != null)
+        {
+            devices.Add(new DeviceStatus("Vision", "HALCON",
+                _visionFacet.HalconAvailable, _visionFacet.HalconVersion));
+        }
+
         return new HardwareStatusSnapshot(state, devices);
     }
 
@@ -285,6 +302,9 @@ public sealed class HorizonEngine : IHorizonEngine
             if (_state == EngineState.ShuttingDown) return;
             _state = EngineState.ShuttingDown;
         }
+
+        _visionFacet?.Dispose();   // unsubscribes from camera frames
+        _visionFacet = null;
 
         if (_cameraFacet != null)
             await _cameraFacet.DisposeAsync().ConfigureAwait(false);   // stops the camera poll loop, unsubscribes

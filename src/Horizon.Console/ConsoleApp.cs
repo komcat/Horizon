@@ -17,6 +17,7 @@ internal sealed class ConsoleApp
     private const string CurrentMeasurement = "Current measurement";
     private const string LaserControllers = "Laser controllers";
     private const string Cameras = "Cameras";
+    private const string Vision = "Vision (HALCON)";
     private const string Reconnect = "Reconnect hardware";
     private const string Exit = "Exit";
 
@@ -34,7 +35,7 @@ internal sealed class ConsoleApp
                 new SelectionPrompt<string>()
                     .Title("\n[aqua]Horizon engine[/] — choose an action:")
                     .AddChoices(ShowStatus, IoDevices, MotionDevices, PneumaticSlides,
-                                CurrentMeasurement, LaserControllers, Cameras, Reconnect, Exit));
+                                CurrentMeasurement, LaserControllers, Cameras, Vision, Reconnect, Exit));
 
             switch (choice)
             {
@@ -64,6 +65,10 @@ internal sealed class ConsoleApp
 
                 case Cameras:
                     await CameraMenuAsync();
+                    break;
+
+                case Vision:
+                    await VisionMenuAsync();
                     break;
 
                 case Reconnect:
@@ -787,6 +792,97 @@ internal sealed class ConsoleApp
         table.AddRow("Exposure", $"{state.Exposure.ExposureUs:F0} us  gain {state.Exposure.Gain:F1}");
         table.AddRow("Frames received", state.FramesReceived.ToString());
         AnsiConsole.Write(table);
+    }
+
+    private async Task VisionMenuAsync()
+    {
+        var vision = _engine.Vision;
+        var availText = vision.HalconAvailable ? "[green]available[/]" : "[red]unavailable[/]";
+        AnsiConsole.MarkupLine($"\n[aqua]Vision (HALCON)[/] — {availText}  version: {Markup.Escape(vision.HalconVersion)}");
+
+        if (!vision.HalconAvailable)
+        {
+            AnsiConsole.MarkupLine("[yellow]HALCON is not available — cannot run vision operations.[/]");
+            return;
+        }
+
+        var cameras = _engine.Camera.CameraIds;
+        if (cameras.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No cameras configured.[/]");
+            return;
+        }
+
+        while (true)
+        {
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("\n[aqua]Vision[/] — select a camera:")
+                    .AddChoices(cameras.Append(Back)));
+
+            if (choice == Back) return;
+            await VisionCameraMenuAsync(choice);
+        }
+    }
+
+    private async Task VisionCameraMenuAsync(string cameraId)
+    {
+        const string Analyze = "Analyze frame";
+        const string CountBlobs = "Count blobs";
+        const string Refresh = "Refresh";
+
+        while (true)
+        {
+            var hasFrame = _engine.Vision.HasFrame(cameraId);
+            AnsiConsole.MarkupLineInterpolated(
+                $"\n[aqua]{cameraId}[/] — frame available: {(hasFrame ? "yes" : "no (start grabbing first)")}");
+
+            var action = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("Action:")
+                    .AddChoices(Analyze, CountBlobs, Refresh, Back));
+
+            switch (action)
+            {
+                case Analyze:
+                    var stats = await _engine.Vision.AnalyzeFrameAsync(cameraId);
+                    if (stats.IsSuccess)
+                    {
+                        var s = stats.Value;
+                        var table = new Table().Border(TableBorder.Rounded);
+                        table.AddColumn("Property");
+                        table.AddColumn("Value");
+                        table.AddRow("Resolution", $"{s.Width} x {s.Height}");
+                        table.AddRow("Channels", s.Channels.ToString());
+                        table.AddRow("Min gray", $"{s.MinGray:F1}");
+                        table.AddRow("Mean gray", $"{s.MeanGray:F1}");
+                        table.AddRow("Max gray", $"{s.MaxGray:F1}");
+                        AnsiConsole.Write(table);
+                    }
+                    else
+                    {
+                        AnsiConsole.MarkupLineInterpolated($"[red]Analyze failed[/] — {stats.Message}");
+                    }
+                    break;
+
+                case CountBlobs:
+                    var min = AnsiConsole.Prompt(new TextPrompt<int>("Threshold min (0-255):").DefaultValue(0));
+                    var max = AnsiConsole.Prompt(new TextPrompt<int>("Threshold max (0-255):").DefaultValue(128));
+                    var blobs = await _engine.Vision.CountBlobsAsync(cameraId, min, max);
+                    if (blobs.IsSuccess)
+                        AnsiConsole.MarkupLineInterpolated(
+                            $"[green]Blobs[/] — count={blobs.Value.BlobCount}  total area={blobs.Value.TotalArea:F0} px");
+                    else
+                        AnsiConsole.MarkupLineInterpolated($"[red]Count blobs failed[/] — {blobs.Message}");
+                    break;
+
+                case Refresh:
+                    break;
+
+                case Back:
+                    return;
+            }
+        }
     }
 
     private static string Bit(uint mask, int pin)
