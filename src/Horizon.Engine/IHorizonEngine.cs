@@ -16,6 +16,9 @@ public interface IHorizonEngine : IAsyncDisposable
     /// <summary>Motion domain (PI GCS2, ACS SPiiPlus). Valid after <see cref="InitializeAsync"/>.</summary>
     IMotionFacet Motion { get; }
 
+    /// <summary>Pneumatic domain (IO-driven slides). Valid after <see cref="InitializeAsync"/>.</summary>
+    IPneumaticFacet Pneumatic { get; }
+
     /// <summary>Loads configuration and builds device objects. Performs no I/O.</summary>
     Task InitializeAsync(CancellationToken ct = default);
 

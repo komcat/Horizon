@@ -11,6 +11,7 @@
     <ProjectReference Include="..\Horizon.Common\Horizon.Common.csproj" />
     <ProjectReference Include="..\Horizon.IO\Horizon.IO.csproj" />
     <ProjectReference Include="..\Horizon.Motion\Horizon.Motion.csproj" />
+    <ProjectReference Include="..\Horizon.Pneumatic\Horizon.Pneumatic.csproj" />
   </ItemGroup>
 
 </Project>

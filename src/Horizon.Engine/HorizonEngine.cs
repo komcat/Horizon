@@ -1,6 +1,7 @@
 using Horizon.Common;
 using Horizon.IO;
 using Horizon.Motion;
+using Horizon.Pneumatic;
 
 namespace Horizon.Engine;
 
@@ -20,6 +21,8 @@ public sealed class HorizonEngine : IHorizonEngine
     private UnifiedMotionManager? _motionManager;
     private MotionFacet? _motionFacet;
 
+    private PneumaticFacet? _pneumaticFacet;
+
     public EngineState State
     {
         get { lock (_gate) return _state; }
@@ -30,6 +33,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
     public IMotionFacet Motion =>
         _motionFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
+
+    public IPneumaticFacet Pneumatic =>
+        _pneumaticFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
 
     public event Action<HardwareStatusChanged>? StatusChanged;
     public event Action<LogEntry>? LogEmitted;
@@ -74,6 +80,19 @@ public sealed class HorizonEngine : IHorizonEngine
         }
         _motionFacet = new MotionFacet(_motionManager, RaiseStatusChanged, Log);
 
+        // --- Pneumatic domain (depends on IO) ---
+        var pneumaticManager = new PneumaticManager();
+        try
+        {
+            var count = PneumaticJsonLoader.LoadSlides(pneumaticManager, _ioManager, _configDirectory);
+            Log(LogLevel.Info, $"Pneumatic slides loaded: {count}");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"Pneumatic config load failed: {ex.Message}");
+        }
+        _pneumaticFacet = new PneumaticFacet(pneumaticManager, RaiseStatusChanged, Log);
+
         lock (_gate) _state = EngineState.Initialized;
         Log(LogLevel.Info, "Engine initialized.");
         return Task.CompletedTask;
@@ -100,6 +119,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
         if (_motionFacet != null)
             await _motionFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
+
+        if (_pneumaticFacet != null)
+            await _pneumaticFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
 
         lock (_gate) _state = EngineState.Connected;
         Log(LogLevel.Info, "ConnectAll complete.");
@@ -134,6 +156,18 @@ public sealed class HorizonEngine : IHorizonEngine
             }
         }
 
+        if (_pneumaticFacet != null)
+        {
+            foreach (var name in _pneumaticFacet.SlideNames)
+            {
+                var s = _pneumaticFacet.GetState(name);
+                var detail = s.Valid
+                    ? $"{s.Position}{(s.OutputActive ? " out=on" : "")}"
+                    : "no data";
+                devices.Add(new DeviceStatus("Pneumatic", name, true, detail));
+            }
+        }
+
         return new HardwareStatusSnapshot(state, devices);
     }
 
@@ -144,6 +178,10 @@ public sealed class HorizonEngine : IHorizonEngine
             if (_state == EngineState.ShuttingDown) return;
             _state = EngineState.ShuttingDown;
         }
+
+        if (_pneumaticFacet != null)
+            await _pneumaticFacet.DisposeAsync().ConfigureAwait(false);   // stops the pneumatic poll loop
+        _pneumaticFacet = null;
 
         if (_motionFacet != null)
             await _motionFacet.DisposeAsync().ConfigureAwait(false);   // stops the motion poll loop

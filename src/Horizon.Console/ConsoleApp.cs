@@ -13,6 +13,7 @@ internal sealed class ConsoleApp
     private const string ShowStatus = "Show hardware status";
     private const string IoDevices = "IO devices";
     private const string MotionDevices = "Motion devices";
+    private const string PneumaticSlides = "Pneumatic slides";
     private const string Reconnect = "Reconnect hardware";
     private const string Exit = "Exit";
 
@@ -29,7 +30,7 @@ internal sealed class ConsoleApp
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
                     .Title("\n[aqua]Horizon engine[/] — choose an action:")
-                    .AddChoices(ShowStatus, IoDevices, MotionDevices, Reconnect, Exit));
+                    .AddChoices(ShowStatus, IoDevices, MotionDevices, PneumaticSlides, Reconnect, Exit));
 
             switch (choice)
             {
@@ -43,6 +44,10 @@ internal sealed class ConsoleApp
 
                 case MotionDevices:
                     await MotionMenuAsync();
+                    break;
+
+                case PneumaticSlides:
+                    await PneumaticMenuAsync();
                     break;
 
                 case Reconnect:
@@ -337,6 +342,91 @@ internal sealed class ConsoleApp
 
         // Let the poll loop catch up before re-rendering.
         await Task.Delay(200);
+    }
+
+    private async Task PneumaticMenuAsync()
+    {
+        var slides = _engine.Pneumatic.SlideNames;
+        if (slides.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No pneumatic slides configured (check pneumatic_slides.json).[/]");
+            return;
+        }
+
+        while (true)
+        {
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("\n[aqua]Pneumatic slides[/] — select a slide:")
+                    .AddChoices(slides.Append(Back)));
+
+            if (choice == Back) return;
+            await PneumaticSlideMenuAsync(choice);
+        }
+    }
+
+    private async Task PneumaticSlideMenuAsync(string slide)
+    {
+        const string Extend = "Extend";
+        const string Retract = "Retract";
+        const string ExtendWait = "Extend & wait";
+        const string RetractWait = "Retract & wait";
+        const string Refresh = "Refresh";
+
+        while (true)
+        {
+            RenderPneumaticSlide(slide);
+
+            var action = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"\n[aqua]{Markup.Escape(slide)}[/] — action:")
+                    .AddChoices(Extend, Retract, ExtendWait, RetractWait, Refresh, Back));
+
+            switch (action)
+            {
+                case Extend:
+                    ReportResult(await _engine.Pneumatic.ExtendAsync(slide), $"Extend {slide}");
+                    await Task.Delay(250);
+                    break;
+
+                case Retract:
+                    ReportResult(await _engine.Pneumatic.RetractAsync(slide), $"Retract {slide}");
+                    await Task.Delay(250);
+                    break;
+
+                case ExtendWait:
+                    ReportResult(await _engine.Pneumatic.ExtendAndWaitAsync(slide), $"Extend & wait {slide}");
+                    break;
+
+                case RetractWait:
+                    ReportResult(await _engine.Pneumatic.RetractAndWaitAsync(slide), $"Retract & wait {slide}");
+                    break;
+
+                case Refresh:
+                    break;
+
+                case Back:
+                    return;
+            }
+        }
+    }
+
+    private void RenderPneumaticSlide(string slide)
+    {
+        var state = _engine.Pneumatic.GetState(slide);
+
+        AnsiConsole.MarkupLineInterpolated($"\n[aqua]{slide}[/]");
+        if (!state.Valid)
+            AnsiConsole.MarkupLine("[grey]No polled data yet.[/]");
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Property");
+        table.AddColumn("Value");
+        table.AddRow("Position", $"[aqua]{state.Position}[/]");
+        table.AddRow("Output", state.OutputActive ? "[green]active[/]" : "[grey]off[/]");
+        table.AddRow("Extended sensor", state.ExtendedSensor ? "[green]ON[/]" : "[grey]off[/]");
+        table.AddRow("Retracted sensor", state.RetractedSensor ? "[green]ON[/]" : "[grey]off[/]");
+        AnsiConsole.Write(table);
     }
 
     private static string Bit(uint mask, int pin)
