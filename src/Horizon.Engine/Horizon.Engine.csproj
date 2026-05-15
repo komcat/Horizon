@@ -10,6 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Horizon.Common\Horizon.Common.csproj" />
     <ProjectReference Include="..\Horizon.IO\Horizon.IO.csproj" />
+    <ProjectReference Include="..\Horizon.Motion\Horizon.Motion.csproj" />
   </ItemGroup>
 
 </Project>

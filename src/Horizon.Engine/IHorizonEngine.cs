@@ -13,6 +13,9 @@ public interface IHorizonEngine : IAsyncDisposable
     /// <summary>Digital IO domain (Fastech Ezi-IO). Valid after <see cref="InitializeAsync"/>.</summary>
     IIOFacet IO { get; }
 
+    /// <summary>Motion domain (PI GCS2, ACS SPiiPlus). Valid after <see cref="InitializeAsync"/>.</summary>
+    IMotionFacet Motion { get; }
+
     /// <summary>Loads configuration and builds device objects. Performs no I/O.</summary>
     Task InitializeAsync(CancellationToken ct = default);
 
