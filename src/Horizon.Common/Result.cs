@@ -1,5 +1,26 @@
 namespace Horizon.Common;
 
+/// <summary>Outcome of an operation with no return value.</summary>
+public readonly struct Result
+{
+    public bool IsSuccess { get; }
+    public ErrorCode Error { get; }
+    public string Message { get; }
+
+    private Result(bool success, ErrorCode error, string message)
+    {
+        IsSuccess = success;
+        Error = error;
+        Message = message;
+    }
+
+    public static Result Ok() =>
+        new(true, ErrorCode.Success, string.Empty);
+
+    public static Result Fail(ErrorCode code, string message) =>
+        new(false, code, message);
+}
+
 public readonly struct Result<T>
 {
     public bool IsSuccess { get; }
