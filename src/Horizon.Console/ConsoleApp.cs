@@ -14,6 +14,8 @@ internal sealed class ConsoleApp
     private const string IoDevices = "IO devices";
     private const string MotionDevices = "Motion devices";
     private const string PneumaticSlides = "Pneumatic slides";
+    private const string CurrentMeasurement = "Current measurement";
+    private const string LaserControllers = "Laser controllers";
     private const string Reconnect = "Reconnect hardware";
     private const string Exit = "Exit";
 
@@ -30,7 +32,8 @@ internal sealed class ConsoleApp
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
                     .Title("\n[aqua]Horizon engine[/] — choose an action:")
-                    .AddChoices(ShowStatus, IoDevices, MotionDevices, PneumaticSlides, Reconnect, Exit));
+                    .AddChoices(ShowStatus, IoDevices, MotionDevices, PneumaticSlides,
+                                CurrentMeasurement, LaserControllers, Reconnect, Exit));
 
             switch (choice)
             {
@@ -48,6 +51,14 @@ internal sealed class ConsoleApp
 
                 case PneumaticSlides:
                     await PneumaticMenuAsync();
+                    break;
+
+                case CurrentMeasurement:
+                    await MeasurementMenuAsync();
+                    break;
+
+                case LaserControllers:
+                    await LaserMenuAsync();
                     break;
 
                 case Reconnect:
@@ -426,6 +437,235 @@ internal sealed class ConsoleApp
         table.AddRow("Output", state.OutputActive ? "[green]active[/]" : "[grey]off[/]");
         table.AddRow("Extended sensor", state.ExtendedSensor ? "[green]ON[/]" : "[grey]off[/]");
         table.AddRow("Retracted sensor", state.RetractedSensor ? "[green]ON[/]" : "[grey]off[/]");
+        AnsiConsole.Write(table);
+    }
+
+    private async Task MeasurementMenuAsync()
+    {
+        var devices = _engine.Measurement.DeviceNames;
+        if (devices.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No current-measurement devices configured.[/]");
+            return;
+        }
+
+        while (true)
+        {
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("\n[aqua]Current measurement[/] — select a device:")
+                    .AddChoices(devices.Append(Back)));
+
+            if (choice == Back) return;
+            await MeasurementDeviceMenuAsync(choice);
+        }
+    }
+
+    private async Task MeasurementDeviceMenuAsync(string device)
+    {
+        const string Connect = "Connect";
+        const string Disconnect = "Disconnect";
+        const string SetVoltage = "Set voltage";
+        const string VoltageOn = "Voltage output ON";
+        const string VoltageOff = "Voltage output OFF";
+        const string Reset = "Reset (*RST)";
+        const string Identity = "Read identity";
+        const string Refresh = "Refresh";
+
+        while (true)
+        {
+            RenderMeasurementDevice(device);
+
+            var connected = _engine.Measurement.IsConnected(device);
+            var choices = new List<string>();
+            if (connected)
+                choices.AddRange(new[] { SetVoltage, VoltageOn, VoltageOff, Reset, Identity, Disconnect });
+            else
+                choices.Add(Connect);
+            choices.Add(Refresh);
+            choices.Add(Back);
+
+            var action = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"\n[aqua]{Markup.Escape(device)}[/] — action:")
+                    .AddChoices(choices));
+
+            switch (action)
+            {
+                case Connect:
+                    ReportResult(await _engine.Measurement.ConnectAsync(device), $"Connect {device}");
+                    break;
+                case Disconnect:
+                    ReportResult(await _engine.Measurement.DisconnectAsync(device), $"Disconnect {device}");
+                    break;
+                case SetVoltage:
+                    var volts = AnsiConsole.Prompt(new TextPrompt<double>("Source voltage (V):").DefaultValue(0d));
+                    ReportResult(await _engine.Measurement.SetVoltageAsync(device, volts), $"Set voltage {volts}V");
+                    break;
+                case VoltageOn:
+                    ReportResult(await _engine.Measurement.SetVoltageEnabledAsync(device, true), "Voltage output ON");
+                    break;
+                case VoltageOff:
+                    ReportResult(await _engine.Measurement.SetVoltageEnabledAsync(device, false), "Voltage output OFF");
+                    break;
+                case Reset:
+                    ReportResult(await _engine.Measurement.ResetAsync(device), $"Reset {device}");
+                    break;
+                case Identity:
+                    var idn = await _engine.Measurement.GetIdentityAsync(device);
+                    if (idn.IsSuccess)
+                        AnsiConsole.MarkupLineInterpolated($"[green]IDN[/] — {idn.Value}");
+                    else
+                        AnsiConsole.MarkupLineInterpolated($"[red]IDN failed[/] — {idn.Message}");
+                    break;
+                case Refresh:
+                    break;
+                case Back:
+                    return;
+            }
+        }
+    }
+
+    private void RenderMeasurementDevice(string device)
+    {
+        var info = _engine.Measurement.GetDevice(device);
+        if (info == null)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]Unknown measurement device: {device}[/]");
+            return;
+        }
+
+        var connected = _engine.Measurement.IsConnected(device);
+        var state = _engine.Measurement.GetState(device);
+
+        var connectedText = connected ? "[green]yes[/]" : "[red]no[/]";
+        AnsiConsole.MarkupLine($"\n[aqua]{Markup.Escape(info.Name)}[/]  connected: {connectedText}  channels: {info.ChannelCount}");
+        if (!state.Valid)
+            AnsiConsole.MarkupLine("[grey]No polled data yet.[/]");
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Channel");
+        table.AddColumn("Reading");
+        for (int i = 0; i < state.Channels.Count; i++)
+            table.AddRow($"CH{i + 1}", $"{state.Channels[i]:E4} {Markup.Escape(state.Unit)}");
+        if (state.Channels.Count == 0)
+            table.AddRow("[grey]—[/]", "[grey]no data[/]");
+        AnsiConsole.Write(table);
+    }
+
+    private async Task LaserMenuAsync()
+    {
+        var devices = _engine.Laser.DeviceNames;
+        if (devices.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No laser controllers configured.[/]");
+            return;
+        }
+
+        while (true)
+        {
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("\n[aqua]Laser controllers[/] — select a device:")
+                    .AddChoices(devices.Append(Back)));
+
+            if (choice == Back) return;
+            await LaserDeviceMenuAsync(choice);
+        }
+    }
+
+    private async Task LaserDeviceMenuAsync(string device)
+    {
+        const string Connect = "Connect";
+        const string Disconnect = "Disconnect";
+        const string SetTemp = "Set temperature";
+        const string TecOn = "TEC ON";
+        const string TecOff = "TEC OFF";
+        const string SetCurrent = "Set laser current";
+        const string LaserOn = "Laser ON";
+        const string LaserOff = "Laser OFF";
+        const string Refresh = "Refresh";
+
+        while (true)
+        {
+            RenderLaserDevice(device);
+
+            var connected = _engine.Laser.IsConnected(device);
+            var choices = new List<string>();
+            if (connected)
+                choices.AddRange(new[] { SetTemp, TecOn, TecOff, SetCurrent, LaserOn, LaserOff, Disconnect });
+            else
+                choices.Add(Connect);
+            choices.Add(Refresh);
+            choices.Add(Back);
+
+            var action = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"\n[aqua]{Markup.Escape(device)}[/] — action:")
+                    .AddChoices(choices));
+
+            switch (action)
+            {
+                case Connect:
+                    ReportResult(await _engine.Laser.ConnectAsync(device), $"Connect {device}");
+                    break;
+                case Disconnect:
+                    ReportResult(await _engine.Laser.DisconnectAsync(device), $"Disconnect {device}");
+                    break;
+                case SetTemp:
+                    var temp = AnsiConsole.Prompt(new TextPrompt<double>("TEC temperature (C):").DefaultValue(25d));
+                    ReportResult(await _engine.Laser.SetTemperatureAsync(device, temp), $"Set temperature {temp}C");
+                    break;
+                case TecOn:
+                    ReportResult(await _engine.Laser.TecOnAsync(device), $"TEC on {device}");
+                    break;
+                case TecOff:
+                    ReportResult(await _engine.Laser.TecOffAsync(device), $"TEC off {device}");
+                    break;
+                case SetCurrent:
+                    var ma = AnsiConsole.Prompt(new TextPrompt<double>("Laser current (mA):").DefaultValue(0d));
+                    ReportResult(await _engine.Laser.SetLaserCurrentAsync(device, ma), $"Set laser current {ma}mA");
+                    break;
+                case LaserOn:
+                    AnsiConsole.MarkupLine("[yellow]Warning: this enables laser diode emission.[/]");
+                    if (AnsiConsole.Confirm("Enable laser emission?", defaultValue: false))
+                        ReportResult(await _engine.Laser.LaserOnAsync(device), $"Laser ON {device}");
+                    break;
+                case LaserOff:
+                    ReportResult(await _engine.Laser.LaserOffAsync(device), $"Laser OFF {device}");
+                    break;
+                case Refresh:
+                    break;
+                case Back:
+                    return;
+            }
+        }
+    }
+
+    private void RenderLaserDevice(string device)
+    {
+        var info = _engine.Laser.GetDevice(device);
+        if (info == null)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]Unknown laser device: {device}[/]");
+            return;
+        }
+
+        var connected = _engine.Laser.IsConnected(device);
+        var state = _engine.Laser.GetState(device);
+
+        var connectedText = connected ? "[green]yes[/]" : "[red]no[/]";
+        AnsiConsole.MarkupLine($"\n[aqua]{Markup.Escape(info.Name)}[/]  type: {Markup.Escape(info.ControllerType)}  connected: {connectedText}");
+        if (!state.Valid)
+            AnsiConsole.MarkupLine("[grey]No polled data yet.[/]");
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Property");
+        table.AddColumn("Value");
+        table.AddRow("TEC", state.TecOn ? "[green]ON[/]" : "[grey]off[/]");
+        table.AddRow("Laser", state.LaserOn ? "[red]ON (emitting)[/]" : "[grey]off[/]");
+        table.AddRow("Temperature", $"{state.Temperature:F2} C  (setpoint {state.SetpointTemperature:F2} C)");
+        table.AddRow("Laser current", $"{state.LaserCurrent:F2} mA  (setpoint {state.SetpointLaserCurrent:F2} mA)");
         AnsiConsole.Write(table);
     }
 

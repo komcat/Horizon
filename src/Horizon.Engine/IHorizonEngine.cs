@@ -19,6 +19,12 @@ public interface IHorizonEngine : IAsyncDisposable
     /// <summary>Pneumatic domain (IO-driven slides). Valid after <see cref="InitializeAsync"/>.</summary>
     IPneumaticFacet Pneumatic { get; }
 
+    /// <summary>Current-measurement domain (Keithley 6482). Valid after <see cref="InitializeAsync"/>.</summary>
+    IMeasurementFacet Measurement { get; }
+
+    /// <summary>Laser-controller domain (Thorlabs CLD101x). Valid after <see cref="InitializeAsync"/>.</summary>
+    ILaserFacet Laser { get; }
+
     /// <summary>Loads configuration and builds device objects. Performs no I/O.</summary>
     Task InitializeAsync(CancellationToken ct = default);
 

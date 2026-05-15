@@ -1,5 +1,7 @@
 using Horizon.Common;
+using Horizon.CurrentMeasurement;
 using Horizon.IO;
+using Horizon.LaserController;
 using Horizon.Motion;
 using Horizon.Pneumatic;
 
@@ -23,6 +25,12 @@ public sealed class HorizonEngine : IHorizonEngine
 
     private PneumaticFacet? _pneumaticFacet;
 
+    private CurrentMeasurementManager? _measurementManager;
+    private MeasurementFacet? _measurementFacet;
+
+    private LaserControllerManager? _laserManager;
+    private LaserFacet? _laserFacet;
+
     public EngineState State
     {
         get { lock (_gate) return _state; }
@@ -36,6 +44,12 @@ public sealed class HorizonEngine : IHorizonEngine
 
     public IPneumaticFacet Pneumatic =>
         _pneumaticFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
+
+    public IMeasurementFacet Measurement =>
+        _measurementFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
+
+    public ILaserFacet Laser =>
+        _laserFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
 
     public event Action<HardwareStatusChanged>? StatusChanged;
     public event Action<LogEntry>? LogEmitted;
@@ -93,6 +107,32 @@ public sealed class HorizonEngine : IHorizonEngine
         }
         _pneumaticFacet = new PneumaticFacet(pneumaticManager, RaiseStatusChanged, Log);
 
+        // --- Current measurement domain ---
+        _measurementManager = new CurrentMeasurementManager();
+        try
+        {
+            var count = CurrentMeasurementJsonLoader.LoadDevices(_measurementManager, _configDirectory);
+            Log(LogLevel.Info, $"Current measurement devices loaded: {count}");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"Current measurement config load failed: {ex.Message}");
+        }
+        _measurementFacet = new MeasurementFacet(_measurementManager, RaiseStatusChanged, Log);
+
+        // --- Laser controller domain ---
+        _laserManager = new LaserControllerManager();
+        try
+        {
+            var count = LaserControllerJsonLoader.LoadDevices(_laserManager, _configDirectory);
+            Log(LogLevel.Info, $"Laser controller devices loaded: {count}");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"Laser controller config load failed: {ex.Message}");
+        }
+        _laserFacet = new LaserFacet(_laserManager, RaiseStatusChanged, Log);
+
         lock (_gate) _state = EngineState.Initialized;
         Log(LogLevel.Info, "Engine initialized.");
         return Task.CompletedTask;
@@ -122,6 +162,12 @@ public sealed class HorizonEngine : IHorizonEngine
 
         if (_pneumaticFacet != null)
             await _pneumaticFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
+
+        if (_measurementFacet != null)
+            await _measurementFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
+
+        if (_laserFacet != null)
+            await _laserFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
 
         lock (_gate) _state = EngineState.Connected;
         Log(LogLevel.Info, "ConnectAll complete.");
@@ -168,6 +214,30 @@ public sealed class HorizonEngine : IHorizonEngine
             }
         }
 
+        if (_measurementFacet != null)
+        {
+            foreach (var name in _measurementFacet.DeviceNames)
+            {
+                var s = _measurementFacet.GetState(name);
+                var detail = s.Valid && s.Channels.Count > 0
+                    ? string.Join("  ", s.Channels.Select((v, i) => $"CH{i + 1}={v:E2}{s.Unit}"))
+                    : "no data";
+                devices.Add(new DeviceStatus("Measurement", name, _measurementFacet.IsConnected(name), detail));
+            }
+        }
+
+        if (_laserFacet != null)
+        {
+            foreach (var name in _laserFacet.DeviceNames)
+            {
+                var s = _laserFacet.GetState(name);
+                var detail = s.Valid
+                    ? $"T={s.Temperature:F2}C  I={s.LaserCurrent:F2}mA{(s.TecOn ? " TEC" : "")}{(s.LaserOn ? " LASER" : "")}"
+                    : "no data";
+                devices.Add(new DeviceStatus("Laser", name, _laserFacet.IsConnected(name), detail));
+            }
+        }
+
         return new HardwareStatusSnapshot(state, devices);
     }
 
@@ -178,6 +248,16 @@ public sealed class HorizonEngine : IHorizonEngine
             if (_state == EngineState.ShuttingDown) return;
             _state = EngineState.ShuttingDown;
         }
+
+        if (_laserFacet != null)
+            await _laserFacet.DisposeAsync().ConfigureAwait(false);   // stops the laser poll loop
+        _laserManager?.Dispose();
+        _laserManager = null;
+        _laserFacet = null;
+
+        _measurementManager?.Dispose();   // stops its poll loop, disconnects devices
+        _measurementManager = null;
+        _measurementFacet = null;
 
         if (_pneumaticFacet != null)
             await _pneumaticFacet.DisposeAsync().ConfigureAwait(false);   // stops the pneumatic poll loop
