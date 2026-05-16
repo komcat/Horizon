@@ -1,10 +1,13 @@
 using Horizon.Camera;
 using Horizon.Common;
+using Horizon.Core.Interlock;
 using Horizon.CurrentMeasurement;
 using Horizon.IO;
 using Horizon.LaserController;
 using Horizon.Motion;
 using Horizon.Pneumatic;
+using Horizon.Safety;
+using Horizon.Safety.Models;
 
 namespace Horizon.Engine;
 
@@ -37,6 +40,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
     private VisionFacet? _visionFacet;
 
+    private SafetyWatchManager? _safetyWatch;
+    private SafetyFacet? _safetyFacet;
+
     public EngineState State
     {
         get { lock (_gate) return _state; }
@@ -62,6 +68,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
     public IVisionFacet Vision =>
         _visionFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
+
+    public ISafetyFacet Safety =>
+        _safetyFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
 
     public event Action<HardwareStatusChanged>? StatusChanged;
     public event Action<LogEntry>? LogEmitted;
@@ -163,6 +172,43 @@ public sealed class HorizonEngine : IHorizonEngine
         // --- Vision domain (HALCON over camera frames) ---
         _visionFacet = new VisionFacet(_cameraFacet, Log);
 
+        // --- Safety domain (IO watchdog + motion interlocks) ---
+        var eventLog = new SafetyEventLog();
+        _safetyWatch = new SafetyWatchManager(_ioManager, eventLog);
+        try
+        {
+            var count = _safetyWatch.LoadConfig(_configDirectory);
+            Log(LogLevel.Info, $"Safety watched inputs loaded: {count}");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"Safety config load failed: {ex.Message}");
+        }
+
+        var interlock = new InterlockService(pneumaticManager, _ioManager);
+        try
+        {
+            var count = interlock.LoadConfig(_configDirectory);
+            Log(LogLevel.Info, $"Motion interlock rules loaded: {count}");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"Interlock config load failed: {ex.Message}");
+        }
+
+        // Enforcement: the watchdog reaches into Motion / Pneumatic / IO on a trip.
+        _safetyWatch.SetEnforcementActions(
+            stopAllMotion: () => _motionManager?.StopAllDevices(),
+            retractAllPneumatics: () => pneumaticManager.StopAll(),
+            killIO: KillIoOutputs,
+            releaseStepGates: null);   // no process/recipe engines in Layer 1
+
+        // Interlock check: gate every motion command (left null since Step 3).
+        _motionManager.InterlockCheck = (device, axis, source) =>
+            interlock.CheckMotionAllowed(device, axis, (MotionSource)source);
+
+        _safetyFacet = new SafetyFacet(_safetyWatch, interlock, RaiseStatusChanged, Log);
+
         lock (_gate) _state = EngineState.Initialized;
         Log(LogLevel.Info, "Engine initialized.");
         return Task.CompletedTask;
@@ -204,6 +250,12 @@ public sealed class HorizonEngine : IHorizonEngine
 
         if (_visionFacet != null)
             progress?.Report($"Vision: HALCON {_visionFacet.HalconVersion}");
+
+        if (_safetyWatch != null)
+        {
+            _safetyWatch.StartWatching();
+            progress?.Report($"Safety: watching {_safetyWatch.WatchedInputs.Count} input(s).");
+        }
 
         lock (_gate) _state = EngineState.Connected;
         Log(LogLevel.Info, "ConnectAll complete.");
@@ -292,6 +344,15 @@ public sealed class HorizonEngine : IHorizonEngine
                 _visionFacet.HalconAvailable, _visionFacet.HalconVersion));
         }
 
+        if (_safetyFacet != null)
+        {
+            var ss = _safetyFacet.GetState();
+            var detail = ss.FlagRaised
+                ? (ss.CriticalRaised ? "CRITICAL FLAG RAISED" : "FLAG RAISED")
+                : $"watching {_safetyFacet.WatchedInputs.Count} input(s)";
+            devices.Add(new DeviceStatus("Safety", "Watchdog", ss.IsWatching, detail));
+        }
+
         return new HardwareStatusSnapshot(state, devices);
     }
 
@@ -302,6 +363,11 @@ public sealed class HorizonEngine : IHorizonEngine
             if (_state == EngineState.ShuttingDown) return;
             _state = EngineState.ShuttingDown;
         }
+
+        _safetyFacet?.Dispose();   // unsubscribes from watchdog events
+        _safetyFacet = null;
+        _safetyWatch?.Dispose();   // stops the 50 ms watch loop before motion/IO teardown
+        _safetyWatch = null;
 
         _visionFacet?.Dispose();   // unsubscribes from camera frames
         _visionFacet = null;
@@ -347,6 +413,28 @@ public sealed class HorizonEngine : IHorizonEngine
     /// <summary>Raises <see cref="StatusChanged"/>. Used by hardware facets.</summary>
     internal void RaiseStatusChanged(HardwareStatusChanged change)
         => StatusChanged?.Invoke(change);
+
+    /// <summary>Safety enforcement: drives configured IO outputs off on a watchdog trip.</summary>
+    private void KillIoOutputs(IOKillAction action)
+    {
+        if (_ioManager == null) return;
+
+        if (action.KillAll)
+        {
+            foreach (var name in _ioManager.GetAllDeviceNames())
+            {
+                var device = _ioManager.GetDevice(name);
+                if (device == null || !device.IsConnected) continue;
+                for (int pin = 0; pin < device.OutputCount; pin++)
+                    device.SetOutput(pin, false);
+            }
+        }
+        else
+        {
+            foreach (var target in action.Pins)
+                _ioManager.SetOutputByName(target.DeviceName, target.PinName, false);
+        }
+    }
 
     private void Log(LogLevel level, string message)
         => LogEmitted?.Invoke(new LogEntry(level, DateTimeOffset.Now, "Engine", message));

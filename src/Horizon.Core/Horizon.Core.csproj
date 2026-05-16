@@ -15,6 +15,7 @@
     <ProjectReference Include="..\Horizon.Pneumatic\Horizon.Pneumatic.csproj" />
     <ProjectReference Include="..\Horizon.Process\Horizon.Process.csproj" />
     <ProjectReference Include="..\Horizon.Safety\Horizon.Safety.csproj" />
+    <ProjectReference Include="..\Horizon.Interlock\Horizon.Interlock.csproj" />
     <ProjectReference Include="..\Horizon.CurrentMeasurement\Horizon.CurrentMeasurement.csproj" />
     <ProjectReference Include="..\Horizon.LaserController\Horizon.LaserController.csproj" />
   </ItemGroup>

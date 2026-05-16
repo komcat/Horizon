@@ -18,6 +18,7 @@ internal sealed class ConsoleApp
     private const string LaserControllers = "Laser controllers";
     private const string Cameras = "Cameras";
     private const string Vision = "Vision (HALCON)";
+    private const string Safety = "Safety";
     private const string Reconnect = "Reconnect hardware";
     private const string Exit = "Exit";
 
@@ -35,7 +36,8 @@ internal sealed class ConsoleApp
                 new SelectionPrompt<string>()
                     .Title("\n[aqua]Horizon engine[/] — choose an action:")
                     .AddChoices(ShowStatus, IoDevices, MotionDevices, PneumaticSlides,
-                                CurrentMeasurement, LaserControllers, Cameras, Vision, Reconnect, Exit));
+                                CurrentMeasurement, LaserControllers, Cameras, Vision, Safety,
+                                Reconnect, Exit));
 
             switch (choice)
             {
@@ -69,6 +71,10 @@ internal sealed class ConsoleApp
 
                 case Vision:
                     await VisionMenuAsync();
+                    break;
+
+                case Safety:
+                    await SafetyMenuAsync();
                     break;
 
                 case Reconnect:
@@ -883,6 +889,116 @@ internal sealed class ConsoleApp
                     return;
             }
         }
+    }
+
+    private async Task SafetyMenuAsync()
+    {
+        const string WatchedInputs = "Watched inputs";
+        const string InterlockRules = "Interlock rules";
+        const string ToggleOverride = "Toggle interlock override";
+        const string Acknowledge = "Acknowledge safety flag";
+        const string Refresh = "Refresh";
+
+        while (true)
+        {
+            var state = _engine.Safety.GetState();
+
+            var watchText = state.IsWatching ? "[green]watching[/]" : "[red]stopped[/]";
+            var flagText = state.FlagRaised
+                ? (state.CriticalRaised ? "[red]CRITICAL FLAG RAISED[/]" : "[yellow]FLAG RAISED[/]")
+                : "[green]clear[/]";
+            var ovrText = state.OverrideMode ? "[yellow]ON[/]" : "[grey]off[/]";
+
+            AnsiConsole.MarkupLine(
+                $"\n[aqua]Safety[/] — watchdog: {watchText}  flag: {flagText}  " +
+                $"interlocks: {(state.InterlocksEnabled ? "enabled" : "disabled")}  override: {ovrText}");
+
+            var action = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("Action:")
+                    .AddChoices(WatchedInputs, InterlockRules, ToggleOverride, Acknowledge, Refresh, Back));
+
+            switch (action)
+            {
+                case WatchedInputs:
+                    RenderWatchedInputs();
+                    break;
+
+                case InterlockRules:
+                    RenderInterlockRules();
+                    break;
+
+                case ToggleOverride:
+                    var next = !_engine.Safety.OverrideMode;
+                    ReportResult(await _engine.Safety.SetOverrideAsync(next),
+                        $"Interlock override {(next ? "ON" : "OFF")}");
+                    break;
+
+                case Acknowledge:
+                    ReportResult(await _engine.Safety.AcknowledgeAsync(), "Acknowledge safety flag");
+                    break;
+
+                case Refresh:
+                    break;
+
+                case Back:
+                    return;
+            }
+        }
+    }
+
+    private void RenderWatchedInputs()
+    {
+        var inputs = _engine.Safety.WatchedInputs;
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Device");
+        table.AddColumn("Pin");
+        table.AddColumn("Trigger");
+        table.AddColumn("Critical");
+
+        if (inputs.Count == 0)
+        {
+            table.AddRow("[grey]—[/]", "[grey]no watched inputs[/]", "[grey]—[/]", "[grey]—[/]");
+        }
+        else
+        {
+            foreach (var w in inputs)
+                table.AddRow(
+                    Markup.Escape(w.Device),
+                    Markup.Escape(w.Pin),
+                    Markup.Escape(w.TriggerEdge),
+                    w.IsCritical ? "[red]yes[/]" : "[grey]no[/]");
+        }
+        AnsiConsole.Write(table);
+    }
+
+    private void RenderInterlockRules()
+    {
+        var rules = _engine.Safety.GetInterlockStatuses();
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Rule");
+        table.AddColumn("Enabled");
+        table.AddColumn("Status");
+        table.AddColumn("Detail");
+
+        if (rules.Count == 0)
+        {
+            table.AddRow("[grey]—[/]", "[grey]no rules[/]", "[grey]—[/]", "[grey]—[/]");
+        }
+        else
+        {
+            foreach (var r in rules)
+            {
+                var status = !r.Enabled ? "[grey]disabled[/]"
+                    : r.Satisfied ? "[green]satisfied[/]" : "[red]BLOCKING[/]";
+                table.AddRow(
+                    Markup.Escape(r.Name),
+                    r.Enabled ? "yes" : "no",
+                    status,
+                    Markup.Escape(string.IsNullOrEmpty(r.BlockReason) ? r.Target : r.BlockReason));
+            }
+        }
+        AnsiConsole.Write(table);
     }
 
     private static string Bit(uint mask, int pin)

@@ -31,6 +31,9 @@ public interface IHorizonEngine : IAsyncDisposable
     /// <summary>Vision domain (HALCON over camera frames). Valid after <see cref="InitializeAsync"/>.</summary>
     IVisionFacet Vision { get; }
 
+    /// <summary>Safety domain (IO watchdog + motion interlocks). Valid after <see cref="InitializeAsync"/>.</summary>
+    ISafetyFacet Safety { get; }
+
     /// <summary>Loads configuration and builds device objects. Performs no I/O.</summary>
     Task InitializeAsync(CancellationToken ct = default);
 

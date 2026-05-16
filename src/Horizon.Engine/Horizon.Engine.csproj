@@ -19,6 +19,8 @@
     <ProjectReference Include="..\Horizon.CurrentMeasurement\Horizon.CurrentMeasurement.csproj" />
     <ProjectReference Include="..\Horizon.LaserController\Horizon.LaserController.csproj" />
     <ProjectReference Include="..\Horizon.Camera\Horizon.Camera.csproj" />
+    <ProjectReference Include="..\Horizon.Safety\Horizon.Safety.csproj" />
+    <ProjectReference Include="..\Horizon.Interlock\Horizon.Interlock.csproj" />
   </ItemGroup>
 
 </Project>
