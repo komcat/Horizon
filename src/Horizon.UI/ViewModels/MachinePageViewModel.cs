@@ -3,46 +3,75 @@ using System.Windows.Threading;
 using Horizon.Engine;
 using Horizon.UI.Mvvm;
 using Horizon.UI.Telemetry;
+using Horizon.UI.ViewModels.Sections;
 
 namespace Horizon.UI.ViewModels;
 
 /// <summary>
-/// View model for the hardware status dashboard. The engine produces device
-/// state on its own background poll loops; this view model never polls
-/// hardware itself — a single shared <see cref="UiSampler"/> pulls the engine's
-/// cached <see cref="IHorizonEngine.GetStatusSnapshot"/> at a fixed display
-/// cadence. <c>GetStatusSnapshot</c> is synchronous and non-blocking, so the UI
-/// thread is never stalled (see <c>docs/layer3-ui-design.md</c> §7).
+/// The Machine page — hardware operation and diagnostics. Owns the engine-state
+/// header, the global log panel, and a left section rail. A single shared
+/// <see cref="UiSampler"/> pulls the engine's cached snapshot at a fixed cadence
+/// (see <c>docs/layer3-ui-design.md</c> §7); it runs only while this page is
+/// active, so the home launcher and other pages cost nothing.
 /// </summary>
-public sealed class MainViewModel : ObservableObject, IDisposable
+public sealed class MachinePageViewModel : PageViewModel, IDisposable
 {
     private const int MaxLogLines = 1000;
 
     private readonly EngineHost _host;
     private readonly UiSampler _sampler;
     private readonly Dispatcher _dispatcher;
-    private readonly Dictionary<string, DeviceRowViewModel> _rowIndex = new();
 
+    private object _currentSection;
     private string _engineState = "—";
     private string _deviceSummary = "—";
     private bool _disposed;
 
-    public MainViewModel(EngineHost host)
+    public MachinePageViewModel(EngineHost host)
     {
         _host = host;
-        _dispatcher = Dispatcher.CurrentDispatcher;   // constructed on the UI thread
+        _dispatcher = Dispatcher.CurrentDispatcher;
         _sampler = new UiSampler(TimeSpan.FromMilliseconds(200));   // ~5 Hz status refresh
         ReconnectCommand = new AsyncRelayCommand(ReconnectAsync);
+
+        Status = new StatusSectionViewModel();
+        Sections = new object[]
+        {
+            Status,
+            new PlaceholderSectionViewModel("Motion", "Motion control arrives in Phase 3."),
+            new PlaceholderSectionViewModel("IO", "IO control arrives in Phase 3."),
+            new PlaceholderSectionViewModel("Pneumatic", "Pneumatic control arrives in Phase 3."),
+            new PlaceholderSectionViewModel("Laser", "Laser control arrives in Phase 3."),
+            new PlaceholderSectionViewModel("Measurement", "Measurement charts arrive in Phase 3."),
+            new PlaceholderSectionViewModel("Camera", "Camera live view arrives in Phase 4."),
+        };
+        _currentSection = Status;
+
+        // The log is global — capture buffered lines and subscribe for the page's lifetime.
+        foreach (var entry in _host.Log.Snapshot())
+            AppendLog(entry);
+        _host.Log.Appended += OnLogAppended;
     }
 
-    /// <summary>Hardware devices, one row per engine device. Updated in place each sampler tick.</summary>
-    public ObservableCollection<DeviceRowViewModel> Devices { get; } = new();
+    public override string Title => "Machine";
+
+    /// <summary>Section rail entries — only Status is live in Phase 2.</summary>
+    public IReadOnlyList<object> Sections { get; }
+
+    /// <summary>The Status section, kept typed for the sampler to push snapshots into.</summary>
+    public StatusSectionViewModel Status { get; }
 
     /// <summary>Engine + workflow log lines, oldest first, capped at <see cref="MaxLogLines"/>.</summary>
     public ObservableCollection<LogLineViewModel> Log { get; } = new();
 
     /// <summary>Re-runs the engine connect sequence.</summary>
     public AsyncRelayCommand ReconnectCommand { get; }
+
+    public object CurrentSection
+    {
+        get => _currentSection;
+        set => SetField(ref _currentSection, value);
+    }
 
     public string EngineState
     {
@@ -56,17 +85,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         private set => SetField(ref _deviceSummary, value);
     }
 
-    /// <summary>Loads buffered logs, subscribes for live lines, and starts the sampler.</summary>
-    public void Start()
+    public override void OnActivated()
     {
-        foreach (var entry in _host.Log.Snapshot())
-            AppendLog(entry);
-
-        _host.Log.Appended += OnLogAppended;
-
         _sampler.Tick += OnTick;
         _sampler.Start();
         OnTick();   // paint immediately rather than waiting one interval
+    }
+
+    public override void OnDeactivated()
+    {
+        _sampler.Tick -= OnTick;
+        _sampler.Stop();
     }
 
     private void OnTick()
@@ -74,38 +103,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var snapshot = _host.Engine.GetStatusSnapshot();
         EngineState = snapshot.State.ToString();
 
-        var seen = new HashSet<string>(snapshot.Devices.Count);
-        var connected = 0;
-
-        foreach (var status in snapshot.Devices)
-        {
-            var key = $"{status.Domain}/{status.Name}";
-            seen.Add(key);
-            if (status.IsConnected)
-                connected++;
-
-            if (_rowIndex.TryGetValue(key, out var row))
-            {
-                row.Update(status);
-            }
-            else
-            {
-                row = new DeviceRowViewModel(status);
-                _rowIndex[key] = row;
-                Devices.Add(row);
-            }
-        }
-
-        // Drop rows for devices no longer reported (rare, but keeps the view honest).
-        for (var i = Devices.Count - 1; i >= 0; i--)
-        {
-            if (seen.Contains(Devices[i].Key))
-                continue;
-            _rowIndex.Remove(Devices[i].Key);
-            Devices.RemoveAt(i);
-        }
-
+        var connected = snapshot.Devices.Count(d => d.IsConnected);
         DeviceSummary = $"{connected} / {snapshot.Devices.Count} connected";
+
+        Status.Apply(snapshot);
     }
 
     private async Task ReconnectAsync()
@@ -117,7 +118,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void OnLogAppended(LogEntry entry)
     {
-        // The hub fires on engine threads — marshal to the UI thread.
         if (_dispatcher.CheckAccess())
             AppendLog(entry);
         else
@@ -137,8 +137,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         _disposed = true;
 
-        _sampler.Tick -= OnTick;
-        _sampler.Stop();
+        OnDeactivated();
         _host.Log.Appended -= OnLogAppended;
     }
 }

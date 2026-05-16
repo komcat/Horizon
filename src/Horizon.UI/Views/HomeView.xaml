@@ -1,0 +1,61 @@
+<UserControl x:Class="Horizon.UI.Views.HomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- Launcher tile — a large card button. -->
+        <Style x:Key="TileButton" TargetType="Button">
+            <Setter Property="Width" Value="230" />
+            <Setter Property="Height" Value="140" />
+            <Setter Property="Margin" Value="9" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Card" CornerRadius="6" Background="#2A2A30"
+                                BorderBrush="#3A3A40" BorderThickness="1">
+                            <ContentPresenter Margin="18" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Card" Property="Background" Value="#34343C" />
+                                <Setter TargetName="Card" Property="BorderBrush" Value="#4FC3F7" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Card" Property="Background" Value="#3C3C46" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="#1E1E22">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock Text="HORIZON" Foreground="#4FC3F7" FontSize="40" FontWeight="Bold"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="Select a workspace" Foreground="#8A8A92" FontSize="13"
+                       HorizontalAlignment="Center" Margin="0,2,0,26" />
+
+            <ItemsControl ItemsSource="{Binding Tiles}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel MaxWidth="760" HorizontalAlignment="Center" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Style="{StaticResource TileButton}" Command="{Binding Open}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Title}" Foreground="#4FC3F7"
+                                           FontSize="19" FontWeight="Bold" />
+                                <TextBlock Text="{Binding Description}" Foreground="#9AA0A6"
+                                           FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" />
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </Grid>
+</UserControl>

@@ -2,11 +2,36 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mvvm="clr-namespace:Horizon.UI.Mvvm"
+             xmlns:vm="clr-namespace:Horizon.UI.ViewModels"
+             xmlns:vms="clr-namespace:Horizon.UI.ViewModels.Sections"
+             xmlns:v="clr-namespace:Horizon.UI.Views"
+             xmlns:vsec="clr-namespace:Horizon.UI.Views.Sections"
              ShutdownMode="OnMainWindowClose">
     <Application.Resources>
         <ResourceDictionary>
             <mvvm:BoolToBrushConverter x:Key="BoolToBrush" />
             <mvvm:BoolToStatusTextConverter x:Key="BoolToStatusText" />
+            <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+            <!-- View resolution: the shell binds a view model; WPF picks the view. -->
+            <DataTemplate DataType="{x:Type vm:HomeViewModel}">
+                <v:HomeView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:MachinePageViewModel}">
+                <v:MachinePageView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:PlaceholderPageViewModel}">
+                <v:PlaceholderPageView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:SubListPageViewModel}">
+                <v:SubListPageView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vms:StatusSectionViewModel}">
+                <vsec:StatusSectionView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vms:PlaceholderSectionViewModel}">
+                <vsec:PlaceholderSectionView />
+            </DataTemplate>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

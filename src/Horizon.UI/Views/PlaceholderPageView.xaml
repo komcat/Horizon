@@ -1,0 +1,12 @@
+<UserControl x:Class="Horizon.UI.Views.PlaceholderPageView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Background="#1E1E22">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock Text="{Binding Title}" Foreground="#C8C8CE"
+                       FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center" />
+            <TextBlock Text="{Binding Message}" Foreground="#8A8A92" FontSize="14"
+                       HorizontalAlignment="Center" Margin="0,10,0,0" />
+        </StackPanel>
+    </Grid>
+</UserControl>

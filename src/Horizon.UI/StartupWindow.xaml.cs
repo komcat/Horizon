@@ -36,14 +36,14 @@ public partial class StartupWindow : Window
             return;
         }
 
-        HandOffToMainWindow();
+        HandOffToShell();
     }
 
-    private void HandOffToMainWindow()
+    private void HandOffToShell()
     {
-        var main = new MainWindow(_host);
-        Application.Current.MainWindow = main;   // so OnMainWindowClose tracks the real window
-        main.Show();
+        var shell = new ShellWindow(_host);
+        Application.Current.MainWindow = shell;   // so OnMainWindowClose tracks the real window
+        shell.Show();
         Close();
     }
 

@@ -2,6 +2,28 @@ using System.Windows.Input;
 
 namespace Horizon.UI.Mvvm;
 
+/// <summary>A plain synchronous <see cref="ICommand"/>.</summary>
+public sealed class RelayCommand : ICommand
+{
+    private readonly Action _execute;
+    private readonly Func<bool>? _canExecute;
+
+    public RelayCommand(Action execute, Func<bool>? canExecute = null)
+    {
+        _execute = execute;
+        _canExecute = canExecute;
+    }
+
+    public event EventHandler? CanExecuteChanged;
+
+    public bool CanExecute(object? parameter) => _canExecute?.Invoke() ?? true;
+
+    public void Execute(object? parameter) => _execute();
+
+    public void RaiseCanExecuteChanged()
+        => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+}
+
 /// <summary>
 /// An <see cref="ICommand"/> for an async handler. While the handler runs the
 /// command reports <see cref="CanExecute"/> false, so a bound button disables
