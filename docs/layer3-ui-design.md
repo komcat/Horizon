@@ -31,8 +31,11 @@ directly.
 |---|---|
 | Legacy `Horizon.App` | **Not refactored.** Left as-is. It is acceptable if the Layer 1/2 recreate work breaks it — it is not the path forward. |
 | Layer 3 form | **A brand-new, greenfield application** (`Horizon.UI`), sibling to `Horizon.App` — not a port of the AvalonDock panel app. |
+| UI framework | **WPF (C#)**, `net8.0-windows` — confirmed. No AvalonDock; a fixed, purpose-built operator layout. |
 | Engine boundary | **In-process.** `Horizon.UI` references `Horizon.Workflow` + `Horizon.Engine` directly. The HTTP/SignalR boundary stays deferred until a *web* UI is actually wanted (`headless-engine-concept §7`). |
 | One-process rule | Run `Horizon.UI` **or** legacy `Horizon.App`, never both — a single process owns the hardware SDKs. |
+| Window model | One `MainWindow` + one or more detachable `DisplayWindow`s (§6). |
+| Thread rule | **The main UI thread (thread 0) must never block or stall.** All hardware I/O, frame conversion and data production stays on background threads (§7, §8). |
 | Why a UI now | Trainer, Vision, and Dispense are **inherently interactive** (live feed, click-to-teach, ROI, visual verify). They cannot be finished as headless Layer 2 phases — they are Layer 3 features built on Layer 2's runner. |
 
 ## 3. Scope
@@ -42,11 +45,13 @@ directly.
   measurement, laser) — driven by `IHorizonEngine` facets.
 - Product management + teach-points + process/recipe run UI — driven by
   `IProcessService`.
-- **Live camera feed** rendering (raw frames → `BitmapSource` at the UI edge).
+- **Live camera feed** rendering at full frame rate (§7.2).
+- Background **telemetry pipelines** — motion coordinates, measurement data —
+  readable by the UI without stalling it (§7.3, §7.4).
 - The **interactive teaching surfaces**: Trainer, Vision model authoring,
   Dispense verify — the features that justify a real UI.
 - The front-end implementation of the operator-feedback contract
-  (`IOperatorPrompt`, extended — §7).
+  (`IOperatorPrompt`, extended — §9).
 
 **Out:**
 - Hardware logic, workflow logic — all below the interface line.
@@ -54,20 +59,17 @@ directly.
   (`docs/config-tool-design.md`), separate dev tooling.
 - Web UI — a later client of a future HTTP surface, not this document.
 
-## 4. UI framework — open question
+## 4. UI framework — WPF (confirmed)
 
-`Horizon.UI` is greenfield, so the framework is a fresh choice (the no-refactor
-decision means we are **not** bound to legacy WPF + AvalonDock).
+`Horizon.UI` is greenfield, so the framework is a fresh choice. **WPF is
+confirmed**: the team knows it; the hardware stack is Windows-only P/Invoke so
+cross-platform buys nothing; the camera-bitmap path (`WriteableBitmap`) is
+mature; HALCON ships WPF display widgets. Avalonia / WinUI were considered and
+rejected — no benefit while every SDK is Windows-native.
 
-| Option | For | Against |
-|---|---|---|
-| **WPF** *(recommended)* | Team knows it; hardware stack is Windows-only anyway so cross-platform buys nothing; mature camera-bitmap path; HALCON has WPF display widgets. | Windows-locked (no real cost here). |
-| Avalonia | Cross-platform, modern XAML. | New to the team; no benefit while every hardware SDK is Windows P/Invoke. |
-| WinUI 3 | Modern Windows. | Less mature tooling; no team experience. |
-
-Recommendation: **WPF**, but **without AvalonDock** — a fixed, purpose-built
-operator layout rather than the legacy free-floating dock panels. Confirm in
-review.
+WPF is used **without AvalonDock** — a fixed, purpose-built operator layout, not
+the legacy free-floating dock panels. MVVM throughout; ViewModels depend on the
+Layer 1/2 interfaces only.
 
 ## 5. Project structure
 
@@ -87,23 +89,164 @@ once, handed to `Horizon.Workflow`, and both interfaces are exposed to the UI
 via a thin composition root (mirrors the role legacy `AppContext` played, but
 as pure wiring with no hardware logic).
 
-## 6. Engine wiring + status flow
+## 6. Window shell
+
+| Window | Role |
+|---|---|
+| **`MainWindow`** | The operator shell: hardware tree/status, manual control surfaces, product / teach-point / run UI, log. Owns the composition root. Runs on the primary UI thread (thread 0). |
+| **`DisplayWindow`** | A dedicated camera live-view window. **At least one**; more can be spawned at runtime (multi-monitor stations, multiple cameras, side-by-side views). Each binds to one camera's `FrameChannel` (§7.2). Can go fullscreen on a second monitor. |
+
+`DisplayWindow` is a **separate top-level `Window`**, not a panel inside
+`MainWindow`, so it can be moved/fullscreened independently and so its render
+cost is isolatable.
+
+**Optional per-window UI thread.** WPF supports multiple UI threads, each with
+its own `Dispatcher`. A `DisplayWindow` doing heavy frame work *may* be created
+on its **own dedicated UI thread** so its rendering load can never stall
+`MainWindow`'s thread 0. The `FrameChannel` is thread-safe shared state, so a
+display window on thread *N* pulls from it independently. Decision per §12 —
+start single-threaded, promote a display window to its own thread only if
+profiling shows thread-0 contention.
+
+## 7. Data pipelines — off-thread by design
+
+This section is the core of the performance requirement. Three live data
+streams flow from Layer 1 into the UI: **camera frames**, **motion
+coordinates**, **measurement samples**. All three obey one principle.
+
+### 7.1 Principle — decouple production rate from display rate
+
+Layer 1 already produces data on **background threads**: camera SDK callbacks
+fire `FrameReady` on SDK threads; per-domain poll loops raise `PositionChanged`
+/ `StatusChanged` / measurement `Sample`. Layer 3 must **never**:
+
+- do data production, frame conversion, or a blocking hardware call on thread 0;
+- marshal *every* producer event onto the dispatcher — a high-rate event storm
+  floods the dispatcher queue and freezes the UI.
+
+Instead, **every pipeline is: background producer → thread-safe latest-state
+holder → UI samples it at a fixed display cadence.** The producer never waits
+for the consumer; the consumer never waits for the producer.
+
+Two delivery shapes, chosen by data character:
+
+| Shape | Used for | Why |
+|---|---|---|
+| **Latest-only buffer** (drop intermediate) | Camera frames | Frames are large and drop-tolerant — only the newest matters. Queuing them causes lag + unbounded memory. |
+| **Pub-sub into a store** (keep history) | Motion coords, measurement | Small payloads; charts/teach math need recent history, so accumulate in a bounded store. |
+
+> On the previous project's "pub-sub from the camera manager": pub-sub is fine
+> for *event delivery*, and Layer 1 already does it. The change here is that
+> camera **frames are not pushed to the UI per-frame** — pushing couples frame
+> rate to UI render speed and floods the dispatcher. Frames go into a shared
+> latest-frame buffer the UI **pulls** at its own refresh rate. Telemetry keeps
+> the pub-sub-into-a-store model.
+
+### 7.2 Camera frame pipeline — full frame rate
+
+```
+Camera SDK thread          conversion worker (bg Task)        UI thread (display window)
+  ICameraFacet.FrameReady  ─▶  debayer / format convert  ─▶   CompositionTarget.Rendering
+  (raw bytes + format)         (only if needed)               ├─ new frame? (seq check)
+        │                            │                        ├─ WriteableBitmap.Lock()
+        └────────▶  FrameChannel  ◀──┘                        ├─ memcpy back buffer
+                    (per camera)                               ├─ AddDirtyRect / Unlock()
+                    double/triple buffer                       └─ (no new frame → skip)
+                    + sequence number
+```
+
+- **`FrameChannel`** — one per camera. Internally a double/triple buffer: the
+  producer writes the newest frame into a spare buffer and atomically swaps;
+  a monotonically increasing **sequence number** marks "new frame available."
+  Frame buffers are **pooled and reused** — no per-frame allocation, no GC
+  pressure on the hot path.
+- **Producer** — `ICameraFacet.FrameReady` (SDK thread). It does the minimum:
+  drop the raw bytes into the channel and return immediately, so the SDK grab
+  loop is never blocked.
+- **Conversion stage** — if a pixel-format conversion is needed (Bayer → RGB,
+  packed mono, etc.) it runs on a **dedicated background worker**, never on the
+  SDK thread (would stall grabbing) and never on the UI thread. If the camera
+  already delivers a directly displayable format, this stage is skipped.
+- **Consumer** — each `DisplayWindow` hooks `CompositionTarget.Rendering`
+  (fires once per compositor refresh, ~60 Hz, synced to the render pipeline).
+  On each tick it checks the channel's sequence number; if unchanged, it does
+  **nothing**; if changed, it does a cheap `Lock → memcpy → AddDirtyRect →
+  Unlock` into its `WriteableBitmap`. The expensive work (conversion) is
+  already done — the UI thread only does a memory copy.
+- **Frame dropping is intentional.** If the UI cannot keep up, intermediate
+  frames are simply overwritten in the channel — the display always shows the
+  newest frame, never a backlog. Camera capture FPS and display FPS are
+  independent.
+- **Multiple display windows** subscribe to the same `FrameChannel`; each owns
+  its own `WriteableBitmap` and pulls independently at its own refresh.
+- **Escalation path** — if `WriteableBitmap` CPU copy ever bottlenecks at very
+  high resolution/rate, swap the consumer for `D3DImage` + a GPU texture. The
+  `FrameChannel` boundary stays the same — only the display sink changes.
+
+### 7.3 Motion coordinate pipeline
+
+```
+Layer 1 poll loop  ─▶  PositionChanged / StatusChanged  ─▶  MotionTelemetryStore
+  (bg thread)                                               (ConcurrentDictionary<device,status>)
+                                                                     │
+UI sampler (one shared timer, ~20–30 Hz)  ◀─────────────────────────┘
+  reads store → updates bound VM properties on thread 0
+```
+
+- **`MotionTelemetryStore`** — a thread-safe latest-value store
+  (`ConcurrentDictionary<string, MotionDeviceStatus>`), written by Layer 1's
+  motion poll-loop events. Pure write-latest; no UI involvement.
+- **One shared UI sampler** — a single `DispatcherTimer` (or a
+  `CompositionTarget.Rendering` tick) at ~20–30 Hz reads the store and pushes
+  values into bound ViewModel properties. **One sampler for all motion VMs**,
+  not one timer per panel — the legacy `DispatcherTimer`-per-panel pattern is
+  explicitly not repeated.
+- Coordinates are thus always available for read in the background and surface
+  to the UI at a smooth, bounded cadence — independent of how fast the engine
+  polls hardware.
+
+### 7.4 Measurement data pipeline
+
+- A **`MeasurementHub`-style** store: per-channel **ring buffer** (fixed
+  capacity, e.g. 500 samples — the proven legacy design), fed by Layer 1's
+  measurement `Sample` events on the poll-loop thread. Channel key convention
+  `"{Device}.CH{N}"` carried over.
+- **Charts** render on `CompositionTarget.Rendering`, snapshotting the ring
+  buffer into pre-allocated arrays (the legacy chart pattern — it performed
+  well; reuse it). SkiaSharp for the chart surface.
+- Numeric read-outs use the same ~20–30 Hz shared sampler as motion (§7.3).
+
+### 7.5 Why this keeps thread 0 alive
+
+- Thread 0 only ever **reads snapshots and renders** — bounded, cheap work.
+- Producers (SDK callbacks, poll loops, conversion workers) run on background
+  threads and never touch the UI.
+- The UI consumes at *its* cadence (~60 Hz frames, ~20–30 Hz telemetry),
+  decoupled from however fast hardware produces.
+- No event is marshalled per-occurrence to the dispatcher — no event storm.
+
+## 8. Engine wiring + threading rules
 
 - **Composition root** creates `IHorizonEngine`, calls `InitializeAsync` /
-  `ConnectAllAsync`, then constructs the Layer 2 `IProcessService` on top.
-  A startup/splash screen drives `ConnectAllAsync(IProgress<string>)`.
-- **No `DispatcherTimer` polling.** Layer 1 already runs internal poll loops and
-  raises `StatusChanged` / `PositionChanged` / `FrameReady`; Layer 2 raises
-  `StepEvent` / `LogEmitted`. Layer 3 panels **subscribe** to these events and
-  marshal to the UI thread — the per-panel polling of legacy `Horizon.App` is
-  gone.
-- **Camera feed.** `ICameraFacet.FrameReady` delivers **raw bytes + pixel
-  format**. The `byte[] → BitmapSource` conversion is a Layer 3 edge concern —
-  exactly as `headless-engine-concept §5` describes. No engine change needed.
-- **MVVM**: ViewModels depend on the facet/`IProcessService` interfaces; a
-  `MotionViewModel` taking `IMotionFacet` physically cannot reach IO.
+  `ConnectAllAsync`, then constructs the Layer 2 `IProcessService` on top. A
+  startup/splash screen drives `ConnectAllAsync(IProgress<string>)`.
+- **No `DispatcherTimer` polling of hardware.** Layer 1 already runs the poll
+  loops; Layer 3 subscribes to events into the §7 stores. The only UI timers
+  are the display-rate samplers of §7.3/§7.4.
+- **Hardware commands from the UI** (move, set output, snap, …) `await` the
+  async facet methods. The facets are already async and serialized per device
+  (Layer 1 §5), so an `await`ing UI stays fully responsive — the click handler
+  returns to the dispatcher immediately.
+- **Threading rules, explicit:**
+  - *Thread 0 (UI):* read snapshots, bind, render, `await` facet calls. Never a
+    blocking hardware call, never frame conversion, never `.Result`/`.Wait()`.
+  - *SDK callback threads:* drop raw frame into `FrameChannel`, return fast.
+  - *Conversion workers:* dedicated background `Task`s for debayer/format.
+  - *Layer 1 poll loops:* already background; feed the telemetry stores.
+- **MVVM**: a `MotionViewModel` taking `IMotionFacet` physically cannot reach
+  IO — modularity enforced by the compiler, as in Layer 1.
 
-## 7. The interactive contract — extending `IOperatorPrompt`
+## 9. The interactive contract — extending `IOperatorPrompt`
 
 Layer 2's operator callback (`layer2-process-module-design.md §5.1`) is
 deliberately minimal:
@@ -144,9 +287,9 @@ public interface IOperatorPrompt
   sequencing stays in Layer 2.
 
 > The exact shape of `PickPointAsync` / `PickRoiAsync` is refined per phase
-> (§9) — listed here to fix the *direction*, not the final signatures.
+> (§11) — listed here to fix the *direction*, not the final signatures.
 
-## 8. The three interactive features
+## 10. The three interactive features
 
 These are the reason Layer 3 exists. Each is a Layer 2 runner capability +
 a Layer 3 teaching surface.
@@ -161,13 +304,13 @@ All three were deferred in `layer2-process-module-design.md §3` as "post-core."
 **They depend on Layer 3** — they are sequenced after the Layer 3 core, not
 before.
 
-## 9. Phasing
+## 11. Phasing
 
 | Phase | Deliverable |
 |---|---|
-| 1 | `Horizon.UI` skeleton — composition root wiring `IHorizonEngine` + `IProcessService`; startup/connect screen; hardware status dashboard (event-driven). |
-| 2 | Manual control surfaces — motion/jog, IO, pneumatic, laser, measurement — over the engine facets. |
-| 3 | Live camera feed panel — `FrameReady` → `BitmapSource`; snapshot; exposure/gain controls. |
+| 1 | `Horizon.UI` skeleton — composition root wiring `IHorizonEngine` + `IProcessService`; startup/connect screen; `MainWindow`; hardware status dashboard fed by the §7.3 telemetry store + shared sampler. |
+| 2 | Manual control surfaces — motion/jog, IO, pneumatic, laser, measurement — over the engine facets; measurement pipeline (§7.4) + charts. |
+| 3 | **Camera frame pipeline** (§7.2) — `FrameChannel`, conversion worker, `DisplayWindow` with `CompositionTarget.Rendering` + `WriteableBitmap`; spawn-additional-display support; exposure/gain controls. |
 | 4 | Product + teach-points + process/recipe run UI over `IProcessService`; step highlighting; context watch; `IOperatorPrompt.ConfirmAsync` as a modal. |
 | 5 | Extend `IOperatorPrompt` (text / choose / pick-point / pick-ROI); teaching-overlay infrastructure on the live feed. |
 | 6 | **Trainer** wizard. |
@@ -178,15 +321,18 @@ Phases 1–4 deliver a usable operator app at parity with the headless cores.
 Phases 5–8 deliver the interactive features that justify the UI. Each phase =
 code + bench-verified, the established per-step rhythm.
 
-## 10. Open questions for review
+## 12. Open questions for review
 
-- Confirm **WPF (no AvalonDock)** vs. Avalonia for `Horizon.UI` (§4).
 - Fixed operator layout vs. dockable panels — the legacy app was dockable; an
-  operator station may prefer fixed task screens.
-- Should `Horizon.UI` and the engine stay **one process** (in-process,
-  recommended) for the foreseeable future, or is a web UI on the roadmap soon
-  enough to justify the HTTP boundary now?
-- `IOperatorPrompt` extension (§7) — does it grow on `IProcessService`, or does
+  operator station may prefer fixed task screens. (§4 assumes fixed.)
+- `DisplayWindow` on its own dedicated UI thread from the start, or
+  single-threaded until profiling shows thread-0 contention? (§6.)
+- `WriteableBitmap` vs. `D3DImage`/GPU for the frame sink — start with
+  `WriteableBitmap` (§7.2 escalation path) unless a known high-res/high-FPS
+  camera already forces the GPU path.
+- Display sampler cadence — ~20–30 Hz for telemetry assumed; confirm against
+  operator expectations.
+- `IOperatorPrompt` extension (§9) — does it grow on `IProcessService`, or does
   a richer teaching contract warrant its own interface?
 - Does Layer 3 own a settings/preferences surface (the legacy `UserPreferences`),
   or is that also deferred?
