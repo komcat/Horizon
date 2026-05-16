@@ -15,9 +15,11 @@ public sealed record LaserState(
     double Temperature,
     double SetpointTemperature,
     double LaserCurrent,
-    double SetpointLaserCurrent)
+    double SetpointLaserCurrent,
+    string LastError)
 {
-    public static readonly LaserState Unknown = new(false, false, false, false, 0, 0, 0, 0);
+    public static readonly LaserState Unknown =
+        new(false, false, false, false, 0, 0, 0, 0, string.Empty);
 }
 
 /// <summary>Raised on <see cref="ILaserFacet.StateChanged"/> when a controller's polled state changes.</summary>

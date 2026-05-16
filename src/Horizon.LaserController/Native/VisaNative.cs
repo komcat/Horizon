@@ -32,6 +32,10 @@ internal static class VisaNative
     [DllImport(DllName, EntryPoint = "viRead")]
     public static extern int Read(int vi, byte[] buf, int cnt, out int retCnt);
 
+    /// <summary>USBTMC / 488.2 device clear — resyncs the interface.</summary>
+    [DllImport(DllName, EntryPoint = "viClear")]
+    public static extern int Clear(int vi);
+
     [DllImport(DllName, EntryPoint = "viStatusDesc")]
     public static extern int StatusDesc(int vi, int status, StringBuilder desc);
 

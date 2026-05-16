@@ -151,6 +151,30 @@ public sealed class PIMotionController : IMotionController
         catch { return 0; }
     }
 
+    public bool SetSystemVelocity(double speed)
+    {
+        // PI hexapod path velocity is the system velocity (VLS), not per-axis VEL.
+        if (!IsConnected) return false;
+        try
+        {
+            return PIGcs2.VLS(_connectionId, speed) != 0;
+        }
+        catch { return false; }
+    }
+
+    public double GetSystemVelocity()
+    {
+        if (!IsConnected) return 0;
+        try
+        {
+            double v = 0;
+            if (PIGcs2.qVLS(_connectionId, ref v) != 0)
+                return v;
+            return 0;
+        }
+        catch { return 0; }
+    }
+
     private void WaitForMotionComplete(string axis, int timeoutMs = 30000)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();

@@ -62,6 +62,12 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
                 VisaNative.SetAttribute(_instrSession, VisaNative.VI_ATTR_TMO_VALUE, 2000);
                 _connected = true;
 
+                // USBTMC device clear — put the interface in a known state so the
+                // first query/read transaction does not protocol-violate.
+                var clearStatus = VisaNative.Clear(_instrSession);
+                if (clearStatus < VisaNative.VI_SUCCESS)
+                    Log.Warning("[Laser] CLD101x {DeviceName}: viClear returned 0x{Status:X8}", _config.Name, clearStatus);
+
                 WriteCommand("*CLS");
 
                 // Query initial states
@@ -296,8 +302,13 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
 
                     _tecOn = QueryBoolState("output2:state?");
                     _laserOn = QueryBoolState("output1:state?");
+                    _lastError = string.Empty;
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    // Surface the VISA status code instead of swallowing it.
+                    _lastError = ex.Message;
+                }
             }
 
             return new LaserControllerStatus

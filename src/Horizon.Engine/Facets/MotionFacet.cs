@@ -127,6 +127,33 @@ internal sealed class MotionFacet : IMotionFacet, IAsyncDisposable
             .ConfigureAwait(false);
     }
 
+    public async Task<Result<double>> GetVelocityAsync(string device, string axis)
+    {
+        if (!_devices.ContainsKey(device))
+            return Result<double>.Fail(ErrorCode.MotionDeviceNotFound, $"Motion device '{device}' not found.");
+        return await WithLock(device, CancellationToken.None, () =>
+            Result<double>.Ok(_manager.GetVelocity(device, axis))).ConfigureAwait(false);
+    }
+
+    public async Task<Result> SetSystemVelocityAsync(string device, double velocity)
+    {
+        if (!_devices.ContainsKey(device))
+            return Result.Fail(ErrorCode.MotionDeviceNotFound, $"Motion device '{device}' not found.");
+        return await WithLock(device, CancellationToken.None, () =>
+            _manager.SetSystemVelocity(device, velocity)
+                ? Result.Ok()
+                : Result.Fail(ErrorCode.MotionAxisError, $"SetSystemVelocity failed: {device}."))
+            .ConfigureAwait(false);
+    }
+
+    public async Task<Result<double>> GetSystemVelocityAsync(string device)
+    {
+        if (!_devices.ContainsKey(device))
+            return Result<double>.Fail(ErrorCode.MotionDeviceNotFound, $"Motion device '{device}' not found.");
+        return await WithLock(device, CancellationToken.None, () =>
+            Result<double>.Ok(_manager.GetSystemVelocity(device))).ConfigureAwait(false);
+    }
+
     /// <summary>Connects all motion devices and starts polling. Called by the engine during ConnectAll.</summary>
     public async Task ConnectAllInternalAsync(IProgress<string>? progress)
     {

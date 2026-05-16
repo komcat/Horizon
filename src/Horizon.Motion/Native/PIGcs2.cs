@@ -68,6 +68,13 @@ internal static class PIGcs2
     internal static extern int qVEL(int iId,
         [MarshalAs(UnmanagedType.LPStr)] string szAxes, [MarshalAs(UnmanagedType.LPArray)] double[] pdValarray);
 
+    // System (path) velocity — coordinated platform speed for hexapods.
+    [DllImport(DllName, EntryPoint = "PI_VLS")]
+    internal static extern int VLS(int iId, double dVelocity);
+
+    [DllImport(DllName, EntryPoint = "PI_qVLS")]
+    internal static extern int qVLS(int iId, ref double pdVelocity);
+
     [DllImport(DllName, EntryPoint = "PI_GetError")]
     internal static extern int GetError(int iId);
 

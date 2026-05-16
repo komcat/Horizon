@@ -1,6 +1,7 @@
 using Horizon.Common;
 using Horizon.Engine;
 using Spectre.Console;
+using Spectre.Console.Rendering;
 
 namespace Horizon.ConsoleHost;
 
@@ -19,6 +20,7 @@ internal sealed class ConsoleApp
     private const string Cameras = "Cameras";
     private const string Vision = "Vision (HALCON)";
     private const string Safety = "Safety";
+    private const string ParallelTest = "Parallel testing";
     private const string Reconnect = "Reconnect hardware";
     private const string Exit = "Exit";
 
@@ -37,7 +39,7 @@ internal sealed class ConsoleApp
                     .Title("\n[aqua]Horizon engine[/] — choose an action:")
                     .AddChoices(ShowStatus, IoDevices, MotionDevices, PneumaticSlides,
                                 CurrentMeasurement, LaserControllers, Cameras, Vision, Safety,
-                                Reconnect, Exit));
+                                ParallelTest, Reconnect, Exit));
 
             switch (choice)
             {
@@ -75,6 +77,10 @@ internal sealed class ConsoleApp
 
                 case Safety:
                     await SafetyMenuAsync();
+                    break;
+
+                case ParallelTest:
+                    await ParallelTestAsync();
                     break;
 
                 case Reconnect:
@@ -256,6 +262,7 @@ internal sealed class ConsoleApp
         const string Stop = "Stop (halt motion)";
         const string Jog = "Jog axis";
         const string MoveTo = "Move to coordinates";
+        const string SetVelocity = "Set velocity";
         const string Refresh = "Refresh";
 
         while (true)
@@ -273,6 +280,7 @@ internal sealed class ConsoleApp
                 {
                     choices.Add(Jog);
                     choices.Add(MoveTo);
+                    choices.Add(SetVelocity);
                 }
                 choices.Add(Disconnect);
             }
@@ -310,6 +318,10 @@ internal sealed class ConsoleApp
                     await MoveToCoordinatesAsync(device, info!);
                     break;
 
+                case SetVelocity:
+                    await SetVelocityAsync(device, info!);
+                    break;
+
                 case Refresh:
                     break;
 
@@ -317,6 +329,30 @@ internal sealed class ConsoleApp
                     return;
             }
         }
+    }
+
+    private async Task SetVelocityAsync(string device, MotionDeviceInfo info)
+    {
+        // PI hexapods have a single system (path) velocity; ACS is per-axis.
+        if (info.ControllerType.Equals("PI", StringComparison.OrdinalIgnoreCase))
+        {
+            var sysVel = AnsiConsole.Prompt(
+                new TextPrompt<double>($"System velocity for [aqua]{Markup.Escape(device)}[/]:"));
+            ReportResult(await _engine.Motion.SetSystemVelocityAsync(device, sysVel),
+                $"Set {device} system velocity = {sysVel}");
+            return;
+        }
+
+        var axis = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("Select axis:")
+                .AddChoices(info.Axes));
+
+        var velocity = AnsiConsole.Prompt(
+            new TextPrompt<double>($"Velocity for [aqua]{Markup.Escape(axis)}[/]:"));
+
+        var result = await _engine.Motion.SetVelocityAsync(device, axis, velocity);
+        ReportResult(result, $"Set velocity {device}.{axis} = {velocity}");
     }
 
     private async Task MoveToCoordinatesAsync(string device, MotionDeviceInfo info)
@@ -710,6 +746,8 @@ internal sealed class ConsoleApp
         table.AddRow("Laser", state.LaserOn ? "[red]ON (emitting)[/]" : "[grey]off[/]");
         table.AddRow("Temperature", $"{state.Temperature:F2} C  (setpoint {state.SetpointTemperature:F2} C)");
         table.AddRow("Laser current", $"{state.LaserCurrent:F2} mA  (setpoint {state.SetpointLaserCurrent:F2} mA)");
+        table.AddRow("Last error",
+            string.IsNullOrEmpty(state.LastError) ? "[grey]none[/]" : $"[red]{Markup.Escape(state.LastError)}[/]");
         AnsiConsole.Write(table);
     }
 
@@ -1027,6 +1065,165 @@ internal sealed class ConsoleApp
             }
         }
         AnsiConsole.Write(table);
+    }
+
+    /// <summary>
+    /// Parallel test: every connected motion device runs an X +1/-1 cycle
+    /// concurrently at 0.5 mm/s while positions and all measurement channels
+    /// stream to a live display. Demonstrates the engine's cross-device
+    /// concurrency. Press any key to stop.
+    /// </summary>
+    private async Task ParallelTestAsync()
+    {
+        var devices = _engine.Motion.DeviceNames.Where(_engine.Motion.IsConnected).ToList();
+        if (devices.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No connected motion devices.[/]");
+            return;
+        }
+
+        AnsiConsole.MarkupLine(
+            "[yellow]Parallel test: sets each motion device's X axis to 0.5 mm/s and " +
+            "cycles X +1 / -1 repeatedly on all devices at once.[/]");
+        if (!AnsiConsole.Confirm("Start parallel test? (moves all stages)", defaultValue: false))
+            return;
+
+        // Capture current velocity, then set 0.5 mm/s.
+        // ACS: per-axis VEL on every installed axis. PI: system velocity (VLS) —
+        // a hexapod's path speed is the system velocity, not per-axis VEL.
+        var restores = new List<Func<Task>>();
+        foreach (var d in devices)
+        {
+            var info = _engine.Motion.GetDevice(d);
+            if (info == null) continue;
+
+            if (info.ControllerType.Equals("PI", StringComparison.OrdinalIgnoreCase))
+            {
+                var cur = await _engine.Motion.GetSystemVelocityAsync(d);
+                if (cur.IsSuccess && cur.Value > 0)
+                {
+                    var v = cur.Value;
+                    restores.Add(() => _engine.Motion.SetSystemVelocityAsync(d, v));
+                }
+                ReportResult(await _engine.Motion.SetSystemVelocityAsync(d, 0.5),
+                    $"Set {d} system velocity = 0.5");
+            }
+            else
+            {
+                foreach (var ax in info.Axes)
+                {
+                    var cur = await _engine.Motion.GetVelocityAsync(d, ax);
+                    if (cur.IsSuccess && cur.Value > 0)
+                    {
+                        var v = cur.Value;
+                        var axis = ax;
+                        restores.Add(() => _engine.Motion.SetVelocityAsync(d, axis, v));
+                    }
+                    ReportResult(await _engine.Motion.SetVelocityAsync(d, ax, 0.5),
+                        $"Set {d}.{ax} velocity = 0.5");
+                }
+            }
+        }
+
+        var cycles = new int[devices.Count];
+        using var cts = new CancellationTokenSource();
+
+        // One concurrent loop task per device — X +1 then X -1, repeat.
+        var loops = new List<Task>();
+        for (int i = 0; i < devices.Count; i++)
+        {
+            var d = devices[i];
+            var idx = i;
+            loops.Add(Task.Run(async () =>
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    var up = await _engine.Motion.MoveRelativeAsync(d, "X", 1.0, cts.Token);
+                    if (!up.IsSuccess || cts.IsCancellationRequested) break;
+                    var down = await _engine.Motion.MoveRelativeAsync(d, "X", -1.0, cts.Token);
+                    if (!down.IsSuccess || cts.IsCancellationRequested) break;
+                    Interlocked.Increment(ref cycles[idx]);
+                }
+            }));
+        }
+
+        // Live (flicker-free) display until a key is pressed — Spectre updates
+        // the anchored region in place instead of clearing the screen.
+        var measDevices = _engine.Measurement.DeviceNames;
+        await AnsiConsole.Live(BuildParallelDisplay(devices, cycles, measDevices))
+            .StartAsync(async ctx =>
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    ctx.UpdateTarget(BuildParallelDisplay(devices, cycles, measDevices));
+                    ctx.Refresh();
+                    if (Console.KeyAvailable)
+                    {
+                        Console.ReadKey(intercept: true);
+                        cts.Cancel();
+                        break;
+                    }
+                    await Task.Delay(250);
+                }
+            });
+
+        AnsiConsole.MarkupLine("\n[grey]Stopping — waiting for moves to settle…[/]");
+        try { await Task.WhenAll(loops); }
+        catch { /* cancelled moves surface as faulted/failed — expected */ }
+
+        foreach (var d in devices)
+            await _engine.Motion.StopAsync(d);
+
+        // Restore the velocities captured before the test.
+        foreach (var restore in restores)
+            await restore();
+
+        AnsiConsole.MarkupLine("[green]Parallel test stopped — velocities restored.[/]");
+    }
+
+    /// <summary>Builds the parallel-test live display: header + motion table + measurement table.</summary>
+    private Rows BuildParallelDisplay(IReadOnlyList<string> devices, int[] cycles, IReadOnlyList<string> measDevices)
+    {
+        var blocks = new List<IRenderable>
+        {
+            new Markup("[aqua]PARALLEL TEST[/] — running.  [grey]Press any key to stop.[/]"),
+            new Markup("[aqua]Motion[/]"),
+        };
+
+        var motion = new Table().Border(TableBorder.Rounded);
+        motion.AddColumn("Device");
+        motion.AddColumn("X position");
+        motion.AddColumn("Moving");
+        motion.AddColumn("Cycles");
+        for (int i = 0; i < devices.Count; i++)
+        {
+            var s = _engine.Motion.GetState(devices[i]);
+            motion.AddRow(
+                Markup.Escape(devices[i]),
+                $"{s.Position.X:F4}",
+                s.IsMoving ? "[yellow]yes[/]" : "[grey]no[/]",
+                cycles[i].ToString());
+        }
+        blocks.Add(motion);
+
+        if (measDevices.Count > 0)
+        {
+            blocks.Add(new Markup("[aqua]Measurement[/]"));
+            var meas = new Table().Border(TableBorder.Rounded);
+            meas.AddColumn("Device");
+            meas.AddColumn("Channels");
+            foreach (var m in measDevices)
+            {
+                var ms = _engine.Measurement.GetState(m);
+                var text = ms.Valid && ms.Channels.Count > 0
+                    ? string.Join("   ", ms.Channels.Select((v, i) => $"CH{i + 1}={v:E3} {ms.Unit}"))
+                    : "no data";
+                meas.AddRow(Markup.Escape(m), Markup.Escape(text));
+            }
+            blocks.Add(meas);
+        }
+
+        return new Rows(blocks);
     }
 
     private static string Bit(uint mask, int pin)

@@ -22,6 +22,14 @@ public interface IMotionController
     bool SetVelocity(string axis, double speed);
     double GetVelocity(string axis);
 
+    /// <summary>
+    /// System (path) velocity — the coordinated platform speed for
+    /// parallel-kinematics controllers (PI hexapods). Default: not supported
+    /// (Cartesian controllers use per-axis <see cref="SetVelocity"/>).
+    /// </summary>
+    bool SetSystemVelocity(double speed) => false;
+    double GetSystemVelocity() => 0;
+
     string ControllerType { get; }
     string DeviceName { get; }
     List<string> AxisNames { get; }

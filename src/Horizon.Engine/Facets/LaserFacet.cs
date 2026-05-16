@@ -14,7 +14,7 @@ namespace Horizon.Engine;
 /// </summary>
 internal sealed class LaserFacet : ILaserFacet, IAsyncDisposable
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 
     private readonly LaserControllerManager _manager;
     private readonly Action<HardwareStatusChanged> _emitStatus;
@@ -131,7 +131,8 @@ internal sealed class LaserFacet : ILaserFacet, IAsyncDisposable
                 status.CurrentTemperature,
                 status.SetpointTemperature,
                 status.CurrentLaserCurrent,
-                status.SetpointLaserCurrent);
+                status.SetpointLaserCurrent,
+                status.LastError);
 
             var prev = _state.TryGetValue(name, out var p) ? p : LaserState.Unknown;
             if (next == prev) continue;
