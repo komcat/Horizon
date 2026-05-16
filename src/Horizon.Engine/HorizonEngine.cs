@@ -5,6 +5,7 @@ using Horizon.Core.Interlock;
 using Horizon.CurrentMeasurement;
 using Horizon.IO;
 using Horizon.LaserController;
+using Horizon.Lighting;
 using Horizon.Motion;
 using Horizon.Motion.Models;
 using Horizon.Pneumatic;
@@ -41,6 +42,9 @@ public sealed class HorizonEngine : IHorizonEngine
     private PowerSupplyManager? _powerSupplyManager;
     private PowerSupplyFacet? _powerSupplyFacet;
 
+    private LightingManager? _lightingManager;
+    private LightingFacet? _lightingFacet;
+
     private CameraManager? _cameraManager;
     private CameraFacet? _cameraFacet;
 
@@ -71,6 +75,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
     public IPowerSupplyFacet PowerSupply =>
         _powerSupplyFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
+
+    public ILightingFacet Lighting =>
+        _lightingFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
 
     public ICameraFacet Camera =>
         _cameraFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
@@ -178,6 +185,21 @@ public sealed class HorizonEngine : IHorizonEngine
         }
         _powerSupplyFacet = new PowerSupplyFacet(_powerSupplyManager, RaiseStatusChanged, Log);
 
+        // --- Lighting domain ---
+        _lightingManager = new LightingManager();
+        try
+        {
+            var devices = LightingJsonLoader.Load(_configDirectory);
+            foreach (var device in devices)
+                _lightingManager.AddDevice(device);
+            Log(LogLevel.Info, $"Lighting controllers loaded: {devices.Count}");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"Lighting config load failed: {ex.Message}");
+        }
+        _lightingFacet = new LightingFacet(_lightingManager, RaiseStatusChanged, Log);
+
         // --- Camera domain ---
         _cameraManager = new CameraManager();
         try
@@ -271,6 +293,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
         if (_powerSupplyFacet != null)
             await _powerSupplyFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
+
+        if (_lightingFacet != null)
+            await _lightingFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
 
         if (_cameraFacet != null)
             await _cameraFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
@@ -366,6 +391,18 @@ public sealed class HorizonEngine : IHorizonEngine
             }
         }
 
+        if (_lightingFacet != null)
+        {
+            foreach (var name in _lightingFacet.DeviceNames)
+            {
+                var s = _lightingFacet.GetState(name);
+                var detail = s.Valid && s.Channels.Count > 0
+                    ? string.Join("  ", s.Channels.Select(c => $"{c.Name}={c.Intensity}"))
+                    : "no data";
+                devices.Add(new DeviceStatus("Lighting", name, _lightingFacet.IsConnected(name), detail));
+            }
+        }
+
         if (_cameraFacet != null)
         {
             foreach (var id in _cameraFacet.CameraIds)
@@ -429,6 +466,12 @@ public sealed class HorizonEngine : IHorizonEngine
         _powerSupplyManager?.Dispose();
         _powerSupplyManager = null;
         _powerSupplyFacet = null;
+
+        if (_lightingFacet != null)
+            await _lightingFacet.DisposeAsync().ConfigureAwait(false);   // stops the lighting poll loop
+        _lightingManager?.Dispose();
+        _lightingManager = null;
+        _lightingFacet = null;
 
         _measurementManager?.Dispose();   // stops its poll loop, disconnects devices
         _measurementManager = null;
