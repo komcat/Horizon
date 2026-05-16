@@ -114,6 +114,14 @@ device-under-test result records (per-serial-number production data). A larger
 Layer 2 feature. *All DUT steps in this program are `enabled:false`*, so they do
 not block migration — skip for now, plan a later "DUT / result data" phase.
 
+> **Design requirement for the DUT phase (from bench feedback):** during
+> product development you often run a program without ever doing a "DUT start"
+> (`DUT Create`). Today a `DUT Insert` with no active DUT errors out, which is
+> annoying. The DUT phase must make `DUT Insert` **fall back to the last DUT
+> that was run** when no DUT is currently active — write into that record
+> instead of failing. Only error if there has *never* been a DUT. Implies the
+> DUT store tracks a "last/current DUT" handle that survives a program run.
+
 ## Task 3 — migrate "Probe SLED and PIC" as a `.hwf`
 
 Source: `bobcat_engine/.../config/SIPHOG888/recipes/Probe SLED and PIC.json`.

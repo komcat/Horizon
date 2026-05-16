@@ -19,6 +19,7 @@ internal sealed class ConsoleApp : IOperatorPrompt
     private const string DeleteProduct = "Delete product";
     private const string Positions = "Positions";
     private const string ProcessPrograms = "Process programs";
+    private const string Recipes = "Recipes";
     private const string Exit = "Exit";
     private const string Back = "Back";
 
@@ -67,7 +68,7 @@ internal sealed class ConsoleApp : IOperatorPrompt
                 new SelectionPrompt<string>()
                     .Title($"\n[aqua]Workflow[/] — active product: [aqua]{Markup.Escape(active)}[/]")
                     .AddChoices(ShowProducts, CreateProduct, LoadProduct, UnloadProduct,
-                                DeleteProduct, Positions, ProcessPrograms, Exit));
+                                DeleteProduct, Positions, ProcessPrograms, Recipes, Exit));
 
             switch (choice)
             {
@@ -103,6 +104,10 @@ internal sealed class ConsoleApp : IOperatorPrompt
 
                 case ProcessPrograms:
                     await ProgramsMenuAsync();
+                    break;
+
+                case Recipes:
+                    await RecipesMenuAsync();
                     break;
 
                 case Exit:
@@ -403,6 +408,91 @@ internal sealed class ConsoleApp : IOperatorPrompt
         finally
         {
             _service.StepEvent -= OnStep;
+            _service.PausedChanged -= OnPaused;
+        }
+    }
+
+    // --- Recipes ---
+
+    private async Task RecipesMenuAsync()
+    {
+        if (_service.ActiveProduct == null)
+        {
+            AnsiConsole.MarkupLine("[yellow]No active product — load one first.[/]");
+            return;
+        }
+
+        while (true)
+        {
+            var recipes = _service.ListRecipes();
+            if (recipes.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[yellow]No recipes (.hrec) in this product.[/]");
+                return;
+            }
+
+            var pick = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("\n[aqua]Recipes[/] — select to run:")
+                    .AddChoices(recipes.Append(Back)));
+
+            if (pick == Back) return;
+            await RunRecipeByNameAsync(pick);
+        }
+    }
+
+    private async Task RunRecipeByNameAsync(string name)
+    {
+        // Parse first — syntax errors are shown without running anything.
+        var load = _service.LoadRecipe(name);
+        if (!load.IsSuccess)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]Load failed[/] — {load.Message}");
+            return;
+        }
+
+        var program = load.Value;
+        if (program.HasErrors)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]{program.Errors.Count} parse error(s) in '{name}':[/]");
+            foreach (var error in program.Errors)
+                AnsiConsole.MarkupLineInterpolated($"  [red]{error}[/]");
+            return;
+        }
+
+        AnsiConsole.MarkupLineInterpolated($"\n[aqua]Running recipe[/] '{name}'.");
+        AnsiConsole.MarkupLine("[grey](keys: [[p]]ause  [[s]]tep  [[r]]esume  [[c]]ancel)[/]");
+
+        void OnPaused(bool paused)
+        {
+            if (paused)
+                AnsiConsole.MarkupLine("  [yellow]|| PAUSED[/] — [grey][[r]]esume  [[s]]tep  [[c]]ancel[/]");
+        }
+
+        using var cts = new CancellationTokenSource();
+        _service.PausedChanged += OnPaused;
+        try
+        {
+            var runTask = _service.RunRecipeAsync(name, cts.Token);
+            while (!runTask.IsCompleted)
+            {
+                if (!_awaitingPrompt && Console.KeyAvailable)
+                {
+                    switch (Console.ReadKey(intercept: true).Key)
+                    {
+                        case ConsoleKey.P: _service.Pause();  break;
+                        case ConsoleKey.R: _service.Resume(); break;
+                        case ConsoleKey.S: _service.Step();   break;
+                        case ConsoleKey.C:
+                        case ConsoleKey.Escape: cts.Cancel(); break;
+                    }
+                }
+                await Task.Delay(50);
+            }
+            Report(await runTask, $"Run recipe '{name}'");
+        }
+        finally
+        {
             _service.PausedChanged -= OnPaused;
         }
     }

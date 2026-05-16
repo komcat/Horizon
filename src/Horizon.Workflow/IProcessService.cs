@@ -1,5 +1,6 @@
 using Horizon.Common;
 using Horizon.Engine;
+using Horizon.Workflow.Recipe;
 
 namespace Horizon.Workflow;
 
@@ -77,6 +78,20 @@ public interface IProcessService
 
     /// <summary>Runs a process program against the engine.</summary>
     Task<Result> RunAsync(WorkflowProgram program, CancellationToken ct = default);
+
+    // --- Recipes (.hrec scripts, operate on the active product) ---
+
+    /// <summary>Recipe names in the active product.</summary>
+    IReadOnlyList<string> ListRecipes();
+
+    /// <summary>Parses a recipe by name; the returned program carries any parse errors.</summary>
+    Result<RecipeProgram> LoadRecipe(string name);
+
+    /// <summary>Saves recipe source text into the active product.</summary>
+    Result SaveRecipe(string name, string source);
+
+    /// <summary>Runs a recipe script against the engine.</summary>
+    Task<Result> RunRecipeAsync(string name, CancellationToken ct = default);
 
     // --- Interactive execution (pause / step) ---
 

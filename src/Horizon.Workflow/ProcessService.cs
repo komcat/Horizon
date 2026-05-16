@@ -1,5 +1,6 @@
 using Horizon.Common;
 using Horizon.Engine;
+using Horizon.Workflow.Recipe;
 
 namespace Horizon.Workflow;
 
@@ -14,6 +15,7 @@ public sealed class ProcessService : IProcessService
     private readonly ProductStore _products = new();
     private PositionStore? _positions;   // null when no product is active
     private ProgramStore? _programs;     // null when no product is active
+    private RecipeStore? _recipes;       // null when no product is active
     private PauseController? _pause;     // non-null only while a program runs
 
     public ProcessService(IHorizonEngine engine)
@@ -26,6 +28,7 @@ public sealed class ProcessService : IProcessService
         {
             _positions = new PositionStore(dir);
             _programs = new ProgramStore(dir);
+            _recipes = new RecipeStore(dir);
         }
     }
 
@@ -71,6 +74,7 @@ public sealed class ProcessService : IProcessService
             _products.SetActive(null);
             _positions = null;
             _programs = null;
+            _recipes = null;
         }
 
         Log(LogLevel.Info, $"Product deleted: {name}");
@@ -86,6 +90,7 @@ public sealed class ProcessService : IProcessService
         var dir = _products.ProductDir(name);
         _positions = new PositionStore(dir);
         _programs = new ProgramStore(dir);
+        _recipes = new RecipeStore(dir);
         Log(LogLevel.Info, $"Product loaded: {name}");
         return Result.Ok();
     }
@@ -95,6 +100,7 @@ public sealed class ProcessService : IProcessService
         _products.SetActive(null);
         _positions = null;
         _programs = null;
+        _recipes = null;
         Log(LogLevel.Info, "Product unloaded.");
     }
 
@@ -230,6 +236,81 @@ public sealed class ProcessService : IProcessService
     }
 
     private void OnPausedChanged(bool paused) => PausedChanged?.Invoke(paused);
+
+    // --- Recipes ---
+
+    public IReadOnlyList<string> ListRecipes()
+        => _recipes?.List() ?? Array.Empty<string>();
+
+    public Result<RecipeProgram> LoadRecipe(string name)
+    {
+        if (_recipes == null)
+            return Result<RecipeProgram>.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        var source = _recipes.Load(name);
+        return source == null
+            ? Result<RecipeProgram>.Fail(ErrorCode.FileNotFound, $"Recipe '{name}' not found.")
+            : Result<RecipeProgram>.Ok(RecipeParser.Parse(name, source));
+    }
+
+    public Result SaveRecipe(string name, string source)
+    {
+        if (_recipes == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (string.IsNullOrWhiteSpace(name))
+            return Result.Fail(ErrorCode.InvalidParameter, "Recipe name is required.");
+
+        _recipes.Save(name, source);
+        Log(LogLevel.Info, $"Recipe saved: {name}");
+        return Result.Ok();
+    }
+
+    public async Task<Result> RunRecipeAsync(string name, CancellationToken ct = default)
+    {
+        if (_recipes == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        var source = _recipes.Load(name);
+        if (source == null)
+            return Result.Fail(ErrorCode.FileNotFound, $"Recipe '{name}' not found.");
+
+        var program = RecipeParser.Parse(name, source);
+        if (program.HasErrors)
+        {
+            foreach (var error in program.Errors)
+                Log(LogLevel.Error, $"Recipe '{name}' parse error — {error}");
+            return Result.Fail(ErrorCode.InvalidParameter,
+                $"Recipe '{name}' has {program.Errors.Count} parse error(s).");
+        }
+
+        var pause = new PauseController();
+        pause.PausedChanged += OnPausedChanged;
+        _pause = pause;
+
+        var registry = new RecipeMethodRegistry(_engine, MoveToNamedPositionAsync, OperatorPrompt, Log);
+        var interpreter = new RecipeInterpreter(registry, pause, Log);
+
+        Log(LogLevel.Info, $"Recipe started: {name}");
+        try
+        {
+            var result = await interpreter.RunAsync(program, ct).ConfigureAwait(false);
+            var summary = $"Recipe {(result.IsSuccess ? "completed" : "failed")}: {name}";
+            if (!string.IsNullOrEmpty(result.Message))
+                summary += $" — {result.Message}";
+            Log(result.IsSuccess ? LogLevel.Info : LogLevel.Error, summary);
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            Log(LogLevel.Warning, $"Recipe cancelled: {name}");
+            return Result.Fail(ErrorCode.OperationFailed, "Recipe cancelled.");
+        }
+        finally
+        {
+            pause.PausedChanged -= OnPausedChanged;
+            _pause = null;
+        }
+    }
 
     private void Log(LogLevel level, string message)
         => LogEmitted?.Invoke(new LogEntry(level, DateTimeOffset.Now, "Workflow", message));
