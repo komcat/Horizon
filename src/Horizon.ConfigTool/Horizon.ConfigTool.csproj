@@ -25,6 +25,7 @@
     <ProjectReference Include="..\Horizon.CurrentMeasurement\Horizon.CurrentMeasurement.csproj" />
     <ProjectReference Include="..\Horizon.Safety\Horizon.Safety.csproj" />
     <ProjectReference Include="..\Horizon.Interlock\Horizon.Interlock.csproj" />
+    <ProjectReference Include="..\Horizon.Config\Horizon.Config.csproj" />
   </ItemGroup>
 
 </Project>
