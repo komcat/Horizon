@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Config-only models for field device types that have no runtime driver
+       yet (lighting, TEC, SMU, power supply, TCP clients). Records + JSON
+       loaders only; depends on Horizon.Common. A type graduates to its own
+       domain project once it gets a real driver. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Platforms>x64</Platforms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Horizon.Common\Horizon.Common.csproj" />
+  </ItemGroup>
+
+</Project>

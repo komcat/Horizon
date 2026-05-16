@@ -130,8 +130,9 @@ small `Horizon.Config` project) so a future in-app editor reuses it.
 |---|---|
 | 0 | Symmetric `Save` on each domain loader; expose the file-envelope types needed. Foundation — no tool yet. |
 | 1 | `Horizon.ConfigTool` project; choose directory; load + **list + view** all domains (read-only). Proves the model references. |
+| 1.5 | **New device types** — model Lighting / TEC / SMU / PowerSupply / TcpClient in a new `Horizon.Config` project (config records + `Load`/`Save` loaders), so the tool covers what field machines actually run. See §10. |
 | 2 | Add device from preset → save (one domain end-to-end first, e.g. Measurement — simplest schema). |
-| 3 | Edit / remove; roll out add/edit to all 8 domains. |
+| 3 | Edit / remove; roll out add/edit to all domains. |
 | 4 | Cross-reference validation + save-time report; optional dry-run diff. |
 
 Each phase = compilable, runnable, reviewed — the established per-step rhythm.
@@ -149,3 +150,30 @@ Each phase = compilable, runnable, reviewed — the established per-step rhythm.
   until one exists.
 - Don't build the editor twice — Phase 0's `Save` + the validation library are
   the shared seam the WPF app would reuse.
+
+## 10. Field device types — codebase models (Phase 1.5)
+
+Audit of real client machine configs (M3 / M4) found device types the Horizon
+codebase has **no model** for. Decision: **model them in the codebase** (not
+loose JSON templates), so the tool reuses real types as for every other domain.
+
+They are config-only for now — no runtime driver/manager yet — so they live in
+one new project, **`Horizon.Config`** (model records + `Load`/`Save` loaders,
+the Phase 0 pattern, depends only on `Horizon.Common`). A type graduates to its
+own domain project if/when it gets a real driver.
+
+| File | Model | Notes |
+|---|---|---|
+| `lighting_config.json` | `LightingControllerConfig` (+ `LightingChannelConfig`) | LED controller (e.g. CCS_PD3) with per-channel color / group / intensity |
+| `tec_devices.json` | `TecDeviceConfig` | TEC + laser controllers — CLD101x (VISA or TCP) and standalone TED4015 |
+| `smu_devices.json` | `SmuDeviceConfig` | Keithley 6482 / 2400; adds `measurementNplc`, `autoRange`, compliance |
+| `power_supply_config.json` | `PowerSupplyConfig` | Keysight E36441A / E36103B (LXI, ip:port, channels) |
+| `tcp_clients.json` | `TcpClientConfig` | single- or multi-channel data-stream clients |
+
+Field shapes are taken from the M3/M4 machine configs as the **parameter spec**;
+the models follow Horizon conventions (records, camelCase via `ConfigLoader`).
+The legacy snake_case field files are reference material, not the output format.
+
+`tec_devices.json` overlaps the existing `laser_controller_devices.json` — for
+now both are modeled; consolidating is a later call once the engine grows TEC
+support.
