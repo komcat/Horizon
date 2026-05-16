@@ -89,21 +89,51 @@ once, handed to `Horizon.Workflow`, and both interfaces are exposed to the UI
 via a thin composition root (mirrors the role legacy `AppContext` played, but
 as pure wiring with no hardware logic).
 
-## 6. Window shell
+## 6. Window shell — hub-and-spoke
+
+The shell is a **home launcher + five full-screen pages**. Each page has a
+**Back** button returning to the home launcher. This is an operator-station
+model — pick a task, do it, come back — not a persistent always-visible nav.
+
+```
+                        ┌──────────────────┐
+                        │  Home launcher   │   five tiles
+                        └────────┬─────────┘
+   ┌────────┬─────────┬──────────┴───┬─────────────┬──────────────┐
+  Run     Machine    Process       Programming    Process
+                     Trainer                      Sequence
+```
+
+| Page | Tile | Contents |
+|------|------|----------|
+| **Home** | — | Five large tiles: **Run**, **Machine**, **Process Trainer**, **Programming**, **Process Sequence**. The first screen after startup. |
+| **Machine** | Machine | Hardware operation + diagnostics. The **only page with an internal left nav rail**: Status, Motion, IO, Pneumatic, Laser, Measurement, Camera. Owns the `HORIZON` engine-state header + the global log panel. The Phase 1 status dashboard becomes its **Status** section. **Run is *not* in this rail** — Run is a top-level tile. |
+| **Run** | Run | Program list + Start / Pause / Stop, and a large widget region: live-feed view, overlay chart, operator-confirm widgets — the *replaceable interactive surface* a running program drives (`IOperatorPrompt`, §9). |
+| **Process Trainer** | Process Trainer | Left sub-list: **Trainer system**, **Dispense**, **Calibration (needle)**. Each opens its teaching UI — the interactive features of §10. |
+| **Programming** | Programming | A **WPF-built editor** for Horizon's own process programs / `.hrec` recipes — a syntax-aware text surface (not an embedded external editor). |
+| **Process Sequence** | Process Sequence | Process-step sequencing. **Layout mirrors Process Trainer** (Back + title + left sub-list + content area); content is a placeholder for now and is fleshed out in a later phase. |
+
+**Implementation.** `ShellWindow` + `ShellViewModel` with a `CurrentPage`
+property. `HomeView` shows the tiles; a tile click sets `CurrentPage`. Each page
+is a `UserControl` resolved from its view model by an implicit `DataTemplate`
+(the standard WPF MVVM swap — no `Frame`/`Page`, no back-stack journal). The
+**Machine** page nests a *second* `ContentControl` for its section nav rail. A
+page's **Back** button calls `ShellViewModel.GoHome()`.
+
+### 6.1 Camera display windows
 
 | Window | Role |
 |---|---|
-| **`MainWindow`** | The operator shell: hardware tree/status, manual control surfaces, product / teach-point / run UI, log. Owns the composition root. Runs on the primary UI thread (thread 0). |
-| **`DisplayWindow`** | A dedicated camera live-view window. **At least one**; more can be spawned at runtime (multi-monitor stations, multiple cameras, side-by-side views). Each binds to one camera's `FrameChannel` (§7.2). Can go fullscreen on a second monitor. |
+| **`DisplayWindow`** | A dedicated camera live-view window, launched from the Machine → Camera section. **At least one**; more can be spawned (multi-monitor, multiple cameras, side-by-side). Each binds to one camera's `FrameChannel` (§7.2). Fullscreen-capable. |
 
-`DisplayWindow` is a **separate top-level `Window`**, not a panel inside
-`MainWindow`, so it can be moved/fullscreened independently and so its render
-cost is isolatable.
+`DisplayWindow` is a **separate top-level `Window`**, not a page inside the
+shell, so it can be moved/fullscreened independently and its render cost is
+isolatable.
 
 **Optional per-window UI thread.** WPF supports multiple UI threads, each with
 its own `Dispatcher`. A `DisplayWindow` doing heavy frame work *may* be created
-on its **own dedicated UI thread** so its rendering load can never stall
-`MainWindow`'s thread 0. The `FrameChannel` is thread-safe shared state, so a
+on its **own dedicated UI thread** so its rendering load can never stall the
+`ShellWindow`'s thread 0. The `FrameChannel` is thread-safe shared state, so a
 display window on thread *N* pulls from it independently. Decision per §12 —
 start single-threaded, promote a display window to its own thread only if
 profiling shows thread-0 contention.
@@ -306,25 +336,41 @@ before.
 
 ## 11. Phasing
 
+Phasing follows the hub-and-spoke structure of §6 — the shell first, then each
+page, then the Machine page's sections.
+
 | Phase | Deliverable |
 |---|---|
-| 1 | `Horizon.UI` skeleton — composition root wiring `IHorizonEngine` + `IProcessService`; startup/connect screen; `MainWindow`; hardware status dashboard fed by the §7.3 telemetry store + shared sampler. |
-| 2 | Manual control surfaces — motion/jog, IO, pneumatic, laser, measurement — over the engine facets; measurement pipeline (§7.4) + charts. |
-| 3 | **Camera frame pipeline** (§7.2) — `FrameChannel`, conversion worker, `DisplayWindow` with `CompositionTarget.Rendering` + `WriteableBitmap`; spawn-additional-display support; exposure/gain controls. |
-| 4 | Product + teach-points + process/recipe run UI over `IProcessService`; step highlighting; context watch; `IOperatorPrompt.ConfirmAsync` as a modal. |
-| 5 | Extend `IOperatorPrompt` (text / choose / pick-point / pick-ROI); teaching-overlay infrastructure on the live feed. |
-| 6 | **Trainer** wizard. |
-| 7 | **Vision** model authoring + inspection UI. |
-| 8 | **Dispense** verify UI + Layer 2 dispense runner sequence. |
+| 1 | ✅ `Horizon.UI` skeleton — composition root wiring `IHorizonEngine` + `IProcessService`; startup/connect screen; status dashboard fed by the shared sampler. |
+| 2 | **Hub-and-spoke shell** — `HomeView` (five tiles) + `ShellWindow` + Back navigation; **Machine** page wrapping the Phase 1 dashboard as its **Status** section + the left nav rail skeleton (Run excluded); **Process Trainer** and **Process Sequence** pages as placeholder shells (Back + title + left sub-list + content area). |
+| 3 | Machine page sections — Motion/jog, IO, Pneumatic, Laser, Measurement control surfaces over the engine facets; measurement pipeline (§7.4) + charts. |
+| 4 | Machine → **Camera** section + camera frame pipeline (§7.2) — `FrameChannel`, conversion worker, `DisplayWindow` with `CompositionTarget.Rendering` + `WriteableBitmap`; exposure/gain controls. |
+| 5 | **Run** page — program list, Start / Pause / Stop, `IProcessService` run + step events; `IOperatorPrompt.ConfirmAsync` as a modal; the replaceable widget region. |
+| 6 | **Programming** page — WPF editor for process programs / `.hrec` recipes. |
+| 7 | Extend `IOperatorPrompt` (text / choose / pick-point / pick-ROI); teaching-overlay infrastructure on the live feed. |
+| 8 | **Process Trainer** page — Trainer system. |
+| 9 | Process Trainer — Vision model authoring + inspection. |
+| 10 | Process Trainer — Dispense verify UI + Calibration (needle); Layer 2 dispense runner sequence. |
+| 11 | **Process Sequence** page — real content (process-step sequencing). |
 
-Phases 1–4 deliver a usable operator app at parity with the headless cores.
-Phases 5–8 deliver the interactive features that justify the UI. Each phase =
+Phases 2–6 deliver a usable operator app at parity with the headless cores.
+Phases 7–11 deliver the interactive features that justify the UI. Each phase =
 code + bench-verified, the established per-step rhythm.
 
 ## 12. Open questions for review
 
-- Fixed operator layout vs. dockable panels — the legacy app was dockable; an
-  operator station may prefer fixed task screens. (§4 assumes fixed.)
+- **Shell navigation is resolved** (§6) — hub-and-spoke: a four-tile home
+  launcher, full-screen pages with Back. No persistent nav rail except inside
+  the Machine page.
+- **Naming resolved** — the page is **Process Trainer**. **Programming
+  resolved** — a WPF-built editor, not an embedded external editor.
+- **Process Sequence vs Programming** — both touch process authoring. Process
+  Sequence currently mirrors Process Trainer's layout as a placeholder; its
+  real scope (step sequencing vs. the Programming editor's text editing) is
+  defined when Phase 11 starts.
+- Should the `HORIZON` engine-state header + global log live only on the
+  Machine page (as the mockup shows), or be shell-wide chrome visible on every
+  page?
 - `DisplayWindow` on its own dedicated UI thread from the start, or
   single-threaded until profiling shows thread-0 contention? (§6.)
 - `WriteableBitmap` vs. `D3DImage`/GPU for the frame sink — start with
