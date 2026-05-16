@@ -34,6 +34,9 @@ public interface IHorizonEngine : IAsyncDisposable
     /// <summary>TEC domain (Thorlabs TED4015 standalone TEC). Valid after <see cref="InitializeAsync"/>.</summary>
     ITecFacet Tec { get; }
 
+    /// <summary>SMU domain (Keithley 2400 SourceMeter). Valid after <see cref="InitializeAsync"/>.</summary>
+    ISmuFacet Smu { get; }
+
     /// <summary>Camera domain (Basler Pylon, IDS Peak, uEye). Valid after <see cref="InitializeAsync"/>.</summary>
     ICameraFacet Camera { get; }
 

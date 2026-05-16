@@ -11,6 +11,7 @@ using Horizon.Motion.Models;
 using Horizon.Pneumatic;
 using Horizon.PowerSupply;
 using Horizon.Safety;
+using Horizon.Smu;
 using Horizon.Tec;
 using Horizon.Safety.Models;
 
@@ -49,6 +50,9 @@ public sealed class HorizonEngine : IHorizonEngine
     private TecManager? _tecManager;
     private TecFacet? _tecFacet;
 
+    private SmuManager? _smuManager;
+    private SmuFacet? _smuFacet;
+
     private CameraManager? _cameraManager;
     private CameraFacet? _cameraFacet;
 
@@ -85,6 +89,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
     public ITecFacet Tec =>
         _tecFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
+
+    public ISmuFacet Smu =>
+        _smuFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
 
     public ICameraFacet Camera =>
         _cameraFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
@@ -224,6 +231,23 @@ public sealed class HorizonEngine : IHorizonEngine
         }
         _tecFacet = new TecFacet(_tecManager, RaiseStatusChanged, Log);
 
+        // --- SMU domain (Keithley 2400; the measure-only 6482 stays in Measurement) ---
+        _smuManager = new SmuManager();
+        try
+        {
+            var devices = SmuJsonLoader.Load(_configDirectory)
+                .Where(d => d.Type.Contains("2400", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            foreach (var device in devices)
+                _smuManager.AddDevice(device);
+            Log(LogLevel.Info, $"SMU devices loaded: {devices.Count}");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"SMU config load failed: {ex.Message}");
+        }
+        _smuFacet = new SmuFacet(_smuManager, RaiseStatusChanged, Log);
+
         // --- Camera domain ---
         _cameraManager = new CameraManager();
         try
@@ -323,6 +347,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
         if (_tecFacet != null)
             await _tecFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
+
+        if (_smuFacet != null)
+            await _smuFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
 
         if (_cameraFacet != null)
             await _cameraFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
@@ -442,6 +469,18 @@ public sealed class HorizonEngine : IHorizonEngine
             }
         }
 
+        if (_smuFacet != null)
+        {
+            foreach (var name in _smuFacet.DeviceNames)
+            {
+                var s = _smuFacet.GetState(name);
+                var detail = s.Valid
+                    ? $"src={s.SourceMode} V={s.Voltage:F3} I={s.Current:E2}{(s.OutputOn ? " ON" : "")}"
+                    : "no data";
+                devices.Add(new DeviceStatus("SMU", name, _smuFacet.IsConnected(name), detail));
+            }
+        }
+
         if (_cameraFacet != null)
         {
             foreach (var id in _cameraFacet.CameraIds)
@@ -517,6 +556,12 @@ public sealed class HorizonEngine : IHorizonEngine
         _tecManager?.Dispose();
         _tecManager = null;
         _tecFacet = null;
+
+        if (_smuFacet != null)
+            await _smuFacet.DisposeAsync().ConfigureAwait(false);   // stops the SMU poll loop
+        _smuManager?.Dispose();
+        _smuManager = null;
+        _smuFacet = null;
 
         _measurementManager?.Dispose();   // stops its poll loop, disconnects devices
         _measurementManager = null;
