@@ -17,10 +17,9 @@ using Spectre.Console;
 namespace Horizon.ConfigTool;
 
 /// <summary>
-/// Spectre.Console menu over the hardware config files. Each domain offers a
-/// read-only view and a preset-driven add: a preset materializes a fully
-/// defaulted device (with an auto-unique name), then a field editor lets the
-/// user adjust whatever they want before saving.
+/// Spectre.Console menu over the hardware config files. Each domain offers
+/// view, preset-driven add, edit, and remove. Add and edit share one generic
+/// field editor (<see cref="RunEditor{T}"/>) driven by per-domain field lists.
 /// </summary>
 internal sealed class ConfigToolApp
 {
@@ -40,6 +39,7 @@ internal sealed class ConfigToolApp
     private const string Exit = "Exit";
     private const string Save = "Save";
     private const string Cancel = "Cancel";
+    private const string Back = "Back";
 
     private string _configDir;
 
@@ -61,18 +61,18 @@ internal sealed class ConfigToolApp
 
             switch (choice)
             {
-                case Motion:      DomainMenu(Motion, "motor_devices.json", ViewMotion, AddMotion); break;
-                case IO:          DomainMenu(IO, "io_devices.json", ViewIO, AddIO); break;
-                case Pneumatic:   DomainMenu(Pneumatic, "pneumatic_slides.json", ViewPneumatic, AddPneumatic); break;
-                case Laser:       DomainMenu(Laser, "laser_controller_devices.json", ViewLaser, AddLaser); break;
-                case Measurement: DomainMenu(Measurement, "current_measurement_devices.json", ViewMeasurement, AddMeasurement); break;
-                case Safety:      DomainMenu(Safety, "safety_watch.json", ViewSafety, AddSafety); break;
-                case Interlocks:  DomainMenu(Interlocks, "motion_interlocks.json", ViewInterlocks, AddInterlock); break;
-                case Lighting:    DomainMenu(Lighting, "lighting_config.json", ViewLighting, AddLighting); break;
-                case Tec:         DomainMenu(Tec, "tec_devices.json", ViewTec, AddTec); break;
-                case Smu:         DomainMenu(Smu, "smu_devices.json", ViewSmu, AddSmu); break;
-                case PowerSupply: DomainMenu(PowerSupply, "power_supply_config.json", ViewPowerSupply, AddPowerSupply); break;
-                case TcpClients:  DomainMenu(TcpClients, "tcp_clients.json", ViewTcp, AddTcp); break;
+                case Motion:      DomainMenu(Motion, "motor_devices.json", ViewMotion, AddMotion, EditMotion, RemoveMotion); break;
+                case IO:          DomainMenu(IO, "io_devices.json", ViewIO, AddIO, EditIO, RemoveIO); break;
+                case Pneumatic:   DomainMenu(Pneumatic, "pneumatic_slides.json", ViewPneumatic, AddPneumatic, EditPneumatic, RemovePneumatic); break;
+                case Laser:       DomainMenu(Laser, "laser_controller_devices.json", ViewLaser, AddLaser, EditLaser, RemoveLaser); break;
+                case Measurement: DomainMenu(Measurement, "current_measurement_devices.json", ViewMeasurement, AddMeasurement, EditMeasurement, RemoveMeasurement); break;
+                case Safety:      DomainMenu(Safety, "safety_watch.json", ViewSafety, AddSafety, EditSafety, RemoveSafety); break;
+                case Interlocks:  DomainMenu(Interlocks, "motion_interlocks.json", ViewInterlocks, AddInterlock, EditInterlock, RemoveInterlock); break;
+                case Lighting:    DomainMenu(Lighting, "lighting_config.json", ViewLighting, AddLighting, EditLighting, RemoveLighting); break;
+                case Tec:         DomainMenu(Tec, "tec_devices.json", ViewTec, AddTec, EditTec, RemoveTec); break;
+                case Smu:         DomainMenu(Smu, "smu_devices.json", ViewSmu, AddSmu, EditSmu, RemoveSmu); break;
+                case PowerSupply: DomainMenu(PowerSupply, "power_supply_config.json", ViewPowerSupply, AddPowerSupply, EditPowerSupply, RemovePowerSupply); break;
+                case TcpClients:  DomainMenu(TcpClients, "tcp_clients.json", ViewTcp, AddTcp, EditTcp, RemoveTcp); break;
                 case ChangeDir:   _configDir = AnsiConsole.Prompt(
                                       new TextPrompt<string>("New config directory:").DefaultValue(_configDir)); break;
                 case Exit:        return;
@@ -80,19 +80,23 @@ internal sealed class ConfigToolApp
         }
     }
 
-    /// <summary>A domain sub-menu: view current entries, or add one from a preset.</summary>
-    private void DomainMenu(string title, string file, Action view, Action add)
+    private void DomainMenu(string title, string file, Action view, Action add, Action edit, Action remove)
     {
         while (true)
         {
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
                     .Title($"\n[aqua]{title}[/] — {file}")
-                    .AddChoices("View", "Add (from preset)", "Back"));
+                    .AddChoices("View", "Add (from preset)", "Edit", "Remove", Back));
 
-            if (choice == "View") view();
-            else if (choice == "Back") return;
-            else add();
+            switch (choice)
+            {
+                case "View":              view();   break;
+                case "Add (from preset)": add();    break;
+                case "Edit":              edit();   break;
+                case "Remove":            remove(); break;
+                case Back:                return;
+            }
         }
     }
 
@@ -275,6 +279,143 @@ internal sealed class ConfigToolApp
         AnsiConsole.Write(table);
     }
 
+    // --- per-domain field lists (shared by add + edit) ---
+
+    private static List<FieldSpec<MotionDevice>> MotionFields() => new()
+    {
+        new("Name", d => d.Name, d => d with { Name = Ask("Name", d.Name) }),
+        new("IP address", d => d.IpAddress, d => d with { IpAddress = Ask("IP address", d.IpAddress) }),
+        new("Port", d => d.Port.ToString(), d => d with { Port = AskInt("Port", d.Port) }),
+        new("Controller", d => d.ControllerType, d => d with { ControllerType = Ask("Controller", d.ControllerType) }),
+        new("Axes", d => string.Join(",", d.InstalledAxes), d => d with { InstalledAxes = AskList("Axes", d.InstalledAxes) }),
+        new("Enabled", d => YesNo(d.Enabled), d => d with { Enabled = AnsiConsole.Confirm("Enabled?", d.Enabled) }),
+    };
+
+    private static List<FieldSpec<IODeviceConfig>> IoFields() => new()
+    {
+        new("Name", d => d.Device.Name, d => d with { Device = d.Device with { Name = Ask("Name", d.Device.Name) } }),
+        new("IP address", d => d.Device.IpAddress, d => d with { Device = d.Device with { IpAddress = Ask("IP address", d.Device.IpAddress) } }),
+        new("Input count", d => d.Device.InputCount.ToString(), d => d with { Device = d.Device with { InputCount = AskInt("Input count", d.Device.InputCount) } }),
+        new("Output count", d => d.Device.OutputCount.ToString(), d => d with { Device = d.Device with { OutputCount = AskInt("Output count", d.Device.OutputCount) } }),
+        new("Type", d => d.Device.DeviceType.ToString(), d => d with { Device = d.Device with { DeviceType = AskEnum("Type", d.Device.DeviceType) } }),
+        new("Enabled", d => YesNo(d.Device.Enabled), d => d with { Device = d.Device with { Enabled = AnsiConsole.Confirm("Enabled?", d.Device.Enabled) } }),
+    };
+
+    private static List<FieldSpec<PneumaticConfig>> PneumaticFields() => new()
+    {
+        new("Name", s => s.Name, s => s with { Name = Ask("Name", s.Name) }),
+        new("Output device", s => s.Output.DeviceName, s => s with { Output = s.Output with { DeviceName = Ask("Output device", s.Output.DeviceName) } }),
+        new("Output pin", s => s.Output.PinName, s => s with { Output = s.Output with { PinName = Ask("Output pin", s.Output.PinName) } }),
+        new("Extended sensor device", s => s.ExtendedSensor.DeviceName, s => s with { ExtendedSensor = s.ExtendedSensor with { DeviceName = Ask("Extended sensor device", s.ExtendedSensor.DeviceName) } }),
+        new("Extended sensor pin", s => s.ExtendedSensor.PinName, s => s with { ExtendedSensor = s.ExtendedSensor with { PinName = Ask("Extended sensor pin", s.ExtendedSensor.PinName) } }),
+        new("Retracted sensor device", s => s.RetractedSensor.DeviceName, s => s with { RetractedSensor = s.RetractedSensor with { DeviceName = Ask("Retracted sensor device", s.RetractedSensor.DeviceName) } }),
+        new("Retracted sensor pin", s => s.RetractedSensor.PinName, s => s with { RetractedSensor = s.RetractedSensor with { PinName = Ask("Retracted sensor pin", s.RetractedSensor.PinName) } }),
+        new("Timeout ms", s => s.TimeoutMs.ToString(), s => s with { TimeoutMs = AskInt("Timeout ms", s.TimeoutMs) }),
+    };
+
+    private static List<FieldSpec<LaserControllerDeviceConfig>> LaserFields() => new()
+    {
+        new("Name", d => d.Name, d => d with { Name = Ask("Name", d.Name) }),
+        new("Controller type", d => d.ControllerType, d => d with { ControllerType = Ask("Controller type", d.ControllerType) }),
+        new("VISA resource", d => d.VisaResource, d => d with { VisaResource = Ask("VISA resource", d.VisaResource) }),
+        new("Enabled", d => YesNo(d.Enabled), d => d with { Enabled = AnsiConsole.Confirm("Enabled?", d.Enabled) }),
+        new("Default temperature", d => $"{d.DefaultTemperature} C", d => d with { DefaultTemperature = AskDouble("Default temperature", d.DefaultTemperature) }),
+        new("Default laser current", d => $"{d.DefaultLaserCurrent} mA", d => d with { DefaultLaserCurrent = AskDouble("Default laser current", d.DefaultLaserCurrent) }),
+    };
+
+    private static List<FieldSpec<CurrentMeasurementDeviceConfig>> MeasurementFields() => new()
+    {
+        new("Name", d => d.Name, d => d with { Name = Ask("Name", d.Name) }),
+        new("Type", d => d.Type, d => d with { Type = Ask("Type", d.Type) }),
+        new("VISA resource", d => d.VisaResource, d => d with { VisaResource = Ask("VISA resource", d.VisaResource) }),
+        new("Enabled", d => YesNo(d.Enabled), d => d with { Enabled = AnsiConsole.Confirm("Enabled?", d.Enabled) }),
+        new("Channel count", d => d.ChannelCount.ToString(), d => d with { ChannelCount = AskInt("Channel count", d.ChannelCount) }),
+        new("Enabled channels", d => string.Join(",", d.EnabledChannels), d => d with { EnabledChannels = AskIntList("Enabled channels", d.EnabledChannels) }),
+    };
+
+    private static List<FieldSpec<WatchedInput>> SafetyFields() => new()
+    {
+        new("Device", w => w.DeviceName, w => w with { DeviceName = Ask("Device", w.DeviceName) }),
+        new("Pin", w => w.PinName, w => w with { PinName = Ask("Pin", w.PinName) }),
+        new("Trigger", w => w.Trigger.ToString(), w => w with { Trigger = AskEnum("Trigger", w.Trigger) }),
+        new("Critical", w => YesNo(w.IsCritical), w => w with { IsCritical = AnsiConsole.Confirm("Critical?", w.IsCritical) }),
+        new("Enabled", w => YesNo(w.Enabled), w => w with { Enabled = AnsiConsole.Confirm("Enabled?", w.Enabled) }),
+        new("Alert title", w => w.AlertTitle, w => w with { AlertTitle = Ask("Alert title", w.AlertTitle) }),
+    };
+
+    private static List<FieldSpec<InterlockRule>> InterlockFields() => new()
+    {
+        new("Name", r => r.Name, r => r with { Name = Ask("Name", r.Name) }),
+        new("Target devices", r => string.Join(",", r.TargetDevices), r => r with { TargetDevices = AskList("Target devices", r.TargetDevices) }),
+        new("Axis block", r => r.AxisBlock.ToString(), r => r with { AxisBlock = AskEnum("Axis block", r.AxisBlock) }),
+        new("Layer", r => r.Layer.ToString(), r => r with { Layer = AskEnum("Layer", r.Layer) }),
+        new("Retracted slides", r => string.Join(",", FirstSlides(r)), r => r with
+        {
+            Conditions = new List<InterlockCondition>
+            {
+                new() { Type = "allRetracted", Slides = AskList("Retracted slides", FirstSlides(r)) },
+            },
+        }),
+    };
+
+    private static List<FieldSpec<LightingControllerConfig>> LightingFields() => new()
+    {
+        new("Device id", c => c.DeviceId, c => c with { DeviceId = Ask("Device id", c.DeviceId) }),
+        new("Display name", c => c.DeviceName, c => c with { DeviceName = Ask("Display name", c.DeviceName) }),
+        new("Controller type", c => c.ControllerType, c => c with { ControllerType = Ask("Controller type", c.ControllerType) }),
+        new("IP address", c => c.IpAddress, c => c with { IpAddress = Ask("IP address", c.IpAddress) }),
+        new("Port", c => c.Port.ToString(), c => c with { Port = AskInt("Port", c.Port) }),
+        new("Enabled", c => YesNo(c.Enabled), c => c with { Enabled = AnsiConsole.Confirm("Enabled?", c.Enabled) }),
+    };
+
+    private static List<FieldSpec<TecDeviceConfig>> TecFields() => new()
+    {
+        new("Name", d => d.Name, d => d with { Name = Ask("Name", d.Name) }),
+        new("Controller type", d => d.ControllerType, d => d with { ControllerType = Ask("Controller type", d.ControllerType) }),
+        new("VISA resource", d => d.VisaResource, d => d with { VisaResource = Ask("VISA resource", d.VisaResource) }),
+        new("IP address", d => d.IpAddress, d => d with { IpAddress = Ask("IP address", d.IpAddress) }),
+        new("Port", d => d.Port.ToString(), d => d with { Port = AskInt("Port", d.Port) }),
+        new("Enabled", d => YesNo(d.Enabled), d => d with { Enabled = AnsiConsole.Confirm("Enabled?", d.Enabled) }),
+        new("Default temperature", d => $"{d.DefaultTemperature} C", d => d with { DefaultTemperature = AskDouble("Default temperature", d.DefaultTemperature) }),
+        new("Default laser current", d => $"{d.DefaultLaserCurrent} mA", d => d with { DefaultLaserCurrent = AskDouble("Default laser current", d.DefaultLaserCurrent) }),
+    };
+
+    private static List<FieldSpec<SmuDeviceConfig>> SmuFields() => new()
+    {
+        new("Name", d => d.Name, d => d with { Name = Ask("Name", d.Name) }),
+        new("Type", d => d.Type, d => d with { Type = Ask("Type", d.Type) }),
+        new("VISA resource", d => d.VisaResource, d => d with { VisaResource = Ask("VISA resource", d.VisaResource) }),
+        new("Enabled", d => YesNo(d.Enabled), d => d with { Enabled = AnsiConsole.Confirm("Enabled?", d.Enabled) }),
+        new("Channel count", d => d.ChannelCount.ToString(), d => d with { ChannelCount = AskInt("Channel count", d.ChannelCount) }),
+        new("Enabled channels", d => string.Join(",", d.EnabledChannels), d => d with { EnabledChannels = AskIntList("Enabled channels", d.EnabledChannels) }),
+        new("Measurement NPLC", d => d.MeasurementNplc.ToString(), d => d with { MeasurementNplc = AskDouble("Measurement NPLC", d.MeasurementNplc) }),
+        new("Auto range", d => YesNo(d.AutoRange), d => d with { AutoRange = AnsiConsole.Confirm("Auto range?", d.AutoRange) }),
+        new("Fixed range", d => d.FixedRange.ToString(), d => d with { FixedRange = AskDouble("Fixed range", d.FixedRange) }),
+        new("Default compliance", d => d.DefaultCompliance.ToString(), d => d with { DefaultCompliance = AskDouble("Default compliance", d.DefaultCompliance) }),
+    };
+
+    private static List<FieldSpec<PowerSupplyConfig>> PowerSupplyFields() => new()
+    {
+        new("Name", d => d.Name, d => d with { Name = Ask("Name", d.Name) }),
+        new("Type", d => d.Type, d => d with { Type = Ask("Type", d.Type) }),
+        new("IP address", d => d.Ip, d => d with { Ip = Ask("IP address", d.Ip) }),
+        new("Port", d => d.Port.ToString(), d => d with { Port = AskInt("Port", d.Port) }),
+        new("Channels", d => d.Channels.ToString(), d => d with { Channels = AskInt("Channels", d.Channels) }),
+    };
+
+    private static List<FieldSpec<TcpClientConfig>> TcpFields() => new()
+    {
+        new("Id", c => c.Id, c => c with { Id = Ask("Id", c.Id) }),
+        new("Name", c => c.Name, c => c with { Name = Ask("Name", c.Name) }),
+        new("Host", c => c.Host, c => c with { Host = Ask("Host", c.Host) }),
+        new("Port", c => c.Port.ToString(), c => c with { Port = AskInt("Port", c.Port) }),
+        new("Protocol", c => c.ProtocolType, c => c with { ProtocolType = Ask("Protocol (single/multi)", c.ProtocolType) }),
+        new("Data channel", c => c.DataChannel, c => c with { DataChannel = Ask("Data channel", c.DataChannel) }),
+        new("Data channels", c => string.Join(",", c.DataChannels), c => c with { DataChannels = AskList("Data channels", c.DataChannels) }),
+        new("Auto connect", c => YesNo(c.AutoConnect), c => c with { AutoConnect = AnsiConsole.Confirm("Auto connect?", c.AutoConnect) }),
+        new("Auto reconnect", c => YesNo(c.AutoReconnect), c => c with { AutoReconnect = AnsiConsole.Confirm("Auto reconnect?", c.AutoReconnect) }),
+    };
+
     // --- add flows: materialize from preset → field editor → save ---
 
     private void AddMotion()
@@ -283,12 +424,11 @@ internal sealed class ConfigToolApp
         if (preset == null) return;
 
         var devices = MotionJsonLoader.Load(_configDir).ToList();
-        var others = devices.Select(d => d.Name).ToList();
         var isPi = preset.StartsWith("PI");
         var device = new MotionDevice
         {
             Id = devices.Count == 0 ? 0 : devices.Max(d => d.Id) + 1,
-            Name = UniqueName(isPi ? "hex" : "gantry", others),
+            Name = UniqueName(isPi ? "hex" : "gantry", devices.Select(d => d.Name)),
             IpAddress = isPi ? "192.168.0.10" : "192.168.0.50",
             Port = isPi ? 50000 : 701,
             ControllerType = isPi ? "PI" : "ACS",
@@ -297,21 +437,8 @@ internal sealed class ConfigToolApp
                 : new List<string> { "X", "Y", "Z" },
             Enabled = true,
         };
-
-        var result = RunEditor("Motion device", device, new List<FieldSpec<MotionDevice>>
-        {
-            new("Name", d => d.Name, d => d with { Name = Ask("Name", d.Name) }),
-            new("IP address", d => d.IpAddress, d => d with { IpAddress = Ask("IP address", d.IpAddress) }),
-            new("Port", d => d.Port.ToString(), d => d with { Port = AskInt("Port", d.Port) }),
-            new("Controller", d => d.ControllerType, d => d with { ControllerType = Ask("Controller", d.ControllerType) }),
-            new("Axes", d => string.Join(",", d.InstalledAxes), d => d with { InstalledAxes = AskList("Axes", d.InstalledAxes) }),
-            new("Enabled", d => YesNo(d.Enabled), d => d with { Enabled = AnsiConsole.Confirm("Enabled?", d.Enabled) }),
-        }, d => NameError(d.Name, others));
-        if (result == null) return;
-
-        devices.Add(result);
-        MotionJsonLoader.Save(devices, _configDir);
-        Saved(result.Name, "motor_devices.json", devices.Count);
+        AddEntry("Motion device", device, devices, MotionFields(), d => d.Name,
+            "motor_devices.json", list => MotionJsonLoader.Save(list, _configDir));
     }
 
     private void AddIO()
@@ -320,14 +447,13 @@ internal sealed class ConfigToolApp
         if (preset == null) return;
 
         var devices = EziIOJsonLoader.Load(_configDir).ToList();
-        var others = devices.Select(d => d.Device.Name).ToList();
         var is16 = preset.Contains("16");
         var device = new IODeviceConfig
         {
             Device = new EziIODeviceConfig
             {
                 DeviceId = devices.Count == 0 ? 0 : devices.Max(d => d.Device.DeviceId) + 1,
-                Name = UniqueName("io", others),
+                Name = UniqueName("io", devices.Select(d => d.Device.Name)),
                 IpAddress = "192.168.0.3",
                 InputCount = is16 ? 16 : 8,
                 OutputCount = is16 ? 16 : 8,
@@ -337,22 +463,8 @@ internal sealed class ConfigToolApp
             InputPins = new(),
             OutputPins = new(),
         };
-
-        var result = RunEditor("IO device", device, new List<FieldSpec<IODeviceConfig>>
-        {
-            new("Name", d => d.Device.Name, d => d with { Device = d.Device with { Name = Ask("Name", d.Device.Name) } }),
-            new("IP address", d => d.Device.IpAddress, d => d with { Device = d.Device with { IpAddress = Ask("IP address", d.Device.IpAddress) } }),
-            new("Input count", d => d.Device.InputCount.ToString(), d => d with { Device = d.Device with { InputCount = AskInt("Input count", d.Device.InputCount) } }),
-            new("Output count", d => d.Device.OutputCount.ToString(), d => d with { Device = d.Device with { OutputCount = AskInt("Output count", d.Device.OutputCount) } }),
-            new("Type", d => d.Device.DeviceType.ToString(), d => d with { Device = d.Device with { DeviceType = AskEnum("Type", d.Device.DeviceType) } }),
-            new("Enabled", d => YesNo(d.Device.Enabled), d => d with { Device = d.Device with { Enabled = AnsiConsole.Confirm("Enabled?", d.Device.Enabled) } }),
-        }, d => NameError(d.Device.Name, others));
-        if (result == null) return;
-
-        devices.Add(result);
-        EziIOJsonLoader.Save(devices, _configDir);
-        AnsiConsole.MarkupLine("[grey]Pin names can be filled in once edit lands (Phase 3).[/]");
-        Saved(result.Device.Name, "io_devices.json", devices.Count);
+        AddEntry("IO device", device, devices, IoFields(), d => d.Device.Name,
+            "io_devices.json", list => EziIOJsonLoader.Save(list, _configDir));
     }
 
     private void AddPneumatic()
@@ -360,32 +472,16 @@ internal sealed class ConfigToolApp
         if (PickPreset("Pneumatic slide (output + 2 sensors)") == null) return;
 
         var slides = PneumaticJsonLoader.Load(_configDir).ToList();
-        var others = slides.Select(s => s.Name).ToList();
         var slide = new PneumaticConfig
         {
-            Name = UniqueName("slide", others),
+            Name = UniqueName("slide", slides.Select(s => s.Name)),
             Output = new IOPinReference { DeviceName = "IOBottom", PinName = "" },
             ExtendedSensor = new IOPinReference { DeviceName = "IOTop", PinName = "" },
             RetractedSensor = new IOPinReference { DeviceName = "IOTop", PinName = "" },
             TimeoutMs = 5000,
         };
-
-        var result = RunEditor("Pneumatic slide", slide, new List<FieldSpec<PneumaticConfig>>
-        {
-            new("Name", s => s.Name, s => s with { Name = Ask("Name", s.Name) }),
-            new("Output device", s => s.Output.DeviceName, s => s with { Output = s.Output with { DeviceName = Ask("Output device", s.Output.DeviceName) } }),
-            new("Output pin", s => s.Output.PinName, s => s with { Output = s.Output with { PinName = Ask("Output pin", s.Output.PinName) } }),
-            new("Extended sensor device", s => s.ExtendedSensor.DeviceName, s => s with { ExtendedSensor = s.ExtendedSensor with { DeviceName = Ask("Extended sensor device", s.ExtendedSensor.DeviceName) } }),
-            new("Extended sensor pin", s => s.ExtendedSensor.PinName, s => s with { ExtendedSensor = s.ExtendedSensor with { PinName = Ask("Extended sensor pin", s.ExtendedSensor.PinName) } }),
-            new("Retracted sensor device", s => s.RetractedSensor.DeviceName, s => s with { RetractedSensor = s.RetractedSensor with { DeviceName = Ask("Retracted sensor device", s.RetractedSensor.DeviceName) } }),
-            new("Retracted sensor pin", s => s.RetractedSensor.PinName, s => s with { RetractedSensor = s.RetractedSensor with { PinName = Ask("Retracted sensor pin", s.RetractedSensor.PinName) } }),
-            new("Timeout ms", s => s.TimeoutMs.ToString(), s => s with { TimeoutMs = AskInt("Timeout ms", s.TimeoutMs) }),
-        }, s => NameError(s.Name, others));
-        if (result == null) return;
-
-        slides.Add(result);
-        PneumaticJsonLoader.Save(slides, _configDir);
-        Saved(result.Name, "pneumatic_slides.json", slides.Count);
+        AddEntry("Pneumatic slide", slide, slides, PneumaticFields(), s => s.Name,
+            "pneumatic_slides.json", list => PneumaticJsonLoader.Save(list, _configDir));
     }
 
     private void AddLaser()
@@ -393,31 +489,17 @@ internal sealed class ConfigToolApp
         if (PickPreset("Thorlabs CLD101x") == null) return;
 
         var devices = LaserControllerJsonLoader.Load(_configDir).ToList();
-        var others = devices.Select(d => d.Name).ToList();
         var device = new LaserControllerDeviceConfig
         {
-            Name = UniqueName("laser", others),
+            Name = UniqueName("laser", devices.Select(d => d.Name)),
             ControllerType = "cld101x_direct",
             VisaResource = "USB0::0x1313::0x804F::INSTR",
             Enabled = true,
             DefaultTemperature = 25.0,
             DefaultLaserCurrent = 50.0,
         };
-
-        var result = RunEditor("Laser controller", device, new List<FieldSpec<LaserControllerDeviceConfig>>
-        {
-            new("Name", d => d.Name, d => d with { Name = Ask("Name", d.Name) }),
-            new("Controller type", d => d.ControllerType, d => d with { ControllerType = Ask("Controller type", d.ControllerType) }),
-            new("VISA resource", d => d.VisaResource, d => d with { VisaResource = Ask("VISA resource", d.VisaResource) }),
-            new("Enabled", d => YesNo(d.Enabled), d => d with { Enabled = AnsiConsole.Confirm("Enabled?", d.Enabled) }),
-            new("Default temperature", d => $"{d.DefaultTemperature} C", d => d with { DefaultTemperature = AskDouble("Default temperature", d.DefaultTemperature) }),
-            new("Default laser current", d => $"{d.DefaultLaserCurrent} mA", d => d with { DefaultLaserCurrent = AskDouble("Default laser current", d.DefaultLaserCurrent) }),
-        }, d => NameError(d.Name, others));
-        if (result == null) return;
-
-        devices.Add(result);
-        LaserControllerJsonLoader.Save(devices, _configDir);
-        Saved(result.Name, "laser_controller_devices.json", devices.Count);
+        AddEntry("Laser controller", device, devices, LaserFields(), d => d.Name,
+            "laser_controller_devices.json", list => LaserControllerJsonLoader.Save(list, _configDir));
     }
 
     private void AddMeasurement()
@@ -425,31 +507,17 @@ internal sealed class ConfigToolApp
         if (PickPreset("Keithley 6482 — dual-channel picoammeter") == null) return;
 
         var devices = CurrentMeasurementJsonLoader.Load(_configDir).ToList();
-        var others = devices.Select(d => d.Name).ToList();
         var device = new CurrentMeasurementDeviceConfig
         {
-            Name = UniqueName("keithley", others),
+            Name = UniqueName("keithley", devices.Select(d => d.Name)),
             Type = "keithley_6482",
             VisaResource = "GPIB0::1::INSTR",
             Enabled = true,
             ChannelCount = 2,
             EnabledChannels = new List<int> { 1, 2 },
         };
-
-        var result = RunEditor("Measurement device", device, new List<FieldSpec<CurrentMeasurementDeviceConfig>>
-        {
-            new("Name", d => d.Name, d => d with { Name = Ask("Name", d.Name) }),
-            new("Type", d => d.Type, d => d with { Type = Ask("Type", d.Type) }),
-            new("VISA resource", d => d.VisaResource, d => d with { VisaResource = Ask("VISA resource", d.VisaResource) }),
-            new("Enabled", d => YesNo(d.Enabled), d => d with { Enabled = AnsiConsole.Confirm("Enabled?", d.Enabled) }),
-            new("Channel count", d => d.ChannelCount.ToString(), d => d with { ChannelCount = AskInt("Channel count", d.ChannelCount) }),
-            new("Enabled channels", d => string.Join(",", d.EnabledChannels), d => d with { EnabledChannels = AskIntList("Enabled channels", d.EnabledChannels) }),
-        }, d => NameError(d.Name, others));
-        if (result == null) return;
-
-        devices.Add(result);
-        CurrentMeasurementJsonLoader.Save(devices, _configDir);
-        Saved(result.Name, "current_measurement_devices.json", devices.Count);
+        AddEntry("Measurement device", device, devices, MeasurementFields(), d => d.Name,
+            "current_measurement_devices.json", list => CurrentMeasurementJsonLoader.Save(list, _configDir));
     }
 
     private void AddSafety()
@@ -457,6 +525,7 @@ internal sealed class ConfigToolApp
         if (PickPreset("Watched input (E-stop / door / sensor)") == null) return;
 
         var config = ConfigLoader.LoadJson<SafetyWatchConfig>(_configDir, "safety_watch") ?? new SafetyWatchConfig();
+        var inputs = config.WatchedInputs.ToList();
         var input = new WatchedInput
         {
             DeviceName = "IOTop",
@@ -466,27 +535,8 @@ internal sealed class ConfigToolApp
             Enabled = true,
             AlertTitle = "Safety input triggered",
         };
-
-        var result = RunEditor("Watched input", input, new List<FieldSpec<WatchedInput>>
-        {
-            new("Device", w => w.DeviceName, w => w with { DeviceName = Ask("Device", w.DeviceName) }),
-            new("Pin", w => w.PinName, w => w with { PinName = Ask("Pin", w.PinName) }),
-            new("Trigger", w => w.Trigger.ToString(), w => w with { Trigger = AskEnum("Trigger", w.Trigger) }),
-            new("Critical", w => YesNo(w.IsCritical), w => w with { IsCritical = AnsiConsole.Confirm("Critical?", w.IsCritical) }),
-            new("Enabled", w => YesNo(w.Enabled), w => w with { Enabled = AnsiConsole.Confirm("Enabled?", w.Enabled) }),
-            new("Alert title", w => w.AlertTitle, w => w with { AlertTitle = Ask("Alert title", w.AlertTitle) }),
-        }, w =>
-            config.WatchedInputs.Any(x =>
-                string.Equals(x.DeviceName, w.DeviceName, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(x.PinName, w.PinName, StringComparison.OrdinalIgnoreCase))
-                ? $"{w.DeviceName}.{w.PinName} is already watched."
-                : string.IsNullOrWhiteSpace(w.PinName) ? "Pin is required." : null);
-        if (result == null) return;
-
-        var inputs = config.WatchedInputs.ToList();
-        inputs.Add(result);
-        ConfigLoader.SaveJson(_configDir, "safety_watch", config with { WatchedInputs = inputs });
-        Saved($"{result.DeviceName}.{result.PinName}", "safety_watch.json", inputs.Count);
+        AddEntry("Watched input", input, inputs, SafetyFields(), WatchedKey,
+            "safety_watch.json", list => ConfigLoader.SaveJson(_configDir, "safety_watch", config with { WatchedInputs = list }));
     }
 
     private void AddInterlock()
@@ -494,40 +544,18 @@ internal sealed class ConfigToolApp
         if (PickPreset("Slide-retracted-before-motion rule") == null) return;
 
         var config = ConfigLoader.LoadJson<InterlockConfig>(_configDir, "motion_interlocks") ?? new InterlockConfig();
-        var others = config.Rules.Select(r => r.Name).ToList();
+        var rules = config.Rules.ToList();
         var rule = new InterlockRule
         {
-            Name = UniqueName("interlock", others),
+            Name = UniqueName("interlock", rules.Select(r => r.Name)),
             Enabled = true,
             TargetDevices = new List<string> { "gantry-main" },
             AxisBlock = AxisBlock.All,
             Layer = EnforcementLayer.ScriptOnly,
-            Conditions = new List<InterlockCondition>
-            {
-                new() { Type = "allRetracted", Slides = new List<string>() },
-            },
+            Conditions = new List<InterlockCondition> { new() { Type = "allRetracted", Slides = new() } },
         };
-
-        var result = RunEditor("Interlock rule", rule, new List<FieldSpec<InterlockRule>>
-        {
-            new("Name", r => r.Name, r => r with { Name = Ask("Name", r.Name) }),
-            new("Target devices", r => string.Join(",", r.TargetDevices), r => r with { TargetDevices = AskList("Target devices", r.TargetDevices) }),
-            new("Axis block", r => r.AxisBlock.ToString(), r => r with { AxisBlock = AskEnum("Axis block", r.AxisBlock) }),
-            new("Layer", r => r.Layer.ToString(), r => r with { Layer = AskEnum("Layer", r.Layer) }),
-            new("Retracted slides", r => string.Join(",", FirstSlides(r)), r => r with
-            {
-                Conditions = new List<InterlockCondition>
-                {
-                    new() { Type = "allRetracted", Slides = AskList("Retracted slides", FirstSlides(r)) },
-                },
-            }),
-        }, r => NameError(r.Name, others));
-        if (result == null) return;
-
-        var rules = config.Rules.ToList();
-        rules.Add(result);
-        ConfigLoader.SaveJson(_configDir, "motion_interlocks", config with { Rules = rules });
-        Saved(result.Name, "motion_interlocks.json", rules.Count);
+        AddEntry("Interlock rule", rule, rules, InterlockFields(), r => r.Name,
+            "motion_interlocks.json", list => ConfigLoader.SaveJson(_configDir, "motion_interlocks", config with { Rules = list }));
     }
 
     private void AddLighting()
@@ -535,10 +563,9 @@ internal sealed class ConfigToolApp
         if (PickPreset("CCS_PD3 LED controller") == null) return;
 
         var controllers = LightingJsonLoader.Load(_configDir).ToList();
-        var others = controllers.Select(c => c.DeviceId).ToList();
         var controller = new LightingControllerConfig
         {
-            DeviceId = UniqueName("led-controller", others),
+            DeviceId = UniqueName("led-controller", controllers.Select(c => c.DeviceId)),
             DeviceName = "LED Controller",
             ControllerType = "CCS_PD3",
             IpAddress = "192.168.0.2",
@@ -546,22 +573,8 @@ internal sealed class ConfigToolApp
             Enabled = true,
             Channels = new(),
         };
-
-        var result = RunEditor("Lighting controller", controller, new List<FieldSpec<LightingControllerConfig>>
-        {
-            new("Device id", c => c.DeviceId, c => c with { DeviceId = Ask("Device id", c.DeviceId) }),
-            new("Display name", c => c.DeviceName, c => c with { DeviceName = Ask("Display name", c.DeviceName) }),
-            new("Controller type", c => c.ControllerType, c => c with { ControllerType = Ask("Controller type", c.ControllerType) }),
-            new("IP address", c => c.IpAddress, c => c with { IpAddress = Ask("IP address", c.IpAddress) }),
-            new("Port", c => c.Port.ToString(), c => c with { Port = AskInt("Port", c.Port) }),
-            new("Enabled", c => YesNo(c.Enabled), c => c with { Enabled = AnsiConsole.Confirm("Enabled?", c.Enabled) }),
-        }, c => NameError(c.DeviceId, others));
-        if (result == null) return;
-
-        controllers.Add(result);
-        LightingJsonLoader.Save(controllers, _configDir);
-        AnsiConsole.MarkupLine("[grey]Channels can be filled in once edit lands (Phase 3).[/]");
-        Saved(result.DeviceId, "lighting_config.json", controllers.Count);
+        AddEntry("Lighting controller", controller, controllers, LightingFields(), c => c.DeviceId,
+            "lighting_config.json", list => LightingJsonLoader.Save(list, _configDir));
     }
 
     private void AddTec()
@@ -570,34 +583,18 @@ internal sealed class ConfigToolApp
         if (preset == null) return;
 
         var devices = TecJsonLoader.Load(_configDir).ToList();
-        var others = devices.Select(d => d.Name).ToList();
         var isTed = preset.Contains("TED4015");
         var device = new TecDeviceConfig
         {
-            Name = UniqueName("tec", others),
+            Name = UniqueName("tec", devices.Select(d => d.Name)),
             ControllerType = isTed ? "TED4015_Direct" : "CLD101x_Direct",
             VisaResource = isTed ? "USB0::0x1313::0x8048::INSTR" : "USB0::0x1313::0x804F::INSTR",
             Enabled = true,
             DefaultTemperature = 25.0,
             DefaultLaserCurrent = isTed ? 0.0 : 50.0,
         };
-
-        var result = RunEditor("TEC device", device, new List<FieldSpec<TecDeviceConfig>>
-        {
-            new("Name", d => d.Name, d => d with { Name = Ask("Name", d.Name) }),
-            new("Controller type", d => d.ControllerType, d => d with { ControllerType = Ask("Controller type", d.ControllerType) }),
-            new("VISA resource", d => d.VisaResource, d => d with { VisaResource = Ask("VISA resource", d.VisaResource) }),
-            new("IP address", d => d.IpAddress, d => d with { IpAddress = Ask("IP address", d.IpAddress) }),
-            new("Port", d => d.Port.ToString(), d => d with { Port = AskInt("Port", d.Port) }),
-            new("Enabled", d => YesNo(d.Enabled), d => d with { Enabled = AnsiConsole.Confirm("Enabled?", d.Enabled) }),
-            new("Default temperature", d => $"{d.DefaultTemperature} C", d => d with { DefaultTemperature = AskDouble("Default temperature", d.DefaultTemperature) }),
-            new("Default laser current", d => $"{d.DefaultLaserCurrent} mA", d => d with { DefaultLaserCurrent = AskDouble("Default laser current", d.DefaultLaserCurrent) }),
-        }, d => NameError(d.Name, others));
-        if (result == null) return;
-
-        devices.Add(result);
-        TecJsonLoader.Save(devices, _configDir);
-        Saved(result.Name, "tec_devices.json", devices.Count);
+        AddEntry("TEC device", device, devices, TecFields(), d => d.Name,
+            "tec_devices.json", list => TecJsonLoader.Save(list, _configDir));
     }
 
     private void AddSmu()
@@ -606,11 +603,10 @@ internal sealed class ConfigToolApp
         if (preset == null) return;
 
         var devices = SmuJsonLoader.Load(_configDir).ToList();
-        var others = devices.Select(d => d.Name).ToList();
         var is2400 = preset.Contains("2400");
         var device = new SmuDeviceConfig
         {
-            Name = UniqueName("keithley", others),
+            Name = UniqueName("keithley", devices.Select(d => d.Name)),
             Type = is2400 ? "keithley_2400" : "keithley_6482",
             VisaResource = is2400 ? "GPIB1::24::INSTR" : "GPIB0::1::INSTR",
             Enabled = true,
@@ -620,25 +616,8 @@ internal sealed class ConfigToolApp
             AutoRange = true,
             DefaultCompliance = is2400 ? 0.001 : 0.0,
         };
-
-        var result = RunEditor("SMU device", device, new List<FieldSpec<SmuDeviceConfig>>
-        {
-            new("Name", d => d.Name, d => d with { Name = Ask("Name", d.Name) }),
-            new("Type", d => d.Type, d => d with { Type = Ask("Type", d.Type) }),
-            new("VISA resource", d => d.VisaResource, d => d with { VisaResource = Ask("VISA resource", d.VisaResource) }),
-            new("Enabled", d => YesNo(d.Enabled), d => d with { Enabled = AnsiConsole.Confirm("Enabled?", d.Enabled) }),
-            new("Channel count", d => d.ChannelCount.ToString(), d => d with { ChannelCount = AskInt("Channel count", d.ChannelCount) }),
-            new("Enabled channels", d => string.Join(",", d.EnabledChannels), d => d with { EnabledChannels = AskIntList("Enabled channels", d.EnabledChannels) }),
-            new("Measurement NPLC", d => d.MeasurementNplc.ToString(), d => d with { MeasurementNplc = AskDouble("Measurement NPLC", d.MeasurementNplc) }),
-            new("Auto range", d => YesNo(d.AutoRange), d => d with { AutoRange = AnsiConsole.Confirm("Auto range?", d.AutoRange) }),
-            new("Fixed range", d => d.FixedRange.ToString(), d => d with { FixedRange = AskDouble("Fixed range", d.FixedRange) }),
-            new("Default compliance", d => d.DefaultCompliance.ToString(), d => d with { DefaultCompliance = AskDouble("Default compliance", d.DefaultCompliance) }),
-        }, d => NameError(d.Name, others));
-        if (result == null) return;
-
-        devices.Add(result);
-        SmuJsonLoader.Save(devices, _configDir);
-        Saved(result.Name, "smu_devices.json", devices.Count);
+        AddEntry("SMU device", device, devices, SmuFields(), d => d.Name,
+            "smu_devices.json", list => SmuJsonLoader.Save(list, _configDir));
     }
 
     private void AddPowerSupply()
@@ -647,30 +626,17 @@ internal sealed class ConfigToolApp
         if (preset == null) return;
 
         var devices = PowerSupplyJsonLoader.Load(_configDir).ToList();
-        var others = devices.Select(d => d.Name).ToList();
         var quad = preset.Contains("E36441A");
         var device = new PowerSupplyConfig
         {
-            Name = UniqueName("psu", others),
+            Name = UniqueName("psu", devices.Select(d => d.Name)),
             Type = quad ? "keysight_e36441a_direct" : "keysight_e36103b_direct",
             Ip = quad ? "192.168.0.32" : "192.168.0.33",
             Port = 5025,
             Channels = quad ? 4 : 1,
         };
-
-        var result = RunEditor("Power supply", device, new List<FieldSpec<PowerSupplyConfig>>
-        {
-            new("Name", d => d.Name, d => d with { Name = Ask("Name", d.Name) }),
-            new("Type", d => d.Type, d => d with { Type = Ask("Type", d.Type) }),
-            new("IP address", d => d.Ip, d => d with { Ip = Ask("IP address", d.Ip) }),
-            new("Port", d => d.Port.ToString(), d => d with { Port = AskInt("Port", d.Port) }),
-            new("Channels", d => d.Channels.ToString(), d => d with { Channels = AskInt("Channels", d.Channels) }),
-        }, d => NameError(d.Name, others));
-        if (result == null) return;
-
-        devices.Add(result);
-        PowerSupplyJsonLoader.Save(devices, _configDir);
-        Saved(result.Name, "power_supply_config.json", devices.Count);
+        AddEntry("Power supply", device, devices, PowerSupplyFields(), d => d.Name,
+            "power_supply_config.json", list => PowerSupplyJsonLoader.Save(list, _configDir));
     }
 
     private void AddTcp()
@@ -679,11 +645,10 @@ internal sealed class ConfigToolApp
         if (preset == null) return;
 
         var clients = TcpClientJsonLoader.Load(_configDir).ToList();
-        var others = clients.Select(c => c.Id).ToList();
         var isMulti = preset.StartsWith("Multi");
         var client = new TcpClientConfig
         {
-            Id = UniqueName("tcp-client", others),
+            Id = UniqueName("tcp-client", clients.Select(c => c.Id)),
             Name = "TCP Client",
             Host = "127.0.0.1",
             Port = isMulti ? 65432 : 8888,
@@ -691,30 +656,173 @@ internal sealed class ConfigToolApp
             AutoConnect = isMulti,
             AutoReconnect = isMulti,
         };
-
-        var result = RunEditor("TCP client", client, new List<FieldSpec<TcpClientConfig>>
-        {
-            new("Id", c => c.Id, c => c with { Id = Ask("Id", c.Id) }),
-            new("Name", c => c.Name, c => c with { Name = Ask("Name", c.Name) }),
-            new("Host", c => c.Host, c => c with { Host = Ask("Host", c.Host) }),
-            new("Port", c => c.Port.ToString(), c => c with { Port = AskInt("Port", c.Port) }),
-            new("Protocol", c => c.ProtocolType, c => c with { ProtocolType = Ask("Protocol (single/multi)", c.ProtocolType) }),
-            new("Data channel", c => c.DataChannel, c => c with { DataChannel = Ask("Data channel", c.DataChannel) }),
-            new("Data channels", c => string.Join(",", c.DataChannels), c => c with { DataChannels = AskList("Data channels", c.DataChannels) }),
-            new("Auto connect", c => YesNo(c.AutoConnect), c => c with { AutoConnect = AnsiConsole.Confirm("Auto connect?", c.AutoConnect) }),
-            new("Auto reconnect", c => YesNo(c.AutoReconnect), c => c with { AutoReconnect = AnsiConsole.Confirm("Auto reconnect?", c.AutoReconnect) }),
-        }, c => NameError(c.Id, others));
-        if (result == null) return;
-
-        clients.Add(result);
-        TcpClientJsonLoader.Save(clients, _configDir);
-        Saved(result.Id, "tcp_clients.json", clients.Count);
+        AddEntry("TCP client", client, clients, TcpFields(), c => c.Id,
+            "tcp_clients.json", list => TcpClientJsonLoader.Save(list, _configDir));
     }
 
-    // --- generic field editor ---
+    // --- edit flows ---
+
+    private void EditMotion()
+        => EditEntry("Motion device", MotionJsonLoader.Load(_configDir).ToList(),
+            d => d.Name, MotionFields(), list => MotionJsonLoader.Save(list, _configDir));
+
+    private void EditIO()
+        => EditEntry("IO device", EziIOJsonLoader.Load(_configDir).ToList(),
+            d => d.Device.Name, IoFields(), list => EziIOJsonLoader.Save(list, _configDir));
+
+    private void EditPneumatic()
+        => EditEntry("Pneumatic slide", PneumaticJsonLoader.Load(_configDir).ToList(),
+            s => s.Name, PneumaticFields(), list => PneumaticJsonLoader.Save(list, _configDir));
+
+    private void EditLaser()
+        => EditEntry("Laser controller", LaserControllerJsonLoader.Load(_configDir).ToList(),
+            d => d.Name, LaserFields(), list => LaserControllerJsonLoader.Save(list, _configDir));
+
+    private void EditMeasurement()
+        => EditEntry("Measurement device", CurrentMeasurementJsonLoader.Load(_configDir).ToList(),
+            d => d.Name, MeasurementFields(), list => CurrentMeasurementJsonLoader.Save(list, _configDir));
+
+    private void EditSafety()
+    {
+        var config = ConfigLoader.LoadJson<SafetyWatchConfig>(_configDir, "safety_watch") ?? new SafetyWatchConfig();
+        EditEntry("Watched input", config.WatchedInputs.ToList(), WatchedKey, SafetyFields(),
+            list => ConfigLoader.SaveJson(_configDir, "safety_watch", config with { WatchedInputs = list }));
+    }
+
+    private void EditInterlock()
+    {
+        var config = ConfigLoader.LoadJson<InterlockConfig>(_configDir, "motion_interlocks") ?? new InterlockConfig();
+        EditEntry("Interlock rule", config.Rules.ToList(), r => r.Name, InterlockFields(),
+            list => ConfigLoader.SaveJson(_configDir, "motion_interlocks", config with { Rules = list }));
+    }
+
+    private void EditLighting()
+        => EditEntry("Lighting controller", LightingJsonLoader.Load(_configDir).ToList(),
+            c => c.DeviceId, LightingFields(), list => LightingJsonLoader.Save(list, _configDir));
+
+    private void EditTec()
+        => EditEntry("TEC device", TecJsonLoader.Load(_configDir).ToList(),
+            d => d.Name, TecFields(), list => TecJsonLoader.Save(list, _configDir));
+
+    private void EditSmu()
+        => EditEntry("SMU device", SmuJsonLoader.Load(_configDir).ToList(),
+            d => d.Name, SmuFields(), list => SmuJsonLoader.Save(list, _configDir));
+
+    private void EditPowerSupply()
+        => EditEntry("Power supply", PowerSupplyJsonLoader.Load(_configDir).ToList(),
+            d => d.Name, PowerSupplyFields(), list => PowerSupplyJsonLoader.Save(list, _configDir));
+
+    private void EditTcp()
+        => EditEntry("TCP client", TcpClientJsonLoader.Load(_configDir).ToList(),
+            c => c.Id, TcpFields(), list => TcpClientJsonLoader.Save(list, _configDir));
+
+    // --- remove flows ---
+
+    private void RemoveMotion()
+        => RemoveEntry("Motion device", MotionJsonLoader.Load(_configDir).ToList(),
+            d => d.Name, list => MotionJsonLoader.Save(list, _configDir));
+
+    private void RemoveIO()
+        => RemoveEntry("IO device", EziIOJsonLoader.Load(_configDir).ToList(),
+            d => d.Device.Name, list => EziIOJsonLoader.Save(list, _configDir));
+
+    private void RemovePneumatic()
+        => RemoveEntry("Pneumatic slide", PneumaticJsonLoader.Load(_configDir).ToList(),
+            s => s.Name, list => PneumaticJsonLoader.Save(list, _configDir));
+
+    private void RemoveLaser()
+        => RemoveEntry("Laser controller", LaserControllerJsonLoader.Load(_configDir).ToList(),
+            d => d.Name, list => LaserControllerJsonLoader.Save(list, _configDir));
+
+    private void RemoveMeasurement()
+        => RemoveEntry("Measurement device", CurrentMeasurementJsonLoader.Load(_configDir).ToList(),
+            d => d.Name, list => CurrentMeasurementJsonLoader.Save(list, _configDir));
+
+    private void RemoveSafety()
+    {
+        var config = ConfigLoader.LoadJson<SafetyWatchConfig>(_configDir, "safety_watch") ?? new SafetyWatchConfig();
+        RemoveEntry("Watched input", config.WatchedInputs.ToList(), WatchedKey,
+            list => ConfigLoader.SaveJson(_configDir, "safety_watch", config with { WatchedInputs = list }));
+    }
+
+    private void RemoveInterlock()
+    {
+        var config = ConfigLoader.LoadJson<InterlockConfig>(_configDir, "motion_interlocks") ?? new InterlockConfig();
+        RemoveEntry("Interlock rule", config.Rules.ToList(), r => r.Name,
+            list => ConfigLoader.SaveJson(_configDir, "motion_interlocks", config with { Rules = list }));
+    }
+
+    private void RemoveLighting()
+        => RemoveEntry("Lighting controller", LightingJsonLoader.Load(_configDir).ToList(),
+            c => c.DeviceId, list => LightingJsonLoader.Save(list, _configDir));
+
+    private void RemoveTec()
+        => RemoveEntry("TEC device", TecJsonLoader.Load(_configDir).ToList(),
+            d => d.Name, list => TecJsonLoader.Save(list, _configDir));
+
+    private void RemoveSmu()
+        => RemoveEntry("SMU device", SmuJsonLoader.Load(_configDir).ToList(),
+            d => d.Name, list => SmuJsonLoader.Save(list, _configDir));
+
+    private void RemovePowerSupply()
+        => RemoveEntry("Power supply", PowerSupplyJsonLoader.Load(_configDir).ToList(),
+            d => d.Name, list => PowerSupplyJsonLoader.Save(list, _configDir));
+
+    private void RemoveTcp()
+        => RemoveEntry("TCP client", TcpClientJsonLoader.Load(_configDir).ToList(),
+            c => c.Id, list => TcpClientJsonLoader.Save(list, _configDir));
+
+    // --- generic add / edit / remove ---
 
     /// <summary>One editable field: how to show it, and how to edit it.</summary>
     private sealed record FieldSpec<T>(string Name, Func<T, string> Show, Func<T, T> Edit);
+
+    private static void AddEntry<T>(string title, T entry, List<T> all, List<FieldSpec<T>> fields,
+        Func<T, string> nameOf, string file, Action<List<T>> save) where T : class
+    {
+        var others = all.Select(nameOf).ToList();
+        var result = RunEditor(title, entry, fields, x => NameError(nameOf(x), others));
+        if (result == null) return;
+        all.Add(result);
+        save(all);
+        AnsiConsole.MarkupLineInterpolated(
+            $"[green]Added[/] '{nameOf(result)}' — {file} now has {all.Count} entr{Plural(all.Count)}.");
+    }
+
+    private static void EditEntry<T>(string title, List<T> all, Func<T, string> nameOf,
+        List<FieldSpec<T>> fields, Action<List<T>> save) where T : class
+    {
+        if (all.Count == 0) { AnsiConsole.MarkupLine("[yellow]Nothing to edit.[/]"); return; }
+
+        var labels = all.Select(nameOf).ToList();
+        var pick = AnsiConsole.Prompt(
+            new SelectionPrompt<string>().Title($"[aqua]{title}[/] — edit which?").AddChoices(labels.Append(Back)));
+        if (pick == Back) return;
+
+        int index = labels.IndexOf(pick);
+        var others = all.Where((_, i) => i != index).Select(nameOf).ToList();
+        var result = RunEditor(title, all[index], fields, x => NameError(nameOf(x), others));
+        if (result == null) return;
+
+        all[index] = result;
+        save(all);
+        AnsiConsole.MarkupLineInterpolated($"[green]Saved[/] '{nameOf(result)}'.");
+    }
+
+    private static void RemoveEntry<T>(string title, List<T> all, Func<T, string> nameOf, Action<List<T>> save)
+    {
+        if (all.Count == 0) { AnsiConsole.MarkupLine("[yellow]Nothing to remove.[/]"); return; }
+
+        var labels = all.Select(nameOf).ToList();
+        var pick = AnsiConsole.Prompt(
+            new SelectionPrompt<string>().Title($"[aqua]{title}[/] — remove which?").AddChoices(labels.Append(Back)));
+        if (pick == Back) return;
+
+        if (!AnsiConsole.Confirm($"Remove '{Markup.Escape(pick)}'?", false)) return;
+        all.RemoveAt(labels.IndexOf(pick));
+        save(all);
+        AnsiConsole.MarkupLineInterpolated($"[green]Removed[/] '{pick}'.");
+    }
 
     /// <summary>
     /// Shows an entry's whole config, lets the user edit any field, then Save
@@ -739,6 +847,8 @@ internal sealed class ConfigToolApp
             item = fields.First(f => f.Name == choice).Edit(item);
         }
     }
+
+    private static string WatchedKey(WatchedInput w) => $"{w.DeviceName}.{w.PinName}";
 
     private static List<string> FirstSlides(InterlockRule rule)
         => rule.Conditions.FirstOrDefault()?.Slides ?? new List<string>();
@@ -776,6 +886,8 @@ internal sealed class ConfigToolApp
 
     private static string YesNo(bool value) => value ? "yes" : "no";
 
+    private static string Plural(int count) => count == 1 ? "y" : "ies";
+
     private static string Pin(IOPinReference reference)
         => string.IsNullOrEmpty(reference.PinName)
             ? "[grey]—[/]"
@@ -784,8 +896,8 @@ internal sealed class ConfigToolApp
     private static string? PickPreset(params string[] presets)
     {
         var choice = AnsiConsole.Prompt(
-            new SelectionPrompt<string>().Title("Select a preset:").AddChoices(presets.Append("Back")));
-        return choice == "Back" ? null : choice;
+            new SelectionPrompt<string>().Title("Select a preset:").AddChoices(presets.Append(Back)));
+        return choice == Back ? null : choice;
     }
 
     private static string PickField(params string[] fields)
@@ -829,8 +941,4 @@ internal sealed class ConfigToolApp
             .Select(s => int.TryParse(s, out var n) ? n : 0)
             .Where(n => n > 0)
             .ToList();
-
-    private static void Saved(string name, string file, int count)
-        => AnsiConsole.MarkupLineInterpolated(
-            $"[green]Added[/] '{name}' — {file} now has {count} entr{(count == 1 ? "y" : "ies")}.");
 }
