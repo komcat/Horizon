@@ -31,6 +31,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.Console", "src\Hori
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.Interlock", "src\Horizon.Interlock\Horizon.Interlock.csproj", "{A1B2C3D4-1111-2222-3333-44445555DDDD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.Workflow", "src\Horizon.Workflow\Horizon.Workflow.csproj", "{A1B2C3D4-1111-2222-3333-44445555EEEE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horizon.Workflow.Console", "src\Horizon.Workflow.Console\Horizon.Workflow.Console.csproj", "{A1B2C3D4-1111-2222-3333-44445555FFFF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -96,5 +100,13 @@ Global
 		{A1B2C3D4-1111-2222-3333-44445555DDDD}.Debug|x64.Build.0 = Debug|x64
 		{A1B2C3D4-1111-2222-3333-44445555DDDD}.Release|x64.ActiveCfg = Release|x64
 		{A1B2C3D4-1111-2222-3333-44445555DDDD}.Release|x64.Build.0 = Release|x64
+		{A1B2C3D4-1111-2222-3333-44445555EEEE}.Debug|x64.ActiveCfg = Debug|x64
+		{A1B2C3D4-1111-2222-3333-44445555EEEE}.Debug|x64.Build.0 = Debug|x64
+		{A1B2C3D4-1111-2222-3333-44445555EEEE}.Release|x64.ActiveCfg = Release|x64
+		{A1B2C3D4-1111-2222-3333-44445555EEEE}.Release|x64.Build.0 = Release|x64
+		{A1B2C3D4-1111-2222-3333-44445555FFFF}.Debug|x64.ActiveCfg = Debug|x64
+		{A1B2C3D4-1111-2222-3333-44445555FFFF}.Debug|x64.Build.0 = Debug|x64
+		{A1B2C3D4-1111-2222-3333-44445555FFFF}.Release|x64.ActiveCfg = Release|x64
+		{A1B2C3D4-1111-2222-3333-44445555FFFF}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 EndGlobal
