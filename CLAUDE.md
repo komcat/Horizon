@@ -111,6 +111,15 @@ Three usage patterns:
 
 `NeedleCameraCalibrationModels` + `NeedleCameraCalibrationStore` in Core — stores per-product needle-to-camera offset calibration data. Used by `NeedleCameraTrainerPanel` for teaching the XY offset between needle and camera positions via a pneumatic slide.
 
+### Dispensing System
+
+`Horizon.Core.Dispensing.DispenseExecutor` — orchestrates a glue/adhesive dispense cycle: move to camera-verify position, optional camera verification prompt, descend to dispense Z, actuate the pneumatic slide for `DispenseDurationMs`, then lift off. Settings live in `DispenseProfile` (per-product, persisted by `DispenseProfileStore` under the product directory). `DispenseTypes.cs` holds `DispenseProfile` / `DispensePosition` records.
+
+- `PromptUser` delegate (injected by `AppContext`) shows WPF dialogs for camera verification from the executor.
+- Uses `NeedleCameraCalibrationStore` to apply the needle↔camera XY offset.
+- Triggered from process programs via `DispensePlugin` (`Horizon.Process/Plugins/`) and from `SystemCommandHandler`.
+- Per-axis velocity control: `IMotionController.SetVelocity`/`GetVelocity` (implemented by ACS and PI adapters); the executor uses profile `Velocity`, `SafetySpeed`, and `LiftOffSpeed` for different motion phases.
+
 ### Safety Watchdog
 
 `Horizon.Safety.SafetyWatchManager` — background IO pin polling (50ms) with enforcement actions. Config: `safety_watch.json` with `watchedInputs` (device, pin, trigger edge, severity) and `emergencyActions` (stopMotion, retractPneumatics, cancelExecution, blockNewExecution, killIO). When a watched input triggers:
@@ -163,7 +172,7 @@ TrainerPanel is a 3-step wizard for position accuracy training: (1) teach bondin
 - Native DLLs (PI, Fastech, VISA, uEye) are copied to output via `<None Include="..." CopyToOutputDirectory="PreserveNewest">`
 - VISA instruments (Keithley, Thorlabs CLD101x) share `Native/VisaNative.cs` P/Invoke pattern
 - Logging: `ILogSink` interface in Core, `SerilogLogSink` adapter in App (rolling daily files + WPF output sink)
-- NuGet: AvalonDock 4.72.1, SkiaSharp.Views.WPF 3.116.1
+- NuGet: AvalonDock 4.72.1, SkiaSharp.Views.WPF 3.116.1, MVTec HALCON 24.05 (`MVTec.HalconDotNet` managed wrapper in Horizon.Camera; `MVTec.HalconDotNet-Windows` native-bundling package in Horizon.App). HALCON 24.05 is x64-only — matches the solution's x64-only platform set.
 
 ## Documentation
 

@@ -154,6 +154,23 @@ internal sealed class MotionFacet : IMotionFacet, IAsyncDisposable
             Result<double>.Ok(_manager.GetSystemVelocity(device))).ConfigureAwait(false);
     }
 
+    public async Task<Result> SetDeviceVelocityAsync(string device, double velocity)
+    {
+        if (!_devices.TryGetValue(device, out var info))
+            return Result.Fail(ErrorCode.MotionDeviceNotFound, $"Motion device '{device}' not found.");
+
+        // PI hexapods have a single system (path) velocity; ACS is per-axis.
+        if (info.ControllerType.Equals("PI", StringComparison.OrdinalIgnoreCase))
+            return await SetSystemVelocityAsync(device, velocity).ConfigureAwait(false);
+
+        foreach (var axis in info.Axes)
+        {
+            var r = await SetVelocityAsync(device, axis, velocity).ConfigureAwait(false);
+            if (!r.IsSuccess) return r;
+        }
+        return Result.Ok();
+    }
+
     /// <summary>Connects all motion devices and starts polling. Called by the engine during ConnectAll.</summary>
     public async Task ConnectAllInternalAsync(IProgress<string>? progress)
     {

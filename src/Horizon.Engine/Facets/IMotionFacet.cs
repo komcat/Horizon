@@ -57,6 +57,12 @@ public interface IMotionFacet
     /// <summary>Reads the system (path) velocity — for PI hexapods.</summary>
     Task<Result<double>> GetSystemVelocityAsync(string device);
 
+    /// <summary>
+    /// Sets the device velocity in a controller-aware way — PI: the system
+    /// (path) velocity; ACS and others: every installed axis.
+    /// </summary>
+    Task<Result> SetDeviceVelocityAsync(string device, double velocity);
+
     /// <summary>Raised (edge-triggered) when a device's polled state changes.</summary>
     event Action<MotionStateChanged>? StateChanged;
 }
