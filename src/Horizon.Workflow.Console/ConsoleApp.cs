@@ -5,8 +5,12 @@ using Spectre.Console;
 
 namespace Horizon.WorkflowConsole;
 
-/// <summary>Spectre.Console menu loop over <see cref="IProcessService"/>.</summary>
-internal sealed class ConsoleApp
+/// <summary>
+/// Spectre.Console menu loop over <see cref="IProcessService"/>. Also the
+/// reference <see cref="IOperatorPrompt"/> — the bidirectional front-end every
+/// future Layer 3 (WPF, web) mirrors.
+/// </summary>
+internal sealed class ConsoleApp : IOperatorPrompt
 {
     private const string ShowProducts = "Show products";
     private const string CreateProduct = "Create product";
@@ -21,10 +25,37 @@ internal sealed class ConsoleApp
     private readonly IProcessService _service;
     private readonly IHorizonEngine _engine;
 
+    /// <summary>Set while a blocking operator prompt is on screen, so the
+    /// run loop's "press any key to cancel" poll does not steal the answer.</summary>
+    private volatile bool _awaitingPrompt;
+
     public ConsoleApp(IProcessService service, IHorizonEngine engine)
     {
         _service = service;
         _engine = engine;
+        _service.OperatorPrompt = this;   // register as the reference front-end
+    }
+
+    /// <summary>
+    /// <see cref="IOperatorPrompt"/> reference implementation: a blocking
+    /// console yes/no. WPF mirrors this with a modal dialog; web with a
+    /// SignalR round-trip — all satisfy the same <c>Task&lt;bool&gt;</c> contract.
+    /// </summary>
+    public Task<bool> ConfirmAsync(string title, string message, CancellationToken ct)
+    {
+        _awaitingPrompt = true;
+        try
+        {
+            var text = string.IsNullOrWhiteSpace(message)
+                ? Markup.Escape(title)
+                : $"{Markup.Escape(title)} — {Markup.Escape(message)}";
+            AnsiConsole.WriteLine();
+            return Task.FromResult(AnsiConsole.Confirm($"[yellow]?[/] {text}"));
+        }
+        finally
+        {
+            _awaitingPrompt = false;
+        }
     }
 
     public async Task RunAsync()
@@ -345,7 +376,9 @@ internal sealed class ConsoleApp
             var runTask = _service.RunAsync(program, cts.Token);
             while (!runTask.IsCompleted)
             {
-                if (Console.KeyAvailable)
+                // Skip cancel polling while a prompt is open — that keystroke
+                // is the operator's answer, not a cancel request.
+                if (!_awaitingPrompt && Console.KeyAvailable)
                 {
                     Console.ReadKey(intercept: true);
                     cts.Cancel();
@@ -362,9 +395,11 @@ internal sealed class ConsoleApp
 
     private static void Report(Result result, string action)
     {
-        if (result.IsSuccess)
-            AnsiConsole.MarkupLineInterpolated($"[green]OK[/] — {action}");
-        else
+        if (!result.IsSuccess)
             AnsiConsole.MarkupLineInterpolated($"[red]FAILED[/] — {action}: {result.Message}");
+        else if (string.IsNullOrEmpty(result.Message))
+            AnsiConsole.MarkupLineInterpolated($"[green]OK[/] — {action}");
+        else   // success with a message — e.g. a controlled "operator declined" abort
+            AnsiConsole.MarkupLineInterpolated($"[green]OK[/] — {action}: {result.Message}");
     }
 }

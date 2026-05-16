@@ -27,32 +27,68 @@ on, not a passive viewer of `StepEvent` / `LogEmitted`.
 `Ask User` and breakpoints are the same pattern (runner pauses, yields control
 to the front-end), so Phase 4 = **interactive execution**.
 
-## Task 1 — `UserPromptHandler` contract (the headline task)
+## Task 1 — `IOperatorPrompt` contract (the headline task)
 
-Add to `IProcessService`:
+Model the user-prompt as an **interface** the front-end implements and registers
+on `IProcessService` — not a raw `Func`. It is *not* an engine facet: the engine
+facets (`Motion`, `IO`, …) are called **down** into; this is an inverted
+dependency the runner calls **up** into. Layer 3 *provides* it, Layer 2
+*consumes* it. So it lives as a settable property on `IProcessService`, the same
+slot the front-end fills.
 
 ```csharp
-public sealed record UserPrompt(string Title, string Message);
+namespace Horizon.Workflow;
+
+/// <summary>
+/// Layer 3 → Layer 2 callback contract: the runner suspends on these calls
+/// and resumes when the front-end answers. The reference implementation is the
+/// console; WPF / web mirror it. Implementations may marshal threads or do an
+/// async round-trip internally — Layer 2 only sees the awaitable result.
+/// </summary>
+public interface IOperatorPrompt
+{
+    /// <summary>Blocking yes/no confirmation. Cancellation arrives via <paramref name="ct"/>.</summary>
+    Task<bool> ConfirmAsync(string title, string message, CancellationToken ct);
+
+    // Room to grow without touching IProcessService — add when needed:
+    // Task<string?> InputTextAsync(string title, string message, CancellationToken ct);
+    // Task<int?>    ChooseAsync(string title, IReadOnlyList<string> options, CancellationToken ct);
+}
 
 // IProcessService:
-Func<UserPrompt, CancellationToken, Task<bool>>? UserPromptHandler { get; set; }
+/// <summary>Front-end-supplied operator-prompt handler. Null = no handler;
+/// a program with an askUser step cannot then run.</summary>
+IOperatorPrompt? OperatorPrompt { get; set; }
 ```
+
+**Why an interface, not a `Func`:** one interface absorbs future prompt shapes
+(text input, multi-choice) without adding a new `IProcessService` property per
+shape. For Phase 4's single `askUser` op only `ConfirmAsync` is needed; the
+other methods are stubs/notes until a prompt op requires them.
+
+**Why an awaitable method, not an `event`:** a fire-and-forget `event` (like
+`StepEvent` / `LogEmitted`) cannot return a value or be awaited — blocking on one
+would need a correlation ID + a separate `SubmitResponse` method + a
+`TaskCompletionSource` in the runner. Keep that machinery in Layer 3: a web
+front-end implements `ConfirmAsync` by *internally* doing the event + TCS
+round-trip. Layer 2 stays a plain `await`.
 
 - New step op **`flow.askUser`** — params `title`, `message` (drop `blocking`;
   Layer 2 prompts are always blocking).
-- `WorkflowRunner` needs the handler injected (ctor delegate, like the
+- `WorkflowRunner` needs the prompt injected (ctor parameter, like the
   named-position recall delegate). On an `askUser` step:
-  `await UserPromptHandler(new UserPrompt(title, message), ct)`.
+  `await prompt.ConfirmAsync(title, message, ct)`.
   - `true`  → continue.
   - `false` → stop the run as a **controlled abort** ("operator declined") —
     not an error result; distinct message in the final `Result`.
-  - handler **null** → step fails: `"no user-prompt handler registered"`
+  - prompt **null** → step fails: `"no operator-prompt handler registered"`
     (a program with `Ask User` cannot run truly headless).
-- `ProcessService.RunAsync` passes `UserPromptHandler` into the `WorkflowRunner`.
-- **Console reference handler**: wire `UserPromptHandler` in `ConsoleApp` to
-  `AnsiConsole.Confirm($"{title} — {message}")`. This is the reference
-  implementation every future front-end mirrors (WPF → modal dialog;
-  web → SignalR round-trip).
+- `ProcessService.RunAsync` passes `OperatorPrompt` into the `WorkflowRunner`.
+- **Console reference handler**: implement `IOperatorPrompt` in `ConsoleApp`
+  (`ConfirmAsync` → `AnsiConsole.Confirm($"{title} — {message}")`) and assign it
+  to `OperatorPrompt`. This is the reference implementation every future
+  front-end mirrors (WPF → modal dialog on the dispatcher thread;
+  web → SignalR round-trip behind `ConfirmAsync`).
 
 ## Task 2 — new step ops for "Probe SLED and PIC"
 
@@ -113,5 +149,5 @@ Layer 2 ↔ Layer 3 contract demonstrated end to end.
 
 ## Doc to update
 
-Fold the `UserPromptHandler` contract into `docs/layer2-process-module-design.md`
+Fold the `IOperatorPrompt` contract into `docs/layer2-process-module-design.md`
 §5 (`IProcessService`) and add it to the Phase 4 scope there.

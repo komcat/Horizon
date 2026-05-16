@@ -67,6 +67,14 @@ public interface IProcessService
     /// <summary>Saves a process program into the active product.</summary>
     Result SaveProgram(WorkflowProgram program);
 
+    /// <summary>
+    /// Front-end-supplied operator-prompt handler — the bidirectional callback
+    /// the runner blocks on for <c>flow.askUser</c> steps. Null when no
+    /// front-end is registered: a program containing an <c>askUser</c> step
+    /// then cannot run (the step fails). See <see cref="IOperatorPrompt"/>.
+    /// </summary>
+    IOperatorPrompt? OperatorPrompt { get; set; }
+
     /// <summary>Runs a process program against the engine.</summary>
     Task<Result> RunAsync(WorkflowProgram program, CancellationToken ct = default);
 

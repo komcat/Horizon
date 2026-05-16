@@ -17,6 +17,11 @@ public readonly struct Result
     public static Result Ok() =>
         new(true, ErrorCode.Success, string.Empty);
 
+    /// <summary>A successful outcome carrying an explanatory message
+    /// (e.g. a controlled, non-error early stop).</summary>
+    public static Result Ok(string message) =>
+        new(true, ErrorCode.Success, message);
+
     public static Result Fail(ErrorCode code, string message) =>
         new(false, code, message);
 }

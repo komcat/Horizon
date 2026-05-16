@@ -318,9 +318,13 @@ public sealed class CameraManager : IDisposable
 
         foreach (var reg in ipCameras)
         {
+            // Identify the camera by its configured Name (e.g. "cam1") so configs
+            // and workflows reference a stable friendly id, not the serial number.
+            // Connection still uses IpAddress — Id is only the identifier.
+            var camId = !string.IsNullOrWhiteSpace(reg.Name) ? reg.Name : reg.SerialNumber;
             var info = new CameraInfo
             {
-                Id = reg.SerialNumber,
+                Id = camId,
                 SerialNumber = reg.SerialNumber,
                 IpAddress = reg.IpAddress,
                 ConnectionMethod = ConnectionMethod.IPAddress,
@@ -332,8 +336,8 @@ public sealed class CameraManager : IDisposable
             if (AddCamera(info))
             {
                 if (!string.IsNullOrEmpty(reg.Name))
-                    _displayNames[reg.SerialNumber] = reg.Name;
-                StoreCameraConfig(reg.SerialNumber, reg);
+                    _displayNames[camId] = reg.Name;
+                StoreCameraConfig(camId, reg);
                 added++;
             }
         }
@@ -349,15 +353,19 @@ public sealed class CameraManager : IDisposable
 
             foreach (var info in allCameras.Where(c => usbSerials.Contains(c.SerialNumber)))
             {
+                var reg = usbCameras.FirstOrDefault(r =>
+                    string.Equals(r.SerialNumber, info.SerialNumber, StringComparison.OrdinalIgnoreCase));
+                // Re-key by the configured Name; connection uses SerialNumber,
+                // which is unchanged, so discovery/connect still work.
+                if (reg != null && !string.IsNullOrWhiteSpace(reg.Name))
+                    info.Id = reg.Name;
                 if (AddCamera(info))
                 {
-                    var reg = usbCameras.FirstOrDefault(r =>
-                        string.Equals(r.SerialNumber, info.SerialNumber, StringComparison.OrdinalIgnoreCase));
                     if (reg != null)
                     {
                         if (!string.IsNullOrEmpty(reg.Name))
-                            _displayNames[info.SerialNumber] = reg.Name;
-                        StoreCameraConfig(info.SerialNumber, reg);
+                            _displayNames[info.Id] = reg.Name;
+                        StoreCameraConfig(info.Id, reg);
                     }
                     added++;
                 }

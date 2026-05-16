@@ -35,6 +35,8 @@ public sealed class ProcessService : IProcessService
     public event Action<WorkflowStepEvent>? StepEvent;
     public event Action<LogEntry>? LogEmitted;
 
+    public IOperatorPrompt? OperatorPrompt { get; set; }
+
     // --- Products ---
 
     public Result CreateProduct(string name)
@@ -188,6 +190,7 @@ public sealed class ProcessService : IProcessService
         var runner = new WorkflowRunner(
             _engine,
             MoveToNamedPositionAsync,
+            OperatorPrompt,
             e => StepEvent?.Invoke(e),
             Log);
 
@@ -195,8 +198,10 @@ public sealed class ProcessService : IProcessService
         try
         {
             var result = await runner.RunAsync(program, ct).ConfigureAwait(false);
-            Log(result.IsSuccess ? LogLevel.Info : LogLevel.Error,
-                $"Program {(result.IsSuccess ? "completed" : "failed")}: {program.Name}");
+            var summary = $"Program {(result.IsSuccess ? "completed" : "failed")}: {program.Name}";
+            if (!string.IsNullOrEmpty(result.Message))
+                summary += $" — {result.Message}";
+            Log(result.IsSuccess ? LogLevel.Info : LogLevel.Error, summary);
             return result;
         }
         catch (OperationCanceledException)

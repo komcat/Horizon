@@ -78,6 +78,7 @@ public interface IProcessService
     // Process programs
     IReadOnlyList<string> ListProcessPrograms();
     Task<Result<WorkflowProgram>> LoadProcessAsync(string name);
+    IOperatorPrompt? OperatorPrompt { get; set; }      // front-end prompt handler (§5.1)
     Task<Result> RunAsync(WorkflowProgram program, CancellationToken ct = default);
     void Pause();  void Resume();  void Step();        // breakpoint/step-mode control
     event Action<WorkflowStepEvent>? StepEvent;        // step started / completed / loop
@@ -88,6 +89,38 @@ public interface IProcessService
     event Action<LogEntry>? LogEmitted;
 }
 ```
+
+### 5.1 `IOperatorPrompt` — the bidirectional callback (Phase 4)
+
+`StepEvent` / `LogEmitted` make Layer 3 a *passive viewer*. Interactive steps
+(`flow.askUser`, and later breakpoints) need the opposite: the runner must
+**block mid-run** and call **up** to the front-end for an answer. That makes the
+Layer 2 ↔ Layer 3 contract **bidirectional** — a front-end is an active
+participant the runner can suspend on.
+
+```csharp
+public interface IOperatorPrompt
+{
+    Task<bool> ConfirmAsync(string title, string message, CancellationToken ct);
+    // grows toward InputTextAsync / ChooseAsync without touching IProcessService
+}
+```
+
+- **Not an engine facet.** Engine facets (`Motion`, `IO`, …) are called *down*
+  into; this is an inverted dependency the runner calls *up* into. Layer 3
+  *provides* it, Layer 2 *consumes* it — hence a settable `OperatorPrompt`
+  property on `IProcessService`, the slot the front-end fills.
+- **An interface, not a `Func`.** One interface absorbs future prompt shapes
+  (text input, multi-choice) without a new `IProcessService` property per shape.
+- **An awaitable method, not an `event`.** A fire-and-forget `event` cannot
+  return a value or be awaited. A web front-end that needs an async round-trip
+  implements `ConfirmAsync` with an internal event + `TaskCompletionSource` —
+  that machinery stays in Layer 3; Layer 2 stays a plain `await`.
+- **Behaviour:** `true` → continue; `false` → controlled abort
+  (`Result.Ok("…operator declined…")`, *not* an error); `OperatorPrompt` null →
+  the `askUser` step fails (a program with `Ask User` cannot run headless).
+- The console implements `IOperatorPrompt` as a blocking yes/no — the reference
+  every front-end mirrors (WPF → modal dialog; web → SignalR round-trip).
 
 ## 6. Product model
 
@@ -170,7 +203,7 @@ legacy WPF app keeps its own `.hproc`/`.hrcp` files independently.
 | 1 | `Horizon.Workflow` skeleton + `IProcessService` + `ProductStore` (list / active / load / create products). Console lists & switches products. |
 | 2 | Teach points / named positions — positions store, teach (capture), recall (`MoveToNamedPositionAsync`). |
 | 3 | Process execution — `WorkflowProgram`/`Step`/`Runner`/`Context`, typed dispatch to engine facets, loops, expressions, cancellation. Run a `.hproc`. |
-| 4 | Breakpoints + step-by-step + `StepEvent`; the plugin system (`IWorkflowPlugin`, discovery, parameter metadata). |
+| 4 | **Interactive execution** — `IOperatorPrompt` + `flow.askUser` (the bidirectional Layer 2 ↔ Layer 3 contract, §5.1); breakpoints + step-by-step. Plugin system + builder UI deferred. See `docs/layer2-phase4-tasks.md`. |
 | 5 | Recipe execution — recreated `.hrcp` lexer / parser / interpreter against the engine. |
 | 6+ | *(post-core)* Dispense, Trainer, Calibration, Scan. |
 

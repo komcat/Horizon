@@ -13,13 +13,16 @@ internal sealed class StepDispatcher
 {
     private readonly IHorizonEngine _engine;
     private readonly Func<string, string, CancellationToken, Task<Result>> _moveToNamed;
+    private readonly Action<LogLevel, string> _log;
 
     public StepDispatcher(
         IHorizonEngine engine,
-        Func<string, string, CancellationToken, Task<Result>> moveToNamed)
+        Func<string, string, CancellationToken, Task<Result>> moveToNamed,
+        Action<LogLevel, string> log)
     {
         _engine = engine;
         _moveToNamed = moveToNamed;
+        _log = log;
     }
 
     public async Task<Result> ExecuteAsync(WorkflowStep step, WorkflowContext ctx, CancellationToken ct)
@@ -54,8 +57,35 @@ internal sealed class StepDispatcher
             case "motion.stop":
                 return await _engine.Motion.StopAsync(step.Device);
 
+            case "camera.setexposure":
+            {
+                // Only fields named in Parameters are changed; the rest keep
+                // the camera's current values. A single op (vs three) avoids a
+                // poll race between consecutive per-field steps.
+                if (!_engine.Camera.IsConnected(step.Device))
+                    return Result.Fail(ErrorCode.CameraNotConnected,
+                        $"Camera '{step.Device}' is not connected.");
+                var ex = _engine.Camera.GetState(step.Device).Exposure;
+                var applied = await _engine.Camera.ApplyExposureAsync(step.Device, new CameraExposure(
+                    ExposureUs:   Has(step, "exposureUs")   ? Num(step, "exposureUs", ctx)   : ex.ExposureUs,
+                    Gain:         Has(step, "gain")         ? Num(step, "gain", ctx)         : ex.Gain,
+                    AutoExposure: Has(step, "autoExposure") ? Bool(step, "autoExposure", ctx): ex.AutoExposure,
+                    AutoGain:     Has(step, "autoGain")     ? Bool(step, "autoGain", ctx)    : ex.AutoGain,
+                    FrameRate:    Has(step, "frameRate")    ? Num(step, "frameRate", ctx)    : ex.FrameRate));
+                // Connected but the apply still failed → a parameter the camera
+                // rejected (e.g. exposure/gain out of range), not a connection.
+                return applied.IsSuccess
+                    ? applied
+                    : Result.Fail(applied.Error,
+                        $"{applied.Message} (camera connected — likely an out-of-range exposure/gain value).");
+            }
+
             case "io.setoutput":
                 return await _engine.IO.SetOutputAsync(step.Device, (int)Num(step, "pin", ctx), Bool(step, "state", ctx));
+
+            case "io.setoutputbyname":
+                return await _engine.IO.SetOutputByNameAsync(
+                    step.Device, Str(step, "pin", ctx), Bool(step, "state", ctx), ct);
 
             case "pneumatic.retract":
                 return await _engine.Pneumatic.RetractAndWaitAsync(step.Device, ct);
@@ -89,8 +119,63 @@ internal sealed class StepDispatcher
             case "measurement.stoppolling":
                 return Result.Ok();   // engine polls measurement continuously — no-op
 
+            case "measurement.readcurrent":
+            {
+                // Reads a channel from the last poll and stores it in a context
+                // variable named by 'captureAs'. Channels are 1-based here.
+                var state = _engine.Measurement.GetState(step.Device);
+                if (!state.Valid)
+                    return Result.Fail(ErrorCode.OperationFailed,
+                        $"Measurement '{step.Device}' has no readings yet.");
+                var ch = (int)Num(step, "channel", ctx);
+                var idx = ch - 1;
+                if (idx < 0 || idx >= state.Channels.Count)
+                    return Result.Fail(ErrorCode.InvalidParameter,
+                        $"Channel {ch} out of range for '{step.Device}'.");
+                var value = state.Channels[idx];
+                var captureAs = Str(step, "captureAs", ctx);
+                if (!string.IsNullOrWhiteSpace(captureAs))
+                    ctx.Set(captureAs, value.ToString(CultureInfo.InvariantCulture));
+                _log(LogLevel.Info, $"{step.Device} CH{ch} = {value} {state.Unit}" +
+                    (string.IsNullOrWhiteSpace(captureAs) ? "" : $" -> {captureAs}"));
+                return Result.Ok();
+            }
+
+            case "measurement.read":
+            {
+                // Logs a channel's last polled reading (no capture).
+                var state = _engine.Measurement.GetState(step.Device);
+                var ch = (int)Num(step, "channel", ctx);
+                var idx = ch - 1;
+                if (!state.Valid || idx < 0 || idx >= state.Channels.Count)
+                {
+                    _log(LogLevel.Warning, $"{step.Device} CH{ch}: no reading available");
+                    return Result.Ok();
+                }
+                _log(LogLevel.Info, $"{step.Device} CH{ch} = {state.Channels[idx]} {state.Unit}");
+                return Result.Ok();
+            }
+
             case "laser.connect":
                 return await _engine.Laser.ConnectAsync(step.Device, ct);
+
+            case "laser.settemperature":
+            {
+                var set = await _engine.Laser.SetTemperatureAsync(step.Device, Num(step, "temperature", ctx));
+                if (!set.IsSuccess) return set;
+                return Bool(step, "power", ctx)
+                    ? await _engine.Laser.TecOnAsync(step.Device)
+                    : await _engine.Laser.TecOffAsync(step.Device);
+            }
+
+            case "laser.setcurrent":
+            {
+                var set = await _engine.Laser.SetLaserCurrentAsync(step.Device, Num(step, "current", ctx));
+                if (!set.IsSuccess) return set;
+                return Bool(step, "power", ctx)
+                    ? await _engine.Laser.LaserOnAsync(step.Device)
+                    : await _engine.Laser.LaserOffAsync(step.Device);
+            }
 
             case "flow.wait":
             {
@@ -100,6 +185,10 @@ internal sealed class StepDispatcher
             }
 
             case "flow.comment":
+                return Result.Ok();
+
+            case "flow.log":
+                _log(LogLevel.Info, Str(step, "message", ctx));
                 return Result.Ok();
 
             case "var.set":
@@ -117,6 +206,10 @@ internal sealed class StepDispatcher
     }
 
     // --- parameter resolution: literal | var:NAME | expr:EXPRESSION ---
+
+    /// <summary>True if the step supplies a non-empty value for <paramref name="key"/>.</summary>
+    private static bool Has(WorkflowStep step, string key)
+        => step.Parameters.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v);
 
     private static string Str(WorkflowStep step, string key, WorkflowContext ctx)
     {
