@@ -27,6 +27,19 @@ internal sealed class ProductStore
     /// <summary>Absolute path of the Layer 2 product root.</summary>
     public string Root => _root;
 
+    /// <summary>Absolute directory of a product (whether or not it exists).</summary>
+    public string ProductDir(string name) => Path.Combine(_root, name);
+
+    /// <summary>Absolute directory of the active product, or null if none.</summary>
+    public string? ActiveProductDir
+    {
+        get
+        {
+            var active = ActiveProduct;
+            return active == null ? null : Path.Combine(_root, active);
+        }
+    }
+
     public IReadOnlyList<string> GetProductNames()
     {
         if (!Directory.Exists(_root)) return Array.Empty<string>();

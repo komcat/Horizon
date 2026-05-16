@@ -1,0 +1,111 @@
+using System.Text.Json;
+using Horizon.Engine;
+
+namespace Horizon.Workflow;
+
+/// <summary>
+/// One product's named positions, persisted as <c>positions.json</c> in the
+/// product directory. A named position is <c>(device, name)</c> → a
+/// <see cref="MotionPosition"/> coordinate — the engine never sees the name.
+/// </summary>
+internal sealed class PositionStore
+{
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true,
+    };
+
+    private readonly string _path;
+    private readonly List<PositionRecord> _positions;
+
+    public PositionStore(string productDir)
+    {
+        _path = Path.Combine(productDir, "positions.json");
+        _positions = Load();
+    }
+
+    public IReadOnlyList<string> GetNames(string device)
+        => _positions
+            .Where(p => p.Device.Equals(device, StringComparison.OrdinalIgnoreCase))
+            .Select(p => p.Name)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    public NamedPosition? Get(string device, string name)
+    {
+        var rec = Find(device, name);
+        return rec == null
+            ? null
+            : new NamedPosition(rec.Device, rec.Name,
+                new MotionPosition(rec.X, rec.Y, rec.Z, rec.U, rec.V, rec.W), rec.Velocity);
+    }
+
+    public void Set(string device, string name, MotionPosition pos, double velocity)
+    {
+        _positions.RemoveAll(p =>
+            p.Device.Equals(device, StringComparison.OrdinalIgnoreCase) &&
+            p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        _positions.Add(new PositionRecord
+        {
+            Device = device,
+            Name = name,
+            X = pos.X, Y = pos.Y, Z = pos.Z, U = pos.U, V = pos.V, W = pos.W,
+            Velocity = velocity,
+        });
+        Save();
+    }
+
+    public bool Remove(string device, string name)
+    {
+        var removed = _positions.RemoveAll(p =>
+            p.Device.Equals(device, StringComparison.OrdinalIgnoreCase) &&
+            p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        if (removed > 0) Save();
+        return removed > 0;
+    }
+
+    private PositionRecord? Find(string device, string name)
+        => _positions.FirstOrDefault(p =>
+            p.Device.Equals(device, StringComparison.OrdinalIgnoreCase) &&
+            p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+    private List<PositionRecord> Load()
+    {
+        if (!File.Exists(_path)) return new();
+        try
+        {
+            var doc = JsonSerializer.Deserialize<PositionsFile>(File.ReadAllText(_path), JsonOptions);
+            return doc?.Positions ?? new();
+        }
+        catch
+        {
+            return new();
+        }
+    }
+
+    private void Save()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        File.WriteAllText(_path,
+            JsonSerializer.Serialize(new PositionsFile { Positions = _positions }, JsonOptions));
+    }
+
+    private sealed record PositionsFile
+    {
+        public List<PositionRecord> Positions { get; init; } = new();
+    }
+
+    private sealed record PositionRecord
+    {
+        public string Device { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public double X { get; init; }
+        public double Y { get; init; }
+        public double Z { get; init; }
+        public double U { get; init; }
+        public double V { get; init; }
+        public double W { get; init; }
+        public double Velocity { get; init; }
+    }
+}

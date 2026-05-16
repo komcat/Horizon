@@ -5,23 +5,36 @@ using Spectre.Console;
 namespace Horizon.WorkflowConsole;
 
 /// <summary>
-/// Layer 2 test host — drives <see cref="IProcessService"/> the way a Layer 3
-/// front-end will. Phase 1: product management.
+/// Layer 2 test host — a Layer 1 + 2 host. Creates and connects the engine,
+/// then drives <see cref="IProcessService"/> the way a Layer 3 front-end will.
 /// </summary>
 internal static class Program
 {
-    private static int Main()
+    private static async Task<int> Main()
     {
         AnsiConsole.Write(new FigletText("Horizon WF").Color(Color.Aqua));
         AnsiConsole.MarkupLine("[grey]Layer 2 process module — console test host[/]");
         AnsiConsole.WriteLine();
 
-        var service = new ProcessService();
+        await using var engine = new HorizonEngine();
+        engine.LogEmitted += OnLog;
+
+        var service = new ProcessService(engine);
         service.LogEmitted += OnLog;
 
         try
         {
-            new ConsoleApp(service).Run();
+            await engine.InitializeAsync();
+            await AnsiConsole.Status()
+                .StartAsync("Connecting hardware…", async ctx =>
+                {
+                    var progress = new Progress<string>(msg => ctx.Status(Markup.Escape(msg)));
+                    await engine.ConnectAllAsync(progress);
+                });
+
+            await new ConsoleApp(service, engine).RunAsync();
+
+            await engine.ShutdownAsync();
             return 0;
         }
         catch (Exception ex)
@@ -31,6 +44,7 @@ internal static class Program
         }
         finally
         {
+            engine.LogEmitted -= OnLog;
             service.LogEmitted -= OnLog;
         }
     }
