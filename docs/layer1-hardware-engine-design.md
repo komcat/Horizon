@@ -1,6 +1,7 @@
 # Layer 1 — Hardware Engine Design
 
-> Status: **DRAFT for review** — design discussion 2026-05-15. No code yet.
+> Status: **IMPLEMENTED** — design 2026-05-15, built and verified on the bench.
+> All eight domains of §11 are wired behind `IHorizonEngine`.
 > Scope: the bottom layer only. Builds on `docs/headless-engine-concept.md`.
 
 ---
@@ -182,17 +183,17 @@ public interface IMotionFacet
   `SafetyCleared`. Enforcement and interlock arbitration are *internal* to the
   engine — not exposed for callers to bypass.
 
-## 8. Adapter rewrite — risk note
+## 8. Adapter handling — risk note
 
-A full rewrite is fine for the **managed-wrapper** adapters (ACS
-`SPiiPlusNET6`, Basler Pylon, IDS Peak) — just re-calling a managed API.
+**As built, the existing adapters were kept** (§2): the engine wraps the
+`Horizon.*` hardware modules unchanged. No P/Invoke was rewritten — which
+sidesteps the risk below entirely. The note is retained as the rationale.
 
-The risk is concentrated in the **P/Invoke** adapters: PI `PI_GCS2_DLL_x64`,
-Fastech `EziMOTIONPlusE`, VISA `visa64.dll`, uEye. A mistyped `[DllImport]`
-signature is **not a compile error** — it is silent memory corruption that
-surfaces as a random crash hours later.
-
-**Mandatory mitigations even in a "full rewrite":**
+A mistyped `[DllImport]` signature is **not a compile error** — it is silent
+memory corruption that surfaces as a random crash hours later. The risk lives
+in the **P/Invoke** adapters: PI `PI_GCS2_DLL_x64`, Fastech `EziMOTIONPlusE`,
+VISA `visa64.dll`, uEye. Had they been rewritten, the mitigations would have
+been mandatory:
 
 - Copy the `[DllImport]` declaration blocks **verbatim** from the existing
   `Native/` files (`PIGcs2.cs`, `EziNative.cs`, `VisaNative.cs`, uEye). Rewrite
@@ -234,20 +235,29 @@ Logging is delivered through the engine's `LogEmitted` event
 subscribes and writes to stdout; a future WPF front-end subscribes and routes
 to Serilog. `LogEntry` carries level, timestamp, source, and message.
 
-## 11. Bring-up order (forced by no-mocks → bench testing)
+## 11. Bring-up order — COMPLETE
 
-Each step = adapter + facet + console command, tested on the bench before the
-next. The console is never broken — it just gains a menu section per step.
+All eight steps were built and verified on the bench, one commit each. Each
+step = facet + engine wiring + console menu section; the console was never
+broken and references only `Horizon.Engine` throughout.
 
-1. **Engine skeleton** — `IHorizonEngine`, lifecycle, poll loop, event
-   plumbing, config loader. Console connects to an empty engine.
-2. **IO** — simplest device, no motion risk. Proves the facet pattern.
-3. **Motion** — largest, riskiest P/Invoke (PI). One controller type at a time.
-4. **Pneumatic** — sits on IO; trivial once IO works.
-5. **Current Measurement + Laser** — both VISA, share the P/Invoke layer.
-6. **Camera** — frames + `FrameReady`.
-7. **Vision** — HALCON over camera frames.
-8. **Safety + Interlocks** — last; it arbitrates everything above.
+| # | Step | Status |
+|---|------|--------|
+| 1 | **Engine skeleton** — `IHorizonEngine`, lifecycle, `PollLoop`, events, config | ✅ done |
+| 2 | **IO** — Fastech Ezi-IO behind `IIOFacet` | ✅ done |
+| 3 | **Motion** — PI GCS2 + ACS SPiiPlus behind `IMotionFacet` (per-device `SemaphoreSlim`) | ✅ done |
+| 4 | **Pneumatic** — IO-driven slides behind `IPneumaticFacet` | ✅ done |
+| 5 | **Current Measurement + Laser** — Keithley + CLD101x (VISA) | ✅ done |
+| 6 | **Camera** — Pylon / IDS / uEye; raw `FrameReady` stream | ✅ done |
+| 7 | **Vision** — minimal HALCON bridge over camera frames | ✅ done |
+| 8 | **Safety + Interlocks** — watchdog enforcement + interlock gating | ✅ done |
+
+Outcome: all eight domains are wired behind `IHorizonEngine`; `Horizon.Console`
+drives the full engine headless. Adapters were **kept** (not rewritten) — the
+engine wraps the existing `Horizon.*` hardware modules. `InterlockService` was
+extracted into a shared `Horizon.Interlock` project (§12). Vision shipped as a
+minimal bridge (image stats + blob count) — real inspection algorithms are
+deferred to a future requirement.
 
 ## 12. Resolved decisions
 
@@ -261,3 +271,25 @@ next. The console is never broken — it just gains a menu section per step.
 - **No `ILogSink` interface.** Logging is the engine's `LogEmitted` event
   (`event Action<LogEntry>`); front-ends subscribe. The old `ILogSink`
   abstraction is dropped.
+- **Interlocks in a shared project.** `InterlockService` + `InterlockTypes`
+  were moved from `Horizon.Core` into a new `Horizon.Interlock` project,
+  referenced by both the engine and legacy `Horizon.Core`. The namespace
+  (`Horizon.Core.Interlock`) was kept so legacy code needed no edits.
+- **Adapters kept, not rewritten.** Each facet wraps the existing `Horizon.*`
+  hardware module unchanged; only the composition/facet layer is new.
+
+## 13. As-built notes
+
+- **Concurrency:** Motion uses a per-device `SemaphoreSlim` (PI/ACS adapters
+  are not thread-safe). IO, Pneumatic, Measurement, Laser adapters lock
+  internally — no facet semaphore. `StopAsync` bypasses the lock.
+- **Poll loops:** `PollLoop` (engine scaffold) drives Motion, Pneumatic, Laser,
+  Camera. IO and Measurement reuse their managers' built-in poll loops.
+- **Vision:** minimal HALCON bridge — `AnalyzeFrame` (gray min/mean/max) and
+  `CountBlobs` (threshold + connection). Degrades gracefully if HALCON or its
+  license is absent. `Horizon.Console` carries the `MVTec.HalconDotNet-Windows`
+  native package.
+- **Console:** `Horizon.Console` (Spectre.Console) references **only**
+  `Horizon.Engine` — the Layer 1 boundary, verified across all eight steps.
+- **Next:** Layer 2 (product/process) and Layer 3 (front-ends) build against
+  `IHorizonEngine` — see `docs/headless-engine-concept.md`.
