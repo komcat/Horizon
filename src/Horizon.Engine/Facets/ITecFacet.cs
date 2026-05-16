@@ -21,6 +21,9 @@ public interface ITecFacet
     /// <summary>Whether the device's instrument connection is currently open.</summary>
     bool IsConnected(string device);
 
+    /// <summary>Forces an immediate status poll so <see cref="GetState"/> reflects the hardware now.</summary>
+    Task RefreshAsync();
+
     Task<Result> ConnectAsync(string device, CancellationToken ct = default);
     Task<Result> DisconnectAsync(string device);
 

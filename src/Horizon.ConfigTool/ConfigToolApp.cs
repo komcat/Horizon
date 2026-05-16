@@ -621,22 +621,27 @@ internal sealed class ConfigToolApp
 
     private void AddSmu()
     {
-        var preset = PickPreset("Keithley 6482 — dual picoammeter", "Keithley 2400 — SourceMeter");
+        var preset = PickPreset("Keithley 6482 — dual picoammeter",
+                                "Keithley 2400 — SourceMeter",
+                                "Keithley 2602B — dual-channel SMU");
         if (preset == null) return;
 
         var devices = SmuJsonLoader.Load(_configDir).ToList();
         var is2400 = preset.Contains("2400");
+        var is2602 = preset.Contains("2602");
         var device = new SmuDeviceConfig
         {
             Name = UniqueName("keithley", devices.Select(d => d.Name)),
-            Type = is2400 ? "keithley_2400" : "keithley_6482",
-            VisaResource = is2400 ? "GPIB1::24::INSTR" : "GPIB0::1::INSTR",
+            Type = is2602 ? "keithley_2602B" : is2400 ? "keithley_2400" : "keithley_6482",
+            VisaResource = is2602 ? "TCPIP0::10.0.0.80::5025::SOCKET"
+                         : is2400 ? "GPIB1::24::INSTR"
+                         : "GPIB0::1::INSTR",
             Enabled = true,
             ChannelCount = is2400 ? 1 : 2,
             EnabledChannels = is2400 ? new List<int> { 1 } : new List<int> { 1, 2 },
             MeasurementNplc = is2400 ? 1.0 : 5.0,
             AutoRange = true,
-            DefaultCompliance = is2400 ? 0.001 : 0.0,
+            DefaultCompliance = is2400 || is2602 ? 0.001 : 0.0,
         };
         AddEntry("SMU device", device, devices, SmuFields(), d => d.Name,
             "smu_devices.json", list => SmuJsonLoader.Save(list, _configDir));

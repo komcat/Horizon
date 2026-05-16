@@ -13,6 +13,8 @@ internal static class VisaNative
 
     public const int VI_SUCCESS = 0;
     public const uint VI_ATTR_TMO_VALUE = 0x3FFF001A;
+    public const uint VI_ATTR_TERMCHAR = 0x3FFF0018;
+    public const uint VI_ATTR_TERMCHAR_EN = 0x3FFF0038;
 
     [DllImport(DllName, EntryPoint = "viOpenDefaultRM")]
     public static extern int OpenDefaultRM(out int sesn);

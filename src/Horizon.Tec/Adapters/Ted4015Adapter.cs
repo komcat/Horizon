@@ -6,9 +6,9 @@ using Serilog;
 namespace Horizon.Tec;
 
 /// <summary>
-/// Thorlabs TED4015 standalone TEC controller over VISA (USB). SCPI command
-/// strings below are plausible but should be confirmed against the TED4015
-/// programming manual — they are isolated to this adapter.
+/// Thorlabs TED4015 standalone TEC controller over VISA (USB). SCPI commands
+/// (<c>OUTP:STAT</c>, <c>SOUR:TEMP</c>, <c>MEAS:TEMP?</c>) match the proven
+/// bobcat-engine <c>TED4015DirectAdapter</c> reference driver.
 /// </summary>
 public sealed class Ted4015Adapter : ITecDevice
 {
@@ -54,10 +54,16 @@ public sealed class Ted4015Adapter : ITecDevice
                 }
 
                 VisaNative.SetAttribute(_instrSession, VisaNative.VI_ATTR_TMO_VALUE, 2000);
+                // Reads terminate on '\n' — the TED4015 ends every response with one.
+                VisaNative.SetAttribute(_instrSession, VisaNative.VI_ATTR_TERMCHAR_EN, 1);
+                VisaNative.SetAttribute(_instrSession, VisaNative.VI_ATTR_TERMCHAR, '\n');
                 VisaNative.Clear(_instrSession);
+                // USB instruments need a moment to settle after the session opens.
+                Thread.Sleep(200);
                 _connected = true;
                 WriteCommand("*CLS");
-                _tecOn = QueryDouble("output:state?") != 0.0;
+                // Initial state read — non-fatal; the poll loop refreshes it.
+                try { _tecOn = QueryDouble("OUTP:STAT?") != 0.0; } catch { }
                 _lastError = string.Empty;
                 Log.Information("[TEC] {Device}: connected ({Visa})", _config.Name, _config.VisaResource);
                 return true;
@@ -95,15 +101,15 @@ public sealed class Ted4015Adapter : ITecDevice
     public TecError SetTemperature(double celsius)
         => Command(() =>
         {
-            WriteCommand($"source:temperature:spoint {celsius.ToString("G6", CultureInfo.InvariantCulture)}");
+            WriteCommand($"SOUR:TEMP {celsius.ToString("G6", CultureInfo.InvariantCulture)}");
             _setpointTemp = celsius;
         });
 
     public TecError TecOn()
-        => Command(() => { WriteCommand("output:state on"); _tecOn = true; });
+        => Command(() => { WriteCommand("OUTP:STAT 1"); _tecOn = true; });
 
     public TecError TecOff()
-        => Command(() => { WriteCommand("output:state off"); _tecOn = false; });
+        => Command(() => { WriteCommand("OUTP:STAT 0"); _tecOn = false; });
 
     public TecStatus GetStatus()
     {
@@ -113,7 +119,12 @@ public sealed class Ted4015Adapter : ITecDevice
                 return new TecStatus { Connected = false, LastError = _lastError };
             try
             {
-                var temp = QueryDouble("measure:temperature?");
+                var temp = QueryDouble("MEAS:TEMP?");
+                // SCPI reports ~9.9E37 ("not a number") when no reading is
+                // available — e.g. no thermistor connected. Surface it as NaN
+                // rather than a meaningless 1e38-scale number.
+                if (Math.Abs(temp) >= 9.0e37)
+                    temp = double.NaN;
                 return new TecStatus
                 {
                     Connected = true,

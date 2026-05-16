@@ -58,9 +58,16 @@ internal sealed class TecFacet : ITecFacet, IAsyncDisposable
             var d = _manager.GetDevice(device);
             if (d == null)
                 return Result.Fail(ErrorCode.OperationFailed, $"TEC '{device}' not found.");
-            return d.Connect()
-                ? Result.Ok()
-                : Result.Fail(ErrorCode.OperationFailed, $"TEC '{device}' failed to connect.");
+            if (d.Connect())
+                return Result.Ok();
+
+            // Surface the adapter's captured error (VISA status / exception)
+            // instead of a blind "failed to connect".
+            var detail = d.GetStatus().LastError;
+            return Result.Fail(ErrorCode.OperationFailed,
+                string.IsNullOrEmpty(detail)
+                    ? $"TEC '{device}' failed to connect."
+                    : $"TEC '{device}' failed to connect: {detail}");
         }, ct);
 
     public Task<Result> DisconnectAsync(string device)
@@ -105,6 +112,9 @@ internal sealed class TecFacet : ITecFacet, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
         => await _poll.DisposeAsync().ConfigureAwait(false);
+
+    /// <summary>Runs one poll tick now, so <see cref="GetState"/> is current after a command.</summary>
+    public Task RefreshAsync() => PollTickAsync(CancellationToken.None);
 
     private Task PollTickAsync(CancellationToken ct)
     {

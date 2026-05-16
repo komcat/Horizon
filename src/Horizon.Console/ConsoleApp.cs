@@ -17,6 +17,10 @@ internal sealed class ConsoleApp
     private const string PneumaticSlides = "Pneumatic slides";
     private const string CurrentMeasurement = "Current measurement";
     private const string LaserControllers = "Laser controllers";
+    private const string PowerSupplies = "Power supply";
+    private const string Lighting = "Lighting";
+    private const string TecControllers = "TEC controllers";
+    private const string Smu = "SMU (SourceMeter)";
     private const string Cameras = "Cameras";
     private const string Vision = "Vision (HALCON)";
     private const string Safety = "Safety";
@@ -38,7 +42,8 @@ internal sealed class ConsoleApp
                 new SelectionPrompt<string>()
                     .Title("\n[aqua]Horizon engine[/] — choose an action:")
                     .AddChoices(ShowStatus, IoDevices, MotionDevices, PneumaticSlides,
-                                CurrentMeasurement, LaserControllers, Cameras, Vision, Safety,
+                                CurrentMeasurement, LaserControllers, PowerSupplies, Lighting,
+                                TecControllers, Smu, Cameras, Vision, Safety,
                                 ParallelTest, Reconnect, Exit));
 
             switch (choice)
@@ -65,6 +70,22 @@ internal sealed class ConsoleApp
 
                 case LaserControllers:
                     await LaserMenuAsync();
+                    break;
+
+                case PowerSupplies:
+                    await PowerSupplyMenuAsync();
+                    break;
+
+                case Lighting:
+                    await LightingMenuAsync();
+                    break;
+
+                case TecControllers:
+                    await TecMenuAsync();
+                    break;
+
+                case Smu:
+                    await SmuMenuAsync();
                     break;
 
                 case Cameras:
@@ -581,15 +602,19 @@ internal sealed class ConsoleApp
                 case SetVoltage:
                     var volts = AnsiConsole.Prompt(new TextPrompt<double>("Source voltage (V):").DefaultValue(0d));
                     ReportResult(await _engine.Measurement.SetVoltageAsync(device, volts), $"Set voltage {volts}V");
+                    await Task.Delay(600);   // let the 500 ms measurement poll refresh state
                     break;
                 case VoltageOn:
                     ReportResult(await _engine.Measurement.SetVoltageEnabledAsync(device, true), "Voltage output ON");
+                    await Task.Delay(600);
                     break;
                 case VoltageOff:
                     ReportResult(await _engine.Measurement.SetVoltageEnabledAsync(device, false), "Voltage output OFF");
+                    await Task.Delay(600);
                     break;
                 case Reset:
                     ReportResult(await _engine.Measurement.ResetAsync(device), $"Reset {device}");
+                    await Task.Delay(600);
                     break;
                 case Identity:
                     var idn = await _engine.Measurement.GetIdentityAsync(device);
@@ -746,6 +771,483 @@ internal sealed class ConsoleApp
         table.AddRow("Laser", state.LaserOn ? "[red]ON (emitting)[/]" : "[grey]off[/]");
         table.AddRow("Temperature", $"{state.Temperature:F2} C  (setpoint {state.SetpointTemperature:F2} C)");
         table.AddRow("Laser current", $"{state.LaserCurrent:F2} mA  (setpoint {state.SetpointLaserCurrent:F2} mA)");
+        table.AddRow("Last error",
+            string.IsNullOrEmpty(state.LastError) ? "[grey]none[/]" : $"[red]{Markup.Escape(state.LastError)}[/]");
+        AnsiConsole.Write(table);
+    }
+
+    private async Task PowerSupplyMenuAsync()
+    {
+        var devices = _engine.PowerSupply.DeviceNames;
+        if (devices.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No power supplies configured (check power_supply_config.json).[/]");
+            return;
+        }
+
+        while (true)
+        {
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("\n[aqua]Power supply[/] — select a device:")
+                    .AddChoices(devices.Append(Back)));
+
+            if (choice == Back) return;
+            await PowerSupplyDeviceMenuAsync(choice);
+        }
+    }
+
+    private async Task PowerSupplyDeviceMenuAsync(string device)
+    {
+        const string Connect = "Connect";
+        const string Disconnect = "Disconnect";
+        const string SetVoltage = "Set voltage";
+        const string SetCurrentLimit = "Set current limit";
+        const string OutputOn = "Output ON";
+        const string OutputOff = "Output OFF";
+        const string Refresh = "Refresh";
+
+        while (true)
+        {
+            await _engine.PowerSupply.RefreshAsync();
+            RenderPowerSupply(device);
+
+            var connected = _engine.PowerSupply.IsConnected(device);
+            var choices = new List<string>();
+            if (connected)
+                choices.AddRange(new[] { SetVoltage, SetCurrentLimit, OutputOn, OutputOff, Disconnect });
+            else
+                choices.Add(Connect);
+            choices.Add(Refresh);
+            choices.Add(Back);
+
+            var action = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"\n[aqua]{Markup.Escape(device)}[/] — action:")
+                    .AddChoices(choices));
+
+            switch (action)
+            {
+                case Connect:
+                    ReportResult(await _engine.PowerSupply.ConnectAsync(device), $"Connect {device}");
+                    break;
+                case Disconnect:
+                    ReportResult(await _engine.PowerSupply.DisconnectAsync(device), $"Disconnect {device}");
+                    break;
+                case SetVoltage:
+                    var vCh = PromptChannel(device);
+                    var volts = AnsiConsole.Prompt(new TextPrompt<double>("Voltage (V):").DefaultValue(0d));
+                    ReportResult(await _engine.PowerSupply.SetVoltageAsync(device, vCh, volts),
+                        $"Set CH{vCh} voltage {volts}V");
+                    break;
+                case SetCurrentLimit:
+                    var iCh = PromptChannel(device);
+                    var amps = AnsiConsole.Prompt(new TextPrompt<double>("Current limit (A):").DefaultValue(0d));
+                    ReportResult(await _engine.PowerSupply.SetCurrentLimitAsync(device, iCh, amps),
+                        $"Set CH{iCh} current limit {amps}A");
+                    break;
+                case OutputOn:
+                    var onCh = PromptChannel(device);
+                    ReportResult(await _engine.PowerSupply.OutputOnAsync(device, onCh), $"Output ON CH{onCh}");
+                    break;
+                case OutputOff:
+                    var offCh = PromptChannel(device);
+                    ReportResult(await _engine.PowerSupply.OutputOffAsync(device, offCh), $"Output OFF CH{offCh}");
+                    break;
+                case Refresh:
+                    break;
+                case Back:
+                    return;
+            }
+        }
+    }
+
+    /// <summary>Prompts for a 1-based channel; auto-selects when the supply has a single channel.</summary>
+    private int PromptChannel(string device)
+    {
+        var count = _engine.PowerSupply.GetDevice(device)?.ChannelCount ?? 1;
+        if (count <= 1) return 1;
+        return AnsiConsole.Prompt(
+            new SelectionPrompt<int>()
+                .Title("Select channel:")
+                .UseConverter(c => $"CH{c}")
+                .AddChoices(Enumerable.Range(1, count)));
+    }
+
+    private void RenderPowerSupply(string device)
+    {
+        var info = _engine.PowerSupply.GetDevice(device);
+        if (info == null)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]Unknown power supply: {device}[/]");
+            return;
+        }
+
+        var connected = _engine.PowerSupply.IsConnected(device);
+        var state = _engine.PowerSupply.GetState(device);
+
+        var connectedText = connected ? "[green]yes[/]" : "[red]no[/]";
+        AnsiConsole.MarkupLine(
+            $"\n[aqua]{Markup.Escape(info.Name)}[/]  type: {Markup.Escape(info.ControllerType)}  " +
+            $"connected: {connectedText}  channels: {info.ChannelCount}");
+        if (!state.Valid)
+            AnsiConsole.MarkupLine("[grey]No polled data yet.[/]");
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Channel");
+        table.AddColumn("Voltage");
+        table.AddColumn("Current");
+        table.AddColumn("Output");
+        foreach (var ch in state.Channels)
+            table.AddRow(
+                $"CH{ch.Channel}",
+                $"{ch.Voltage:F3} V",
+                $"{ch.Current:F4} A",
+                ch.OutputOn ? "[green]ON[/]" : "[grey]off[/]");
+        if (state.Channels.Count == 0)
+            table.AddRow("[grey]—[/]", "[grey]no data[/]", "[grey]—[/]", "[grey]—[/]");
+        AnsiConsole.Write(table);
+
+        if (!string.IsNullOrEmpty(state.LastError))
+            AnsiConsole.MarkupLineInterpolated($"[red]Last error[/] — {state.LastError}");
+    }
+
+    private async Task LightingMenuAsync()
+    {
+        var devices = _engine.Lighting.DeviceNames;
+        if (devices.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No lighting controllers configured (check lighting_config.json).[/]");
+            return;
+        }
+
+        while (true)
+        {
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("\n[aqua]Lighting[/] — select a controller:")
+                    .AddChoices(devices.Append(Back)));
+
+            if (choice == Back) return;
+            await LightingDeviceMenuAsync(choice);
+        }
+    }
+
+    private async Task LightingDeviceMenuAsync(string device)
+    {
+        const string Connect = "Connect";
+        const string Disconnect = "Disconnect";
+        const string SetIntensity = "Set channel intensity";
+        const string Refresh = "Refresh";
+
+        while (true)
+        {
+            await _engine.Lighting.RefreshAsync();
+            RenderLightingDevice(device);
+
+            var connected = _engine.Lighting.IsConnected(device);
+            var choices = new List<string>();
+            if (connected)
+                choices.AddRange(new[] { SetIntensity, Disconnect });
+            else
+                choices.Add(Connect);
+            choices.Add(Refresh);
+            choices.Add(Back);
+
+            var action = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"\n[aqua]{Markup.Escape(device)}[/] — action:")
+                    .AddChoices(choices));
+
+            switch (action)
+            {
+                case Connect:
+                    ReportResult(await _engine.Lighting.ConnectAsync(device), $"Connect {device}");
+                    break;
+                case Disconnect:
+                    ReportResult(await _engine.Lighting.DisconnectAsync(device), $"Disconnect {device}");
+                    break;
+                case SetIntensity:
+                    var info = _engine.Lighting.GetDevice(device);
+                    int channel;
+                    if (info is { Channels.Count: > 0 })
+                    {
+                        var ch = AnsiConsole.Prompt(
+                            new SelectionPrompt<LightingChannelInfo>()
+                                .Title("Select channel:")
+                                .UseConverter(c => $"{c.Channel}: {c.Name}")
+                                .AddChoices(info.Channels));
+                        channel = ch.Channel;
+                    }
+                    else
+                    {
+                        channel = AnsiConsole.Prompt(new TextPrompt<int>("Channel:").DefaultValue(0));
+                    }
+                    var intensity = AnsiConsole.Prompt(
+                        new TextPrompt<int>("Intensity (controller units):").DefaultValue(0));
+                    ReportResult(await _engine.Lighting.SetChannelIntensityAsync(device, channel, intensity),
+                        $"Set channel {channel} intensity {intensity}");
+                    await Task.Delay(150);
+                    break;
+                case Refresh:
+                    break;
+                case Back:
+                    return;
+            }
+        }
+    }
+
+    private void RenderLightingDevice(string device)
+    {
+        var info = _engine.Lighting.GetDevice(device);
+        if (info == null)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]Unknown lighting controller: {device}[/]");
+            return;
+        }
+
+        var connected = _engine.Lighting.IsConnected(device);
+        var state = _engine.Lighting.GetState(device);
+
+        var connectedText = connected ? "[green]yes[/]" : "[red]no[/]";
+        AnsiConsole.MarkupLine(
+            $"\n[aqua]{Markup.Escape(info.DisplayName)}[/]  type: {Markup.Escape(info.ControllerType)}  " +
+            $"connected: {connectedText}  channels: {info.Channels.Count}");
+        if (!state.Valid)
+            AnsiConsole.MarkupLine("[grey]No polled data yet.[/]");
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Channel");
+        table.AddColumn("Name");
+        table.AddColumn("Intensity");
+        foreach (var ch in state.Channels)
+            table.AddRow($"{ch.Channel}", Markup.Escape(ch.Name), ch.Intensity.ToString());
+        if (state.Channels.Count == 0)
+            table.AddRow("[grey]—[/]", "[grey]no data[/]", "[grey]—[/]");
+        AnsiConsole.Write(table);
+
+        if (!string.IsNullOrEmpty(state.LastError))
+            AnsiConsole.MarkupLineInterpolated($"[red]Last error[/] — {state.LastError}");
+    }
+
+    private async Task TecMenuAsync()
+    {
+        var devices = _engine.Tec.DeviceNames;
+        if (devices.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No TEC controllers configured (check tec_devices.json).[/]");
+            return;
+        }
+
+        while (true)
+        {
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("\n[aqua]TEC controllers[/] — select a device:")
+                    .AddChoices(devices.Append(Back)));
+
+            if (choice == Back) return;
+            await TecDeviceMenuAsync(choice);
+        }
+    }
+
+    private async Task TecDeviceMenuAsync(string device)
+    {
+        const string Connect = "Connect";
+        const string Disconnect = "Disconnect";
+        const string SetTemp = "Set temperature";
+        const string TecOn = "TEC ON";
+        const string TecOff = "TEC OFF";
+        const string Refresh = "Refresh";
+
+        while (true)
+        {
+            await _engine.Tec.RefreshAsync();
+            RenderTecDevice(device);
+
+            var connected = _engine.Tec.IsConnected(device);
+            var choices = new List<string>();
+            if (connected)
+                choices.AddRange(new[] { SetTemp, TecOn, TecOff, Disconnect });
+            else
+                choices.Add(Connect);
+            choices.Add(Refresh);
+            choices.Add(Back);
+
+            var action = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"\n[aqua]{Markup.Escape(device)}[/] — action:")
+                    .AddChoices(choices));
+
+            switch (action)
+            {
+                case Connect:
+                    ReportResult(await _engine.Tec.ConnectAsync(device), $"Connect {device}");
+                    break;
+                case Disconnect:
+                    ReportResult(await _engine.Tec.DisconnectAsync(device), $"Disconnect {device}");
+                    break;
+                case SetTemp:
+                    var temp = AnsiConsole.Prompt(new TextPrompt<double>("Temperature (C):").DefaultValue(25d));
+                    ReportResult(await _engine.Tec.SetTemperatureAsync(device, temp), $"Set temperature {temp}C");
+                    break;
+                case TecOn:
+                    ReportResult(await _engine.Tec.TecOnAsync(device), $"TEC on {device}");
+                    break;
+                case TecOff:
+                    ReportResult(await _engine.Tec.TecOffAsync(device), $"TEC off {device}");
+                    break;
+                case Refresh:
+                    break;
+                case Back:
+                    return;
+            }
+        }
+    }
+
+    private void RenderTecDevice(string device)
+    {
+        var info = _engine.Tec.GetDevice(device);
+        if (info == null)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]Unknown TEC device: {device}[/]");
+            return;
+        }
+
+        var connected = _engine.Tec.IsConnected(device);
+        var state = _engine.Tec.GetState(device);
+
+        var connectedText = connected ? "[green]yes[/]" : "[red]no[/]";
+        AnsiConsole.MarkupLine(
+            $"\n[aqua]{Markup.Escape(info.Name)}[/]  type: {Markup.Escape(info.ControllerType)}  " +
+            $"connected: {connectedText}");
+        if (!state.Valid)
+            AnsiConsole.MarkupLine("[grey]No polled data yet.[/]");
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Property");
+        table.AddColumn("Value");
+        table.AddRow("TEC", state.TecOn ? "[green]ON[/]" : "[grey]off[/]");
+        var tempText = double.IsNaN(state.Temperature)
+            ? "[grey]no reading[/]"
+            : $"{state.Temperature:F2} C";
+        table.AddRow("Temperature", $"{tempText}  (setpoint {state.SetpointTemperature:F2} C)");
+        table.AddRow("Last error",
+            string.IsNullOrEmpty(state.LastError) ? "[grey]none[/]" : $"[red]{Markup.Escape(state.LastError)}[/]");
+        AnsiConsole.Write(table);
+    }
+
+    private async Task SmuMenuAsync()
+    {
+        var devices = _engine.Smu.DeviceNames;
+        if (devices.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No SMU devices configured (check smu_devices.json).[/]");
+            return;
+        }
+
+        while (true)
+        {
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("\n[aqua]SMU (SourceMeter)[/] — select a device:")
+                    .AddChoices(devices.Append(Back)));
+
+            if (choice == Back) return;
+            await SmuDeviceMenuAsync(choice);
+        }
+    }
+
+    private async Task SmuDeviceMenuAsync(string device)
+    {
+        const string Connect = "Connect";
+        const string Disconnect = "Disconnect";
+        const string SourceVoltage = "Set source voltage";
+        const string SourceCurrent = "Set source current";
+        const string SetCompliance = "Set compliance";
+        const string OutputOn = "Output ON";
+        const string OutputOff = "Output OFF";
+        const string Refresh = "Refresh";
+
+        while (true)
+        {
+            await _engine.Smu.RefreshAsync();
+            RenderSmuDevice(device);
+
+            var connected = _engine.Smu.IsConnected(device);
+            var choices = new List<string>();
+            if (connected)
+                choices.AddRange(new[] { SourceVoltage, SourceCurrent, SetCompliance, OutputOn, OutputOff, Disconnect });
+            else
+                choices.Add(Connect);
+            choices.Add(Refresh);
+            choices.Add(Back);
+
+            var action = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title($"\n[aqua]{Markup.Escape(device)}[/] — action:")
+                    .AddChoices(choices));
+
+            switch (action)
+            {
+                case Connect:
+                    ReportResult(await _engine.Smu.ConnectAsync(device), $"Connect {device}");
+                    break;
+                case Disconnect:
+                    ReportResult(await _engine.Smu.DisconnectAsync(device), $"Disconnect {device}");
+                    break;
+                case SourceVoltage:
+                    var volts = AnsiConsole.Prompt(new TextPrompt<double>("Source voltage (V):").DefaultValue(0d));
+                    ReportResult(await _engine.Smu.SetSourceVoltageAsync(device, volts), $"Set source voltage {volts}V");
+                    break;
+                case SourceCurrent:
+                    var amps = AnsiConsole.Prompt(new TextPrompt<double>("Source current (A):").DefaultValue(0d));
+                    ReportResult(await _engine.Smu.SetSourceCurrentAsync(device, amps), $"Set source current {amps}A");
+                    break;
+                case SetCompliance:
+                    var limit = AnsiConsole.Prompt(new TextPrompt<double>("Compliance limit:").DefaultValue(0.001d));
+                    ReportResult(await _engine.Smu.SetComplianceAsync(device, limit), $"Set compliance {limit}");
+                    break;
+                case OutputOn:
+                    ReportResult(await _engine.Smu.OutputOnAsync(device), $"Output ON {device}");
+                    break;
+                case OutputOff:
+                    ReportResult(await _engine.Smu.OutputOffAsync(device), $"Output OFF {device}");
+                    break;
+                case Refresh:
+                    break;
+                case Back:
+                    return;
+            }
+        }
+    }
+
+    private void RenderSmuDevice(string device)
+    {
+        var info = _engine.Smu.GetDevice(device);
+        if (info == null)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]Unknown SMU device: {device}[/]");
+            return;
+        }
+
+        var connected = _engine.Smu.IsConnected(device);
+        var state = _engine.Smu.GetState(device);
+
+        var connectedText = connected ? "[green]yes[/]" : "[red]no[/]";
+        AnsiConsole.MarkupLine(
+            $"\n[aqua]{Markup.Escape(info.Name)}[/]  type: {Markup.Escape(info.ControllerType)}  " +
+            $"connected: {connectedText}");
+        if (!state.Valid)
+            AnsiConsole.MarkupLine("[grey]No polled data yet.[/]");
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Property");
+        table.AddColumn("Value");
+        table.AddRow("Output", state.OutputOn ? "[green]ON[/]" : "[grey]off[/]");
+        table.AddRow("Source mode", Markup.Escape(state.SourceMode));
+        table.AddRow("Voltage", $"{state.Voltage:F4} V");
+        table.AddRow("Current", $"{state.Current:E4} A");
         table.AddRow("Last error",
             string.IsNullOrEmpty(state.LastError) ? "[grey]none[/]" : $"[red]{Markup.Escape(state.LastError)}[/]");
         AnsiConsole.Write(table);

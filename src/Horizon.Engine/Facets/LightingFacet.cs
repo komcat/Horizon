@@ -108,6 +108,9 @@ internal sealed class LightingFacet : ILightingFacet, IAsyncDisposable
     public async ValueTask DisposeAsync()
         => await _poll.DisposeAsync().ConfigureAwait(false);
 
+    /// <summary>Runs one poll tick now, so <see cref="GetState"/> is current after a command.</summary>
+    public Task RefreshAsync() => PollTickAsync(CancellationToken.None);
+
     private Task PollTickAsync(CancellationToken ct)
     {
         foreach (var id in _devices.Keys)

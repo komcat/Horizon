@@ -13,10 +13,11 @@ Four engine facets, added across commits `cbb67ce` (Power Supply),
 
 | Facet | Hardware | Transport | Driver confidence |
 |---|---|---|---|
-| `IPowerSupplyFacet` | Keysight E36xxx | LXI — SCPI over TCP :5025 | SCPI standard-ish, **untested** |
-| `ILightingFacet` | CCS PD3 LED controller | TCP socket | **placeholder wire format** |
-| `ITecFacet` | Thorlabs TED4015 | VISA (USB) | SCPI plausible, **untested** |
-| `ISmuFacet` | Keithley 2400 SourceMeter | VISA (GPIB) | SCPI from bobcat ref — trusted |
+| `IPowerSupplyFacet` | Keysight E36xxx | LXI — SCPI over TCP :5025 | **bench-verified 2026-05-16** |
+| `ILightingFacet` | CCS PD3 LED controller | TCP socket | **bench-verified 2026-05-16** — protocol fixed |
+| `ITecFacet` | Thorlabs TED4015 | VISA (USB) | **bench-verified 2026-05-16** — SCPI fixed |
+| `ISmuFacet` | Keithley 2400 SourceMeter | VISA (GPIB) | SCPI from bobcat ref — trusted, not on this bench |
+| `ISmuFacet` | Keithley 2602B SourceMeter | TSP over TCP :5025 | TSP `Keithley2602BAdapter` — **bench-verified 2026-05-16** |
 
 ## Driver wire-format — confirm before trusting a pass
 
@@ -101,3 +102,31 @@ nothing → fix that adapter's command method (see the wire-format section).
 
 Record results here (per device: pass / fixed-then-pass / blocked), commit any
 adapter command-string fixes, and update the "Driver confidence" table above.
+
+## Results — bench session 2026-05-16
+
+**All four facets PASS.** Tested via `Horizon.Console` (Layer 1 host) — four new
+menu sections were added to it for the Lighting / TEC / SMU / PSU facets, each
+with a `RefreshAsync()` so the status table updates immediately after a command.
+
+- **SMU — Keithley 2602B — PASS.** The field uses a 2602B (TSP), not a 2400.
+  Added `Keithley2602BAdapter` (TSP over raw socket :5025), adapter-selection in
+  `SmuManager.AddDevice` by type, and widened the engine SMU filter to admit
+  `*2602*`. Connects `1/1` at `10.0.0.80:5025`; output ON/OFF and source-voltage
+  drive confirmed; readings genuine (~pA dark current). Single-channel only
+  (`ISmuFacet` surface) — drives the first `enabledChannels` entry.
+- **Power supply — PASS.** Keysight E36441A at `10.0.0.21:5025`. Connects `1/1`;
+  set-voltage and output ON/OFF confirmed across all 4 channels.
+- **Lighting — PASS (fixed-then-pass).** `lighting_config.json` had an empty
+  `channels` array → `InvalidChannel`; fixed by populating channels 0–3. The
+  `CcsPd3Adapter` wire format was a wrong placeholder — rewrote `SendIntensity`
+  to the real PD3 checksummed frame (`@ccFddd` + checksum + CRLF, response
+  checked) per the bobcat `CCSPD3Adapter` reference. Lamp intensity physically
+  confirmed.
+- **TEC — PASS (fixed-then-pass).** Two bugs: (1) `Ted4015Adapter` used wrong
+  SCPI — corrected to `OUTP:STAT` / `SOUR:TEMP` / `MEAS:TEMP?` per the bobcat
+  `TED4015DirectAdapter`; (2) the VISA resource serial was wrong — this station's
+  unit is `M01255356` (confirmed via `find_visa_devices.exe`), not the bobcat
+  station's `M01256053`. Connect, TEC ON/OFF, and setpoint confirmed.
+  `MEAS:TEMP?` returns the SCPI not-a-number sentinel (~9.9E37) because no
+  thermistor is attached on this bench — surfaced as NaN / "no reading".

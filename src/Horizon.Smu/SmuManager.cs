@@ -18,7 +18,14 @@ public sealed class SmuManager : IDisposable
     public void AddDevice(SmuDeviceConfig config)
     {
         if (string.IsNullOrWhiteSpace(config.Name)) return;
-        if (_devices.TryAdd(config.Name, new Keithley2400Adapter(config)))
+
+        // Series 2600 (2602B) speaks TSP over a raw socket; the 2400 speaks
+        // SCPI over VISA. Pick the adapter by configured type.
+        ISmuDevice adapter = config.Type.Contains("2602", StringComparison.OrdinalIgnoreCase)
+            ? new Keithley2602BAdapter(config)
+            : new Keithley2400Adapter(config);
+
+        if (_devices.TryAdd(config.Name, adapter))
             Log.Information("[SMU] device added: {Device} ({Type})", config.Name, config.Type);
     }
 

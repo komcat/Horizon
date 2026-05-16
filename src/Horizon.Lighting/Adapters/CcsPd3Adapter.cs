@@ -7,9 +7,10 @@ using Serilog;
 namespace Horizon.Lighting;
 
 /// <summary>
-/// CCS PD3 LED lighting controller over a TCP socket. The controller is
-/// write-only here — channel intensities are commanded and cached; there is no
-/// read-back, so <see cref="GetStatus"/> reflects the last commanded values.
+/// CCS PD3 LED lighting controller over a TCP socket. Each intensity command is
+/// a checksummed frame the controller acknowledges; <see cref="GetStatus"/> still
+/// reflects the last commanded values (no periodic status read-back).
+/// Note: the PD3 accepts only one TCP connection at a time.
 /// </summary>
 public sealed class CcsPd3Adapter : ILightingDevice
 {
@@ -118,13 +119,64 @@ public sealed class CcsPd3Adapter : ILightingDevice
     }
 
     /// <summary>
-    /// Sends the channel-intensity command. NOTE: the wire format below is a
-    /// plausible placeholder — confirm it against the CCS PD3 protocol manual
-    /// and adjust this one method to match the controller.
+    /// Sends a channel-intensity command and checks the controller's reply.
+    /// Frame: <c>@</c> + channel (2 digits) + <c>F</c> + intensity (3 digits) +
+    /// a 2-hex-digit checksum + CRLF. The checksum is the low byte of the ASCII
+    /// sum of the body. Matches the bobcat-engine <c>CCSPD3Adapter</c> reference.
     /// </summary>
     private void SendIntensity(int channel, int intensity)
     {
-        var data = Encoding.ASCII.GetBytes($"L{channel},{intensity}\r\n");
+        intensity = Math.Clamp(intensity, 0, 255);
+        var body = $"@{channel:D2}F{intensity:D3}";
+        var frame = body + Checksum(body) + "\r\n";
+
+        var data = Encoding.ASCII.GetBytes(frame);
         _stream!.Write(data, 0, data.Length);
+
+        // The PD3 is request/response — confirm the command was accepted.
+        var response = ReadResponse();
+        if (response.Length == 0)
+            throw new InvalidOperationException("PD3 no response");
+        if (response.Contains("N01"))
+            throw new InvalidOperationException("PD3 command error (N01)");
+        if (response.Contains("N02"))
+            throw new InvalidOperationException("PD3 checksum error (N02)");
+        if (response.Contains("N03"))
+            throw new InvalidOperationException("PD3 value out of range (N03)");
+    }
+
+    /// <summary>Low byte of the ASCII sum of <paramref name="body"/>, as 2 uppercase hex digits.</summary>
+    private static string Checksum(string body)
+    {
+        int sum = 0;
+        foreach (var c in body)
+            sum += (byte)c;
+        return (sum & 0xFF).ToString("X2");
+    }
+
+    /// <summary>
+    /// Reads the controller's reply up to a CR/LF terminator. The TcpClient's
+    /// <c>ReceiveTimeout</c> bounds the wait; a timeout returns what was read.
+    /// </summary>
+    private string ReadResponse()
+    {
+        var sb = new StringBuilder();
+        var buffer = new byte[1];
+        try
+        {
+            while (true)
+            {
+                var read = _stream!.Read(buffer, 0, 1);
+                if (read == 0) break;                          // socket closed
+                if (buffer[0] == (byte)'\r' || buffer[0] == (byte)'\n')
+                {
+                    if (sb.Length > 0) break;                  // end of frame
+                    continue;                                  // skip leading terminators
+                }
+                sb.Append((char)buffer[0]);
+            }
+        }
+        catch (IOException) { /* receive timeout — return what we have */ }
+        return sb.ToString();
     }
 }

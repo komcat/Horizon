@@ -231,12 +231,13 @@ public sealed class HorizonEngine : IHorizonEngine
         }
         _tecFacet = new TecFacet(_tecManager, RaiseStatusChanged, Log);
 
-        // --- SMU domain (Keithley 2400; the measure-only 6482 stays in Measurement) ---
+        // --- SMU domain (Keithley 2400 / 2602B; the measure-only 6482 stays in Measurement) ---
         _smuManager = new SmuManager();
         try
         {
             var devices = SmuJsonLoader.Load(_configDirectory)
-                .Where(d => d.Type.Contains("2400", StringComparison.OrdinalIgnoreCase))
+                .Where(d => d.Type.Contains("2400", StringComparison.OrdinalIgnoreCase)
+                         || d.Type.Contains("2602", StringComparison.OrdinalIgnoreCase))
                 .ToList();
             foreach (var device in devices)
                 _smuManager.AddDevice(device);
