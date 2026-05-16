@@ -255,6 +255,7 @@ internal sealed class ConsoleApp
         const string Disconnect = "Disconnect";
         const string Stop = "Stop (halt motion)";
         const string Jog = "Jog axis";
+        const string MoveTo = "Move to coordinates";
         const string Refresh = "Refresh";
 
         while (true)
@@ -269,7 +270,10 @@ internal sealed class ConsoleApp
             {
                 choices.Add(Stop);
                 if (info is { Axes.Count: > 0 })
+                {
                     choices.Add(Jog);
+                    choices.Add(MoveTo);
+                }
                 choices.Add(Disconnect);
             }
             else
@@ -302,6 +306,10 @@ internal sealed class ConsoleApp
                     await JogAxisAsync(device, info!);
                     break;
 
+                case MoveTo:
+                    await MoveToCoordinatesAsync(device, info!);
+                    break;
+
                 case Refresh:
                     break;
 
@@ -309,6 +317,26 @@ internal sealed class ConsoleApp
                     return;
             }
         }
+    }
+
+    private async Task MoveToCoordinatesAsync(string device, MotionDeviceInfo info)
+    {
+        AnsiConsole.MarkupLine("[yellow]Warning: this moves the physical stage to an absolute coordinate.[/]");
+
+        var current = _engine.Motion.GetState(device).Position.Components;
+        var values = new double[6];   // X, Y, Z, U, V, W
+        for (int i = 0; i < info.Axes.Count && i < 6; i++)
+        {
+            var def = i < current.Count ? current[i] : 0.0;
+            values[i] = AnsiConsole.Prompt(
+                new TextPrompt<double>($"Target [aqua]{Markup.Escape(info.Axes[i])}[/]:").DefaultValue(def));
+        }
+
+        var target = new MotionPosition(values[0], values[1], values[2], values[3], values[4], values[5]);
+        var result = await _engine.Motion.MoveToPositionAsync(device, target);
+        ReportResult(result, $"Move {device} to coordinates");
+
+        await Task.Delay(200);
     }
 
     private void RenderMotionDevice(string device)

@@ -93,6 +93,11 @@ internal sealed class MotionFacet : IMotionFacet, IAsyncDisposable
             () => _manager.MoveRelative(device, axis, distance, blocking: false),
             $"MoveRel {device}.{axis} {distance:+0.####;-0.####}");
 
+    public Task<Result> MoveToPositionAsync(string device, MotionPosition target, CancellationToken ct = default)
+        => MoveAsync(device, ct,
+            () => _manager.MoveToAbs6(device, ToPositionStruct(target), blocking: false),
+            $"MoveToPosition {device}");
+
     public Task<Result> StopAsync(string device)
         => Task.Run(() => _manager.StopAll(device)
             ? Result.Ok()
@@ -228,4 +233,7 @@ internal sealed class MotionFacet : IMotionFacet, IAsyncDisposable
 
     private static MotionPosition ToPosition(PositionStruct p)
         => new(p.X, p.Y, p.Z, p.U, p.V, p.W);
+
+    private static PositionStruct ToPositionStruct(MotionPosition p)
+        => new() { X = p.X, Y = p.Y, Z = p.Z, U = p.U, V = p.V, W = p.W };
 }

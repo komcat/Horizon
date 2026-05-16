@@ -5,6 +5,7 @@ using Horizon.CurrentMeasurement;
 using Horizon.IO;
 using Horizon.LaserController;
 using Horizon.Motion;
+using Horizon.Motion.Models;
 using Horizon.Pneumatic;
 using Horizon.Safety;
 using Horizon.Safety.Models;
@@ -106,7 +107,7 @@ public sealed class HorizonEngine : IHorizonEngine
         _motionManager = new UnifiedMotionManager();
         try
         {
-            var count = MotionJsonLoader.LoadDevices(_motionManager, _configDirectory);
+            var count = LoadMotionDevices(_motionManager, _configDirectory);
             Log(LogLevel.Info, $"Motion devices loaded: {count}");
         }
         catch (Exception ex)
@@ -413,6 +414,25 @@ public sealed class HorizonEngine : IHorizonEngine
     /// <summary>Raises <see cref="StatusChanged"/>. Used by hardware facets.</summary>
     internal void RaiseStatusChanged(HardwareStatusChanged change)
         => StatusChanged?.Invoke(change);
+
+    /// <summary>
+    /// Loads the engine's motion hardware config from <c>motor_devices_config.json</c>
+    /// — hardware only (controller type, IP, axes). Named positions are not a
+    /// Layer 1 concern; the legacy <c>motor_devices.json</c> is not read by the engine.
+    /// </summary>
+    private static int LoadMotionDevices(UnifiedMotionManager manager, string configDir)
+    {
+        var file = ConfigLoader.LoadJson<MotionDevicesConfigFile>(configDir, "motor_devices_config");
+        if (file?.Devices == null) return 0;
+        foreach (var device in file.Devices)
+            manager.AddDevice(device);
+        return file.Devices.Count;
+    }
+
+    private sealed record MotionDevicesConfigFile
+    {
+        public List<MotionDevice> Devices { get; init; } = new();
+    }
 
     /// <summary>Safety enforcement: drives configured IO outputs off on a watchdog trip.</summary>
     private void KillIoOutputs(IOKillAction action)

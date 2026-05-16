@@ -26,6 +26,13 @@ public interface IMotionFacet
     /// <summary>Moves an axis to an absolute coordinate; completes when motion settles.</summary>
     Task<Result> MoveAbsoluteAsync(string device, string axis, double position, CancellationToken ct = default);
 
+    /// <summary>
+    /// Moves all axes to an absolute multi-axis coordinate (X,Y,Z[,U,V,W]);
+    /// completes when motion settles. Layer 1 moves to coordinates only —
+    /// name → coordinate resolution is a Layer 2 concern.
+    /// </summary>
+    Task<Result> MoveToPositionAsync(string device, MotionPosition target, CancellationToken ct = default);
+
     /// <summary>Moves an axis by a relative distance; completes when motion settles.</summary>
     Task<Result> MoveRelativeAsync(string device, string axis, double distance, CancellationToken ct = default);
 

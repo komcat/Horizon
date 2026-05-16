@@ -46,8 +46,16 @@ loading; per-domain status poll loops and events.
 
 **Out (Layer 2+, not in this document):** ProcessEngine, RecipeEngine, plugins,
 ProductManager, TeachPointManager, teach points / named positions, dispense,
-trainer, calibration. The engine moves to **coordinates**, never to
-`"PickupPosition"`.
+trainer, calibration.
+
+**Motion is coordinate-only.** The engine moves to **coordinates** —
+single-axis (`MoveAbsoluteAsync`, `MoveRelativeAsync`) or multi-axis
+(`MoveToPositionAsync` with X,Y,Z[,U,V,W]). It never resolves a *name* like
+`"PickupPosition"` — name → coordinate resolution is a Layer 2 concern. As
+built, the engine reads `motor_devices_config.json` (hardware only: controller
+type, IP, axes); position data lives in separate Layer 2 files. The legacy
+`motor_devices.json` (hardware + embedded positions) is read only by the
+legacy WPF app, never by the engine.
 
 ## 4. Project structure
 
