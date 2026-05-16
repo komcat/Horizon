@@ -35,6 +35,7 @@ internal sealed class ConfigToolApp
     private const string Smu = "SMU";
     private const string PowerSupply = "Power supply";
     private const string TcpClients = "TCP clients";
+    private const string Validate = "Validate all";
     private const string ChangeDir = "Change config directory";
     private const string Exit = "Exit";
     private const string Save = "Save";
@@ -57,7 +58,7 @@ internal sealed class ConfigToolApp
                 new SelectionPrompt<string>()
                     .Title("Select a domain:")
                     .AddChoices(Motion, IO, Pneumatic, Laser, Measurement, Safety, Interlocks,
-                                Lighting, Tec, Smu, PowerSupply, TcpClients, ChangeDir, Exit));
+                                Lighting, Tec, Smu, PowerSupply, TcpClients, Validate, ChangeDir, Exit));
 
             switch (choice)
             {
@@ -73,6 +74,7 @@ internal sealed class ConfigToolApp
                 case Smu:         DomainMenu(Smu, "smu_devices.json", ViewSmu, AddSmu, EditSmu, RemoveSmu); break;
                 case PowerSupply: DomainMenu(PowerSupply, "power_supply_config.json", ViewPowerSupply, AddPowerSupply, EditPowerSupply, RemovePowerSupply); break;
                 case TcpClients:  DomainMenu(TcpClients, "tcp_clients.json", ViewTcp, AddTcp, EditTcp, RemoveTcp); break;
+                case Validate:    ValidateAll(); break;
                 case ChangeDir:   _configDir = AnsiConsole.Prompt(
                                       new TextPrompt<string>("New config directory:").DefaultValue(_configDir)); break;
                 case Exit:        return;
@@ -98,6 +100,26 @@ internal sealed class ConfigToolApp
                 case Back:                return;
             }
         }
+    }
+
+    /// <summary>Runs the cross-reference validator over the whole config set.</summary>
+    private void ValidateAll()
+    {
+        var issues = new ConfigValidator(_configDir).Validate();
+        if (issues.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[green]No issues — names are unique and all cross-references resolve.[/]");
+            return;
+        }
+
+        var errors = issues.Count(i => i.Severity == IssueSeverity.Error);
+        var table = NewTable($"Validation — {errors} error(s), {issues.Count - errors} warning(s)",
+            "Severity", "Domain", "Message");
+        foreach (var i in issues.OrderByDescending(i => i.Severity == IssueSeverity.Error))
+            table.AddRow(
+                i.Severity == IssueSeverity.Error ? "[red]ERROR[/]" : "[yellow]warn[/]",
+                Markup.Escape(i.Domain), Markup.Escape(i.Message));
+        AnsiConsole.Write(table);
     }
 
     // --- viewers ---
