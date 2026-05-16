@@ -1,0 +1,12 @@
+<Application x:Class="Horizon.UI.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mvvm="clr-namespace:Horizon.UI.Mvvm"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <ResourceDictionary>
+            <mvvm:BoolToBrushConverter x:Key="BoolToBrush" />
+            <mvvm:BoolToStatusTextConverter x:Key="BoolToStatusText" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
