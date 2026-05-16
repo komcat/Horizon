@@ -177,6 +177,66 @@ internal sealed class StepDispatcher
                     : await _engine.Laser.LaserOffAsync(step.Device);
             }
 
+            case "psu.connect":
+                return await _engine.PowerSupply.ConnectAsync(step.Device, ct);
+
+            case "psu.setvoltage":
+                return await _engine.PowerSupply.SetVoltageAsync(
+                    step.Device, PsuChannel(step, ctx), Num(step, "volts", ctx));
+
+            case "psu.setcurrentlimit":
+                return await _engine.PowerSupply.SetCurrentLimitAsync(
+                    step.Device, PsuChannel(step, ctx), Num(step, "amps", ctx));
+
+            case "psu.outputon":
+                return await _engine.PowerSupply.OutputOnAsync(step.Device, PsuChannel(step, ctx));
+
+            case "psu.outputoff":
+                return await _engine.PowerSupply.OutputOffAsync(step.Device, PsuChannel(step, ctx));
+
+            case "lighting.connect":
+                return await _engine.Lighting.ConnectAsync(step.Device, ct);
+
+            case "lighting.setintensity":
+                return await _engine.Lighting.SetChannelIntensityAsync(
+                    step.Device, (int)Num(step, "channel", ctx), (int)Num(step, "intensity", ctx));
+
+            case "tec.connect":
+                return await _engine.Tec.ConnectAsync(step.Device, ct);
+
+            case "tec.settemperature":
+            {
+                var set = await _engine.Tec.SetTemperatureAsync(step.Device, Num(step, "temperature", ctx));
+                if (!set.IsSuccess) return set;
+                return Bool(step, "power", ctx)
+                    ? await _engine.Tec.TecOnAsync(step.Device)
+                    : await _engine.Tec.TecOffAsync(step.Device);
+            }
+
+            case "tec.tecon":
+                return await _engine.Tec.TecOnAsync(step.Device);
+
+            case "tec.tecoff":
+                return await _engine.Tec.TecOffAsync(step.Device);
+
+            case "smu.connect":
+                return await _engine.Smu.ConnectAsync(step.Device, ct);
+
+            case "smu.setsourcevoltage":
+                return await _engine.Smu.SetSourceVoltageAsync(step.Device, Num(step, "volts", ctx));
+
+            case "smu.setsourcecurrent":
+                return await _engine.Smu.SetSourceCurrentAsync(step.Device, Num(step, "amps", ctx));
+
+            case "smu.setcompliance":
+                return await _engine.Smu.SetComplianceAsync(step.Device, Num(step, "value", ctx));
+
+            case "smu.outputon":
+                return await _engine.Smu.OutputOnAsync(step.Device);
+
+            case "smu.outputoff":
+                return await _engine.Smu.OutputOffAsync(step.Device);
+
             case "flow.wait":
             {
                 var ms = (int)Num(step, "ms", ctx);
@@ -210,6 +270,10 @@ internal sealed class StepDispatcher
     /// <summary>True if the step supplies a non-empty value for <paramref name="key"/>.</summary>
     private static bool Has(WorkflowStep step, string key)
         => step.Parameters.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v);
+
+    /// <summary>Power-supply channel (1-based) — defaults to channel 1 when omitted.</summary>
+    private static int PsuChannel(WorkflowStep step, WorkflowContext ctx)
+        => Has(step, "channel") ? (int)Num(step, "channel", ctx) : 1;
 
     private static string Str(WorkflowStep step, string key, WorkflowContext ctx)
     {

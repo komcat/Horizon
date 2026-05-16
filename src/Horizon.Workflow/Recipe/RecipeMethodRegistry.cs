@@ -60,6 +60,10 @@ internal sealed class RecipeMethodRegistry : IRecipeMethodInvoker
         RegisterLaser();
         RegisterMeasurement();
         RegisterPneumatic();
+        RegisterPowerSupply();
+        RegisterLighting();
+        RegisterTec();
+        RegisterSmu();
     }
 
     public Task<Result> InvokeAsync(
@@ -71,6 +75,56 @@ internal sealed class RecipeMethodRegistry : IRecipeMethodInvoker
                 ErrorCode.NotSupported, $"unknown recipe method '{call.Domain}.{call.Method}'"));
 
         return method(call.Device, new RecipeArgs(args), ctx, ct);
+    }
+
+    // --- power supply ---
+
+    private void RegisterPowerSupply()
+    {
+        Register("psu", "connect", Hw("psu", (d, a, ctx, ct) => _engine.PowerSupply.ConnectAsync(d, ct)));
+        Register("psu", "setVoltage", Hw("psu", (d, a, ctx, ct) =>
+            _engine.PowerSupply.SetVoltageAsync(d, a.Int("channel", 1), a.Number("volts"))));
+        Register("psu", "setCurrentLimit", Hw("psu", (d, a, ctx, ct) =>
+            _engine.PowerSupply.SetCurrentLimitAsync(d, a.Int("channel", 1), a.Number("amps"))));
+        Register("psu", "outputOn", Hw("psu", (d, a, ctx, ct) =>
+            _engine.PowerSupply.OutputOnAsync(d, a.Int("channel", 1))));
+        Register("psu", "outputOff", Hw("psu", (d, a, ctx, ct) =>
+            _engine.PowerSupply.OutputOffAsync(d, a.Int("channel", 1))));
+    }
+
+    // --- lighting ---
+
+    private void RegisterLighting()
+    {
+        Register("lighting", "connect", Hw("lighting", (d, a, ctx, ct) => _engine.Lighting.ConnectAsync(d, ct)));
+        Register("lighting", "setIntensity", Hw("lighting", (d, a, ctx, ct) =>
+            _engine.Lighting.SetChannelIntensityAsync(d, a.Int("channel", 0), a.Int("intensity"))));
+    }
+
+    // --- TEC ---
+
+    private void RegisterTec()
+    {
+        Register("tec", "connect", Hw("tec", (d, a, ctx, ct) => _engine.Tec.ConnectAsync(d, ct)));
+        Register("tec", "setTemperature", Hw("tec", (d, a, ctx, ct) =>
+            _engine.Tec.SetTemperatureAsync(d, a.Number("celsius"))));
+        Register("tec", "tecOn", Hw("tec", (d, a, ctx, ct) => _engine.Tec.TecOnAsync(d)));
+        Register("tec", "tecOff", Hw("tec", (d, a, ctx, ct) => _engine.Tec.TecOffAsync(d)));
+    }
+
+    // --- SMU ---
+
+    private void RegisterSmu()
+    {
+        Register("smu", "connect", Hw("smu", (d, a, ctx, ct) => _engine.Smu.ConnectAsync(d, ct)));
+        Register("smu", "setSourceVoltage", Hw("smu", (d, a, ctx, ct) =>
+            _engine.Smu.SetSourceVoltageAsync(d, a.Number("volts"))));
+        Register("smu", "setSourceCurrent", Hw("smu", (d, a, ctx, ct) =>
+            _engine.Smu.SetSourceCurrentAsync(d, a.Number("amps"))));
+        Register("smu", "setCompliance", Hw("smu", (d, a, ctx, ct) =>
+            _engine.Smu.SetComplianceAsync(d, a.Number("value"))));
+        Register("smu", "outputOn", Hw("smu", (d, a, ctx, ct) => _engine.Smu.OutputOnAsync(d)));
+        Register("smu", "outputOff", Hw("smu", (d, a, ctx, ct) => _engine.Smu.OutputOffAsync(d)));
     }
 
     private void Register(string domain, string method, RecipeMethod handler)
