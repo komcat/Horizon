@@ -1,5 +1,6 @@
 using Horizon.Camera;
 using Horizon.Common;
+using Horizon.Config;
 using Horizon.Core.Interlock;
 using Horizon.CurrentMeasurement;
 using Horizon.IO;
@@ -7,6 +8,7 @@ using Horizon.LaserController;
 using Horizon.Motion;
 using Horizon.Motion.Models;
 using Horizon.Pneumatic;
+using Horizon.PowerSupply;
 using Horizon.Safety;
 using Horizon.Safety.Models;
 
@@ -36,6 +38,9 @@ public sealed class HorizonEngine : IHorizonEngine
     private LaserControllerManager? _laserManager;
     private LaserFacet? _laserFacet;
 
+    private PowerSupplyManager? _powerSupplyManager;
+    private PowerSupplyFacet? _powerSupplyFacet;
+
     private CameraManager? _cameraManager;
     private CameraFacet? _cameraFacet;
 
@@ -63,6 +68,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
     public ILaserFacet Laser =>
         _laserFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
+
+    public IPowerSupplyFacet PowerSupply =>
+        _powerSupplyFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
 
     public ICameraFacet Camera =>
         _cameraFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
@@ -155,6 +163,21 @@ public sealed class HorizonEngine : IHorizonEngine
         }
         _laserFacet = new LaserFacet(_laserManager, RaiseStatusChanged, Log);
 
+        // --- Power supply domain ---
+        _powerSupplyManager = new PowerSupplyManager();
+        try
+        {
+            var devices = PowerSupplyJsonLoader.Load(_configDirectory);
+            foreach (var device in devices)
+                _powerSupplyManager.AddDevice(device);
+            Log(LogLevel.Info, $"Power supply devices loaded: {devices.Count}");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"Power supply config load failed: {ex.Message}");
+        }
+        _powerSupplyFacet = new PowerSupplyFacet(_powerSupplyManager, RaiseStatusChanged, Log);
+
         // --- Camera domain ---
         _cameraManager = new CameraManager();
         try
@@ -246,6 +269,9 @@ public sealed class HorizonEngine : IHorizonEngine
         if (_laserFacet != null)
             await _laserFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
 
+        if (_powerSupplyFacet != null)
+            await _powerSupplyFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
+
         if (_cameraFacet != null)
             await _cameraFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
 
@@ -327,6 +353,19 @@ public sealed class HorizonEngine : IHorizonEngine
             }
         }
 
+        if (_powerSupplyFacet != null)
+        {
+            foreach (var name in _powerSupplyFacet.DeviceNames)
+            {
+                var s = _powerSupplyFacet.GetState(name);
+                var detail = s.Valid && s.Channels.Count > 0
+                    ? string.Join("  ", s.Channels.Select(c =>
+                        $"CH{c.Channel}={c.Voltage:F2}V/{c.Current:F3}A{(c.OutputOn ? " ON" : "")}"))
+                    : "no data";
+                devices.Add(new DeviceStatus("Power supply", name, _powerSupplyFacet.IsConnected(name), detail));
+            }
+        }
+
         if (_cameraFacet != null)
         {
             foreach (var id in _cameraFacet.CameraIds)
@@ -384,6 +423,12 @@ public sealed class HorizonEngine : IHorizonEngine
         _laserManager?.Dispose();
         _laserManager = null;
         _laserFacet = null;
+
+        if (_powerSupplyFacet != null)
+            await _powerSupplyFacet.DisposeAsync().ConfigureAwait(false);   // stops the power-supply poll loop
+        _powerSupplyManager?.Dispose();
+        _powerSupplyManager = null;
+        _powerSupplyFacet = null;
 
         _measurementManager?.Dispose();   // stops its poll loop, disconnects devices
         _measurementManager = null;
