@@ -78,6 +78,23 @@ public interface IProcessService
     /// <summary>Runs a process program against the engine.</summary>
     Task<Result> RunAsync(WorkflowProgram program, CancellationToken ct = default);
 
+    // --- Interactive execution (pause / step) ---
+
+    /// <summary>Pauses the running program before its next step (no-op if idle).</summary>
+    void Pause();
+
+    /// <summary>Resumes a paused program.</summary>
+    void Resume();
+
+    /// <summary>Runs exactly one step of a paused program, then pauses again.</summary>
+    void Step();
+
+    /// <summary>True while a running program is paused.</summary>
+    bool IsPaused { get; }
+
+    /// <summary>Raised when the running program's paused state changes (true = paused).</summary>
+    event Action<bool>? PausedChanged;
+
     /// <summary>Raised before and after each executed step of a running program.</summary>
     event Action<WorkflowStepEvent>? StepEvent;
 

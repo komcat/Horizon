@@ -123,11 +123,28 @@ retracts, the disabled `Move to Position` steps, the disabled trailing DUT /
 laser-off block all stay disabled). Gives Phase 4 a real program with two live
 `Ask User` confirmation points to test against.
 
-## Task 4 — remaining original Phase 4 scope (after the above)
+## Task 4 — breakpoints + pause + step-by-step
 
-- Breakpoints / pause / step-by-step — same pause-and-yield pattern as
-  `askUser`; the front-end decides when to resume.
-- Plugin system + program builder UI — likely defer to a later phase.
+Done — the same pause-and-yield pattern as `askUser`, but driven by front-end
+controls instead of a prompt:
+
+- **`PauseController`** — an async gate (`TaskCompletionSource`-based) shared
+  between the `IProcessService` controls and the `WorkflowRunner`. Created
+  per-run by `ProcessService.RunAsync`, so a finished/cancelled run never
+  leaves stale paused state.
+- **`WorkflowRunner`** awaits `PauseController.WaitAsync(step.Breakpoint, ct)`
+  before every step. It blocks while paused — from `Pause()`, a one-shot
+  `Step()`, or a `Breakpoint` on the upcoming step. Cancellation flows through
+  `Task.WaitAsync(ct)`.
+- **`WorkflowStep.Breakpoint`** — new bool; set it in the `.hwf` to pause
+  before that step.
+- **`IProcessService`** — `Pause()` / `Resume()` / `Step()` / `IsPaused` and an
+  `event Action<bool>? PausedChanged` (raised on breakpoint-triggered pauses so
+  the front-end can react).
+- **Console** — `[p]` pause, `[s]` step, `[r]` resume, `[c]`/Esc cancel during
+  a run; prints a `‖ paused` line on `PausedChanged`.
+
+Deferred to a later phase: the plugin system + program builder UI.
 
 ## Verification (bench, SIPHOG888 loaded)
 

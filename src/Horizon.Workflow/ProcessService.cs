@@ -14,6 +14,7 @@ public sealed class ProcessService : IProcessService
     private readonly ProductStore _products = new();
     private PositionStore? _positions;   // null when no product is active
     private ProgramStore? _programs;     // null when no product is active
+    private PauseController? _pause;     // non-null only while a program runs
 
     public ProcessService(IHorizonEngine engine)
     {
@@ -34,8 +35,15 @@ public sealed class ProcessService : IProcessService
 
     public event Action<WorkflowStepEvent>? StepEvent;
     public event Action<LogEntry>? LogEmitted;
+    public event Action<bool>? PausedChanged;
 
     public IOperatorPrompt? OperatorPrompt { get; set; }
+
+    public bool IsPaused => _pause?.IsPaused ?? false;
+
+    public void Pause() => _pause?.Pause();
+    public void Resume() => _pause?.Resume();
+    public void Step() => _pause?.Step();
 
     // --- Products ---
 
@@ -187,10 +195,15 @@ public sealed class ProcessService : IProcessService
 
     public async Task<Result> RunAsync(WorkflowProgram program, CancellationToken ct = default)
     {
+        var pause = new PauseController();
+        pause.PausedChanged += OnPausedChanged;
+        _pause = pause;
+
         var runner = new WorkflowRunner(
             _engine,
             MoveToNamedPositionAsync,
             OperatorPrompt,
+            pause,
             e => StepEvent?.Invoke(e),
             Log);
 
@@ -209,7 +222,14 @@ public sealed class ProcessService : IProcessService
             Log(LogLevel.Warning, $"Program cancelled: {program.Name}");
             return Result.Fail(ErrorCode.OperationFailed, "Program cancelled.");
         }
+        finally
+        {
+            pause.PausedChanged -= OnPausedChanged;
+            _pause = null;
+        }
     }
+
+    private void OnPausedChanged(bool paused) => PausedChanged?.Invoke(paused);
 
     private void Log(LogLevel level, string message)
         => LogEmitted?.Invoke(new LogEntry(level, DateTimeOffset.Now, "Workflow", message));

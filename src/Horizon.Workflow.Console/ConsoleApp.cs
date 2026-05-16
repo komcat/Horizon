@@ -357,7 +357,7 @@ internal sealed class ConsoleApp : IOperatorPrompt
         var program = load.Value;
         AnsiConsole.MarkupLineInterpolated(
             $"\n[aqua]Running[/] '{program.Name}' — {program.Steps.Count} step(s).");
-        AnsiConsole.MarkupLine("[grey](press any key to cancel)[/]");
+        AnsiConsole.MarkupLine("[grey](keys: [[p]]ause  [[s]]tep  [[r]]esume  [[c]]ancel)[/]");
 
         void OnStep(WorkflowStepEvent e)
         {
@@ -369,19 +369,32 @@ internal sealed class ConsoleApp : IOperatorPrompt
             AnsiConsole.MarkupLine($"  [[{e.Index + 1}/{e.Total}]] {Markup.Escape(e.Description)}  {tag}{msg}");
         }
 
+        void OnPaused(bool paused)
+        {
+            if (paused)
+                AnsiConsole.MarkupLine("  [yellow]|| PAUSED[/] — [grey][[r]]esume  [[s]]tep  [[c]]ancel[/]");
+        }
+
         using var cts = new CancellationTokenSource();
         _service.StepEvent += OnStep;
+        _service.PausedChanged += OnPaused;
         try
         {
             var runTask = _service.RunAsync(program, cts.Token);
             while (!runTask.IsCompleted)
             {
-                // Skip cancel polling while a prompt is open — that keystroke
-                // is the operator's answer, not a cancel request.
+                // Skip key polling while a prompt is open — that keystroke is
+                // the operator's answer, not a run control.
                 if (!_awaitingPrompt && Console.KeyAvailable)
                 {
-                    Console.ReadKey(intercept: true);
-                    cts.Cancel();
+                    switch (Console.ReadKey(intercept: true).Key)
+                    {
+                        case ConsoleKey.P: _service.Pause();  break;
+                        case ConsoleKey.R: _service.Resume(); break;
+                        case ConsoleKey.S: _service.Step();   break;
+                        case ConsoleKey.C:
+                        case ConsoleKey.Escape: cts.Cancel(); break;
+                    }
                 }
                 await Task.Delay(50);
             }
@@ -390,6 +403,7 @@ internal sealed class ConsoleApp : IOperatorPrompt
         finally
         {
             _service.StepEvent -= OnStep;
+            _service.PausedChanged -= OnPaused;
         }
     }
 

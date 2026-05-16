@@ -13,6 +13,7 @@ internal sealed class WorkflowRunner
 {
     private readonly StepDispatcher _dispatcher;
     private readonly IOperatorPrompt? _prompt;
+    private readonly PauseController _pause;
     private readonly Action<WorkflowStepEvent> _onStep;
     private readonly Action<LogLevel, string> _log;
 
@@ -20,11 +21,13 @@ internal sealed class WorkflowRunner
         IHorizonEngine engine,
         Func<string, string, CancellationToken, Task<Result>> moveToNamed,
         IOperatorPrompt? prompt,
+        PauseController pause,
         Action<WorkflowStepEvent> onStep,
         Action<LogLevel, string> log)
     {
         _dispatcher = new StepDispatcher(engine, moveToNamed, log);
         _prompt = prompt;
+        _pause = pause;
         _onStep = onStep;
         _log = log;
     }
@@ -42,6 +45,10 @@ internal sealed class WorkflowRunner
             var step = steps[index];
 
             if (!step.Enabled) { index++; continue; }
+
+            // Pause-and-yield: blocks while paused (front-end Pause/Step) or on
+            // a step breakpoint. Resumes when the front-end releases the gate.
+            await _pause.WaitAsync(step.Breakpoint, ct).ConfigureAwait(false);
 
             var op = step.Op.ToLowerInvariant();
 

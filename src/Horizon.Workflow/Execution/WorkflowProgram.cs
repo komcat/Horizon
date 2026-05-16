@@ -12,6 +12,8 @@ public sealed record WorkflowStep
     public string Device { get; init; } = string.Empty;
     public Dictionary<string, string> Parameters { get; init; } = new();
     public bool Enabled { get; init; } = true;
+    /// <summary>When true, the runner pauses before executing this step.</summary>
+    public bool Breakpoint { get; init; }
 }
 
 /// <summary>A runnable process program — an ordered sequence of steps.</summary>
