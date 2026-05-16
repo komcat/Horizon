@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Horizon.ConfigTool</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Spectre.Console" Version="0.49.1" />
+  </ItemGroup>
+
+  <!-- Reuses the real config models + symmetric loaders (Phase 0).
+       Camera is deferred until RegisteredCamera is relocated off the SDK assembly. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Horizon.Common\Horizon.Common.csproj" />
+    <ProjectReference Include="..\Horizon.IO\Horizon.IO.csproj" />
+    <ProjectReference Include="..\Horizon.Motion\Horizon.Motion.csproj" />
+    <ProjectReference Include="..\Horizon.Pneumatic\Horizon.Pneumatic.csproj" />
+    <ProjectReference Include="..\Horizon.LaserController\Horizon.LaserController.csproj" />
+    <ProjectReference Include="..\Horizon.CurrentMeasurement\Horizon.CurrentMeasurement.csproj" />
+    <ProjectReference Include="..\Horizon.Safety\Horizon.Safety.csproj" />
+    <ProjectReference Include="..\Horizon.Interlock\Horizon.Interlock.csproj" />
+  </ItemGroup>
+
+</Project>
