@@ -10,18 +10,27 @@ public static class CurrentMeasurementJsonLoader
         public List<CurrentMeasurementDeviceConfig> Devices { get; init; } = new();
     }
 
-    public static int LoadDevices(CurrentMeasurementManager manager, string? configDir = null)
+    /// <summary>Reads the current-measurement config, or an empty list if the file is absent.</summary>
+    public static IReadOnlyList<CurrentMeasurementDeviceConfig> Load(string? configDir = null)
     {
         configDir ??= ConfigLoader.GetConfigDirectory();
-        var config = ConfigLoader.LoadJson<CurrentMeasurementDevicesFile>(configDir, "current_measurement_devices");
-        if (config?.Devices == null) return 0;
+        return ConfigLoader.LoadJson<CurrentMeasurementDevicesFile>(configDir, "current_measurement_devices")?.Devices
+               ?? new List<CurrentMeasurementDeviceConfig>();
+    }
 
-        int count = 0;
-        foreach (var entry in config.Devices)
-        {
+    /// <summary>Writes the current-measurement config to <c>current_measurement_devices.json</c>.</summary>
+    public static void Save(IReadOnlyList<CurrentMeasurementDeviceConfig> devices, string? configDir = null)
+    {
+        configDir ??= ConfigLoader.GetConfigDirectory();
+        ConfigLoader.SaveJson(configDir, "current_measurement_devices",
+            new CurrentMeasurementDevicesFile { Devices = devices.ToList() });
+    }
+
+    public static int LoadDevices(CurrentMeasurementManager manager, string? configDir = null)
+    {
+        var devices = Load(configDir);
+        foreach (var entry in devices)
             manager.AddDevice(entry);
-            count++;
-        }
-        return count;
+        return devices.Count;
     }
 }

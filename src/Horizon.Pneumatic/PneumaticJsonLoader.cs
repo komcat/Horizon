@@ -11,18 +11,27 @@ public static class PneumaticJsonLoader
         public List<PneumaticConfig> PneumaticSlides { get; init; } = new();
     }
 
-    public static int LoadSlides(PneumaticManager manager, EziIOManager ioManager, string? configDir = null)
+    /// <summary>Reads the pneumatic-slide config, or an empty list if the file is absent.</summary>
+    public static IReadOnlyList<PneumaticConfig> Load(string? configDir = null)
     {
         configDir ??= ConfigLoader.GetConfigDirectory();
-        var config = ConfigLoader.LoadJson<PneumaticSlidesFile>(configDir, "pneumatic_slides");
-        if (config?.PneumaticSlides == null) return 0;
+        return ConfigLoader.LoadJson<PneumaticSlidesFile>(configDir, "pneumatic_slides")?.PneumaticSlides
+               ?? new List<PneumaticConfig>();
+    }
 
-        int count = 0;
-        foreach (var slideConfig in config.PneumaticSlides)
-        {
+    /// <summary>Writes the pneumatic-slide config to <c>pneumatic_slides.json</c>.</summary>
+    public static void Save(IReadOnlyList<PneumaticConfig> slides, string? configDir = null)
+    {
+        configDir ??= ConfigLoader.GetConfigDirectory();
+        ConfigLoader.SaveJson(configDir, "pneumatic_slides",
+            new PneumaticSlidesFile { PneumaticSlides = slides.ToList() });
+    }
+
+    public static int LoadSlides(PneumaticManager manager, EziIOManager ioManager, string? configDir = null)
+    {
+        var slides = Load(configDir);
+        foreach (var slideConfig in slides)
             manager.AddSlide(slideConfig, ioManager);
-            count++;
-        }
-        return count;
+        return slides.Count;
     }
 }

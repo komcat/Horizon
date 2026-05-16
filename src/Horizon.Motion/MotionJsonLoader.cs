@@ -10,18 +10,27 @@ public static class MotionJsonLoader
         public List<MotionDevice> Devices { get; init; } = new();
     }
 
-    public static int LoadDevices(UnifiedMotionManager manager, string? configDir = null)
+    /// <summary>Reads the motor-device config, or an empty list if the file is absent.</summary>
+    public static IReadOnlyList<MotionDevice> Load(string? configDir = null)
     {
         configDir ??= ConfigLoader.GetConfigDirectory();
-        var config = ConfigLoader.LoadJson<MotionDevicesFile>(configDir, "motor_devices");
-        if (config?.Devices == null) return 0;
+        return ConfigLoader.LoadJson<MotionDevicesFile>(configDir, "motor_devices")?.Devices
+               ?? new List<MotionDevice>();
+    }
 
-        int count = 0;
-        foreach (var device in config.Devices)
-        {
+    /// <summary>Writes the motor-device config to <c>motor_devices.json</c>.</summary>
+    public static void Save(IReadOnlyList<MotionDevice> devices, string? configDir = null)
+    {
+        configDir ??= ConfigLoader.GetConfigDirectory();
+        ConfigLoader.SaveJson(configDir, "motor_devices",
+            new MotionDevicesFile { Devices = devices.ToList() });
+    }
+
+    public static int LoadDevices(UnifiedMotionManager manager, string? configDir = null)
+    {
+        var devices = Load(configDir);
+        foreach (var device in devices)
             manager.AddDevice(device);
-            count++;
-        }
-        return count;
+        return devices.Count;
     }
 }

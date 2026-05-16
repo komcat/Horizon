@@ -13,6 +13,13 @@ public static class ConfigLoader
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: true) }
     };
 
+    private static readonly JsonSerializerOptions WriteOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     /// <summary>
     /// Loads a JSON config file with local/default fallback.
     /// Tries {name}.local.json first, then {name}.json.
@@ -29,6 +36,18 @@ public static class ConfigLoader
 
         var json = File.ReadAllText(path);
         return JsonSerializer.Deserialize<T>(json, JsonOptions);
+    }
+
+    /// <summary>
+    /// Writes a JSON config file as <c>{name}.json</c> (indented, camelCase).
+    /// Never writes <c>.local.json</c> — a hand-authored local override is left
+    /// untouched. The directory is created if missing.
+    /// </summary>
+    public static void SaveJson<T>(string basePath, string name, T value)
+    {
+        Directory.CreateDirectory(basePath);
+        var path = Path.Combine(basePath, $"{name}.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(value, WriteOptions));
     }
 
     /// <summary>

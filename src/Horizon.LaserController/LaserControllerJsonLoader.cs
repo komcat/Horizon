@@ -10,18 +10,27 @@ public static class LaserControllerJsonLoader
         public List<LaserControllerDeviceConfig> Devices { get; init; } = new();
     }
 
-    public static int LoadDevices(LaserControllerManager manager, string? configDir = null)
+    /// <summary>Reads the laser-controller config, or an empty list if the file is absent.</summary>
+    public static IReadOnlyList<LaserControllerDeviceConfig> Load(string? configDir = null)
     {
         configDir ??= ConfigLoader.GetConfigDirectory();
-        var config = ConfigLoader.LoadJson<LaserControllerDevicesFile>(configDir, "laser_controller_devices");
-        if (config?.Devices == null) return 0;
+        return ConfigLoader.LoadJson<LaserControllerDevicesFile>(configDir, "laser_controller_devices")?.Devices
+               ?? new List<LaserControllerDeviceConfig>();
+    }
 
-        int count = 0;
-        foreach (var entry in config.Devices)
-        {
+    /// <summary>Writes the laser-controller config to <c>laser_controller_devices.json</c>.</summary>
+    public static void Save(IReadOnlyList<LaserControllerDeviceConfig> devices, string? configDir = null)
+    {
+        configDir ??= ConfigLoader.GetConfigDirectory();
+        ConfigLoader.SaveJson(configDir, "laser_controller_devices",
+            new LaserControllerDevicesFile { Devices = devices.ToList() });
+    }
+
+    public static int LoadDevices(LaserControllerManager manager, string? configDir = null)
+    {
+        var devices = Load(configDir);
+        foreach (var entry in devices)
             manager.AddDevice(entry);
-            count++;
-        }
-        return count;
+        return devices.Count;
     }
 }
