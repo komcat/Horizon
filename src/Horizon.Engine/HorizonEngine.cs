@@ -11,6 +11,7 @@ using Horizon.Motion.Models;
 using Horizon.Pneumatic;
 using Horizon.PowerSupply;
 using Horizon.Safety;
+using Horizon.Tec;
 using Horizon.Safety.Models;
 
 namespace Horizon.Engine;
@@ -45,6 +46,9 @@ public sealed class HorizonEngine : IHorizonEngine
     private LightingManager? _lightingManager;
     private LightingFacet? _lightingFacet;
 
+    private TecManager? _tecManager;
+    private TecFacet? _tecFacet;
+
     private CameraManager? _cameraManager;
     private CameraFacet? _cameraFacet;
 
@@ -78,6 +82,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
     public ILightingFacet Lighting =>
         _lightingFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
+
+    public ITecFacet Tec =>
+        _tecFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
 
     public ICameraFacet Camera =>
         _cameraFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
@@ -200,6 +207,23 @@ public sealed class HorizonEngine : IHorizonEngine
         }
         _lightingFacet = new LightingFacet(_lightingManager, RaiseStatusChanged, Log);
 
+        // --- TEC domain (standalone TED4015; CLD101x stays in the Laser domain) ---
+        _tecManager = new TecManager();
+        try
+        {
+            var devices = TecJsonLoader.Load(_configDirectory)
+                .Where(d => d.ControllerType.Contains("TED4015", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            foreach (var device in devices)
+                _tecManager.AddDevice(device);
+            Log(LogLevel.Info, $"TEC devices loaded: {devices.Count}");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"TEC config load failed: {ex.Message}");
+        }
+        _tecFacet = new TecFacet(_tecManager, RaiseStatusChanged, Log);
+
         // --- Camera domain ---
         _cameraManager = new CameraManager();
         try
@@ -296,6 +320,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
         if (_lightingFacet != null)
             await _lightingFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
+
+        if (_tecFacet != null)
+            await _tecFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
 
         if (_cameraFacet != null)
             await _cameraFacet.ConnectAllInternalAsync(progress).ConfigureAwait(false);
@@ -403,6 +430,18 @@ public sealed class HorizonEngine : IHorizonEngine
             }
         }
 
+        if (_tecFacet != null)
+        {
+            foreach (var name in _tecFacet.DeviceNames)
+            {
+                var s = _tecFacet.GetState(name);
+                var detail = s.Valid
+                    ? $"T={s.Temperature:F2}C  set={s.SetpointTemperature:F2}C{(s.TecOn ? " TEC" : "")}"
+                    : "no data";
+                devices.Add(new DeviceStatus("TEC", name, _tecFacet.IsConnected(name), detail));
+            }
+        }
+
         if (_cameraFacet != null)
         {
             foreach (var id in _cameraFacet.CameraIds)
@@ -472,6 +511,12 @@ public sealed class HorizonEngine : IHorizonEngine
         _lightingManager?.Dispose();
         _lightingManager = null;
         _lightingFacet = null;
+
+        if (_tecFacet != null)
+            await _tecFacet.DisposeAsync().ConfigureAwait(false);   // stops the TEC poll loop
+        _tecManager?.Dispose();
+        _tecManager = null;
+        _tecFacet = null;
 
         _measurementManager?.Dispose();   // stops its poll loop, disconnects devices
         _measurementManager = null;
