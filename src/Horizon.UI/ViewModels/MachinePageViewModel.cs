@@ -25,6 +25,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
     private object _currentSection;
     private string _engineState = "—";
     private string _deviceSummary = "—";
+    private bool _statusRefreshing;
     private bool _disposed;
 
     public MachinePageViewModel(EngineHost host)
@@ -105,14 +106,32 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     private void OnTick()
     {
-        var snapshot = _host.Engine.GetStatusSnapshot();
-        EngineState = snapshot.State.ToString();
-
-        var connected = snapshot.Devices.Count(d => d.IsConnected);
-        DeviceSummary = $"{connected} / {snapshot.Devices.Count} connected";
-
-        Status.Apply(snapshot);
+        // The SMU readout is cheap (cached telemetry) — stays on the UI thread.
         Smu.Refresh();
+
+        // GetStatusSnapshot() reads each device's IsConnected, which takes the
+        // adapter lock a 2 s hardware poll also holds during VISA/SCPI I/O — so
+        // it can briefly block. Run it off the UI thread so the chart never
+        // stalls; the result is applied back on the UI thread.
+        _ = RefreshStatusAsync();
+    }
+
+    private async Task RefreshStatusAsync()
+    {
+        if (_statusRefreshing) return;   // a refresh is still in flight — skip this tick
+        _statusRefreshing = true;
+        try
+        {
+            var snapshot = await Task.Run(_host.Engine.GetStatusSnapshot).ConfigureAwait(true);
+            EngineState = snapshot.State.ToString();
+            var connected = snapshot.Devices.Count(d => d.IsConnected);
+            DeviceSummary = $"{connected} / {snapshot.Devices.Count} connected";
+            Status.Apply(snapshot);
+        }
+        finally
+        {
+            _statusRefreshing = false;
+        }
     }
 
     private async Task ReconnectAsync()

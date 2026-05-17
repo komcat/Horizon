@@ -2,7 +2,9 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- 10.0.19041 platform version so SkiaSharp.Views.WPF resolves its
+         net8.0-windows lib (not the net462 fallback). -->
+    <TargetFramework>net8.0-windows10.0.19041</TargetFramework>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <UseWPF>true</UseWPF>
@@ -15,6 +17,8 @@
   <!-- HALCON native bundle — Horizon.Engine references MVTec.HalconDotNet (Vision facet). -->
   <ItemGroup>
     <PackageReference Include="MVTec.HalconDotNet-Windows" Version="24050.0.0" />
+    <!-- SkiaSharp WPF surface for live telemetry charts. -->
+    <PackageReference Include="SkiaSharp.Views.WPF" Version="3.116.1" />
   </ItemGroup>
 
   <!-- Layer 3 references the engine + workflow interfaces only. -->

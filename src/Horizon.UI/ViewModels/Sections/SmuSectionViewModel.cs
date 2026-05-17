@@ -1,4 +1,5 @@
 using Horizon.UI.Mvvm;
+using Horizon.UI.Telemetry;
 
 namespace Horizon.UI.ViewModels.Sections;
 
@@ -33,6 +34,9 @@ public sealed class SmuSectionViewModel : ObservableObject
 
     /// <summary>Label shown in the Machine-page section rail.</summary>
     public string Title => "SMU";
+
+    /// <summary>Telemetry history — the trend chart snapshots channels from here.</summary>
+    public TelemetryStore Store => _host.Telemetry;
 
     public IReadOnlyList<string> Devices { get; }
 
