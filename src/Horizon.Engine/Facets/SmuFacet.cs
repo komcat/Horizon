@@ -20,6 +20,7 @@ internal sealed class SmuFacet : ISmuFacet, IAsyncDisposable
 
     private readonly Dictionary<string, SmuDeviceInfo> _devices = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, SmuState> _state = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, PollLoop> _streams = new(StringComparer.OrdinalIgnoreCase);
     private readonly PollLoop _poll;
 
     public SmuFacet(
@@ -106,6 +107,52 @@ internal sealed class SmuFacet : ISmuFacet, IAsyncDisposable
     public Task<Result> SetFastModeAsync(string device, bool fast)
         => Task.Run(() => Map(device, _manager.SetFastMode(device, fast)));
 
+    public bool IsStreaming(string device) => _streams.ContainsKey(device);
+
+    public async Task<Result> StartStreamingAsync(string device, int channel, int intervalMs)
+    {
+        var d = _manager.GetDevice(device);
+        if (d == null)
+            return Result.Fail(ErrorCode.OperationFailed, $"SMU '{device}' not found.");
+        if (!d.IsConnected)
+            return Result.Fail(ErrorCode.OperationFailed, $"SMU '{device}' is not connected.");
+
+        // A re-call switches channel/interval — stop any running stream first.
+        await StopStreamingAsync(device).ConfigureAwait(false);
+
+        var ms = Math.Clamp(intervalMs, 10, 60000);
+        await Task.Run(() => _manager.SetFastMode(device, true)).ConfigureAwait(false);
+
+        var loop = new PollLoop($"SMU-stream-{device}", TimeSpan.FromMilliseconds(ms),
+            ct => StreamTickAsync(device, channel, ct));
+        _streams[device] = loop;
+        loop.Start();
+        _log(LogLevel.Info, $"SMU '{device}' streaming CH{channel} @ {ms} ms.");
+        return Result.Ok();
+    }
+
+    public async Task<Result> StopStreamingAsync(string device)
+    {
+        if (_streams.TryRemove(device, out var loop))
+        {
+            await loop.DisposeAsync().ConfigureAwait(false);
+            await Task.Run(() => _manager.SetFastMode(device, false)).ConfigureAwait(false);
+            _log(LogLevel.Info, $"SMU '{device}' streaming stopped.");
+        }
+        return Result.Ok();
+    }
+
+    private Task StreamTickAsync(string device, int channel, CancellationToken ct)
+    {
+        if (ct.IsCancellationRequested) return Task.CompletedTask;
+        var r = _manager.ReadMeasurement(device, channel);
+        if (r != null)
+            Sampled?.Invoke(new SmuSample(device, channel, r.Current, r.Voltage, r.Timestamp));
+        return Task.CompletedTask;
+    }
+
+    public event Action<SmuSample>? Sampled;
+
     public event Action<SmuStateChanged>? StateChanged;
 
     /// <summary>Connects all SMUs and starts polling.</summary>
@@ -128,7 +175,11 @@ internal sealed class SmuFacet : ISmuFacet, IAsyncDisposable
     }
 
     public async ValueTask DisposeAsync()
-        => await _poll.DisposeAsync().ConfigureAwait(false);
+    {
+        foreach (var device in _streams.Keys.ToList())
+            await StopStreamingAsync(device).ConfigureAwait(false);
+        await _poll.DisposeAsync().ConfigureAwait(false);
+    }
 
     /// <summary>Runs one poll tick now, so <see cref="GetState"/> is current after a command.</summary>
     public Task RefreshAsync() => PollTickAsync(CancellationToken.None);
@@ -139,6 +190,7 @@ internal sealed class SmuFacet : ISmuFacet, IAsyncDisposable
         {
             if (ct.IsCancellationRequested) break;
             if (!IsConnected(name)) continue;
+            if (_streams.ContainsKey(name)) continue;   // the streaming loop owns the instrument
 
             var status = _manager.GetStatus(name);
             if (status == null) continue;

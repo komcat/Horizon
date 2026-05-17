@@ -25,3 +25,6 @@ public sealed record SmuStateChanged(string Device, SmuState State);
 
 /// <summary>A single on-demand measurement from one SMU channel (1-based).</summary>
 public sealed record SmuReading(int Channel, double Current, double Voltage, DateTime Timestamp);
+
+/// <summary>One streamed sample raised on <see cref="ISmuFacet.Sampled"/>.</summary>
+public sealed record SmuSample(string Device, int Channel, double Current, double Voltage, DateTime Timestamp);

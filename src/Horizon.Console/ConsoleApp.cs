@@ -1169,6 +1169,7 @@ internal sealed class ConsoleApp
         const string OutputOff = "Output OFF";
         const string ReadMeasurement = "Read measurement";
         const string ContinuousRead = "Continuous read";
+        const string Stream = "Stream (live)";
         const string FastOn = "Fast mode ON";
         const string FastOff = "Fast mode OFF";
         const string Refresh = "Refresh";
@@ -1182,7 +1183,7 @@ internal sealed class ConsoleApp
             var choices = new List<string>();
             if (connected)
                 choices.AddRange(new[] { SourceVoltage, SourceCurrent, SetCompliance, OutputOn, OutputOff,
-                                         ReadMeasurement, ContinuousRead, FastOn, FastOff, Disconnect });
+                                         ReadMeasurement, ContinuousRead, Stream, FastOn, FastOff, Disconnect });
             else
                 choices.Add(Connect);
             choices.Add(Refresh);
@@ -1230,6 +1231,9 @@ internal sealed class ConsoleApp
                     break;
                 case ContinuousRead:
                     await SmuContinuousReadAsync(device);
+                    break;
+                case Stream:
+                    await SmuStreamAsync(device);
                     break;
                 case FastOn:
                     ReportResult(await _engine.Smu.SetFastModeAsync(device, true), $"Fast mode ON {device}");
@@ -1316,6 +1320,87 @@ internal sealed class ConsoleApp
             table);
     }
 
+    /// <summary>
+    /// Drives the facet streaming mechanism: starts a Layer 1 streaming loop,
+    /// subscribes to the <see cref="ISmuFacet.Sampled"/> event, and renders
+    /// samples live until a key is pressed — the event-driven path Layer 3 will
+    /// consume. Distinct from "Continuous read", which loops the raw primitive.
+    /// </summary>
+    private async Task SmuStreamAsync(string device)
+    {
+        var channel = AnsiConsole.Prompt(new TextPrompt<int>("Channel:").DefaultValue(1));
+        var intervalMs = AnsiConsole.Prompt(new TextPrompt<int>("Interval (ms):").DefaultValue(100));
+
+        var start = DateTime.UtcNow;
+        long samples = 0;
+        SmuSample? latest = null;
+        void OnSampled(SmuSample s)
+        {
+            if (!string.Equals(s.Device, device, StringComparison.OrdinalIgnoreCase)) return;
+            latest = s;
+            Interlocked.Increment(ref samples);
+        }
+
+        _engine.Smu.Sampled += OnSampled;
+        var started = await _engine.Smu.StartStreamingAsync(device, channel, intervalMs);
+        if (!started.IsSuccess)
+        {
+            _engine.Smu.Sampled -= OnSampled;
+            AnsiConsole.MarkupLineInterpolated($"[red]Stream failed[/] — {started.Message}");
+            return;
+        }
+
+        AnsiConsole.MarkupLine("[yellow]Streaming — press any key to stop.[/]");
+        using var cts = new CancellationTokenSource();
+        await AnsiConsole.Live(BuildSmuStreamDisplay(device, channel, latest, 0, TimeSpan.Zero))
+            .StartAsync(async ctx =>
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    ctx.UpdateTarget(BuildSmuStreamDisplay(
+                        device, channel, latest, Interlocked.Read(ref samples), DateTime.UtcNow - start));
+                    ctx.Refresh();
+                    if (Console.KeyAvailable)
+                    {
+                        Console.ReadKey(intercept: true);
+                        cts.Cancel();
+                        break;
+                    }
+                    await Task.Delay(100);
+                }
+            });
+
+        _engine.Smu.Sampled -= OnSampled;
+        await _engine.Smu.StopStreamingAsync(device);
+
+        var total = Interlocked.Read(ref samples);
+        var elapsed = DateTime.UtcNow - start;
+        var rate = elapsed.TotalSeconds > 0 ? total / elapsed.TotalSeconds : 0;
+        AnsiConsole.MarkupLineInterpolated(
+            $"[green]Stopped[/] — {total} samples in {elapsed.TotalSeconds:F1} s ({rate:F1}/s).");
+    }
+
+    private static IRenderable BuildSmuStreamDisplay(
+        string device, int channel, SmuSample? latest, long samples, TimeSpan elapsed)
+    {
+        var rate = elapsed.TotalSeconds > 0 ? samples / elapsed.TotalSeconds : 0;
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Property");
+        table.AddColumn("Value");
+        table.AddRow("Device", Markup.Escape($"{device}  CH{channel}"));
+        table.AddRow("Current", latest == null ? "[grey]—[/]"
+            : double.IsNaN(latest.Current) ? "[grey]no reading[/]" : $"{latest.Current:E4} A");
+        table.AddRow("Voltage", latest == null ? "[grey]—[/]"
+            : double.IsNaN(latest.Voltage) ? "[grey]no reading[/]" : $"{latest.Voltage:F4} V");
+        table.AddRow("Samples", samples.ToString());
+        table.AddRow("Elapsed", $"{elapsed.TotalSeconds:F1} s");
+        table.AddRow("Rate", $"{rate:F1} /s");
+
+        return new Rows(
+            new Markup("[aqua]SMU stream (facet)[/] — [grey]press any key to stop.[/]"),
+            table);
+    }
+
     private void RenderSmuDevice(string device)
     {
         var info = _engine.Smu.GetDevice(device);
@@ -1340,8 +1425,8 @@ internal sealed class ConsoleApp
         table.AddColumn("Value");
         table.AddRow("Output", state.OutputOn ? "[green]ON[/]" : "[grey]off[/]");
         table.AddRow("Source mode", Markup.Escape(state.SourceMode));
-        table.AddRow("Voltage", $"{state.Voltage:F4} V");
-        table.AddRow("Current", $"{state.Current:E4} A");
+        table.AddRow("Voltage", double.IsNaN(state.Voltage) ? "[grey]no reading[/]" : $"{state.Voltage:F4} V");
+        table.AddRow("Current", double.IsNaN(state.Current) ? "[grey]no reading[/]" : $"{state.Current:E4} A");
         table.AddRow("Last error",
             string.IsNullOrEmpty(state.LastError) ? "[grey]none[/]" : $"[red]{Markup.Escape(state.LastError)}[/]");
         AnsiConsole.Write(table);

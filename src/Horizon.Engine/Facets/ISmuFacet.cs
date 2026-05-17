@@ -45,6 +45,18 @@ public interface ISmuFacet
     /// <summary>Switches the instrument between fast (low-NPLC) and normal measurement mode.</summary>
     Task<Result> SetFastModeAsync(string device, bool fast);
 
+    /// <summary>Begins continuous sampling of a channel (1-based) at the given interval (ms).</summary>
+    Task<Result> StartStreamingAsync(string device, int channel, int intervalMs);
+
+    /// <summary>Stops streaming on a device and restores normal measurement mode. Idempotent.</summary>
+    Task<Result> StopStreamingAsync(string device);
+
+    /// <summary>Whether a streaming loop is currently running for the device.</summary>
+    bool IsStreaming(string device);
+
+    /// <summary>Raised once per streamed sample, on a background thread.</summary>
+    event Action<SmuSample>? Sampled;
+
     /// <summary>Raised (edge-triggered) when a device's polled state changes.</summary>
     event Action<SmuStateChanged>? StateChanged;
 }

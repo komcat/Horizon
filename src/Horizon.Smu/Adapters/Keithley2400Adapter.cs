@@ -155,8 +155,8 @@ public sealed class Keithley2400Adapter : ISmuDevice
                     var parts = Query(":READ?").Split(',');
                     if (parts.Length >= 2)
                     {
-                        voltage = ParseDouble(parts[0]);
-                        current = ParseDouble(parts[1]);
+                        voltage = Clean(ParseDouble(parts[0]));
+                        current = Clean(ParseDouble(parts[1]));
                     }
                 }
                 return new SmuStatus
@@ -196,8 +196,8 @@ public sealed class Keithley2400Adapter : ISmuDevice
                 return new SmuReading
                 {
                     Channel = channel,
-                    Voltage = parts.Length > 0 ? ParseDouble(parts[0]) : 0.0,
-                    Current = parts.Length > 1 ? ParseDouble(parts[1]) : 0.0,
+                    Voltage = parts.Length > 0 ? Clean(ParseDouble(parts[0])) : 0.0,
+                    Current = parts.Length > 1 ? Clean(ParseDouble(parts[1])) : 0.0,
                     Timestamp = DateTime.UtcNow,
                 };
             }
@@ -255,6 +255,9 @@ public sealed class Keithley2400Adapter : ISmuDevice
     private static double ParseDouble(string text)
         => double.TryParse(text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
             ? value : 0.0;
+
+    /// <summary>Maps the SCPI not-a-number sentinel (~9.9E37) to NaN.</summary>
+    private static double Clean(double v) => Math.Abs(v) >= 9e37 ? double.NaN : v;
 
     private static string Fmt(double value) => value.ToString("G6", CultureInfo.InvariantCulture);
 }
