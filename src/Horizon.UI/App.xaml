@@ -41,6 +41,9 @@
             <DataTemplate DataType="{x:Type vms:IoSectionViewModel}">
                 <vsec:IoSectionView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vms:PneumaticSectionViewModel}">
+                <vsec:PneumaticSectionView />
+            </DataTemplate>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

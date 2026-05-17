@@ -39,12 +39,13 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         Smu = new SmuSectionViewModel(host);
         Measurement = new MeasurementSectionViewModel(host);
         Io = new IoSectionViewModel(host);
+        Pneumatic = new PneumaticSectionViewModel(host);
         Sections = new object[]
         {
             Status,
             new PlaceholderSectionViewModel("Motion", "Motion control arrives in Phase 3."),
             Io,
-            new PlaceholderSectionViewModel("Pneumatic", "Pneumatic control arrives in Phase 3."),
+            Pneumatic,
             new PlaceholderSectionViewModel("Laser", "Laser control arrives in Phase 3."),
             Measurement,
             Smu,
@@ -74,6 +75,9 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     /// <summary>The IO section, kept typed for the sampler to refresh its pin states.</summary>
     public IoSectionViewModel Io { get; }
+
+    /// <summary>The Pneumatic section, kept typed for the sampler to refresh its slide states.</summary>
+    public PneumaticSectionViewModel Pneumatic { get; }
 
     /// <summary>Engine + workflow log lines, oldest first, capped at <see cref="MaxLogLines"/>.</summary>
     public ObservableCollection<LogLineViewModel> Log { get; } = new();
@@ -114,10 +118,11 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     private void OnTick()
     {
-        // The SMU + Measurement + IO readouts are cheap (cached state) — stay on the UI thread.
+        // The SMU + Measurement + IO + Pneumatic readouts are cheap (cached state) — stay on the UI thread.
         Smu.Refresh();
         Measurement.Refresh();
         Io.Refresh();
+        Pneumatic.Refresh();
 
         // GetStatusSnapshot() reads each device's IsConnected, which takes the
         // adapter lock a 2 s hardware poll also holds during VISA/SCPI I/O — so
