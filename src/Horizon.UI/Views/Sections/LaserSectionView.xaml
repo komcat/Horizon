@@ -1,0 +1,82 @@
+<UserControl x:Class="Horizon.UI.Views.Sections.LaserSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Background="#161618">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Device picker -->
+        <Border Grid.Row="0" Background="#1E1E22" BorderBrush="#3A3A40" BorderThickness="1" Padding="12">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Device" Foreground="#8A8A92" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ListBox Style="{StaticResource DeviceSelector}" VerticalAlignment="Center" Margin="0,0,16,0"
+                         ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" />
+                <TextBlock Text="Connected" Foreground="#8A8A92" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Connected}" Foreground="#E0E0E0" Margin="8,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <!-- TEC group -->
+        <Border Grid.Row="1" Background="#1E1E22" BorderBrush="#3A3A40" BorderThickness="1,0,1,1" Padding="12,8">
+            <StackPanel>
+                <TextBlock Text="TEC" Foreground="#4FC3F7" FontWeight="SemiBold" Margin="0,0,0,6" />
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Temperature" Foreground="#8A8A92" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Temperature}" Foreground="#4FC3F7" FontFamily="Consolas"
+                               Width="90" Margin="8,0,16,0" VerticalAlignment="Center" />
+                    <TextBlock Text="setpoint" Foreground="#8A8A92" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding SetpointTemperature}" Foreground="#9AA0A6" FontFamily="Consolas"
+                               Width="90" Margin="8,0,24,0" VerticalAlignment="Center" />
+                    <TextBlock Text="Set °C" Foreground="#8A8A92" VerticalAlignment="Center" />
+                    <TextBox Width="64" Margin="8,0,8,0" VerticalAlignment="Center" Text="{Binding TemperatureSetpoint}" />
+                    <Button Content="Set" Width="56" Height="26" Margin="0,0,16,0"
+                            Command="{Binding SetTemperatureCommand}" />
+                    <Button Content="TEC On" Width="74" Height="26" Margin="0,0,6,0"
+                            Command="{Binding TecOnCommand}" />
+                    <Button Content="TEC Off" Width="74" Height="26" Margin="0,0,16,0"
+                            Command="{Binding TecOffCommand}" />
+                    <TextBlock Text="On" Foreground="#8A8A92" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding TecOn}" Foreground="#E0E0E0" Margin="6,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Laser-diode group -->
+        <Border Grid.Row="2" Background="#1E1E22" BorderBrush="#3A3A40" BorderThickness="1,0,1,1" Padding="12,8">
+            <StackPanel>
+                <TextBlock Text="Laser diode" Foreground="#4FC3F7" FontWeight="SemiBold" Margin="0,0,0,6" />
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Current" Foreground="#8A8A92" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding LaserCurrent}" Foreground="#4FC3F7" FontFamily="Consolas"
+                               Width="90" Margin="8,0,16,0" VerticalAlignment="Center" />
+                    <TextBlock Text="setpoint" Foreground="#8A8A92" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding SetpointLaserCurrent}" Foreground="#9AA0A6" FontFamily="Consolas"
+                               Width="90" Margin="8,0,24,0" VerticalAlignment="Center" />
+                    <TextBlock Text="Set mA" Foreground="#8A8A92" VerticalAlignment="Center" />
+                    <TextBox Width="64" Margin="8,0,8,0" VerticalAlignment="Center" Text="{Binding LaserCurrentSetpoint}" />
+                    <Button Content="Set" Width="56" Height="26" Margin="0,0,16,0"
+                            Command="{Binding SetLaserCurrentCommand}" />
+                    <Button Content="Laser On" Width="74" Height="26" Margin="0,0,6,0"
+                            Command="{Binding LaserOnCommand}" />
+                    <Button Content="Laser Off" Width="74" Height="26" Margin="0,0,16,0"
+                            Command="{Binding LaserOffCommand}" />
+                    <TextBlock Text="On" Foreground="#8A8A92" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding LaserOn}" Foreground="#E0E0E0" Margin="6,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Status -->
+        <Border Grid.Row="3" Background="#1E1E22" BorderBrush="#3A3A40" BorderThickness="1,0,1,1" Padding="12,7">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Status" Foreground="#8A8A92" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Status}" Foreground="#9AA0A6" FontStyle="Italic"
+                           Margin="8,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

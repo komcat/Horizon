@@ -13,6 +13,55 @@
             <mvvm:BoolToStatusTextConverter x:Key="BoolToStatusText" />
             <BooleanToVisibilityConverter x:Key="BoolToVis" />
 
+            <!-- Horizontal device picker — a persistent button per device,
+                 single-select with the active one highlighted. Used by every
+                 Machine-page section in place of a device drop-down. -->
+            <Style x:Key="DeviceSelector" TargetType="ListBox">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+                <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Disabled" />
+                <Setter Property="ItemsPanel">
+                    <Setter.Value>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="ItemContainerStyle">
+                    <Setter.Value>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Background" Value="#2A2A30" />
+                            <Setter Property="Foreground" Value="#D0D0D4" />
+                            <Setter Property="Padding" Value="14,5" />
+                            <Setter Property="Margin" Value="0,2,6,2" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                                BorderBrush="#3A3A40" BorderThickness="1" CornerRadius="3"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="BorderBrush" Value="#4FC3F7" />
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="#2D6CDF" />
+                                                <Setter TargetName="Bd" Property="BorderBrush" Value="#2D6CDF" />
+                                                <Setter Property="Foreground" Value="White" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <!-- View resolution: the shell binds a view model; WPF picks the view. -->
             <DataTemplate DataType="{x:Type vm:HomeViewModel}">
                 <v:HomeView />
@@ -43,6 +92,12 @@
             </DataTemplate>
             <DataTemplate DataType="{x:Type vms:PneumaticSectionViewModel}">
                 <vsec:PneumaticSectionView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vms:MotionSectionViewModel}">
+                <vsec:MotionSectionView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vms:LaserSectionViewModel}">
+                <vsec:LaserSectionView />
             </DataTemplate>
         </ResourceDictionary>
     </Application.Resources>

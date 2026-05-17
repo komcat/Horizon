@@ -40,13 +40,15 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         Measurement = new MeasurementSectionViewModel(host);
         Io = new IoSectionViewModel(host);
         Pneumatic = new PneumaticSectionViewModel(host);
+        Motion = new MotionSectionViewModel(host);
+        Laser = new LaserSectionViewModel(host);
         Sections = new object[]
         {
             Status,
-            new PlaceholderSectionViewModel("Motion", "Motion control arrives in Phase 3."),
+            Motion,
             Io,
             Pneumatic,
-            new PlaceholderSectionViewModel("Laser", "Laser control arrives in Phase 3."),
+            Laser,
             Measurement,
             Smu,
             new PlaceholderSectionViewModel("Camera", "Camera live view arrives in Phase 4."),
@@ -78,6 +80,12 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     /// <summary>The Pneumatic section, kept typed for the sampler to refresh its slide states.</summary>
     public PneumaticSectionViewModel Pneumatic { get; }
+
+    /// <summary>The Motion section, kept typed for the sampler to refresh its axis positions.</summary>
+    public MotionSectionViewModel Motion { get; }
+
+    /// <summary>The Laser section, kept typed for the sampler to refresh its readouts.</summary>
+    public LaserSectionViewModel Laser { get; }
 
     /// <summary>Engine + workflow log lines, oldest first, capped at <see cref="MaxLogLines"/>.</summary>
     public ObservableCollection<LogLineViewModel> Log { get; } = new();
@@ -118,11 +126,13 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     private void OnTick()
     {
-        // The SMU + Measurement + IO + Pneumatic readouts are cheap (cached state) — stay on the UI thread.
+        // The section readouts are cheap (cached state) — stay on the UI thread.
         Smu.Refresh();
         Measurement.Refresh();
         Io.Refresh();
         Pneumatic.Refresh();
+        Motion.Refresh();
+        Laser.Refresh();
 
         // GetStatusSnapshot() reads each device's IsConnected, which takes the
         // adapter lock a 2 s hardware poll also holds during VISA/SCPI I/O — so

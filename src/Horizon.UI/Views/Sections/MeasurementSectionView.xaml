@@ -14,8 +14,8 @@
         <Border Grid.Row="0" Background="#1E1E22" BorderBrush="#3A3A40" BorderThickness="1" Padding="12">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="Device" Foreground="#8A8A92" VerticalAlignment="Center" />
-                <ComboBox Width="130" Margin="8,0,16,0" VerticalAlignment="Center"
-                          ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" />
+                <ListBox Style="{StaticResource DeviceSelector}" Margin="8,0,16,0" VerticalAlignment="Center"
+                         ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" />
                 <Button Content="Start" Width="70" Height="26" Margin="0,0,6,0"
                         Command="{Binding StartCommand}" />
                 <Button Content="Stop" Width="70" Height="26" Margin="0,0,16,0"
