@@ -1,4 +1,5 @@
 using Horizon.Engine;
+using Horizon.UI.Telemetry;
 using Horizon.Workflow;
 
 namespace Horizon.UI;
@@ -21,16 +22,30 @@ public sealed class EngineHost : IAsyncDisposable
     /// <summary>Buffered log surface — captures engine + workflow logs from launch.</summary>
     public LogHub Log { get; }
 
+    /// <summary>Live telemetry history — ring buffers fed by engine sample events.</summary>
+    public TelemetryStore Telemetry { get; }
+
+    private bool _smuWired;
+
     public EngineHost()
     {
         Engine = new HorizonEngine();
         Process = new ProcessService(Engine);
         Log = new LogHub();
+        Telemetry = new TelemetryStore();
 
         // Capture both logging surfaces from construction so startup-time
         // (InitializeAsync) lines are not lost before MainWindow exists.
+        // (Facets — Engine.Smu etc. — do not exist until InitializeAsync; the
+        // SMU streaming hook is wired in InitializeAndConnectAsync.)
         Engine.LogEmitted += Log.Add;
         Process.LogEmitted += Log.Add;
+    }
+
+    private void OnSmuSampled(SmuSample s)
+    {
+        Telemetry.Push($"{s.Device}.CH{s.Channel}.current", s.Current, s.Timestamp);
+        Telemetry.Push($"{s.Device}.CH{s.Channel}.voltage", s.Voltage, s.Timestamp);
     }
 
     /// <summary>
@@ -44,6 +59,12 @@ public sealed class EngineHost : IAsyncDisposable
         await Task.Run(async () => await Engine.InitializeAsync(ct).ConfigureAwait(false), ct)
                   .ConfigureAwait(true);
 
+        // Facets exist only after InitializeAsync — wire the SMU streaming hook
+        // now. Each sample fills two telemetry channels (current + voltage),
+        // keyed "{device}.CH{n}.{quantity}".
+        Engine.Smu.Sampled += OnSmuSampled;
+        _smuWired = true;
+
         await Engine.ConnectAllAsync(progress, ct).ConfigureAwait(true);
     }
 
@@ -51,6 +72,8 @@ public sealed class EngineHost : IAsyncDisposable
     {
         Engine.LogEmitted -= Log.Add;
         Process.LogEmitted -= Log.Add;
+        if (_smuWired)
+            Engine.Smu.Sampled -= OnSmuSampled;
         await Engine.DisposeAsync().ConfigureAwait(false);
     }
 }

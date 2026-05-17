@@ -35,6 +35,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         ReconnectCommand = new AsyncRelayCommand(ReconnectAsync);
 
         Status = new StatusSectionViewModel();
+        Smu = new SmuSectionViewModel(host);
         Sections = new object[]
         {
             Status,
@@ -43,6 +44,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
             new PlaceholderSectionViewModel("Pneumatic", "Pneumatic control arrives in Phase 3."),
             new PlaceholderSectionViewModel("Laser", "Laser control arrives in Phase 3."),
             new PlaceholderSectionViewModel("Measurement", "Measurement charts arrive in Phase 3."),
+            Smu,
             new PlaceholderSectionViewModel("Camera", "Camera live view arrives in Phase 4."),
         };
         _currentSection = Status;
@@ -60,6 +62,9 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     /// <summary>The Status section, kept typed for the sampler to push snapshots into.</summary>
     public StatusSectionViewModel Status { get; }
+
+    /// <summary>The SMU section, kept typed for the sampler to refresh its readout.</summary>
+    public SmuSectionViewModel Smu { get; }
 
     /// <summary>Engine + workflow log lines, oldest first, capped at <see cref="MaxLogLines"/>.</summary>
     public ObservableCollection<LogLineViewModel> Log { get; } = new();
@@ -107,6 +112,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         DeviceSummary = $"{connected} / {snapshot.Devices.Count} connected";
 
         Status.Apply(snapshot);
+        Smu.Refresh();
     }
 
     private async Task ReconnectAsync()
@@ -139,5 +145,9 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
         OnDeactivated();
         _host.Log.Appended -= OnLogAppended;
+
+        // Tidy — stop SMU streaming if the page is torn down while active.
+        // (The engine also stops every stream on its own dispose.)
+        _ = Smu.StopIfStreamingAsync();
     }
 }

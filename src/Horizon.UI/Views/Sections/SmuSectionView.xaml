@@ -1,0 +1,70 @@
+<UserControl x:Class="Horizon.UI.Views.Sections.SmuSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Background="#161618">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Streaming controls -->
+        <Border Grid.Row="0" Background="#1E1E22" BorderBrush="#3A3A40" BorderThickness="1" Padding="12">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Device" Foreground="#8A8A92" VerticalAlignment="Center" />
+                <ComboBox Width="130" Margin="8,0,16,0" VerticalAlignment="Center"
+                          ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" />
+                <TextBlock Text="Channel" Foreground="#8A8A92" VerticalAlignment="Center" />
+                <TextBox Width="44" Margin="8,0,16,0" VerticalAlignment="Center"
+                         Text="{Binding Channel}" />
+                <TextBlock Text="Interval ms" Foreground="#8A8A92" VerticalAlignment="Center" />
+                <TextBox Width="60" Margin="8,0,16,0" VerticalAlignment="Center"
+                         Text="{Binding IntervalMs}" />
+                <Button Content="Start streaming" Width="120" Height="28" Margin="0,0,8,0"
+                        Command="{Binding StartCommand}" />
+                <Button Content="Stop streaming" Width="120" Height="28"
+                        Command="{Binding StopCommand}" />
+            </StackPanel>
+        </Border>
+
+        <!-- Live numeric readout -->
+        <Border Grid.Row="1" Background="#1E1E22" BorderBrush="#3A3A40" BorderThickness="1,0,1,1"
+                Padding="12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="110" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Connected" Foreground="#8A8A92" Margin="0,2" />
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Connected}" Foreground="#E0E0E0" Margin="0,2" />
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Streaming" Foreground="#8A8A92" Margin="0,2" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding IsStreaming}" Foreground="#E0E0E0" Margin="0,2" />
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Current" Foreground="#8A8A92" Margin="0,2" />
+                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LatestCurrent}" Foreground="#4FC3F7"
+                           FontFamily="Consolas" FontSize="15" Margin="0,2" />
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Voltage" Foreground="#8A8A92" Margin="0,2" />
+                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding LatestVoltage}" Foreground="#4FC3F7"
+                           FontFamily="Consolas" FontSize="15" Margin="0,2" />
+
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Samples" Foreground="#8A8A92" Margin="0,2" />
+                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SampleCount}" Foreground="#E0E0E0"
+                           FontFamily="Consolas" Margin="0,2" />
+            </Grid>
+        </Border>
+
+        <TextBlock Grid.Row="2" Margin="12" VerticalAlignment="Top" Foreground="#6A6A72"
+                   FontSize="11" TextWrapping="Wrap"
+                   Text="Live SMU streaming readout, fed by the Layer 1 facet via the telemetry store. The trend chart arrives in Phase 5." />
+    </Grid>
+</UserControl>
