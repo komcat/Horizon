@@ -194,6 +194,28 @@ internal sealed class StepDispatcher
             case "psu.outputoff":
                 return await _engine.PowerSupply.OutputOffAsync(step.Device, PsuChannel(step, ctx));
 
+            case "psu.readvoltage":
+            case "psu.readcurrent":
+            {
+                await _engine.PowerSupply.RefreshAsync();
+                var state = _engine.PowerSupply.GetState(step.Device);
+                if (!state.Valid)
+                    return Result.Fail(ErrorCode.OperationFailed,
+                        $"Power supply '{step.Device}' has no readings yet.");
+                var channel = PsuChannel(step, ctx);
+                var pch = state.Channels.FirstOrDefault(c => c.Channel == channel);
+                if (pch == null)
+                    return Result.Fail(ErrorCode.InvalidParameter,
+                        $"Channel {channel} not found for '{step.Device}'.");
+                var isCurrent = step.Op.EndsWith("current", StringComparison.OrdinalIgnoreCase);
+                var value = isCurrent ? pch.Current : pch.Voltage;
+                var captureAs = Str(step, "captureAs", ctx);
+                if (!string.IsNullOrWhiteSpace(captureAs)) ctx.Set(captureAs, value);
+                _log(LogLevel.Info, $"{step.Device} CH{channel} {(isCurrent ? "current" : "voltage")} = {value}" +
+                    (string.IsNullOrWhiteSpace(captureAs) ? "" : $" -> {captureAs}"));
+                return Result.Ok();
+            }
+
             case "lighting.connect":
                 return await _engine.Lighting.ConnectAsync(step.Device, ct);
 
@@ -219,6 +241,45 @@ internal sealed class StepDispatcher
             case "tec.tecoff":
                 return await _engine.Tec.TecOffAsync(step.Device);
 
+            case "tec.readtemperature":
+            {
+                await _engine.Tec.RefreshAsync();
+                var state = _engine.Tec.GetState(step.Device);
+                if (!state.Valid)
+                    return Result.Fail(ErrorCode.OperationFailed,
+                        $"TEC '{step.Device}' has no readings yet.");
+                if (double.IsNaN(state.Temperature))
+                    return Result.Fail(ErrorCode.OperationFailed,
+                        $"TEC '{step.Device}' has no temperature reading (check thermistor).");
+                var captureAs = Str(step, "captureAs", ctx);
+                if (!string.IsNullOrWhiteSpace(captureAs)) ctx.Set(captureAs, state.Temperature);
+                _log(LogLevel.Info, $"{step.Device} temperature = {state.Temperature:F2} C" +
+                    (string.IsNullOrWhiteSpace(captureAs) ? "" : $" -> {captureAs}"));
+                return Result.Ok();
+            }
+
+            case "tec.waitfortemperature":
+            {
+                var target = Num(step, "celsius", ctx);
+                var tol = Has(step, "toleranceC") ? Num(step, "toleranceC", ctx) : 1.0;
+                var timeoutMs = Has(step, "timeoutMs") ? (int)Num(step, "timeoutMs", ctx) : 60000;
+                var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+                while (true)
+                {
+                    await _engine.Tec.RefreshAsync();
+                    var t = _engine.Tec.GetState(step.Device).Temperature;
+                    if (!double.IsNaN(t) && Math.Abs(t - target) <= tol)
+                    {
+                        _log(LogLevel.Info, $"{step.Device} reached {t:F2} C (target {target:F2}).");
+                        return Result.Ok();
+                    }
+                    if (DateTime.UtcNow >= deadline)
+                        return Result.Fail(ErrorCode.OperationFailed,
+                            $"TEC '{step.Device}' did not reach {target:F2} C within {timeoutMs} ms (last {t:F2} C).");
+                    await Task.Delay(500, ct).ConfigureAwait(false);
+                }
+            }
+
             case "smu.connect":
                 return await _engine.Smu.ConnectAsync(step.Device, ct);
 
@@ -236,6 +297,21 @@ internal sealed class StepDispatcher
 
             case "smu.outputoff":
                 return await _engine.Smu.OutputOffAsync(step.Device);
+
+            case "smu.readcurrent":
+            case "smu.readvoltage":
+            {
+                var channel = Has(step, "channel") ? (int)Num(step, "channel", ctx) : 1;
+                var r = await _engine.Smu.ReadMeasurementAsync(step.Device, channel);
+                if (!r.IsSuccess) return Result.Fail(r.Error, r.Message);
+                var isCurrent = step.Op.EndsWith("current", StringComparison.OrdinalIgnoreCase);
+                var value = isCurrent ? r.Value.Current : r.Value.Voltage;
+                var captureAs = Str(step, "captureAs", ctx);
+                if (!string.IsNullOrWhiteSpace(captureAs)) ctx.Set(captureAs, value);
+                _log(LogLevel.Info, $"{step.Device} CH{r.Value.Channel} {(isCurrent ? "current" : "voltage")} = {value}" +
+                    (string.IsNullOrWhiteSpace(captureAs) ? "" : $" -> {captureAs}"));
+                return Result.Ok();
+            }
 
             case "flow.wait":
             {

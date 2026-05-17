@@ -90,6 +90,39 @@ internal sealed class RecipeMethodRegistry : IRecipeMethodInvoker
             _engine.PowerSupply.OutputOnAsync(d, a.Int("channel", 1))));
         Register("psu", "outputOff", Hw("psu", (d, a, ctx, ct) =>
             _engine.PowerSupply.OutputOffAsync(d, a.Int("channel", 1))));
+
+        Register("psu", "readVoltage", Hw("psu", async (d, a, ctx, ct) =>
+        {
+            await _engine.PowerSupply.RefreshAsync().ConfigureAwait(false);
+            var state = _engine.PowerSupply.GetState(d);
+            if (!state.Valid)
+                return Result.Fail(ErrorCode.OperationFailed, $"power supply '{d}' has no readings yet");
+            int channel = a.Int("channel", 1);
+            var ch = state.Channels.FirstOrDefault(c => c.Channel == channel);
+            if (ch == null)
+                return Result.Fail(ErrorCode.InvalidParameter, $"channel {channel} not found for '{d}'");
+            var store = a.Text("store");
+            if (!string.IsNullOrWhiteSpace(store)) ctx.Set(store, RecipeValue.Number(ch.Voltage));
+            _log(LogLevel.Info, $"{d} CH{channel} voltage = {ch.Voltage:F4} V" +
+                (string.IsNullOrWhiteSpace(store) ? "" : $" → {store}"));
+            return Result.Ok();
+        }));
+        Register("psu", "readCurrent", Hw("psu", async (d, a, ctx, ct) =>
+        {
+            await _engine.PowerSupply.RefreshAsync().ConfigureAwait(false);
+            var state = _engine.PowerSupply.GetState(d);
+            if (!state.Valid)
+                return Result.Fail(ErrorCode.OperationFailed, $"power supply '{d}' has no readings yet");
+            int channel = a.Int("channel", 1);
+            var ch = state.Channels.FirstOrDefault(c => c.Channel == channel);
+            if (ch == null)
+                return Result.Fail(ErrorCode.InvalidParameter, $"channel {channel} not found for '{d}'");
+            var store = a.Text("store");
+            if (!string.IsNullOrWhiteSpace(store)) ctx.Set(store, RecipeValue.Number(ch.Current));
+            _log(LogLevel.Info, $"{d} CH{channel} current = {ch.Current:E4} A" +
+                (string.IsNullOrWhiteSpace(store) ? "" : $" → {store}"));
+            return Result.Ok();
+        }));
     }
 
     // --- lighting ---
@@ -110,6 +143,43 @@ internal sealed class RecipeMethodRegistry : IRecipeMethodInvoker
             _engine.Tec.SetTemperatureAsync(d, a.Number("celsius"))));
         Register("tec", "tecOn", Hw("tec", (d, a, ctx, ct) => _engine.Tec.TecOnAsync(d)));
         Register("tec", "tecOff", Hw("tec", (d, a, ctx, ct) => _engine.Tec.TecOffAsync(d)));
+
+        Register("tec", "readTemperature", Hw("tec", async (d, a, ctx, ct) =>
+        {
+            await _engine.Tec.RefreshAsync().ConfigureAwait(false);
+            var state = _engine.Tec.GetState(d);
+            if (!state.Valid)
+                return Result.Fail(ErrorCode.OperationFailed, $"TEC '{d}' has no readings yet");
+            if (double.IsNaN(state.Temperature))
+                return Result.Fail(ErrorCode.OperationFailed,
+                    $"TEC '{d}' has no temperature reading (check thermistor)");
+            var store = a.Text("store");
+            if (!string.IsNullOrWhiteSpace(store)) ctx.Set(store, RecipeValue.Number(state.Temperature));
+            _log(LogLevel.Info, $"{d} temperature = {state.Temperature:F2} C" +
+                (string.IsNullOrWhiteSpace(store) ? "" : $" → {store}"));
+            return Result.Ok();
+        }));
+        Register("tec", "waitForTemperature", Hw("tec", async (d, a, ctx, ct) =>
+        {
+            double target = a.Number("celsius");
+            double tol = a.Number("toleranceC", 1.0);
+            int timeoutMs = a.Int("timeoutMs", 60000);
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            while (true)
+            {
+                await _engine.Tec.RefreshAsync().ConfigureAwait(false);
+                var t = _engine.Tec.GetState(d).Temperature;
+                if (!double.IsNaN(t) && Math.Abs(t - target) <= tol)
+                {
+                    _log(LogLevel.Info, $"{d} reached {t:F2} C (target {target:F2} ±{tol})");
+                    return Result.Ok();
+                }
+                if (DateTime.UtcNow >= deadline)
+                    return Result.Fail(ErrorCode.OperationFailed,
+                        $"TEC '{d}' did not reach {target:F2} C within {timeoutMs} ms (last {t:F2} C)");
+                await Task.Delay(500, ct).ConfigureAwait(false);
+            }
+        }));
     }
 
     // --- SMU ---
@@ -125,6 +195,27 @@ internal sealed class RecipeMethodRegistry : IRecipeMethodInvoker
             _engine.Smu.SetComplianceAsync(d, a.Number("value"))));
         Register("smu", "outputOn", Hw("smu", (d, a, ctx, ct) => _engine.Smu.OutputOnAsync(d)));
         Register("smu", "outputOff", Hw("smu", (d, a, ctx, ct) => _engine.Smu.OutputOffAsync(d)));
+
+        Register("smu", "readCurrent", Hw("smu", async (d, a, ctx, ct) =>
+        {
+            var r = await _engine.Smu.ReadMeasurementAsync(d, a.Int("channel", 1)).ConfigureAwait(false);
+            if (!r.IsSuccess) return Result.Fail(r.Error, r.Message);
+            var store = a.Text("store");
+            if (!string.IsNullOrWhiteSpace(store)) ctx.Set(store, RecipeValue.Number(r.Value.Current));
+            _log(LogLevel.Info, $"{d} CH{r.Value.Channel} current = {r.Value.Current:E4} A" +
+                (string.IsNullOrWhiteSpace(store) ? "" : $" → {store}"));
+            return Result.Ok();
+        }));
+        Register("smu", "readVoltage", Hw("smu", async (d, a, ctx, ct) =>
+        {
+            var r = await _engine.Smu.ReadMeasurementAsync(d, a.Int("channel", 1)).ConfigureAwait(false);
+            if (!r.IsSuccess) return Result.Fail(r.Error, r.Message);
+            var store = a.Text("store");
+            if (!string.IsNullOrWhiteSpace(store)) ctx.Set(store, RecipeValue.Number(r.Value.Voltage));
+            _log(LogLevel.Info, $"{d} CH{r.Value.Channel} voltage = {r.Value.Voltage:F4} V" +
+                (string.IsNullOrWhiteSpace(store) ? "" : $" → {store}"));
+            return Result.Ok();
+        }));
     }
 
     private void Register(string domain, string method, RecipeMethod handler)
