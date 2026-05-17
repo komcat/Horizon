@@ -24,4 +24,10 @@ public interface ISmuDevice
     SmuError OutputOff();
 
     SmuStatus GetStatus();
+
+    /// <summary>Takes one fresh current+voltage measurement from a channel (1-based).</summary>
+    SmuReading ReadMeasurement(int channel);
+
+    /// <summary>Fast mode trades accuracy for speed (low NPLC, autozero off, fixed range).</summary>
+    SmuError SetFastMode(bool fast);
 }

@@ -62,6 +62,12 @@ public sealed class SmuManager : IDisposable
 
     public SmuStatus? GetStatus(string device) => GetDevice(device)?.GetStatus();
 
+    public SmuReading? ReadMeasurement(string device, int channel)
+        => GetDevice(device)?.ReadMeasurement(channel);
+
+    public SmuError SetFastMode(string device, bool fast)
+        => With(device, d => d.SetFastMode(fast));
+
     private SmuError With(string device, Func<ISmuDevice, SmuError> action)
     {
         var d = GetDevice(device);

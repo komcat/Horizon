@@ -22,3 +22,6 @@ public sealed record SmuState(
 
 /// <summary>Raised on <see cref="ISmuFacet.StateChanged"/> when a unit's polled state changes.</summary>
 public sealed record SmuStateChanged(string Device, SmuState State);
+
+/// <summary>A single on-demand measurement from one SMU channel (1-based).</summary>
+public sealed record SmuReading(int Channel, double Current, double Voltage, DateTime Timestamp);

@@ -1167,6 +1167,10 @@ internal sealed class ConsoleApp
         const string SetCompliance = "Set compliance";
         const string OutputOn = "Output ON";
         const string OutputOff = "Output OFF";
+        const string ReadMeasurement = "Read measurement";
+        const string ContinuousRead = "Continuous read";
+        const string FastOn = "Fast mode ON";
+        const string FastOff = "Fast mode OFF";
         const string Refresh = "Refresh";
 
         while (true)
@@ -1177,7 +1181,8 @@ internal sealed class ConsoleApp
             var connected = _engine.Smu.IsConnected(device);
             var choices = new List<string>();
             if (connected)
-                choices.AddRange(new[] { SourceVoltage, SourceCurrent, SetCompliance, OutputOn, OutputOff, Disconnect });
+                choices.AddRange(new[] { SourceVoltage, SourceCurrent, SetCompliance, OutputOn, OutputOff,
+                                         ReadMeasurement, ContinuousRead, FastOn, FastOff, Disconnect });
             else
                 choices.Add(Connect);
             choices.Add(Refresh);
@@ -1214,12 +1219,101 @@ internal sealed class ConsoleApp
                 case OutputOff:
                     ReportResult(await _engine.Smu.OutputOffAsync(device), $"Output OFF {device}");
                     break;
+                case ReadMeasurement:
+                    var ch = AnsiConsole.Prompt(new TextPrompt<int>("Channel:").DefaultValue(1));
+                    var reading = await _engine.Smu.ReadMeasurementAsync(device, ch);
+                    if (reading.IsSuccess)
+                        AnsiConsole.MarkupLineInterpolated(
+                            $"[green]CH{reading.Value.Channel}[/] — {reading.Value.Current:E4} A, {reading.Value.Voltage:F4} V");
+                    else
+                        AnsiConsole.MarkupLineInterpolated($"[red]Read failed[/] — {reading.Message}");
+                    break;
+                case ContinuousRead:
+                    await SmuContinuousReadAsync(device);
+                    break;
+                case FastOn:
+                    ReportResult(await _engine.Smu.SetFastModeAsync(device, true), $"Fast mode ON {device}");
+                    break;
+                case FastOff:
+                    ReportResult(await _engine.Smu.SetFastModeAsync(device, false), $"Fast mode OFF {device}");
+                    break;
                 case Refresh:
                     break;
                 case Back:
                     return;
             }
         }
+    }
+
+    /// <summary>
+    /// Streams measurements from one SMU channel into a live, in-place display,
+    /// reading as fast as the instrument allows (use Fast mode for the highest
+    /// rate) until a key is pressed. The redraw is throttled to ~10 Hz; the read
+    /// loop itself runs full speed.
+    /// </summary>
+    private async Task SmuContinuousReadAsync(string device)
+    {
+        var channel = AnsiConsole.Prompt(new TextPrompt<int>("Channel:").DefaultValue(1));
+        AnsiConsole.MarkupLine("[yellow]Continuous read — press any key to stop.[/]");
+
+        using var cts = new CancellationTokenSource();
+        var start = DateTime.UtcNow;
+        var lastRefresh = start;
+        long samples = 0;
+        SmuReading? latest = null;
+        var error = string.Empty;
+
+        await AnsiConsole.Live(BuildSmuReadDisplay(device, channel, latest, samples, TimeSpan.Zero, error))
+            .StartAsync(async ctx =>
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    var r = await _engine.Smu.ReadMeasurementAsync(device, channel);
+                    if (r.IsSuccess) { latest = r.Value; samples++; error = string.Empty; }
+                    else error = r.Message;
+
+                    var now = DateTime.UtcNow;
+                    if ((now - lastRefresh).TotalMilliseconds >= 100)
+                    {
+                        ctx.UpdateTarget(BuildSmuReadDisplay(device, channel, latest, samples, now - start, error));
+                        ctx.Refresh();
+                        lastRefresh = now;
+                    }
+
+                    if (Console.KeyAvailable)
+                    {
+                        Console.ReadKey(intercept: true);
+                        cts.Cancel();
+                        break;
+                    }
+                }
+            });
+
+        var elapsed = DateTime.UtcNow - start;
+        var rate = elapsed.TotalSeconds > 0 ? samples / elapsed.TotalSeconds : 0;
+        AnsiConsole.MarkupLineInterpolated(
+            $"[green]Stopped[/] — {samples} samples in {elapsed.TotalSeconds:F1} s ({rate:F1}/s).");
+    }
+
+    private static IRenderable BuildSmuReadDisplay(
+        string device, int channel, SmuReading? latest, long samples, TimeSpan elapsed, string error)
+    {
+        var rate = elapsed.TotalSeconds > 0 ? samples / elapsed.TotalSeconds : 0;
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Property");
+        table.AddColumn("Value");
+        table.AddRow("Device", Markup.Escape($"{device}  CH{channel}"));
+        table.AddRow("Current", latest == null ? "[grey]—[/]" : $"{latest.Current:E4} A");
+        table.AddRow("Voltage", latest == null ? "[grey]—[/]" : $"{latest.Voltage:F4} V");
+        table.AddRow("Samples", samples.ToString());
+        table.AddRow("Elapsed", $"{elapsed.TotalSeconds:F1} s");
+        table.AddRow("Rate", $"{rate:F1} /s");
+        if (!string.IsNullOrEmpty(error))
+            table.AddRow("Last error", $"[red]{Markup.Escape(error)}[/]");
+
+        return new Rows(
+            new Markup("[aqua]SMU continuous read[/] — [grey]press any key to stop.[/]"),
+            table);
     }
 
     private void RenderSmuDevice(string device)

@@ -88,6 +88,24 @@ internal sealed class SmuFacet : ISmuFacet, IAsyncDisposable
     public Task<Result> OutputOffAsync(string device)
         => Task.Run(() => Map(device, _manager.OutputOff(device)));
 
+    public Task<Result<SmuReading>> ReadMeasurementAsync(string device, int channel)
+        => Task.Run(() =>
+        {
+            var d = _manager.GetDevice(device);
+            if (d == null)
+                return Result<SmuReading>.Fail(ErrorCode.OperationFailed, $"SMU '{device}' not found.");
+            if (!d.IsConnected)
+                return Result<SmuReading>.Fail(ErrorCode.OperationFailed, $"SMU '{device}' is not connected.");
+
+            var r = _manager.ReadMeasurement(device, channel);
+            return r == null
+                ? Result<SmuReading>.Fail(ErrorCode.OperationFailed, $"SMU '{device}' read failed.")
+                : Result<SmuReading>.Ok(new SmuReading(r.Channel, r.Current, r.Voltage, r.Timestamp));
+        });
+
+    public Task<Result> SetFastModeAsync(string device, bool fast)
+        => Task.Run(() => Map(device, _manager.SetFastMode(device, fast)));
+
     public event Action<SmuStateChanged>? StateChanged;
 
     /// <summary>Connects all SMUs and starts polling.</summary>

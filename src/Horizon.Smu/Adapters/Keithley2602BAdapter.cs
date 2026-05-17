@@ -184,6 +184,57 @@ public sealed class Keithley2602BAdapter : ISmuDevice
         }
     }
 
+    public SmuReading ReadMeasurement(int channel)
+    {
+        lock (_lock)
+        {
+            if (!_connected)
+                return new SmuReading { Channel = channel, Timestamp = DateTime.UtcNow };
+            try
+            {
+                // Read the requested channel directly — independent of the
+                // constructor's default _smu, so either channel is readable.
+                var smu = channel == 2 ? "smub" : "smua";
+                var parts = Query($"print({smu}.measure.iv())")
+                    .Split(new[] { '\t', ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                return new SmuReading
+                {
+                    Channel = channel,
+                    Current = parts.Length > 0 ? ParseDouble(parts[0]) : 0.0,
+                    Voltage = parts.Length > 1 ? ParseDouble(parts[1]) : 0.0,
+                    Timestamp = DateTime.UtcNow,
+                };
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.Message;
+                Log.Error(ex, "[SMU] {Device}: ReadMeasurement failed", _config.Name);
+                return new SmuReading { Channel = channel, Timestamp = DateTime.UtcNow };
+            }
+        }
+    }
+
+    public SmuError SetFastMode(bool fast)
+        => Command(() =>
+        {
+            // Standard 2600-series TSP fast-measurement settings — isolated
+            // here for bench tuning. Fast trades accuracy for sample rate.
+            if (fast)
+            {
+                Write($"{_smu}.measure.nplc = 0.001");
+                Write($"{_smu}.measure.autozero = {_smu}.AUTOZERO_OFF");
+                Write($"{_smu}.measure.autorangei = {_smu}.AUTORANGE_OFF");
+            }
+            else
+            {
+                Write($"{_smu}.measure.nplc = {Fmt(_config.MeasurementNplc)}");
+                Write($"{_smu}.measure.autozero = {_smu}.AUTOZERO_AUTO");
+                Write(_config.AutoRange
+                    ? $"{_smu}.measure.autorangei = {_smu}.AUTORANGE_ON"
+                    : $"{_smu}.measure.rangei = {Fmt(_config.FixedRange)}");
+            }
+        });
+
     private SmuError Command(Action action)
     {
         lock (_lock)

@@ -39,6 +39,12 @@ public interface ISmuFacet
     Task<Result> OutputOnAsync(string device);
     Task<Result> OutputOffAsync(string device);
 
+    /// <summary>Takes one fresh measurement from a channel (1-based), bypassing the poll cache.</summary>
+    Task<Result<SmuReading>> ReadMeasurementAsync(string device, int channel);
+
+    /// <summary>Switches the instrument between fast (low-NPLC) and normal measurement mode.</summary>
+    Task<Result> SetFastModeAsync(string device, bool fast);
+
     /// <summary>Raised (edge-triggered) when a device's polled state changes.</summary>
     event Action<SmuStateChanged>? StateChanged;
 }

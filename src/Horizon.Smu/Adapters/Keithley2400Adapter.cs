@@ -182,6 +182,39 @@ public sealed class Keithley2400Adapter : ISmuDevice
         }
     }
 
+    public SmuReading ReadMeasurement(int channel)
+    {
+        lock (_lock)
+        {
+            if (!_connected)
+                return new SmuReading { Channel = channel, Timestamp = DateTime.UtcNow };
+            try
+            {
+                // :FORM:ELEM VOLT,CURR is set at connect -> :READ? returns "volts,current".
+                // The 2400 is single-channel; the channel argument is ignored.
+                var parts = Query(":READ?").Split(',');
+                return new SmuReading
+                {
+                    Channel = channel,
+                    Voltage = parts.Length > 0 ? ParseDouble(parts[0]) : 0.0,
+                    Current = parts.Length > 1 ? ParseDouble(parts[1]) : 0.0,
+                    Timestamp = DateTime.UtcNow,
+                };
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.Message;
+                Log.Error(ex, "[SMU] {Device}: ReadMeasurement failed", _config.Name);
+                return new SmuReading { Channel = channel, Timestamp = DateTime.UtcNow };
+            }
+        }
+    }
+
+    public SmuError SetFastMode(bool fast)
+        => Command(() => WriteCommand(fast
+            ? ":SENS:CURR:NPLC 0.01"
+            : $":SENS:CURR:NPLC {Fmt(_config.MeasurementNplc)}"));
+
     private SmuError Command(Action action)
     {
         lock (_lock)
