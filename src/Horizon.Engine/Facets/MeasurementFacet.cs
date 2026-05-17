@@ -19,6 +19,10 @@ internal sealed class MeasurementFacet : IMeasurementFacet
     private readonly Dictionary<string, MeasurementDeviceInfo> _devices = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, MeasurementState> _state = new(StringComparer.OrdinalIgnoreCase);
 
+    // The manager runs a single poll loop, so only one device fast-streams at a
+    // time. Tracks which device (if any) currently holds the fast loop.
+    private volatile string? _streamingDevice;
+
     public MeasurementFacet(
         CurrentMeasurementManager manager,
         Action<HardwareStatusChanged> emitStatus,
@@ -32,7 +36,11 @@ internal sealed class MeasurementFacet : IMeasurementFacet
         {
             var dev = _manager.GetDevice(name);
             var channelCount = dev?.ChannelCount ?? 0;
-            var enabled = dev?.EnabledChannels?.ToList() ?? new List<int>();
+            // An empty EnabledChannels means "all channels" — surface 1..count
+            // so consumers (UI, workflow) always see the full channel set.
+            var enabled = dev?.EnabledChannels is { Count: > 0 } configured
+                ? configured.ToList()
+                : Enumerable.Range(1, Math.Max(channelCount, 0)).ToList();
             _devices[name] = new MeasurementDeviceInfo(name, channelCount, enabled);
             _state[name] = MeasurementState.Unknown;
         }
@@ -74,6 +82,42 @@ internal sealed class MeasurementFacet : IMeasurementFacet
 
     public Task<Result> ResetAsync(string device)
         => Task.Run(() => Map(_manager.ResetDevice(device), $"Reset '{device}'"));
+
+    public bool IsStreaming(string device)
+        => string.Equals(_streamingDevice, device, StringComparison.OrdinalIgnoreCase);
+
+    public Task<Result> StartStreamingAsync(string device)
+        => Task.Run(() =>
+        {
+            if (!_devices.ContainsKey(device))
+                return Result.Fail(ErrorCode.CMeasDeviceNotFound, $"Measurement device '{device}' not found.");
+            if (!IsConnected(device))
+                return Result.Fail(ErrorCode.CMeasDisconnected, $"Measurement device '{device}' is not connected.");
+
+            // StartFastPolling configures NPLC 0.1 + :INIT:CONT ON and runs a
+            // tight ReadAllChannels loop — the proven fast path (~20–80 Hz).
+            if (_manager.StartFastPolling(device))
+            {
+                _streamingDevice = device;
+                _log(LogLevel.Info, $"Measurement '{device}' fast streaming started.");
+                return Result.Ok();
+            }
+            return Result.Fail(ErrorCode.CMeasOperationFailed,
+                $"Measurement '{device}' failed to start fast streaming.");
+        });
+
+    public Task<Result> StopStreamingAsync(string device)
+        => Task.Run(() =>
+        {
+            if (!IsStreaming(device))
+                return Result.Ok();   // idempotent — nothing streaming
+
+            _manager.StopFastPolling(device);   // stops fast loop + restores default mode
+            _streamingDevice = null;
+            _manager.StartPolling();            // resume the normal-rate status poll
+            _log(LogLevel.Info, $"Measurement '{device}' fast streaming stopped.");
+            return Result.Ok();
+        });
 
     public Task<Result<string>> GetIdentityAsync(string device)
         => Task.Run(() =>

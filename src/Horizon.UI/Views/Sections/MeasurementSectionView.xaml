@@ -1,0 +1,74 @@
+<UserControl x:Class="Horizon.UI.Views.Sections.MeasurementSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vsec="clr-namespace:Horizon.UI.Views.Sections">
+    <Grid Background="#161618">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Device-level controls -->
+        <Border Grid.Row="0" Background="#1E1E22" BorderBrush="#3A3A40" BorderThickness="1" Padding="12">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Device" Foreground="#8A8A92" VerticalAlignment="Center" />
+                <ComboBox Width="130" Margin="8,0,16,0" VerticalAlignment="Center"
+                          ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" />
+                <Button Content="Start" Width="70" Height="26" Margin="0,0,6,0"
+                        Command="{Binding StartCommand}" />
+                <Button Content="Stop" Width="70" Height="26" Margin="0,0,16,0"
+                        Command="{Binding StopCommand}" />
+                <TextBlock Text="Streaming" Foreground="#8A8A92" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding IsStreaming}" Foreground="#4FC3F7"
+                           Margin="6,0,16,0" VerticalAlignment="Center" />
+                <TextBlock Text="Connected" Foreground="#8A8A92" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Connected}" Foreground="#E0E0E0" Margin="8,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <!-- Keithley source-voltage config strip -->
+        <Border Grid.Row="1" Background="#1E1E22" BorderBrush="#3A3A40" BorderThickness="1,0,1,1" Padding="12,8">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Source V" Foreground="#8A8A92" VerticalAlignment="Center" />
+                <TextBox Width="70" Margin="8,0,8,0" VerticalAlignment="Center" Text="{Binding SourceVoltage}" />
+                <Button Content="Apply" Width="64" Height="26" Margin="0,0,16,0"
+                        Command="{Binding ApplyVoltageCommand}" />
+                <Button Content="{Binding OutputButtonText}" Width="84" Height="26" Margin="0,0,8,0"
+                        Command="{Binding ToggleOutputCommand}" />
+                <Button Content="Reset" Width="64" Height="26" Margin="0,0,16,0"
+                        Command="{Binding ResetCommand}" />
+                <TextBlock Text="{Binding Status}" Foreground="#8A8A92" FontStyle="Italic"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <!-- Per-channel readout strips — the picoammeter polls continuously -->
+        <ItemsControl Grid.Row="2" ItemsSource="{Binding Channels}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Background="#1E1E22" BorderBrush="#3A3A40" BorderThickness="1,0,1,1" Padding="10,6">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Title}" Foreground="#4FC3F7" FontWeight="SemiBold"
+                                       Width="90" VerticalAlignment="Center" />
+                            <TextBlock Text="I" Foreground="#8A8A92" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding LatestCurrent}" Foreground="#4FC3F7" FontFamily="Consolas"
+                                       Margin="6,0,16,0" VerticalAlignment="Center" />
+                            <TextBlock Text="Samples" Foreground="#8A8A92" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding SampleCount}" Foreground="#E0E0E0" FontFamily="Consolas"
+                                       Margin="6,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- One combined chart — a colour-coded current trace per channel.
+             Fixed 300x200 for a predictable layout. -->
+        <vsec:MeasurementChartView Grid.Row="3" Margin="0,8,0,0"
+                                   Width="300" Height="200"
+                                   HorizontalAlignment="Left" VerticalAlignment="Top" />
+
+    </Grid>
+</UserControl>

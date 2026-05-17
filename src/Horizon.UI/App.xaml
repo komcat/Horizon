@@ -35,6 +35,9 @@
             <DataTemplate DataType="{x:Type vms:SmuSectionViewModel}">
                 <vsec:SmuSectionView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vms:MeasurementSectionViewModel}">
+                <vsec:MeasurementSectionView />
+            </DataTemplate>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

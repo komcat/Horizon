@@ -37,6 +37,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
         Status = new StatusSectionViewModel();
         Smu = new SmuSectionViewModel(host);
+        Measurement = new MeasurementSectionViewModel(host);
         Sections = new object[]
         {
             Status,
@@ -44,7 +45,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
             new PlaceholderSectionViewModel("IO", "IO control arrives in Phase 3."),
             new PlaceholderSectionViewModel("Pneumatic", "Pneumatic control arrives in Phase 3."),
             new PlaceholderSectionViewModel("Laser", "Laser control arrives in Phase 3."),
-            new PlaceholderSectionViewModel("Measurement", "Measurement charts arrive in Phase 3."),
+            Measurement,
             Smu,
             new PlaceholderSectionViewModel("Camera", "Camera live view arrives in Phase 4."),
         };
@@ -66,6 +67,9 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     /// <summary>The SMU section, kept typed for the sampler to refresh its readout.</summary>
     public SmuSectionViewModel Smu { get; }
+
+    /// <summary>The Measurement section, kept typed for the sampler to refresh its readout.</summary>
+    public MeasurementSectionViewModel Measurement { get; }
 
     /// <summary>Engine + workflow log lines, oldest first, capped at <see cref="MaxLogLines"/>.</summary>
     public ObservableCollection<LogLineViewModel> Log { get; } = new();
@@ -106,8 +110,9 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     private void OnTick()
     {
-        // The SMU readout is cheap (cached telemetry) — stays on the UI thread.
+        // The SMU + Measurement readouts are cheap (cached telemetry) — stay on the UI thread.
         Smu.Refresh();
+        Measurement.Refresh();
 
         // GetStatusSnapshot() reads each device's IsConnected, which takes the
         // adapter lock a 2 s hardware poll also holds during VISA/SCPI I/O — so
@@ -165,8 +170,9 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         OnDeactivated();
         _host.Log.Appended -= OnLogAppended;
 
-        // Tidy — stop SMU streaming if the page is torn down while active.
-        // (The engine also stops every stream on its own dispose.)
+        // Tidy — stop SMU + Measurement streaming if the page is torn down
+        // while active. (The engine also stops every stream on its own dispose.)
         _ = Smu.StopIfStreamingAsync();
+        _ = Measurement.StopIfStreamingAsync();
     }
 }

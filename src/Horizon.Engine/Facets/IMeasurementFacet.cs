@@ -32,6 +32,19 @@ public interface IMeasurementFacet
     /// <summary>Resets the instrument (`*RST`).</summary>
     Task<Result> ResetAsync(string device);
 
+    /// <summary>Whether the device is fast-streaming — continuous low-NPLC reads (~20–80 Hz).</summary>
+    bool IsStreaming(string device);
+
+    /// <summary>
+    /// Switches the device to fast continuous reads (NPLC 0.1, `:INIT:CONT ON`).
+    /// One `:READ?` returns every channel; readings still arrive via
+    /// <see cref="StateChanged"/>, just much faster than the normal poll.
+    /// </summary>
+    Task<Result> StartStreamingAsync(string device);
+
+    /// <summary>Stops fast streaming, restores normal mode, and resumes the normal-rate poll. Idempotent.</summary>
+    Task<Result> StopStreamingAsync(string device);
+
     /// <summary>Reads the instrument identity string (`*IDN?`).</summary>
     Task<Result<string>> GetIdentityAsync(string device);
 

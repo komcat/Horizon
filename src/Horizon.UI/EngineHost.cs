@@ -26,6 +26,7 @@ public sealed class EngineHost : IAsyncDisposable
     public TelemetryStore Telemetry { get; }
 
     private bool _smuWired;
+    private bool _measurementWired;
 
     public EngineHost()
     {
@@ -48,6 +49,17 @@ public sealed class EngineHost : IAsyncDisposable
         Telemetry.Push($"{s.Device}.CH{s.Channel}.voltage", s.Voltage, s.Timestamp);
     }
 
+    private void OnMeasurementChanged(MeasurementChanged m)
+    {
+        // The Keithley 6482 picoammeter polls continuously once connected, so
+        // every poll update streams straight into telemetry — no Start needed.
+        // Channels are 0-based in the state; telemetry keys are 1-based.
+        var now = DateTime.UtcNow;
+        var channels = m.State.Channels;
+        for (int i = 0; i < channels.Count; i++)
+            Telemetry.Push($"{m.Device}.CH{i + 1}.current", channels[i], now);
+    }
+
     /// <summary>
     /// Brings the engine up: config load + device build, then connect-all.
     /// <see cref="HorizonEngine.InitializeAsync"/> does synchronous config file
@@ -65,6 +77,11 @@ public sealed class EngineHost : IAsyncDisposable
         Engine.Smu.Sampled += OnSmuSampled;
         _smuWired = true;
 
+        // Same telemetry pipeline for the measure-only Keithley 6482 — driven
+        // by the facet's per-poll StateChanged event rather than a stream.
+        Engine.Measurement.StateChanged += OnMeasurementChanged;
+        _measurementWired = true;
+
         await Engine.ConnectAllAsync(progress, ct).ConfigureAwait(true);
     }
 
@@ -74,6 +91,8 @@ public sealed class EngineHost : IAsyncDisposable
         Process.LogEmitted -= Log.Add;
         if (_smuWired)
             Engine.Smu.Sampled -= OnSmuSampled;
+        if (_measurementWired)
+            Engine.Measurement.StateChanged -= OnMeasurementChanged;
         await Engine.DisposeAsync().ConfigureAwait(false);
     }
 }

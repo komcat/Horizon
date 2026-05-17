@@ -24,6 +24,31 @@ public sealed class Keithley6482Adapter : ICurrentMeasurementDevice
         _config = config;
     }
 
+    /// <summary>SCPI <c>:FORM:ELEM</c> list covering every channel, e.g. "CURR1,CURR2".</summary>
+    private string ChannelElements =>
+        string.Join(",", Enumerable.Range(1, _config.ChannelCount).Select(c => $"CURR{c}"));
+
+    /// <summary>Applies the configured integration time and range to every channel.</summary>
+    private void ApplySenseConfig()
+    {
+        var nplc = _config.MeasurementNplc.ToString("G6", CultureInfo.InvariantCulture);
+        for (int ch = 1; ch <= _config.ChannelCount; ch++)
+        {
+            WriteCommand($":SENS{ch}:CURR:NPLC {nplc}");
+            if (_config.AutoRange || _config.FixedRange <= 0)
+            {
+                WriteCommand($":SENS{ch}:CURR:RANG:AUTO ON");
+            }
+            else
+            {
+                WriteCommand($":SENS{ch}:CURR:RANG:AUTO OFF");
+                WriteCommand($":SENS{ch}:CURR:RANG {_config.FixedRange.ToString("G6", CultureInfo.InvariantCulture)}");
+            }
+        }
+        Log.Information("[CMeas] Keithley6482 {Name} sense config — {Channels} ch, NPLC={Nplc}, AutoRange={Auto}, FixedRange={Range}",
+            _config.Name, _config.ChannelCount, _config.MeasurementNplc, _config.AutoRange, _config.FixedRange);
+    }
+
     public bool Connect()
     {
         lock (_lock)
@@ -56,8 +81,10 @@ public sealed class Keithley6482Adapter : ICurrentMeasurementDevice
 
                 // Clear any pending errors/data
                 WriteCommand("*CLS");
-                // Return only the reading value (strip timestamp, units, etc.)
-                WriteCommand(":FORM:ELEM READ");
+                // Return one current reading per channel, comma-separated.
+                WriteCommand($":FORM:ELEM {ChannelElements}");
+                // Apply the configured integration time + range to every channel.
+                ApplySenseConfig();
 
                 Log.Information("[CMeas] Keithley6482 {Name} connected OK", _config.Name);
                 return true;
@@ -245,7 +272,7 @@ public sealed class Keithley6482Adapter : ICurrentMeasurementDevice
                 WriteCommand(":SYST:AZER ON");
                 WriteCommand(":DISP:ENAB OFF");
                 WriteCommand(":INIT:CONT ON");
-                WriteCommand(":FORM:ELEM CURR1,CURR2");
+                WriteCommand($":FORM:ELEM {ChannelElements}");
                 WriteCommand(":FORM:DATA ASC");
 
                 return CurrentMeasurementError.Success;
@@ -265,18 +292,16 @@ public sealed class Keithley6482Adapter : ICurrentMeasurementDevice
 
             try
             {
-                Log.Information("[CMeas] Keithley6482 {Name} switching to DefaultMode (NPLC=1.0)", _config.Name);
-                // Default mode (~10 Hz): NPLC=1.0, accurate
+                Log.Information("[CMeas] Keithley6482 {Name} switching to DefaultMode (NPLC={Nplc})",
+                    _config.Name, _config.MeasurementNplc);
+                // Default mode (~10 Hz): configured NPLC + range, accurate.
                 WriteCommand(":INIT:CONT OFF");
                 WriteCommand(":DISP:ENAB ON");
-                WriteCommand(":SENS1:CURR:NPLC 1.0");
-                WriteCommand(":SENS2:CURR:NPLC 1.0");
-                WriteCommand(":SENS1:CURR:RANG:AUTO ON");
-                WriteCommand(":SENS2:CURR:RANG:AUTO ON");
+                ApplySenseConfig();
                 WriteCommand(":SENS1:CURR:AVER:STAT OFF");
                 WriteCommand(":SENS2:CURR:AVER:STAT OFF");
                 WriteCommand(":SYST:AZER ON");
-                WriteCommand(":FORM:ELEM READ");
+                WriteCommand($":FORM:ELEM {ChannelElements}");
 
                 return CurrentMeasurementError.Success;
             }
@@ -299,7 +324,9 @@ public sealed class Keithley6482Adapter : ICurrentMeasurementDevice
                 WriteCommand("*RST");
                 Thread.Sleep(500);
                 WriteCommand("*CLS");
-                WriteCommand(":FORM:ELEM READ");
+                WriteCommand($":FORM:ELEM {ChannelElements}");
+                // *RST wipes NPLC/range — re-apply the configured values.
+                ApplySenseConfig();
 
                 return CurrentMeasurementError.Success;
             }
