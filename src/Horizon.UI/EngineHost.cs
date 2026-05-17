@@ -85,7 +85,14 @@ public sealed class EngineHost : IAsyncDisposable
         await Engine.ConnectAllAsync(progress, ct).ConfigureAwait(true);
     }
 
-    public async ValueTask DisposeAsync()
+    /// <summary>
+    /// Detaches engine event hooks, then runs the engine's ordered hardware
+    /// shutdown. <paramref name="progress"/> receives a line per teardown step —
+    /// the <see cref="ShutdownWindow"/> binds it. Idempotent: the engine's
+    /// shutdown is state-gated, so a second call (the App.OnExit safety net)
+    /// no-ops.
+    /// </summary>
+    public async Task ShutdownAsync(IProgress<string>? progress = null)
     {
         Engine.LogEmitted -= Log.Add;
         Process.LogEmitted -= Log.Add;
@@ -93,6 +100,8 @@ public sealed class EngineHost : IAsyncDisposable
             Engine.Smu.Sampled -= OnSmuSampled;
         if (_measurementWired)
             Engine.Measurement.StateChanged -= OnMeasurementChanged;
-        await Engine.DisposeAsync().ConfigureAwait(false);
+        await Engine.ShutdownAsync(progress).ConfigureAwait(false);
     }
+
+    public async ValueTask DisposeAsync() => await ShutdownAsync().ConfigureAwait(false);
 }

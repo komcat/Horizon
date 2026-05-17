@@ -6,7 +6,7 @@ namespace Horizon.UI;
 /// <summary>
 /// Application entry point. Builds the <see cref="EngineHost"/> composition root
 /// and shows the <see cref="StartupWindow"/>, which runs the connect sequence
-/// and hands off to <see cref="MainWindow"/>.
+/// and hands off to <see cref="ShellWindow"/>.
 /// </summary>
 public partial class App : Application
 {

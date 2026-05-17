@@ -512,7 +512,13 @@ public sealed class HorizonEngine : IHorizonEngine
         return new HardwareStatusSnapshot(state, devices);
     }
 
-    public async Task ShutdownAsync()
+    /// <summary>
+    /// Stops every hardware domain and disconnects all devices, in a fixed safe
+    /// order (watchdog first, IO last). State-gated — a second call no-ops, so
+    /// it is safe for both the UI shutdown screen and a fallback App.OnExit.
+    /// <paramref name="progress"/> receives one line per teardown step.
+    /// </summary>
+    public async Task ShutdownAsync(IProgress<string>? progress = null)
     {
         lock (_gate)
         {
@@ -520,6 +526,7 @@ public sealed class HorizonEngine : IHorizonEngine
             _state = EngineState.ShuttingDown;
         }
 
+        progress?.Report("Stopping safety watchdog…");
         _safetyFacet?.Dispose();   // unsubscribes from watchdog events
         _safetyFacet = null;
         _safetyWatch?.Dispose();   // stops the 50 ms watch loop before motion/IO teardown
@@ -528,60 +535,71 @@ public sealed class HorizonEngine : IHorizonEngine
         _visionFacet?.Dispose();   // unsubscribes from camera frames
         _visionFacet = null;
 
+        progress?.Report("Disconnecting camera…");
         if (_cameraFacet != null)
             await _cameraFacet.DisposeAsync().ConfigureAwait(false);   // stops the camera poll loop, unsubscribes
         _cameraManager?.Dispose();
         _cameraManager = null;
         _cameraFacet = null;
 
+        progress?.Report("Disconnecting laser controller…");
         if (_laserFacet != null)
             await _laserFacet.DisposeAsync().ConfigureAwait(false);   // stops the laser poll loop
         _laserManager?.Dispose();
         _laserManager = null;
         _laserFacet = null;
 
+        progress?.Report("Disconnecting power supply…");
         if (_powerSupplyFacet != null)
             await _powerSupplyFacet.DisposeAsync().ConfigureAwait(false);   // stops the power-supply poll loop
         _powerSupplyManager?.Dispose();
         _powerSupplyManager = null;
         _powerSupplyFacet = null;
 
+        progress?.Report("Disconnecting lighting…");
         if (_lightingFacet != null)
             await _lightingFacet.DisposeAsync().ConfigureAwait(false);   // stops the lighting poll loop
         _lightingManager?.Dispose();
         _lightingManager = null;
         _lightingFacet = null;
 
+        progress?.Report("Disconnecting TEC…");
         if (_tecFacet != null)
             await _tecFacet.DisposeAsync().ConfigureAwait(false);   // stops the TEC poll loop
         _tecManager?.Dispose();
         _tecManager = null;
         _tecFacet = null;
 
+        progress?.Report("Disconnecting SMU…");
         if (_smuFacet != null)
             await _smuFacet.DisposeAsync().ConfigureAwait(false);   // stops the SMU poll loop
         _smuManager?.Dispose();
         _smuManager = null;
         _smuFacet = null;
 
+        progress?.Report("Disconnecting measurement devices…");
         _measurementManager?.Dispose();   // stops its poll loop, disconnects devices
         _measurementManager = null;
         _measurementFacet = null;
 
+        progress?.Report("Disconnecting pneumatics…");
         if (_pneumaticFacet != null)
             await _pneumaticFacet.DisposeAsync().ConfigureAwait(false);   // stops the pneumatic poll loop
         _pneumaticFacet = null;
 
+        progress?.Report("Disconnecting motion…");
         if (_motionFacet != null)
             await _motionFacet.DisposeAsync().ConfigureAwait(false);   // stops the motion poll loop
         _motionManager?.DisconnectAll();
         _motionManager = null;
         _motionFacet = null;
 
+        progress?.Report("Disconnecting IO…");
         _ioManager?.Dispose();   // stops IO polling, disconnects all IO devices
         _ioManager = null;
         _ioFacet = null;
 
+        progress?.Report("Engine shut down.");
         Log(LogLevel.Info, "Engine shut down.");
     }
 

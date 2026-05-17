@@ -170,9 +170,10 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         OnDeactivated();
         _host.Log.Appended -= OnLogAppended;
 
-        // Tidy — stop SMU + Measurement streaming if the page is torn down
-        // while active. (The engine also stops every stream on its own dispose.)
-        _ = Smu.StopIfStreamingAsync();
-        _ = Measurement.StopIfStreamingAsync();
+        // Pure UI cleanup only — no hardware teardown here. Stopping every
+        // SMU/Measurement stream and disconnecting devices is owned by the
+        // engine's ShutdownAsync, which App.OnExit awaits immediately after
+        // this page is disposed. Doing it here too (unawaited, fire-and-forget)
+        // would only race that ordered teardown.
     }
 }

@@ -137,6 +137,7 @@ public sealed class CurrentMeasurementManager : IDisposable
 
     public void StartPolling(int intervalMs = 500)
     {
+        if (_disposed) return;   // never resurrect a poll loop after shutdown
         StopPolling();
         _pollCts = new CancellationTokenSource();
         _pollTimer = new PeriodicTimer(TimeSpan.FromMilliseconds(intervalMs));
@@ -150,6 +151,7 @@ public sealed class CurrentMeasurementManager : IDisposable
     /// </summary>
     public bool StartFastPolling(string deviceName)
     {
+        if (_disposed) return false;   // never resurrect a poll loop after shutdown
         if (!_devices.TryGetValue(deviceName, out var device) || !device.IsConnected)
             return false;
 

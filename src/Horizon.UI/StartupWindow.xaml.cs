@@ -6,7 +6,7 @@ namespace Horizon.UI;
 /// <summary>
 /// The startup / connect screen. Runs the engine bring-up sequence
 /// (<see cref="EngineHost.InitializeAndConnectAsync"/>) off the UI thread,
-/// streaming progress, then hands off to <see cref="MainWindow"/>. On failure it
+/// streaming progress, then hands off to <see cref="ShellWindow"/>. On failure it
 /// offers Retry / Exit rather than leaving a dead window.
 /// </summary>
 public partial class StartupWindow : Window

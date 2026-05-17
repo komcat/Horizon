@@ -55,8 +55,11 @@ public interface IHorizonEngine : IAsyncDisposable
     /// <summary>Synchronous, cached status view — safe to call from any thread, never blocks on hardware.</summary>
     HardwareStatusSnapshot GetStatusSnapshot();
 
-    /// <summary>Stops and disconnects all hardware. Idempotent.</summary>
-    Task ShutdownAsync();
+    /// <summary>
+    /// Stops and disconnects all hardware in a fixed safe order. Idempotent.
+    /// <paramref name="progress"/> receives one line per teardown step.
+    /// </summary>
+    Task ShutdownAsync(IProgress<string>? progress = null);
 
     /// <summary>Raised when a device's cached status changes.</summary>
     event Action<HardwareStatusChanged>? StatusChanged;

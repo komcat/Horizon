@@ -81,6 +81,9 @@ public sealed class Keithley6482Adapter : ICurrentMeasurementDevice
 
                 // Clear any pending errors/data
                 WriteCommand("*CLS");
+                // Restore the front-panel display — a prior session torn down
+                // mid-fast-stream leaves it off (ConfigureFastMode disables it).
+                WriteCommand(":DISP:ENAB ON");
                 // Return one current reading per channel, comma-separated.
                 WriteCommand($":FORM:ELEM {ChannelElements}");
                 // Apply the configured integration time + range to every channel.
