@@ -37,13 +37,19 @@ public sealed class Keithley2602BAdapter : ISmuDevice
     {
         _config = config;
         (_host, _port) = ParseResource(config.VisaResource);
-        var channel = config.EnabledChannels.Count > 0 ? config.EnabledChannels[0] : 1;
-        _smu = channel == 2 ? "smub" : "smua";
+        Channels = config.EnabledChannels.Count > 0
+            ? config.EnabledChannels.ToList()
+            : Enumerable.Range(1, Math.Max(1, config.ChannelCount)).ToList();
+        _smu = TspName(Channels.Count > 0 ? Channels[0] : 1);
     }
 
     public string DeviceName => _config.Name;
     public string ControllerType => _config.Type;
+    public IReadOnlyList<int> Channels { get; }
     public bool IsConnected { get { lock (_lock) return _connected; } }
+
+    /// <summary>TSP channel name — channel 2 is <c>smub</c>, everything else <c>smua</c>.</summary>
+    private static string TspName(int channel) => channel == 2 ? "smub" : "smua";
 
     public bool Connect()
     {
@@ -194,7 +200,7 @@ public sealed class Keithley2602BAdapter : ISmuDevice
             {
                 // Read the requested channel directly — independent of the
                 // constructor's default _smu, so either channel is readable.
-                var smu = channel == 2 ? "smub" : "smua";
+                var smu = TspName(channel);
                 var parts = Query($"print({smu}.measure.iv())")
                     .Split(new[] { '\t', ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
                 return new SmuReading
@@ -217,21 +223,26 @@ public sealed class Keithley2602BAdapter : ISmuDevice
     public SmuError SetFastMode(bool fast)
         => Command(() =>
         {
-            // Standard 2600-series TSP fast-measurement settings — isolated
-            // here for bench tuning. Fast trades accuracy for sample rate.
-            if (fast)
+            // Standard 2600-series TSP fast-measurement settings — applied to
+            // every configured channel so a later-started stream is already in
+            // fast mode. Isolated here for bench tuning.
+            foreach (var channel in Channels)
             {
-                Write($"{_smu}.measure.nplc = 0.001");
-                Write($"{_smu}.measure.autozero = {_smu}.AUTOZERO_OFF");
-                Write($"{_smu}.measure.autorangei = {_smu}.AUTORANGE_OFF");
-            }
-            else
-            {
-                Write($"{_smu}.measure.nplc = {Fmt(_config.MeasurementNplc)}");
-                Write($"{_smu}.measure.autozero = {_smu}.AUTOZERO_AUTO");
-                Write(_config.AutoRange
-                    ? $"{_smu}.measure.autorangei = {_smu}.AUTORANGE_ON"
-                    : $"{_smu}.measure.rangei = {Fmt(_config.FixedRange)}");
+                var smu = TspName(channel);
+                if (fast)
+                {
+                    Write($"{smu}.measure.nplc = 0.001");
+                    Write($"{smu}.measure.autozero = {smu}.AUTOZERO_OFF");
+                    Write($"{smu}.measure.autorangei = {smu}.AUTORANGE_OFF");
+                }
+                else
+                {
+                    Write($"{smu}.measure.nplc = {Fmt(_config.MeasurementNplc)}");
+                    Write($"{smu}.measure.autozero = {smu}.AUTOZERO_AUTO");
+                    Write(_config.AutoRange
+                        ? $"{smu}.measure.autorangei = {smu}.AUTORANGE_ON"
+                        : $"{smu}.measure.rangei = {Fmt(_config.FixedRange)}");
+                }
             }
         });
 

@@ -14,8 +14,6 @@ public sealed class TelemetryChannel
     private readonly object _lock = new();
     private int _head;
     private int _count;
-    private DateTime _origin;
-    private bool _originSet;
 
     public TelemetryChannel(string key, int capacity = 500)
     {
@@ -44,17 +42,16 @@ public sealed class TelemetryChannel
         }
     }
 
-    /// <summary>Appends a sample. Timestamps are stored relative to the first push.</summary>
-    public void Push(double value, DateTime timestamp)
+    /// <summary>
+    /// Appends a sample. Timestamps are stored relative to <paramref name="origin"/>
+    /// — a single origin shared by every channel in the store, so all channels
+    /// sit on one common time axis regardless of when each started.
+    /// </summary>
+    public void Push(double value, DateTime timestamp, DateTime origin)
     {
         lock (_lock)
         {
-            if (!_originSet)
-            {
-                _origin = timestamp;
-                _originSet = true;
-            }
-            _timestamps[_head] = (timestamp - _origin).TotalSeconds;
+            _timestamps[_head] = (timestamp - origin).TotalSeconds;
             _values[_head] = value;
             _head = (_head + 1) % _capacity;
             if (_count < _capacity) _count++;
@@ -87,7 +84,6 @@ public sealed class TelemetryChannel
         {
             _head = 0;
             _count = 0;
-            _originSet = false;
         }
     }
 }

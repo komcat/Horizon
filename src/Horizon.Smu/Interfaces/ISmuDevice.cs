@@ -11,6 +11,9 @@ public interface ISmuDevice
     string DeviceName { get; }
     string ControllerType { get; }
 
+    /// <summary>The device's usable channel numbers (1-based).</summary>
+    IReadOnlyList<int> Channels { get; }
+
     /// <summary>Switches to voltage-source mode and sets the level (V).</summary>
     SmuError SetSourceVoltage(double volts);
 

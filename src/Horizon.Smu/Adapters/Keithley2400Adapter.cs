@@ -25,6 +25,7 @@ public sealed class Keithley2400Adapter : ISmuDevice
 
     public string DeviceName => _config.Name;
     public string ControllerType => _config.Type;
+    public IReadOnlyList<int> Channels { get; } = new[] { 1 };   // 2400 is single-channel
     public bool IsConnected { get { lock (_lock) return _connected; } }
 
     public bool Connect()

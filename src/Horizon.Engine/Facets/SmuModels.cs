@@ -1,7 +1,7 @@
 namespace Horizon.Engine;
 
 /// <summary>Static description of a source-measure unit.</summary>
-public sealed record SmuDeviceInfo(string Name, string ControllerType);
+public sealed record SmuDeviceInfo(string Name, string ControllerType, IReadOnlyList<int> Channels);
 
 /// <summary>
 /// Cached state of a source-measure unit. <see cref="Valid"/> is false until
