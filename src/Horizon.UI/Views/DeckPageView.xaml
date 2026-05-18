@@ -25,8 +25,9 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="*" MinHeight="120" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="120" />
         </Grid.RowDefinitions>
 
         <!-- Toolbar -->
@@ -128,6 +129,34 @@
                 <TextBlock Text="{Binding Status}" Foreground="#9AA0A6" FontStyle="Italic"
                            VerticalAlignment="Center" />
             </StackPanel>
+        </Border>
+
+        <!-- Execution log -->
+        <Border Grid.Row="4" Background="#161618" BorderBrush="#3A3A40" BorderThickness="1" Margin="0,8,0,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Execution log" Foreground="#8A8A92"
+                           FontWeight="SemiBold" Padding="10,6" />
+                <ListBox x:Name="LogList" Grid.Row="1" ItemsSource="{Binding Log}"
+                         Background="Transparent" BorderThickness="0" Foreground="#9AA0A6"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11.5"
+                                       TextWrapping="Wrap" Margin="10,1" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

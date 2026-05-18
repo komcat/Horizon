@@ -94,6 +94,7 @@ internal sealed class WorkflowRunner
             }
 
             _onStep(new WorkflowStepEvent(index, steps.Count, desc, Completed: false, Success: false, Message: ""));
+            _log(LogLevel.Info, $"Step {index + 1}/{steps.Count}: {desc}");
 
             Result result;
             try

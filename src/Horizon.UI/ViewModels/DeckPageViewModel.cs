@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Threading;
+using Horizon.Engine;
 using Horizon.UI.Mvvm;
 using Horizon.Workflow;
 
@@ -59,6 +60,9 @@ public sealed class DeckPageViewModel : PageViewModel
     /// <summary>The editable entries of the current deck.</summary>
     public ObservableCollection<DeckEntryViewModel> Entries { get; } = new();
 
+    /// <summary>Live execution log — workflow lines while a deck runs.</summary>
+    public ObservableCollection<string> Log { get; } = new();
+
     public string? SelectedDeck
     {
         get => _selectedDeck;
@@ -98,10 +102,14 @@ public sealed class DeckPageViewModel : PageViewModel
         _programs = _host.Process.ListPrograms();
         RefreshDecks();
         _host.Process.DeckStepEvent += OnDeckStep;
+        _host.Process.LogEmitted += OnLog;
     }
 
     public override void OnDeactivated()
-        => _host.Process.DeckStepEvent -= OnDeckStep;
+    {
+        _host.Process.DeckStepEvent -= OnDeckStep;
+        _host.Process.LogEmitted -= OnLog;
+    }
 
     /// <summary>Reloads decks + programs after the picked product changes.</summary>
     private void RefreshForProduct()
@@ -206,6 +214,7 @@ public sealed class DeckPageViewModel : PageViewModel
     {
         foreach (var entry in Entries)
             entry.RunStatus = "—";
+        Log.Clear();
 
         var deck = BuildDeck();
         _runCts = new CancellationTokenSource();
@@ -245,6 +254,23 @@ public sealed class DeckPageViewModel : PageViewModel
             Entries[p.Index].RunStatus = !p.Completed
                 ? "Running"
                 : p.Success ? "Passed" : "Failed";
+        }
+    }
+
+    private const int MaxLogLines = 500;
+
+    private void OnLog(LogEntry entry)
+    {
+        if (_dispatcher.CheckAccess())
+            Append(entry);
+        else
+            _dispatcher.BeginInvoke(() => Append(entry));
+
+        void Append(LogEntry e)
+        {
+            Log.Add($"{e.Timestamp:HH:mm:ss}  {e.Message}");
+            while (Log.Count > MaxLogLines)
+                Log.RemoveAt(0);
         }
     }
 }
