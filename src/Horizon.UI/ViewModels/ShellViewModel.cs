@@ -25,8 +25,7 @@ public sealed class ShellViewModel : ObservableObject, IShellNavigator, IDisposa
             "Process Trainer",
             new[] { "Trainer system", "Dispense", "Calibration (needle)" },
             "Each trainer UI arrives in Phases 8–10.");
-        var programming = new PlaceholderPageViewModel(
-            "Programming", "The WPF process / recipe editor arrives in Phase 6.");
+        var programming = new ProgramEditorPageViewModel(host);
         var sequence = new DeckPageViewModel(host);
 
         _home = new HomeViewModel(new[]
