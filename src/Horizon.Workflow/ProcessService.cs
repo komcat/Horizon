@@ -323,15 +323,19 @@ public sealed class ProcessService : IProcessService
     public IReadOnlyList<string> ListDecks()
         => _decks?.List() ?? Array.Empty<string>();
 
+    public string? ActiveDeck => _decks?.ActiveDeck;
+
     public Result<WorkflowDeck> LoadDeck(string name)
     {
         if (_decks == null)
             return Result<WorkflowDeck>.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
 
         var deck = _decks.Load(name);
-        return deck == null
-            ? Result<WorkflowDeck>.Fail(ErrorCode.FileNotFound, $"Deck '{name}' not found.")
-            : Result<WorkflowDeck>.Ok(deck);
+        if (deck == null)
+            return Result<WorkflowDeck>.Fail(ErrorCode.FileNotFound, $"Deck '{name}' not found.");
+
+        _decks.SetActive(name);   // loading a deck makes it the auto-loaded one
+        return Result<WorkflowDeck>.Ok(deck);
     }
 
     public Result SaveDeck(WorkflowDeck deck)
@@ -342,6 +346,7 @@ public sealed class ProcessService : IProcessService
             return Result.Fail(ErrorCode.InvalidParameter, "Deck name is required.");
 
         _decks.Save(deck);
+        _decks.SetActive(deck.Name);
         Log(LogLevel.Info, $"Deck saved: {deck.Name}");
         return Result.Ok();
     }

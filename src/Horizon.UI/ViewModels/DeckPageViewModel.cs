@@ -101,8 +101,21 @@ public sealed class DeckPageViewModel : PageViewModel
         OnPropertyChanged(nameof(SelectedProduct));
         _programs = _host.Process.ListPrograms();
         RefreshDecks();
+        AutoSelectActiveDeck();
         _host.Process.DeckStepEvent += OnDeckStep;
         _host.Process.LogEmitted += OnLog;
+    }
+
+    /// <summary>
+    /// Selects the product's last-used deck. The <see cref="SelectedDeck"/>
+    /// setter loads it; its change-check means re-entering the page does not
+    /// reload (and discard) an in-progress edit.
+    /// </summary>
+    private void AutoSelectActiveDeck()
+    {
+        var active = _host.Process.ActiveDeck;
+        if (active != null && Decks.Contains(active))
+            SelectedDeck = active;
     }
 
     public override void OnDeactivated()
@@ -120,6 +133,7 @@ public sealed class DeckPageViewModel : PageViewModel
         _selectedDeck = null;
         OnPropertyChanged(nameof(SelectedDeck));
         RunCommand.RaiseCanExecuteChanged();
+        AutoSelectActiveDeck();
     }
 
     private void RefreshDecks()
@@ -143,7 +157,7 @@ public sealed class DeckPageViewModel : PageViewModel
     }
 
     private DeckEntryViewModel NewEntry(string program, bool enabled, string condition)
-        => new(_programs, RemoveEntry, MoveEntryUp, MoveEntryDown)
+        => new(_programs, RunEntryAsync, RemoveEntry, MoveEntryUp, MoveEntryDown)
         {
             Program = string.IsNullOrEmpty(program) ? null : program,
             Enabled = enabled,
@@ -210,8 +224,47 @@ public sealed class DeckPageViewModel : PageViewModel
             }).ToList(),
         };
 
+    /// <summary>Runs one entry's program standalone (ignores conditions) — for testing.</summary>
+    private async Task RunEntryAsync(DeckEntryViewModel entry)
+    {
+        if (IsRunning) return;
+        if (string.IsNullOrWhiteSpace(entry.Program)) { Status = "No program selected for this entry."; return; }
+
+        var load = _host.Process.LoadProgram(entry.Program);
+        if (!load.IsSuccess) { Status = load.Message; return; }
+
+        foreach (var e in Entries)
+            e.RunStatus = "—";
+        Log.Clear();
+        entry.RunStatus = "Running";
+        _runCts = new CancellationTokenSource();
+        IsRunning = true;
+        Status = $"Running '{entry.Program}'…";
+        try
+        {
+            var result = await _host.Process.RunAsync(load.Value, _runCts.Token).ConfigureAwait(true);
+            entry.RunStatus = result.IsSuccess ? "Passed" : "Failed";
+            Status = result.IsSuccess
+                ? $"Program completed: {entry.Program}"
+                : $"Program failed — {result.Message}";
+        }
+        catch (Exception ex)
+        {
+            entry.RunStatus = "Failed";
+            Status = $"Program error: {ex.Message}";
+        }
+        finally
+        {
+            IsRunning = false;
+            _runCts?.Dispose();
+            _runCts = null;
+        }
+    }
+
     private async Task RunAsync()
     {
+        if (IsRunning) return;
+
         foreach (var entry in Entries)
             entry.RunStatus = "—";
         Log.Clear();

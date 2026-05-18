@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Horizon.Engine;
 
 namespace Horizon.Workflow;
@@ -18,6 +19,7 @@ internal sealed class PositionStore
 
     private readonly string _path;
     private readonly List<PositionRecord> _positions;
+    private string _productName = string.Empty;
 
     public PositionStore(string productDir)
     {
@@ -76,6 +78,7 @@ internal sealed class PositionStore
         try
         {
             var doc = JsonSerializer.Deserialize<PositionsFile>(File.ReadAllText(_path), JsonOptions);
+            _productName = doc?.ProductName ?? string.Empty;
             return doc?.Positions ?? new();
         }
         catch
@@ -88,17 +91,27 @@ internal sealed class PositionStore
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
         File.WriteAllText(_path,
-            JsonSerializer.Serialize(new PositionsFile { Positions = _positions }, JsonOptions));
+            JsonSerializer.Serialize(
+                new PositionsFile { ProductName = _productName, Positions = _positions }, JsonOptions));
     }
 
+    // Field names match the shared positions.json written by the legacy app:
+    // points[] / deviceName / positionName. x..w match case-insensitively.
     private sealed record PositionsFile
     {
+        [JsonPropertyName("productName")]
+        public string ProductName { get; init; } = string.Empty;
+
+        [JsonPropertyName("points")]
         public List<PositionRecord> Positions { get; init; } = new();
     }
 
     private sealed record PositionRecord
     {
+        [JsonPropertyName("deviceName")]
         public string Device { get; init; } = string.Empty;
+
+        [JsonPropertyName("positionName")]
         public string Name { get; init; } = string.Empty;
         public double X { get; init; }
         public double Y { get; init; }

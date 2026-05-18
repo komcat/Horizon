@@ -116,8 +116,13 @@ internal sealed class StepDispatcher
                 return await _engine.Measurement.SetVoltageEnabledAsync(step.Device, false);
 
             case "measurement.startpolling":
+                // Starts fast streaming (NPLC 0.1) — the same path the Machine
+                // page's Measurement Start button drives. The engine's normal
+                // slow poll always runs; this is the high-rate mode.
+                return await _engine.Measurement.StartStreamingAsync(step.Device);
+
             case "measurement.stoppolling":
-                return Result.Ok();   // engine polls measurement continuously — no-op
+                return await _engine.Measurement.StopStreamingAsync(step.Device);
 
             case "measurement.readcurrent":
             {

@@ -98,6 +98,9 @@ public interface IProcessService
     /// <summary>Deck names in the active product.</summary>
     IReadOnlyList<string> ListDecks();
 
+    /// <summary>Name of the last-used deck in the active product — auto-loaded by the editor; null if none.</summary>
+    string? ActiveDeck { get; }
+
     /// <summary>Loads a deck by name.</summary>
     Result<WorkflowDeck> LoadDeck(string name);
 
