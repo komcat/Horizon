@@ -42,6 +42,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         Pneumatic = new PneumaticSectionViewModel(host);
         Motion = new MotionSectionViewModel(host);
         Laser = new LaserSectionViewModel(host);
+        Camera = new CameraSectionViewModel(host);
         Sections = new object[]
         {
             Status,
@@ -51,7 +52,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
             Laser,
             Measurement,
             Smu,
-            new PlaceholderSectionViewModel("Camera", "Camera live view arrives in Phase 4."),
+            Camera,
         };
         _currentSection = Status;
 
@@ -86,6 +87,9 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     /// <summary>The Laser section, kept typed for the sampler to refresh its readouts.</summary>
     public LaserSectionViewModel Laser { get; }
+
+    /// <summary>The Camera section, kept typed for the sampler to refresh its grab state.</summary>
+    public CameraSectionViewModel Camera { get; }
 
     /// <summary>Engine + workflow log lines, oldest first, capped at <see cref="MaxLogLines"/>.</summary>
     public ObservableCollection<LogLineViewModel> Log { get; } = new();
@@ -133,6 +137,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         Pneumatic.Refresh();
         Motion.Refresh();
         Laser.Refresh();
+        Camera.Refresh();
 
         // GetStatusSnapshot() reads each device's IsConnected, which takes the
         // adapter lock a 2 s hardware poll also holds during VISA/SCPI I/O — so
@@ -189,6 +194,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
         OnDeactivated();
         _host.Log.Appended -= OnLogAppended;
+        Camera.Dispose();   // unsubscribes the camera FrameReady hook (UI cleanup, not teardown)
 
         // Pure UI cleanup only — no hardware teardown here. Stopping every
         // SMU/Measurement stream and disconnecting devices is owned by the

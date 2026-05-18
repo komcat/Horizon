@@ -99,6 +99,9 @@
             <DataTemplate DataType="{x:Type vms:LaserSectionViewModel}">
                 <vsec:LaserSectionView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vms:CameraSectionViewModel}">
+                <vsec:CameraSectionView />
+            </DataTemplate>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
