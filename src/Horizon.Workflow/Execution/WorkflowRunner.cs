@@ -32,9 +32,17 @@ internal sealed class WorkflowRunner
         _log = log;
     }
 
-    public async Task<Result> RunAsync(WorkflowProgram program, CancellationToken ct)
+    /// <summary>Runs a program with its own fresh context.</summary>
+    public Task<Result> RunAsync(WorkflowProgram program, CancellationToken ct)
+        => RunAsync(program, new WorkflowContext(), ct);
+
+    /// <summary>
+    /// Runs a program against a caller-supplied context. A deck run threads one
+    /// context through every program, so a later program's transition condition
+    /// can read values an earlier program captured.
+    /// </summary>
+    public async Task<Result> RunAsync(WorkflowProgram program, WorkflowContext ctx, CancellationToken ct)
     {
-        var ctx = new WorkflowContext();
         var steps = program.Steps;
         var loops = new Stack<LoopFrame>();
         int index = 0;

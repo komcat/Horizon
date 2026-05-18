@@ -16,6 +16,7 @@ public sealed class ProcessService : IProcessService
     private PositionStore? _positions;   // null when no product is active
     private ProgramStore? _programs;     // null when no product is active
     private RecipeStore? _recipes;       // null when no product is active
+    private DeckStore? _decks;           // null when no product is active
     private PauseController? _pause;     // non-null only while a program runs
 
     public ProcessService(IHorizonEngine engine)
@@ -29,6 +30,7 @@ public sealed class ProcessService : IProcessService
             _positions = new PositionStore(dir);
             _programs = new ProgramStore(dir);
             _recipes = new RecipeStore(dir);
+            _decks = new DeckStore(dir);
         }
     }
 
@@ -37,6 +39,7 @@ public sealed class ProcessService : IProcessService
     public string? ActiveProduct => _products.ActiveProduct;
 
     public event Action<WorkflowStepEvent>? StepEvent;
+    public event Action<DeckProgress>? DeckStepEvent;
     public event Action<LogEntry>? LogEmitted;
     public event Action<bool>? PausedChanged;
 
@@ -75,6 +78,7 @@ public sealed class ProcessService : IProcessService
             _positions = null;
             _programs = null;
             _recipes = null;
+            _decks = null;
         }
 
         Log(LogLevel.Info, $"Product deleted: {name}");
@@ -91,6 +95,7 @@ public sealed class ProcessService : IProcessService
         _positions = new PositionStore(dir);
         _programs = new ProgramStore(dir);
         _recipes = new RecipeStore(dir);
+        _decks = new DeckStore(dir);
         Log(LogLevel.Info, $"Product loaded: {name}");
         return Result.Ok();
     }
@@ -101,6 +106,7 @@ public sealed class ProcessService : IProcessService
         _positions = null;
         _programs = null;
         _recipes = null;
+        _decks = null;
         Log(LogLevel.Info, "Product unloaded.");
     }
 
@@ -304,6 +310,81 @@ public sealed class ProcessService : IProcessService
         {
             Log(LogLevel.Warning, $"Recipe cancelled: {name}");
             return Result.Fail(ErrorCode.OperationFailed, "Recipe cancelled.");
+        }
+        finally
+        {
+            pause.PausedChanged -= OnPausedChanged;
+            _pause = null;
+        }
+    }
+
+    // --- Decks ---
+
+    public IReadOnlyList<string> ListDecks()
+        => _decks?.List() ?? Array.Empty<string>();
+
+    public Result<WorkflowDeck> LoadDeck(string name)
+    {
+        if (_decks == null)
+            return Result<WorkflowDeck>.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        var deck = _decks.Load(name);
+        return deck == null
+            ? Result<WorkflowDeck>.Fail(ErrorCode.FileNotFound, $"Deck '{name}' not found.")
+            : Result<WorkflowDeck>.Ok(deck);
+    }
+
+    public Result SaveDeck(WorkflowDeck deck)
+    {
+        if (_decks == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (string.IsNullOrWhiteSpace(deck.Name))
+            return Result.Fail(ErrorCode.InvalidParameter, "Deck name is required.");
+
+        _decks.Save(deck);
+        Log(LogLevel.Info, $"Deck saved: {deck.Name}");
+        return Result.Ok();
+    }
+
+    public async Task<Result> RunDeck(WorkflowDeck deck, CancellationToken ct = default)
+    {
+        if (_programs == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        var pause = new PauseController();
+        pause.PausedChanged += OnPausedChanged;
+        _pause = pause;
+
+        // One runner for the whole deck — every program runs through it, so
+        // pause / step works across the deck just as it does within a program.
+        var runner = new WorkflowRunner(
+            _engine,
+            MoveToNamedPositionAsync,
+            OperatorPrompt,
+            pause,
+            e => StepEvent?.Invoke(e),
+            Log);
+
+        var deckRunner = new DeckRunner(
+            loadProgram: name => _programs.Load(name),
+            runProgram: (program, context, token) => runner.RunAsync(program, context, token),
+            onProgress: p => DeckStepEvent?.Invoke(p),
+            log: Log);
+
+        Log(LogLevel.Info, $"Deck started: {deck.Name}");
+        try
+        {
+            var result = await deckRunner.RunAsync(deck, ct).ConfigureAwait(false);
+            var summary = $"Deck {(result.IsSuccess ? "completed" : "stopped")}: {deck.Name}";
+            if (!string.IsNullOrEmpty(result.Message))
+                summary += $" — {result.Message}";
+            Log(result.IsSuccess ? LogLevel.Info : LogLevel.Error, summary);
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            Log(LogLevel.Warning, $"Deck cancelled: {deck.Name}");
+            return Result.Fail(ErrorCode.OperationFailed, "Deck cancelled.");
         }
         finally
         {

@@ -3,10 +3,11 @@ using System.Text.Json;
 namespace Horizon.Workflow;
 
 /// <summary>
-/// Layer 2 product directories under <c>%APPDATA%\Horizon\workflow\products\</c>
-/// — a root distinct from the legacy app's products folder, so the two never
-/// collide. A product is a directory holding <c>processes\</c> and
-/// <c>recipes\</c>; the active product is recorded in <c>active.json</c>.
+/// Product directories under <c>%APPDATA%\Horizon\products\</c> — the shared
+/// product root (same as the legacy app). A product is a directory holding
+/// <c>processes\</c>, <c>recipes\</c>, and <c>decks\</c>; the active product is
+/// recorded in <c>active.json</c>. The layout is compatible with the legacy
+/// app — only one app should run at a time.
 /// </summary>
 internal sealed class ProductStore
 {
@@ -19,7 +20,7 @@ internal sealed class ProductStore
     {
         _root = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Horizon", "workflow", "products");
+            "Horizon", "products");
         _activePath = Path.Combine(_root, "active.json");
         Directory.CreateDirectory(_root);
     }
@@ -64,6 +65,7 @@ internal sealed class ProductStore
         Directory.CreateDirectory(dir);
         Directory.CreateDirectory(Path.Combine(dir, "processes"));
         Directory.CreateDirectory(Path.Combine(dir, "recipes"));
+        Directory.CreateDirectory(Path.Combine(dir, "decks"));
     }
 
     public void Delete(string name)

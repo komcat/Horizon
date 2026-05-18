@@ -93,6 +93,26 @@ public interface IProcessService
     /// <summary>Runs a recipe script against the engine.</summary>
     Task<Result> RunRecipeAsync(string name, CancellationToken ct = default);
 
+    // --- Decks (ordered program chains, operate on the active product) ---
+
+    /// <summary>Deck names in the active product.</summary>
+    IReadOnlyList<string> ListDecks();
+
+    /// <summary>Loads a deck by name.</summary>
+    Result<WorkflowDeck> LoadDeck(string name);
+
+    /// <summary>Saves a deck into the active product.</summary>
+    Result SaveDeck(WorkflowDeck deck);
+
+    /// <summary>
+    /// Runs a deck — its programs in order, sharing one context, stopping on the
+    /// first program failure or first false transition condition.
+    /// </summary>
+    Task<Result> RunDeck(WorkflowDeck deck, CancellationToken ct = default);
+
+    /// <summary>Raised before and after each deck entry while a deck runs.</summary>
+    event Action<DeckProgress>? DeckStepEvent;
+
     // --- Interactive execution (pause / step) ---
 
     /// <summary>Pauses the running program before its next step (no-op if idle).</summary>
