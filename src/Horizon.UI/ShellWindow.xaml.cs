@@ -26,6 +26,10 @@ public partial class ShellWindow : Window
         DataContext = _viewModel;
         InitializeComponent();
 
+        // Register the operator-prompt handler — a workflow flow.askUser step
+        // blocks on this until the operator answers a modal dialog.
+        host.Process.OperatorPrompt = new OperatorPrompt();
+
         Closing += OnClosing;
         Closed += (_, _) => _viewModel.Dispose();
     }

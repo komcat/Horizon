@@ -56,10 +56,10 @@ internal sealed class PneumaticFacet : IPneumaticFacet, IAsyncDisposable
         => Task.Run(() => Map(_manager.Retract(slide), $"Retract '{slide}'"), ct);
 
     public Task<Result> ExtendAndWaitAsync(string slide, CancellationToken ct = default)
-        => Task.Run(() => Map(_manager.ExtendAndWait(slide), $"ExtendAndWait '{slide}'"), ct);
+        => Task.Run(() => Map(_manager.ExtendAndWait(slide, ct: ct), $"ExtendAndWait '{slide}'"), ct);
 
     public Task<Result> RetractAndWaitAsync(string slide, CancellationToken ct = default)
-        => Task.Run(() => Map(_manager.RetractAndWait(slide), $"RetractAndWait '{slide}'"), ct);
+        => Task.Run(() => Map(_manager.RetractAndWait(slide, ct: ct), $"RetractAndWait '{slide}'"), ct);
 
     /// <summary>Starts polling. Called by the engine during ConnectAll (slides need no connection).</summary>
     public Task ConnectAllInternalAsync(IProgress<string>? progress)

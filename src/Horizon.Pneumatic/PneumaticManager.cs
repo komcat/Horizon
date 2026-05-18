@@ -47,7 +47,7 @@ public sealed class PneumaticManager
         return result;
     }
 
-    public PneumaticError ExtendAndWait(string slideName, int pollIntervalMs = 50)
+    public PneumaticError ExtendAndWait(string slideName, int pollIntervalMs = 50, CancellationToken ct = default)
     {
         Log.Information("[Pneumatic] ExtendAndWait requested: '{SlideName}' (pollInterval={PollIntervalMs}ms)", slideName, pollIntervalMs);
         if (!_slides.TryGetValue(slideName, out var slide))
@@ -55,7 +55,7 @@ public sealed class PneumaticManager
             Log.Warning("[Pneumatic] ExtendAndWait failed — slide not found: '{SlideName}'", slideName);
             return PneumaticError.SlideNotFound;
         }
-        var result = slide.ExtendAndWait(pollIntervalMs);
+        var result = slide.ExtendAndWait(pollIntervalMs, ct);
         if (result != PneumaticError.Success)
             Log.Error("[Pneumatic] ExtendAndWait error: '{SlideName}' -> {Result}", slideName, result);
         else
@@ -63,7 +63,7 @@ public sealed class PneumaticManager
         return result;
     }
 
-    public PneumaticError RetractAndWait(string slideName, int pollIntervalMs = 50)
+    public PneumaticError RetractAndWait(string slideName, int pollIntervalMs = 50, CancellationToken ct = default)
     {
         Log.Information("[Pneumatic] RetractAndWait requested: '{SlideName}' (pollInterval={PollIntervalMs}ms)", slideName, pollIntervalMs);
         if (!_slides.TryGetValue(slideName, out var slide))
@@ -71,7 +71,7 @@ public sealed class PneumaticManager
             Log.Warning("[Pneumatic] RetractAndWait failed — slide not found: '{SlideName}'", slideName);
             return PneumaticError.SlideNotFound;
         }
-        var result = slide.RetractAndWait(pollIntervalMs);
+        var result = slide.RetractAndWait(pollIntervalMs, ct);
         if (result != PneumaticError.Success)
             Log.Error("[Pneumatic] RetractAndWait error: '{SlideName}' -> {Result}", slideName, result);
         else

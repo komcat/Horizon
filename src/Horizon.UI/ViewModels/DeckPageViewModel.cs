@@ -243,10 +243,18 @@ public sealed class DeckPageViewModel : PageViewModel
         try
         {
             var result = await _host.Process.RunAsync(load.Value, _runCts.Token).ConfigureAwait(true);
-            entry.RunStatus = result.IsSuccess ? "Passed" : "Failed";
-            Status = result.IsSuccess
-                ? $"Program completed: {entry.Program}"
-                : $"Program failed — {result.Message}";
+            if (_runCts.IsCancellationRequested)
+            {
+                entry.RunStatus = "—";
+                Status = $"Stopped '{entry.Program}'.";
+            }
+            else
+            {
+                entry.RunStatus = result.IsSuccess ? "Passed" : "Failed";
+                Status = result.IsSuccess
+                    ? $"Program completed: {entry.Program}"
+                    : $"Program failed — {result.Message}";
+            }
         }
         catch (Exception ex)
         {
@@ -276,11 +284,20 @@ public sealed class DeckPageViewModel : PageViewModel
         try
         {
             var result = await _host.Process.RunDeck(deck, _runCts.Token).ConfigureAwait(true);
-            Status = !result.IsSuccess
-                ? $"Deck stopped — {result.Message}"
-                : string.IsNullOrEmpty(result.Message)
-                    ? $"Deck completed: {deck.Name}"
-                    : result.Message;   // controlled stop (a transition condition was false)
+            if (_runCts.IsCancellationRequested)
+            {
+                foreach (var entry in Entries)
+                    if (entry.RunStatus == "Running") entry.RunStatus = "—";
+                Status = $"Deck stopped: {deck.Name}";
+            }
+            else
+            {
+                Status = !result.IsSuccess
+                    ? $"Deck stopped — {result.Message}"
+                    : string.IsNullOrEmpty(result.Message)
+                        ? $"Deck completed: {deck.Name}"
+                        : result.Message;   // controlled stop (a transition condition was false)
+            }
         }
         catch (Exception ex)
         {

@@ -16,11 +16,13 @@ public sealed class DeckEntryViewModel : ObservableObject
 
     public DeckEntryViewModel(
         IReadOnlyList<string> programs,
+        Func<DeckEntryViewModel, Task> run,
         Action<DeckEntryViewModel> remove,
         Action<DeckEntryViewModel> moveUp,
         Action<DeckEntryViewModel> moveDown)
     {
         Programs = programs;
+        RunCommand = new AsyncRelayCommand(() => run(this));
         RemoveCommand = new RelayCommand(() => remove(this));
         MoveUpCommand = new RelayCommand(() => moveUp(this));
         MoveDownCommand = new RelayCommand(() => moveDown(this));
@@ -41,6 +43,8 @@ public sealed class DeckEntryViewModel : ObservableObject
     /// <summary>Live status during a deck run: — / Running / Passed / Failed.</summary>
     public string RunStatus { get => _runStatus; set => SetField(ref _runStatus, value); }
 
+    /// <summary>Runs just this entry's program standalone — for one-by-one testing.</summary>
+    public AsyncRelayCommand RunCommand { get; }
     public RelayCommand RemoveCommand { get; }
     public RelayCommand MoveUpCommand { get; }
     public RelayCommand MoveDownCommand { get; }

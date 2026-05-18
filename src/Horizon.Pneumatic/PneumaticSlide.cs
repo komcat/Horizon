@@ -53,7 +53,7 @@ public sealed class PneumaticSlide : IPneumaticSlide
         return PneumaticError.Success;
     }
 
-    public PneumaticError ExtendAndWait(int pollIntervalMs = 50)
+    public PneumaticError ExtendAndWait(int pollIntervalMs = 50, CancellationToken ct = default)
     {
         var err = Extend();
         if (err != PneumaticError.Success) return err;
@@ -61,6 +61,7 @@ public sealed class PneumaticSlide : IPneumaticSlide
         var sw = Stopwatch.StartNew();
         while (sw.ElapsedMilliseconds < _config.TimeoutMs)
         {
+            ct.ThrowIfCancellationRequested();   // a Stop interrupts the wait
             var pos = GetPosition();
             if (pos == PneumaticPosition.Extended) return PneumaticError.Success;
             if (pos == PneumaticPosition.HardwareError) return PneumaticError.HardwareError;
@@ -71,7 +72,7 @@ public sealed class PneumaticSlide : IPneumaticSlide
         return PneumaticError.Timeout;
     }
 
-    public PneumaticError RetractAndWait(int pollIntervalMs = 50)
+    public PneumaticError RetractAndWait(int pollIntervalMs = 50, CancellationToken ct = default)
     {
         var err = Retract();
         if (err != PneumaticError.Success) return err;
@@ -79,6 +80,7 @@ public sealed class PneumaticSlide : IPneumaticSlide
         var sw = Stopwatch.StartNew();
         while (sw.ElapsedMilliseconds < _config.TimeoutMs)
         {
+            ct.ThrowIfCancellationRequested();   // a Stop interrupts the wait
             var pos = GetPosition();
             if (pos == PneumaticPosition.Retracted) return PneumaticError.Success;
             if (pos == PneumaticPosition.HardwareError) return PneumaticError.HardwareError;

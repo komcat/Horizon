@@ -68,7 +68,7 @@
                     <ColumnDefinition Width="64" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="84" />
-                    <ColumnDefinition Width="112" />
+                    <ColumnDefinition Width="172" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Program" Foreground="#8A8A92" FontWeight="SemiBold" />
                 <TextBlock Grid.Column="1" Text="Enabled" Foreground="#8A8A92" FontWeight="SemiBold" />
@@ -89,7 +89,7 @@
                                     <ColumnDefinition Width="64" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="84" />
-                                    <ColumnDefinition Width="112" />
+                                    <ColumnDefinition Width="172" />
                                 </Grid.ColumnDefinitions>
 
                                 <ComboBox Grid.Column="0" Width="206" Height="26"
@@ -107,6 +107,8 @@
                                            Style="{StaticResource RunStatusText}" />
 
                                 <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Content="Run" Width="48" Height="26" Margin="0,0,10,0"
+                                            Command="{Binding RunCommand}" />
                                     <Button Content="▲" Width="30" Height="26" Margin="0,0,4,0"
                                             Command="{Binding MoveUpCommand}" />
                                     <Button Content="▼" Width="30" Height="26" Margin="0,0,4,0"

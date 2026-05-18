@@ -261,9 +261,18 @@ public sealed class ProgramEditorPageViewModel : PageViewModel
         try
         {
             var result = await _host.Process.RunAsync(program, _runCts.Token).ConfigureAwait(true);
-            Status = result.IsSuccess
-                ? $"Program completed: {program.Name}"
-                : $"Program failed — {result.Message}";
+            if (_runCts.IsCancellationRequested)
+            {
+                foreach (var step in Steps)
+                    if (step.RunStatus == "Running") step.RunStatus = "—";
+                Status = $"Program stopped: {program.Name}";
+            }
+            else
+            {
+                Status = result.IsSuccess
+                    ? $"Program completed: {program.Name}"
+                    : $"Program failed — {result.Message}";
+            }
         }
         catch (Exception ex)
         {
