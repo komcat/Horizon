@@ -11,7 +11,14 @@ namespace Horizon.Workflow;
 /// </summary>
 internal sealed class ProductStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    // camelCase + case-insensitive: active.json is shared with the legacy app,
+    // which writes camelCase — read it leniently, write it the same way.
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+    };
 
     private readonly string _root;
     private readonly string _activePath;
@@ -82,7 +89,7 @@ internal sealed class ProductStore
             if (!File.Exists(_activePath)) return null;
             try
             {
-                var doc = JsonSerializer.Deserialize<ActiveDoc>(File.ReadAllText(_activePath));
+                var doc = JsonSerializer.Deserialize<ActiveDoc>(File.ReadAllText(_activePath), JsonOptions);
                 return string.IsNullOrEmpty(doc?.ActiveProduct) ? null : doc!.ActiveProduct;
             }
             catch
