@@ -19,6 +19,12 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
     private double _setpointCurrent;
     private string _lastError = string.Empty;
 
+    // A CLD101x with no valid TEC measurement reports a non-physical overrange
+    // value (e.g. -9.8e39) from :DATA?. Readings outside these bounds are
+    // rejected as "no reading" rather than propagated as real measurements.
+    private const double MaxTemperatureC = 1000.0;
+    private const double MaxCurrentMa = 1_000_000.0;
+
     public string DeviceName => _config.Name;
     public string ControllerType => _config.ControllerType;
     public bool IsConnected => _connected;
@@ -133,7 +139,10 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
                 WriteCommand("SENSe2:temperature:data?");
                 var response = ReadResponse();
                 if (double.TryParse(response.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out celsius))
+                {
+                    celsius = SanitizeReading(celsius, MaxTemperatureC);
                     return LaserControllerError.Success;
+                }
                 return LaserControllerError.ParseError;
             }
             catch (Exception ex)
@@ -294,15 +303,18 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
                     WriteCommand("SENSe2:temperature:data?");
                     var tempResp = ReadResponse();
                     double.TryParse(tempResp.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out temp);
+                    temp = SanitizeReading(temp, MaxTemperatureC);
 
                     WriteCommand("sense3:current:dc:data?");
                     var currentResp = ReadResponse();
                     if (double.TryParse(currentResp.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var amps))
-                        current = amps * 1000.0;
+                        current = SanitizeReading(amps * 1000.0, MaxCurrentMa);
 
                     _tecOn = QueryBoolState("output2:state?");
                     _laserOn = QueryBoolState("output1:state?");
-                    _lastError = string.Empty;
+                    _lastError = double.IsNaN(temp)
+                        ? "TEC temperature reading unavailable (sensor/measurement not ready)"
+                        : string.Empty;
                 }
                 catch (Exception ex)
                 {
@@ -338,6 +350,10 @@ public sealed class CLD101xAdapter : ILaserControllerDevice
             return false;
         }
     }
+
+    /// <summary>Returns the reading, or NaN when it is non-finite or non-physical (overrange sentinel).</summary>
+    private static double SanitizeReading(double raw, double limit)
+        => double.IsFinite(raw) && Math.Abs(raw) <= limit ? raw : double.NaN;
 
     private void WriteCommand(string command)
     {

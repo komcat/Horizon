@@ -44,6 +44,8 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
     private bool _disposed;
 
     private DisplayWindow? _displayWindow;
+    private bool _sectionActive;
+    private bool _subscribed;
 
     public CameraSectionViewModel(EngineHost host)
     {
@@ -63,7 +65,8 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
         PopOutCommand = new RelayCommand(PopOut);
 
         RebuildForCamera();
-        _host.Engine.Camera.FrameReady += OnFrameReady;
+        // The FrameReady hook is attached lazily — only while the section is
+        // visible or the pop-out is open (see UpdateSubscription).
     }
 
     /// <summary>Label shown in the Machine-page section rail.</summary>
@@ -132,6 +135,28 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
         Grabbing = state.Grabbing;
         Resolution = state.Width > 0 ? $"{state.Width} × {state.Height}" : "—";
         FramesReceived = state.FramesReceived;
+    }
+
+    /// <summary>
+    /// Sets whether the Camera section is the visible one. The frame pipeline
+    /// runs only while the section is shown or the pop-out window is open, so a
+    /// grabbing camera costs the UI nothing when nobody is watching.
+    /// </summary>
+    public void SetActive(bool active)
+    {
+        _sectionActive = active;
+        UpdateSubscription();
+    }
+
+    private void UpdateSubscription()
+    {
+        bool shouldRun = !_disposed && (_sectionActive || _displayWindow != null);
+        if (shouldRun == _subscribed) return;
+        if (shouldRun)
+            _host.Engine.Camera.FrameReady += OnFrameReady;
+        else
+            _host.Engine.Camera.FrameReady -= OnFrameReady;
+        _subscribed = shouldRun;
     }
 
     private void RebuildForCamera()
@@ -249,15 +274,16 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
             Owner = Application.Current.MainWindow,   // closes with the shell window
             DataContext = this,
         };
-        _displayWindow.Closed += (_, _) => _displayWindow = null;
+        _displayWindow.Closed += (_, _) => { _displayWindow = null; UpdateSubscription(); };
         _displayWindow.Show();
+        UpdateSubscription();   // pop-out keeps the pipeline running even off-section
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        _host.Engine.Camera.FrameReady -= OnFrameReady;
+        UpdateSubscription();   // _disposed → detaches the frame hook
         _displayWindow?.Close();
     }
 }

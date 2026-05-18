@@ -26,6 +26,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
     private string _engineState = "—";
     private string _deviceSummary = "—";
     private bool _statusRefreshing;
+    private bool _pageActive;
     private bool _disposed;
 
     public MachinePageViewModel(EngineHost host)
@@ -100,7 +101,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
     public object CurrentSection
     {
         get => _currentSection;
-        set => SetField(ref _currentSection, value);
+        set { if (SetField(ref _currentSection, value)) UpdateCameraActive(); }
     }
 
     public string EngineState
@@ -117,16 +118,28 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     public override void OnActivated()
     {
+        _pageActive = true;
         _sampler.Tick += OnTick;
         _sampler.Start();
         OnTick();   // paint immediately rather than waiting one interval
+        UpdateCameraActive();
     }
 
     public override void OnDeactivated()
     {
+        _pageActive = false;
         _sampler.Tick -= OnTick;
         _sampler.Stop();
+        UpdateCameraActive();
     }
+
+    /// <summary>
+    /// Runs the camera frame pipeline only while this page is shown and the
+    /// Camera section is the active one — a grabbing camera then costs the UI
+    /// nothing from any other section or page.
+    /// </summary>
+    private void UpdateCameraActive()
+        => Camera.SetActive(_pageActive && ReferenceEquals(_currentSection, Camera));
 
     private void OnTick()
     {
