@@ -242,7 +242,7 @@ public sealed class DeckPageViewModel : PageViewModel
         Status = $"Running '{entry.Program}'…";
         try
         {
-            var result = await _host.Process.RunAsync(load.Value, _runCts.Token).ConfigureAwait(true);
+            var result = await _host.Process.RunAsync(load.Value, ct: _runCts.Token).ConfigureAwait(true);
             if (_runCts.IsCancellationRequested)
             {
                 entry.RunStatus = "—";
@@ -283,7 +283,7 @@ public sealed class DeckPageViewModel : PageViewModel
         Status = $"Running deck '{deck.Name}'…";
         try
         {
-            var result = await _host.Process.RunDeck(deck, _runCts.Token).ConfigureAwait(true);
+            var result = await _host.Process.RunDeck(deck, ct: _runCts.Token).ConfigureAwait(true);
             if (_runCts.IsCancellationRequested)
             {
                 foreach (var entry in Entries)

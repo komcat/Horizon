@@ -76,8 +76,12 @@ public interface IProcessService
     /// </summary>
     IOperatorPrompt? OperatorPrompt { get; set; }
 
-    /// <summary>Runs a process program against the engine.</summary>
-    Task<Result> RunAsync(WorkflowProgram program, CancellationToken ct = default);
+    /// <summary>
+    /// Runs a process program against the engine. When <paramref name="serial"/>
+    /// is supplied, the run is recorded into that DUT's test record (see
+    /// <see cref="ListDutRecords"/>); otherwise <c>dut.*</c> steps no-op.
+    /// </summary>
+    Task<Result> RunAsync(WorkflowProgram program, string? serial = null, CancellationToken ct = default);
 
     // --- Recipes (.hrec scripts, operate on the active product) ---
 
@@ -109,12 +113,19 @@ public interface IProcessService
 
     /// <summary>
     /// Runs a deck — its programs in order, sharing one context, stopping on the
-    /// first program failure or first false transition condition.
+    /// first program failure or first false transition condition. When
+    /// <paramref name="serial"/> is supplied, the whole deck run is recorded into
+    /// that DUT's test record.
     /// </summary>
-    Task<Result> RunDeck(WorkflowDeck deck, CancellationToken ct = default);
+    Task<Result> RunDeck(WorkflowDeck deck, string? serial = null, CancellationToken ct = default);
 
     /// <summary>Raised before and after each deck entry while a deck runs.</summary>
     event Action<DeckProgress>? DeckStepEvent;
+
+    // --- DUT test records (operate on the active product) ---
+
+    /// <summary>Serial numbers that have a DUT test record in the active product.</summary>
+    IReadOnlyList<string> ListDutRecords();
 
     // --- Interactive execution (pause / step) ---
 

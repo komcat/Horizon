@@ -1,27 +1,40 @@
 using System.Globalization;
+using System.Text.Json;
 using Horizon.Common;
 using Horizon.Engine;
+using Horizon.Workflow.Scanning;
 
 namespace Horizon.Workflow;
 
 /// <summary>
 /// Maps a <see cref="WorkflowStep"/> to a typed <see cref="IHorizonEngine"/>
-/// facet call — no reflection. Control-flow ops (<c>flow.loopStart/End</c>) are
-/// handled by the <see cref="WorkflowRunner"/>, not here.
+/// facet call — no reflection. Control-flow ops (<c>flow.loopStart/End</c>,
+/// <c>flow.if/else/endif</c>, <c>flow.stop</c>, <c>flow.subProgram</c>,
+/// <c>flow.groupStart/End</c>) are handled by the <see cref="WorkflowRunner"/>,
+/// not here.
 /// </summary>
 internal sealed class StepDispatcher
 {
     private readonly IHorizonEngine _engine;
     private readonly Func<string, string, CancellationToken, Task<Result>> _moveToNamed;
+    private readonly Func<string, string, NamedPosition?> _getPosition;
+    private readonly Func<string, string, MotionPosition, double, Result> _savePosition;
+    private readonly DeviceLinkStore _deviceLinks;
     private readonly Action<LogLevel, string> _log;
 
     public StepDispatcher(
         IHorizonEngine engine,
         Func<string, string, CancellationToken, Task<Result>> moveToNamed,
+        Func<string, string, NamedPosition?> getPosition,
+        Func<string, string, MotionPosition, double, Result> savePosition,
+        DeviceLinkStore deviceLinks,
         Action<LogLevel, string> log)
     {
         _engine = engine;
         _moveToNamed = moveToNamed;
+        _getPosition = getPosition;
+        _savePosition = savePosition;
+        _deviceLinks = deviceLinks;
         _log = log;
     }
 
@@ -57,6 +70,175 @@ internal sealed class StepDispatcher
             case "motion.stop":
                 return await _engine.Motion.StopAsync(step.Device);
 
+            case "motion.readposition":
+            {
+                // Reads the device's current position into context variables
+                // '{prefix}_x/_y/_z' (and '_u/_v/_w' when 'saveUvw'). Ported
+                // from bobcat's "Read Position".
+                var r = await _engine.Motion.GetPositionAsync(step.Device);
+                if (!r.IsSuccess) return Result.Fail(r.Error, r.Message);
+                var p = r.Value;
+                var prefix = Has(step, "prefix") ? Str(step, "prefix", ctx) : step.Device;
+                ctx.Set($"{prefix}_x", p.X);
+                ctx.Set($"{prefix}_y", p.Y);
+                ctx.Set($"{prefix}_z", p.Z);
+                if (Bool(step, "saveUvw", ctx))
+                {
+                    ctx.Set($"{prefix}_u", p.U);
+                    ctx.Set($"{prefix}_v", p.V);
+                    ctx.Set($"{prefix}_w", p.W);
+                }
+                _log(LogLevel.Info, $"{step.Device} position -> {prefix}_x/_y/_z = " +
+                    $"{p.X:F4}, {p.Y:F4}, {p.Z:F4}");
+                return Result.Ok();
+            }
+
+            case "motion.updateposition":
+            {
+                // Overwrites a named position with the device's current
+                // coordinates. Ported from bobcat's "Update Position All".
+                var name = Str(step, "position", ctx);
+                if (string.IsNullOrWhiteSpace(name))
+                    return Result.Fail(ErrorCode.InvalidParameter, "Update Position: no position name.");
+                var cur = await _engine.Motion.GetPositionAsync(step.Device);
+                if (!cur.IsSuccess) return Result.Fail(cur.Error, cur.Message);
+                var velocity = _getPosition(step.Device, name)?.Velocity ?? 0.0;
+                var saved = _savePosition(step.Device, name, cur.Value, velocity);
+                if (saved.IsSuccess)
+                    _log(LogLevel.Info, $"Updated position '{name}' on {step.Device} <- current coordinates.");
+                return saved;
+            }
+
+            case "motion.updatepositionaxis":
+            {
+                // Replaces one axis of a named position with a context value.
+                // Ported from bobcat's "Update Position Axis".
+                var name = Str(step, "position", ctx);
+                var existing = _getPosition(step.Device, name);
+                if (existing == null)
+                    return Result.Fail(ErrorCode.FileNotFound,
+                        $"Update Position Axis: position '{name}' not found on {step.Device}.");
+                var axis = Str(step, "axis", ctx).Trim().ToUpperInvariant();
+                if (axis is not ("X" or "Y" or "Z" or "U" or "V" or "W"))
+                    return Result.Fail(ErrorCode.InvalidParameter,
+                        $"Update Position Axis: unknown axis '{axis}'.");
+                var v = ctx.GetNumeric(Str(step, "contextKey", ctx));
+                var c = existing.Coordinates;
+                var updated = axis switch
+                {
+                    "X" => c with { X = v },
+                    "Y" => c with { Y = v },
+                    "Z" => c with { Z = v },
+                    "U" => c with { U = v },
+                    "V" => c with { V = v },
+                    _   => c with { W = v },
+                };
+                var saved = _savePosition(step.Device, name, updated, existing.Velocity);
+                if (saved.IsSuccess)
+                    _log(LogLevel.Info, $"Updated position '{name}' axis {axis} = {v} on {step.Device}.");
+                return saved;
+            }
+
+            case "motion.registerdevicelink":
+            {
+                // Captures the offset between two devices' current positions.
+                // Ported from bobcat's "Register Device Link".
+                var primary = Str(step, "primary", ctx);
+                var linked = Str(step, "linked", ctx);
+                var p = await _engine.Motion.GetPositionAsync(primary);
+                if (!p.IsSuccess) return Result.Fail(p.Error, $"register device link — primary: {p.Message}");
+                var l = await _engine.Motion.GetPositionAsync(linked);
+                if (!l.IsSuccess) return Result.Fail(l.Error, $"register device link — linked: {l.Message}");
+                var offset = new MotionPosition(
+                    l.Value.X - p.Value.X, l.Value.Y - p.Value.Y, l.Value.Z - p.Value.Z,
+                    l.Value.U - p.Value.U, l.Value.V - p.Value.V, l.Value.W - p.Value.W);
+                _deviceLinks.Register(new DeviceLink(primary, linked, offset));
+                _log(LogLevel.Info, $"Device link registered: {linked} = {primary} + " +
+                    $"({offset.X:F3}, {offset.Y:F3}, {offset.Z:F3}).");
+                return Result.Ok();
+            }
+
+            case "motion.compensatedevicelink":
+            {
+                // Moves the linked device to restore its registered offset from
+                // the primary. Ported from bobcat's "Compensate Device Link".
+                var primary = Str(step, "primary", ctx);
+                var linked = Str(step, "linked", ctx);
+                var link = _deviceLinks.Find(primary, linked);
+                if (link == null)
+                    return Result.Fail(ErrorCode.OperationFailed,
+                        $"compensate device link: no link registered for {primary} -> {linked}.");
+                var p = await _engine.Motion.GetPositionAsync(primary);
+                if (!p.IsSuccess) return Result.Fail(p.Error, $"compensate device link — primary: {p.Message}");
+                var cur = await _engine.Motion.GetPositionAsync(linked);
+                if (!cur.IsSuccess) return Result.Fail(cur.Error, $"compensate device link — linked: {cur.Message}");
+                // 'axes' selects which translational axes to correct; empty = XYZ.
+                var axes = Str(step, "axes", ctx).ToUpperInvariant();
+                bool any = axes.Length > 0;
+                bool ax = !any || axes.Contains('X');
+                bool ay = !any || axes.Contains('Y');
+                bool az = !any || axes.Contains('Z');
+                var target = new MotionPosition(
+                    ax ? p.Value.X + link.Offset.X : cur.Value.X,
+                    ay ? p.Value.Y + link.Offset.Y : cur.Value.Y,
+                    az ? p.Value.Z + link.Offset.Z : cur.Value.Z,
+                    cur.Value.U, cur.Value.V, cur.Value.W);
+                _log(LogLevel.Info, $"Compensating {linked} to track {primary} (axes {(any ? axes : "XYZ")}).");
+                return await _engine.Motion.MoveToPositionAsync(linked, target, ct);
+            }
+
+            case "scan.hexapod":
+            {
+                // Coarse-to-fine hexapod beam-alignment scan — exposes
+                // HexapodScanEngine (see docs/hexapod-scanning.md) as a step.
+                var feedback = new FeedbackDescriptor
+                {
+                    Kind = ParseFeedbackKind(Str(step, "feedbackKind", ctx)),
+                    Device = Str(step, "feedbackDevice", ctx),
+                    Channel = Has(step, "feedbackChannel") ? (int)Num(step, "feedbackChannel", ctx) : 1,
+                    ValueType = Str(step, "feedbackValue", ctx).Trim()
+                        .Equals("voltage", StringComparison.OrdinalIgnoreCase)
+                        ? FeedbackValue.Voltage : FeedbackValue.Current,
+                    IntervalMs = Has(step, "feedbackIntervalMs") ? (int)Num(step, "feedbackIntervalMs", ctx) : 50,
+                };
+
+                var p = ScanParameters.ForMode(ParseScanMode(Str(step, "mode", ctx)));
+                if (Has(step, "axes"))
+                {
+                    var axes = SplitAxes(Str(step, "axes", ctx));
+                    if (axes.Length > 0) p = p with { AxesToScan = axes };
+                }
+                if (Has(step, "stepSizesUm"))
+                {
+                    var steps = ParseStepSizesMm(Str(step, "stepSizesUm", ctx));
+                    if (steps.Length > 0) p = p with { StepSizes = steps };
+                }
+                if (Has(step, "settleMs"))
+                    p = p with { MotionSettleMs = (int)Num(step, "settleMs", ctx) };
+                if (Has(step, "velocity"))
+                    p = p with { ScanVelocityMmPerSec = Num(step, "velocity", ctx) };
+
+                var result = await new HexapodScanEngine(_engine, _log)
+                    .RunAsync(step.Device, feedback, p, progress: null, ct).ConfigureAwait(false);
+
+                var captureAs = Str(step, "captureAs", ctx);
+                if (!string.IsNullOrWhiteSpace(captureAs))
+                {
+                    ctx.Set($"{captureAs}_peak", result.Peak.Value);
+                    ctx.Set($"{captureAs}_baseline", result.Baseline.Value);
+                    ctx.Set($"{captureAs}_snr", result.PeakSnr);
+                    ctx.Set($"{captureAs}_significant", result.PeakIsSignificant ? "1" : "0");
+                    ctx.Set($"{captureAs}_state", result.FinalState.ToString());
+                }
+
+                // A scan that ran (even one that found only noise) is a step
+                // success — the recipe branches on '{captureAs}_significant'.
+                // Only a setup/hardware error fails the step.
+                return result.FinalState == ScanState.Error
+                    ? Result.Fail(ErrorCode.OperationFailed, result.Message)
+                    : Result.Ok(result.Message);
+            }
+
             case "camera.setexposure":
             {
                 // Only fields named in Parameters are changed; the rest keep
@@ -86,6 +268,20 @@ internal sealed class StepDispatcher
             case "io.setoutputbyname":
                 return await _engine.IO.SetOutputByNameAsync(
                     step.Device, Str(step, "pin", ctx), Bool(step, "state", ctx), ct);
+
+            case "io.toggleoutput":
+            {
+                // Pulse a named output: drive it to the opposite of its resting
+                // state, hold for 'dwellMs', then restore. Ported from bobcat's
+                // "Toggle Output"; 'startState' is the resting (restored) state.
+                var pin = Str(step, "pin", ctx);
+                var rest = Bool(step, "startState", ctx);
+                var dwellMs = (int)Num(step, "dwellMs", ctx);
+                var pulse = await _engine.IO.SetOutputByNameAsync(step.Device, pin, !rest, ct);
+                if (!pulse.IsSuccess) return pulse;
+                if (dwellMs > 0) await Task.Delay(dwellMs, ct).ConfigureAwait(false);
+                return await _engine.IO.SetOutputByNameAsync(step.Device, pin, rest, ct);
+            }
 
             case "pneumatic.retract":
                 return await _engine.Pneumatic.RetractAndWaitAsync(step.Device, ct);
@@ -228,6 +424,31 @@ internal sealed class StepDispatcher
                 return await _engine.Lighting.SetChannelIntensityAsync(
                     step.Device, (int)Num(step, "channel", ctx), (int)Num(step, "intensity", ctx));
 
+            case "lighting.setnamedchannel":
+                return await _engine.Lighting.SetNamedChannelAsync(
+                    step.Device, Str(step, "channel", ctx), (int)Num(step, "intensity", ctx));
+
+            case "lighting.setall":
+                return await _engine.Lighting.SetAllAsync(step.Device, (int)Num(step, "intensity", ctx));
+
+            case "lighting.setgroup":
+                return await _engine.Lighting.SetGroupAsync(
+                    step.Device, Str(step, "group", ctx), (int)Num(step, "intensity", ctx));
+
+            case "lighting.configuregroup":
+            {
+                // Per-colour intensities for a light group; channels of an
+                // unlisted colour are turned off by the facet.
+                var byColor = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["white"] = (int)Num(step, "white_intensity", ctx),
+                    ["red"]   = (int)Num(step, "red_intensity", ctx),
+                    ["green"] = (int)Num(step, "green_intensity", ctx),
+                    ["blue"]  = (int)Num(step, "blue_intensity", ctx),
+                };
+                return await _engine.Lighting.ConfigureGroupAsync(step.Device, Str(step, "group", ctx), byColor);
+            }
+
             case "tec.connect":
                 return await _engine.Tec.ConnectAsync(step.Device, ct);
 
@@ -341,12 +562,112 @@ internal sealed class StepDispatcher
                     ExpressionEvaluator.Evaluate(step.Parameters.GetValueOrDefault("expression", "0"), ctx));
                 return Result.Ok();
 
+            case "var.clear":
+                ctx.Clear();
+                _log(LogLevel.Info, "Context variables cleared.");
+                return Result.Ok();
+
+            case "dut.record":
+                RecordDut(step, ctx, Str(step, "key", ctx), Str(step, "value", ctx));
+                return Result.Ok();
+
+            case "dut.recordfromcontext":
+                RecordDut(step, ctx, Str(step, "key", ctx), ctx.GetString(Str(step, "from", ctx)));
+                return Result.Ok();
+
+            case "dut.recordgroup":
+            {
+                // Records every context variable whose name starts with 'prefix'
+                // as one grouped Object entry (a JSON map). Ported from bobcat's
+                // "DUT Bulk Insert from Context".
+                if (ctx.Dut == null)
+                {
+                    _log(LogLevel.Warning, "dut.recordGroup skipped — no DUT serial for this run.");
+                    return Result.Ok();
+                }
+                var group = Str(step, "group", ctx);
+                var prefix = Str(step, "prefix", ctx);
+                var members = ctx.Snapshot()
+                    .Where(kv => kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    .ToDictionary(kv => kv.Key, kv => kv.Value);
+                ctx.Dut.Entries.Add(new DutEntry(
+                    DateTime.UtcNow, group, JsonSerializer.Serialize(members), DutValueType.Object));
+                _log(LogLevel.Info,
+                    $"DUT record group '{group}' <- {members.Count} value(s) with prefix '{prefix}'");
+                return Result.Ok();
+            }
+
             default:
                 return Result.Fail(ErrorCode.NotSupported, $"Unknown step op: '{step.Op}'");
         }
     }
 
     // --- parameter resolution: literal | var:NAME | expr:EXPRESSION ---
+
+    /// <summary>
+    /// Appends a value to the run's DUT record. A no-op (with a warning) when the
+    /// run has no DUT serial — recipes can run unattached to a unit.
+    /// </summary>
+    private void RecordDut(WorkflowStep step, WorkflowContext ctx, string key, string value)
+    {
+        if (ctx.Dut == null)
+        {
+            _log(LogLevel.Warning, $"dut.record '{key}' skipped — no DUT serial for this run.");
+            return;
+        }
+        var type = ResolveDutType(step.Parameters.GetValueOrDefault("type"), value);
+        ctx.Dut.Entries.Add(new DutEntry(DateTime.UtcNow, key, value, type));
+        _log(LogLevel.Info, $"DUT record '{key}' = {value} ({type})");
+    }
+
+    /// <summary>
+    /// Resolves the <see cref="DutValueType"/> for a recorded value — honours an
+    /// explicit <c>type</c> param, otherwise infers integer / double / string.
+    /// </summary>
+    private static DutValueType ResolveDutType(string? declared, string value)
+    {
+        switch ((declared ?? string.Empty).Trim().ToLowerInvariant())
+        {
+            case "string":  return DutValueType.String;
+            case "double":  return DutValueType.Double;
+            case "integer": return DutValueType.Integer;
+            case "object":  return DutValueType.Object;
+        }
+        if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            return DutValueType.Integer;
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+            return DutValueType.Double;
+        return DutValueType.String;
+    }
+
+    private static FeedbackKind ParseFeedbackKind(string raw) => raw.Trim().ToLowerInvariant() switch
+    {
+        "measurement" => FeedbackKind.Measurement,
+        "powersupply" or "power supply" or "psu" => FeedbackKind.PowerSupply,
+        _ => FeedbackKind.Smu,
+    };
+
+    private static ScanMode ParseScanMode(string raw) => raw.Trim().ToLowerInvariant() switch
+    {
+        "fine" => ScanMode.Fine,
+        "ultrafine" or "ultra fine" or "ultra-fine" => ScanMode.UltraFine,
+        _ => ScanMode.Coarse,
+    };
+
+    /// <summary>Splits an axis list — "Z,Y,X" or concatenated "ZYX".</summary>
+    private static string[] SplitAxes(string raw)
+        => raw.Contains(',')
+            ? raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                 .Select(a => a.ToUpperInvariant()).ToArray()
+            : raw.Where(c => !char.IsWhiteSpace(c)).Select(c => char.ToUpperInvariant(c).ToString()).ToArray();
+
+    /// <summary>Parses a comma-separated step list in µm into millimetres.</summary>
+    private static double[] ParseStepSizesMm(string raw)
+        => raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(s => double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var um)
+                ? um / 1000.0 : 0.0)
+            .Where(mm => mm > 0)
+            .ToArray();
 
     /// <summary>True if the step supplies a non-empty value for <paramref name="key"/>.</summary>
     private static bool Has(WorkflowStep step, string key)

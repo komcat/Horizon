@@ -28,9 +28,12 @@ internal sealed class DeckRunner
         _log = log;
     }
 
-    public async Task<Result> RunAsync(WorkflowDeck deck, CancellationToken ct)
+    /// <summary>
+    /// Runs the deck. <paramref name="ctx"/> is shared by every program — the
+    /// caller supplies it so a DUT run (if any) threads through the whole deck.
+    /// </summary>
+    public async Task<Result> RunAsync(WorkflowDeck deck, WorkflowContext ctx, CancellationToken ct)
     {
-        var ctx = new WorkflowContext();   // one context shared by every program
         var entries = deck.Entries;
 
         for (int i = 0; i < entries.Count; i++)

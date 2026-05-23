@@ -34,7 +34,9 @@ internal sealed class LightingFacet : ILightingFacet, IAsyncDisposable
         foreach (var id in _manager.GetAllDeviceIds())
         {
             var dev = _manager.GetDevice(id);
-            var channels = dev?.Channels.Select(c => new LightingChannelInfo(c.Channel, c.Name)).ToList()
+            var channels = dev?.Channels
+                               .Select(c => new LightingChannelInfo(c.Channel, c.Name, c.Group, c.Color))
+                               .ToList()
                            ?? new List<LightingChannelInfo>();
             _devices[id] = new LightingDeviceInfo(id, dev?.DisplayName ?? id, dev?.ControllerType ?? "?", channels);
             _state[id] = LightingState.Unknown;
@@ -82,6 +84,60 @@ internal sealed class LightingFacet : ILightingFacet, IAsyncDisposable
             return error == LightingError.Success
                 ? Result.Ok()
                 : Result.Fail(ErrorCode.OperationFailed, $"Lighting '{device}' channel {channel}: {error}");
+        });
+
+    public Task<Result> SetNamedChannelAsync(string device, string channelName, int intensity)
+        => ApplySelectedAsync(device, $"channel '{channelName}'",
+            c => c.Name.Equals(channelName, StringComparison.OrdinalIgnoreCase),
+            _ => intensity);
+
+    public Task<Result> SetAllAsync(string device, int intensity)
+        => ApplySelectedAsync(device, "all channels", _ => true, _ => intensity);
+
+    public Task<Result> SetGroupAsync(string device, string group, int intensity)
+        => ApplySelectedAsync(device, $"group '{group}'",
+            c => c.Group.Equals(group, StringComparison.OrdinalIgnoreCase),
+            _ => intensity);
+
+    public Task<Result> ConfigureGroupAsync(
+        string device, string group, IReadOnlyDictionary<string, int> intensitiesByColor)
+    {
+        // Channels in the group whose colour is named get that intensity; the
+        // rest of the group is turned off (intensity 0).
+        var byColor = new Dictionary<string, int>(intensitiesByColor, StringComparer.OrdinalIgnoreCase);
+        return ApplySelectedAsync(device, $"group '{group}'",
+            c => c.Group.Equals(group, StringComparison.OrdinalIgnoreCase),
+            c => byColor.TryGetValue(c.Color, out var v) ? v : 0);
+    }
+
+    /// <summary>
+    /// Applies an intensity to every channel of <paramref name="device"/> that
+    /// satisfies <paramref name="match"/>. Best-effort — every matched channel
+    /// is attempted; the first failure (if any) is returned.
+    /// </summary>
+    private Task<Result> ApplySelectedAsync(
+        string device, string what,
+        Func<LightingChannelInfo, bool> match,
+        Func<LightingChannelInfo, int> intensityFor)
+        => Task.Run(() =>
+        {
+            if (!_devices.TryGetValue(device, out var info))
+                return Result.Fail(ErrorCode.OperationFailed, $"Lighting controller '{device}' not found.");
+
+            var targets = info.Channels.Where(match).ToList();
+            if (targets.Count == 0)
+                return Result.Fail(ErrorCode.InvalidParameter,
+                    $"Lighting '{device}': {what} matched no channel.");
+
+            Result? firstError = null;
+            foreach (var c in targets)
+            {
+                var error = _manager.SetIntensity(device, c.Channel, intensityFor(c));
+                if (error != LightingError.Success)
+                    firstError ??= Result.Fail(ErrorCode.OperationFailed,
+                        $"Lighting '{device}' channel {c.Channel}: {error}");
+            }
+            return firstError ?? Result.Ok();
         });
 
     public event Action<LightingStateChanged>? StateChanged;

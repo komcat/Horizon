@@ -260,7 +260,7 @@ public sealed class ProgramEditorPageViewModel : PageViewModel
         Status = $"Running '{program.Name}'…";
         try
         {
-            var result = await _host.Process.RunAsync(program, _runCts.Token).ConfigureAwait(true);
+            var result = await _host.Process.RunAsync(program, ct: _runCts.Token).ConfigureAwait(true);
             if (_runCts.IsCancellationRequested)
             {
                 foreach (var step in Steps)

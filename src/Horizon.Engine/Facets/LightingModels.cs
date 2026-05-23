@@ -1,7 +1,11 @@
 namespace Horizon.Engine;
 
 /// <summary>Static description of one lighting channel.</summary>
-public sealed record LightingChannelInfo(int Channel, string Name);
+/// <param name="Channel">Controller channel number.</param>
+/// <param name="Name">Channel name (e.g. "Red").</param>
+/// <param name="Group">Logical group the channel belongs to (e.g. "light1"); empty if unused.</param>
+/// <param name="Color">Colour label (e.g. "white", "red"); empty if unused.</param>
+public sealed record LightingChannelInfo(int Channel, string Name, string Group, string Color);
 
 /// <summary>Static description of a lighting controller.</summary>
 public sealed record LightingDeviceInfo(

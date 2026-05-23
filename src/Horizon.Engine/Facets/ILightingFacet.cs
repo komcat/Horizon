@@ -26,8 +26,32 @@ public interface ILightingFacet
     Task<Result> ConnectAsync(string device, CancellationToken ct = default);
     Task<Result> DisconnectAsync(string device);
 
-    /// <summary>Sets a channel's intensity (controller-native units).</summary>
+    /// <summary>Sets a channel's intensity (controller-native units) by channel number.</summary>
     Task<Result> SetChannelIntensityAsync(string device, int channel, int intensity);
+
+    /// <summary>
+    /// Sets every channel whose <see cref="LightingChannelInfo.Name"/> matches
+    /// (case-insensitive) to <paramref name="intensity"/>. Fails if no channel
+    /// has that name.
+    /// </summary>
+    Task<Result> SetNamedChannelAsync(string device, string channelName, int intensity);
+
+    /// <summary>Sets every configured channel to <paramref name="intensity"/> (e.g. all-on / all-off).</summary>
+    Task<Result> SetAllAsync(string device, int intensity);
+
+    /// <summary>
+    /// Sets every channel in <paramref name="group"/> to <paramref name="intensity"/>.
+    /// Fails if the group matches no channel.
+    /// </summary>
+    Task<Result> SetGroupAsync(string device, string group, int intensity);
+
+    /// <summary>
+    /// Configures a group per colour: each channel in <paramref name="group"/> is
+    /// set to <paramref name="intensitiesByColor"/>[<see cref="LightingChannelInfo.Color"/>],
+    /// or to 0 when its colour is not listed.
+    /// </summary>
+    Task<Result> ConfigureGroupAsync(
+        string device, string group, IReadOnlyDictionary<string, int> intensitiesByColor);
 
     /// <summary>Raised (edge-triggered) when a device's polled state changes.</summary>
     event Action<LightingStateChanged>? StateChanged;

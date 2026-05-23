@@ -10,7 +10,17 @@ public sealed class WorkflowContext
 {
     private readonly ConcurrentDictionary<string, string> _vars = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// The DUT run that <c>dut.*</c> steps record into — set by the run driver
+    /// when a serial number is supplied, null otherwise. A deck shares one
+    /// context, so every program in the deck records into the same run.
+    /// </summary>
+    public DutRun? Dut { get; set; }
+
     public void Set(string name, string value) => _vars[name] = value;
+
+    /// <summary>Removes all variables. Does not affect the active <see cref="Dut"/> run.</summary>
+    public void Clear() => _vars.Clear();
 
     public void Set(string name, double value)
         => _vars[name] = value.ToString(CultureInfo.InvariantCulture);

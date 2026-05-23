@@ -4,176 +4,180 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run
 
-- **Solution**: `Horizon.sln` (11 projects, all net8.0, x64 only)
-- **WPF app entry**: `Horizon.App` (net8.0-windows)
-- **User compiles themselves** — do not run `dotnet build` or `msbuild`
-- **User tests themselves** — no test projects exist; skip test commands
-- No CI/CD pipelines configured
+- **Solution**: `Horizon.sln` — 23 projects, all `net8.0`/`net8.0-windows`, x64 only. All projects live under `src/`.
+- **User compiles themselves** — do not run `dotnet build` or `msbuild`.
+- **User tests themselves** — no test projects exist; skip test commands.
+- No CI/CD pipelines configured.
+- **Runnable entry points** (`OutputType=Exe`/`WinExe`):
+  - `Horizon.UI` — the current operator application (Layer 3, WPF).
+  - `Horizon.App` — the legacy AvalonDock application (see "Legacy stack" below).
+  - `Horizon.Console`, `Horizon.Workflow.Console` — Spectre.Console test rigs for Layers 1 & 2.
+  - `Horizon.ConfigTool` — Spectre.Console hardware-config authoring utility.
 
-## Architecture
+## The 3-Layer Architecture
 
-Modular hardware control system (WPF + AvalonDock) for cameras, motion stages, digital I/O, pneumatic slides, current measurement, laser controllers, process sequencing, and safety monitoring.
-
-### Dependency Graph
+This is the single most important thing to understand. Horizon was split from a
+monolithic WPF app into three stacked layers, each in its own assembly, each
+depending only on the layer below via interfaces. Design docs: `docs/headless-engine-concept.md`,
+`docs/layer1-hardware-engine-design.md`, `docs/layer2-process-module-design.md`,
+`docs/layer3-ui-design.md`.
 
 ```
-Horizon.App (WPF shell)
-  └─ Horizon.Core (AppContext wires all managers)
-       ├─ Horizon.Process (CommandDispatcher + ProcessEngine + Plugins)
-       │    ├─ Horizon.Camera
-       │    ├─ Horizon.Motion
-       │    ├─ Horizon.Pneumatic ─── Horizon.IO
-       │    ├─ Horizon.IO
-       │    ├─ Horizon.CurrentMeasurement
-       │    ├─ Horizon.LaserController
-       │    └─ Horizon.Safety ────── Horizon.IO
-       └─ Horizon.Common (ErrorCode, Result<T>, ConfigLoader)
+Layer 3  Horizon.UI          operator UI        → IProcessService + IHorizonEngine    (active dev)
+Layer 2  Horizon.Workflow    product/process    → IHorizonEngine only
+Layer 1  Horizon.Engine      hardware engine    → owns all hardware adapters
 ```
 
-### AppContext (DI Container)
+**Strict boundary rule**: a layer references only the layer below, through its
+interface. Layer 2 references `Horizon.Engine` + `Horizon.Common` *only* — never
+hardware adapters, never `Horizon.Core`/legacy `Horizon.Process`. Layer 3
+references `Horizon.Workflow` + `Horizon.Engine` + `Horizon.Common`. Do not add
+references that cross or skip layers.
 
-`Horizon.Core.AppContext` owns all managers and orchestrates initialization:
-1. Loads JSON configs from `%APPDATA%\Horizon\config\`
-2. Creates managers (CameraManager, UnifiedMotionManager, EziIOManager, CurrentMeasurementManager, LaserControllerManager, PneumaticManager, SafetyWatchManager, ProductManager, AxisTransformService)
-3. Discovers process plugins via `ProcessPluginRegistry.DiscoverPlugins()`
-4. Builds ProcessEngine device registry via reflection
-5. SplashWindow runs hardware connections async, then MainWindow opens
+### Layer 1 — Horizon.Engine (hardware engine)
 
-Property `ILogSink? LogSink` is set by App.xaml.cs (Serilog adapter) — managers log via `LogSink?.Info/Warn/Error()` extension methods.
+`IHorizonEngine` (`HorizonEngine.cs`) is a headless, UI-free, async host that
+owns all hardware. Lifecycle: `InitializeAsync` (load config, build device
+objects, no I/O) → `ConnectAllAsync` (open devices, `IProgress<string>`
+reporting) → `GetStatusSnapshot` (cached, non-blocking, any-thread) →
+`DisposeAsync` (fixed safe teardown order).
 
-### Config System
+Hardware is exposed as **facets** under `Facets/` — one interface + impl + models
+trio per domain: Motion, IO, Pneumatic, Measurement, Laser, PowerSupply,
+Lighting, Tec, Smu, Camera, Vision (HALCON), Safety. The engine **keeps the
+existing adapter assemblies** (`Horizon.Motion`, `Horizon.Camera`, `Horizon.IO`,
+etc. with their `Native/` P/Invoke) — only the composition/facet layer was
+recreated. The engine is coordinate-only: no named positions, no products.
 
-`ConfigLoader.LoadJson<T>(dir, name)` with `.local.json` override (System.Text.Json, case-insensitive, comments/trailing commas allowed). Config dir: `%APPDATA%\Horizon\config\`.
+### Layer 2 — Horizon.Workflow (product/process module)
 
-Key config files: `io_devices.json`, `motor_devices.json`, `pneumatic_slides.json`, `safety_watch.json`, `motion_interlocks.json`, `current_measurement_devices.json`, `laser_controller_devices.json`.
+`IProcessService` (`ProcessService.cs`) is the Layer 2 facade: products, teach
+points / named positions (name → coordinates), and program/recipe execution
+against `IHorizonEngine`. This is a **clean recreate** — it does *not* reuse the
+legacy `ProcessEngine`/`RecipeEngine` or the `.hproc`/`.hrcp` formats; Layer 2
+defines its own program/recipe/position formats.
 
-### Hardware Adapters (all via interfaces)
+- `Execution/` — `WorkflowRunner`, `WorkflowProgram`, `StepDispatcher`,
+  `WorkflowContext`, `ExpressionEvaluator`, `ConditionEvaluator`, `PauseController`.
+- `Execution/DeckRunner` + `DeckStore` — a **deck** is a chain of programs with
+  transition conditions between them.
+- `Recipe/` — a recreated `.hrcp`-style scripting interpreter (lexer → parser →
+  AST → interpreter, `RecipeMethodRegistry`).
+- `ProductStore`, `PositionStore`, `ProgramStore` — per-product data I/O.
+- `IOperatorPrompt` — abstraction for asking the operator a question; the UI
+  supplies a WPF implementation, consoles a stdin one.
+- `Scanning/` — hexapod beam-alignment scan (coarse-to-fine hill-climb, ported
+  from `bobcat_engine`). `HexapodScanEngine` orchestrates; `CoarseToFineStrategy`
+  is the algorithm; `IScanFeedbackSource` bridges SMU/measurement/power-supply
+  facet events to the algorithm. See `docs/hexapod-scanning.md`.
+- `Dut/` — `DutStore` + `DutResultStore` for per-DUT (device-under-test)
+  results, keyed by serial; consumed by the bobcat-style step ops.
+- `Migration/` — `BobcatRecipeConverter` translates legacy `bobcat_engine`
+  recipe JSON into `WorkflowProgram` JSON; `BobcatMigration` is the entry
+  point. See `docs/recipe-migration.md` for the Rosetta-stone mapping
+  (bobcat *recipe* → Horizon `WorkflowProgram`; bobcat *program* →
+  `WorkflowDeck`). Note that `Recipe/` (the `.hrcp` interpreter) is a
+  *separate* language — bobcat recipes do NOT target it.
+- `DeviceLinkStore` — machine-global `device_links.json` storing spatial
+  offsets between motion devices; written by `motion.registerDeviceLink`,
+  replayed by `motion.compensateDeviceLink`.
+
+### Layer 3 — Horizon.UI (operator application)
+
+A greenfield WPF app (`net8.0-windows10.0.19041`), **not** a port of
+`Horizon.App` — no AvalonDock, a fixed purpose-built operator layout. MVVM with a
+hand-rolled `ObservableObject`/`RelayCommand` (`Mvvm/`).
+
+- `EngineHost` — owns the `IHorizonEngine`/`IProcessService` instances and
+  startup/shutdown sequencing (`StartupWindow`, `ShutdownWindow`).
+- `ShellWindow` + `DisplayWindow` — main window plus detachable display windows.
+- **Thread rule**: the main UI thread must never block. All hardware I/O, frame
+  conversion and data production stays on background threads. `Telemetry/`
+  (`TelemetryChannel`, `TelemetryStore`, `UiSampler`) is the non-blocking
+  pipeline that feeds motion/measurement data to the UI.
+- Pages: Machine (hardware status + manual control, composed of `ViewModels/Sections/`),
+  Program Editor, Deck (process sequence). Views in `Views/`, view-models in `ViewModels/`.
+
+### Legacy stack — Horizon.App / Horizon.Core / Horizon.Process
+
+The original monolith: `Horizon.App` (AvalonDock WPF) → `Horizon.Core.AppContext`
+(DI container wiring all managers) → `Horizon.Process` (`ProcessEngine`,
+`CommandDispatcher`, plugins, `RecipeEngine`). **This stack is not the path
+forward and is not refactored.** Per `docs/layer3-ui-design.md` it is acceptable
+if Layer 1/2 recreate work breaks it. Run `Horizon.UI` *or* `Horizon.App`, never
+both — a single process owns the hardware SDKs. `docs/architecture_layers.md` and
+`docs/architecture.md` describe this legacy stack and are stale relative to the
+3-layer split. Touch the legacy stack only when explicitly asked.
+
+## Hardware Adapter Assemblies (shared by all layers' engines)
 
 | Domain | Interface | Adapters | SDK |
 |---|---|---|---|
-| Camera | ICameraHardware | PylonCameraAdapter, IDSPeakCameraAdapter, UEyeCameraAdapter | Basler Pylon, IDS Peak, IDS uEye (managed + P/Invoke) |
-| Motion | IMotionController | ACSMotionController, PIMotionController | ACS.SPiiPlusNET6 (managed), PI_GCS2_DLL_x64 (P/Invoke) |
+| Camera | ICameraHardware | PylonCameraAdapter, IDSPeakCameraAdapter, UEyeCameraAdapter | Basler Pylon 8, IDS Peak, IDS uEye |
+| Motion | IMotionController | ACSMotionController, PIMotionController | ACS.SPiiPlusNET6 (managed, TCP 701), PI_GCS2_DLL_x64 (P/Invoke, TCP 50000) |
 | IO | IIODevice | EziIODevice | EziMOTIONPlusE.dll (P/Invoke) |
 | Pneumatic | IPneumaticSlide | PneumaticSlide | Uses IIODevice output pins |
-| Current Measurement | ICurrentMeasurementDevice | Keithley6482Adapter | visa64.dll P/Invoke (NI-VISA runtime) |
-| Laser Controller | ILaserControllerDevice | CLD101xAdapter | visa64.dll P/Invoke (Thorlabs CLD101x SCPI over USB) |
+| Current Measurement | ICurrentMeasurementDevice | Keithley6482Adapter | visa64.dll P/Invoke (NI-VISA) |
+| Laser Controller | ILaserControllerDevice | CLD101xAdapter | Thorlabs CLD101x SCPI over USB |
+| Power Supply | IPowerSupplyDevice | KeysightPowerSupplyAdapter | Keysight E36xxx |
+| Lighting | ILightingDevice | CcsPd3Adapter | CCS PD3 LED controller |
+| TEC | ITecDevice | Ted4015Adapter | Thorlabs TED4015 standalone TEC |
+| SMU | ISmuDevice | Keithley2400Adapter, Keithley2602BAdapter | Keithley SourceMeter via VISA |
+
+PowerSupply / Lighting / Tec / Smu are newer domains; each follows the same
+shape (`Adapters/`, `Interfaces/`, `Models/`, optional `Native/VisaNative.cs`, a
+`Manager`) and references `Horizon.Config` for its TCP/connection config types.
+`Horizon.Interlock` was extracted out of `Horizon.Core` into its own assembly.
 
 ### Fastech Ezi-IO Register Layout
 
-Standalone Ezi-IO modules use a **combined I/O register**: bits `[0..InputCount-1]` = inputs, bits `[InputCount..InputCount+OutputCount-1]` = outputs. SetOutput/ReadAllOutputs in `EziIODevice` handle the bit offset automatically. Motor IO (`FAS_SetIOOutput`) does not use this offset.
+Standalone Ezi-IO modules use a **combined I/O register**: bits `[0..InputCount-1]`
+= inputs, bits `[InputCount..InputCount+OutputCount-1]` = outputs. SetOutput/
+ReadAllOutputs in `EziIODevice` handle the bit offset automatically. Motor IO
+(`FAS_SetIOOutput`) does not use this offset.
 
-### TeachPointManager
+## Config System
 
-`Horizon.Core.TeachPointManager` manages named products containing taught positions per motion device/axis. Products are persisted as JSON in `%APPDATA%\Horizon\config\teach-points\`. `TeachPointStore` handles file I/O. The active product is tracked separately. Used by TrainerPanel and motion command handlers for position recall.
+`ConfigLoader.LoadJson<T>(dir, name)` (`Horizon.Common`) with `.local.json`
+override — System.Text.Json, case-insensitive, comments + trailing commas
+allowed, camelCase `JsonStringEnumConverter`. Config dir: `%APPDATA%\Horizon\config\`.
 
-### UserPreferences
+Per-file model records live in their domain projects (one source of truth shared
+by engine, legacy app, and ConfigTool): `io_devices.json` → `IODeviceConfig`,
+`motor_devices.json` → `MotionDevice`, `pneumatic_slides.json` → `PneumaticConfig`,
+`safety_watch.json` → `SafetyWatchConfig`, `motion_interlocks.json` → `InterlockConfig`,
+`current_measurement_devices.json`, `laser_controller_devices.json`, plus per-domain
+files for the newer hardware. Camera config: `%APPDATA%\Horizon\camera-config.json`.
 
-`Horizon.Common.UserPreferences` — user-level settings (auto-open top view, crosshair, click-to-move, chart overlay, last-selected devices). Loaded/saved via `ConfigLoader` as `user_preferences.json` in the config directory.
-
-### MeasurementHub
-
-`Horizon.Core.MeasurementHub` — central pub/sub for measurement data. Channels are auto-created on first `Push(key, value, timestamp)`. Each `MeasurementChannel` is a lock-based circular buffer (500 samples). Channel key convention: `"{DeviceName}.CH{N}"` (e.g., `"Keithley-1.CH1"`). Consumers: CurrentReadingChart, OverlayWindow, CurrentChartPanel, LiveFeedPanel.
-
-### Process Engine
-
-`ProcessEngine` executes command sequences. `CommandDispatcher` routes commands by manager type (motion, io, pneumatic, camera, currentmeasurement, lasercontroller, system, context) to 8 `ICommandHandler` implementations. `ProcessContext` holds runtime variables as thread-safe dictionary (typed getters: `GetNumeric`, `GetString`, `GetBoolean`; `GetSnapshot()` for live debugging). Supports breakpoints via `ManualResetEventSlim` gate and step-by-step mode.
-
-Callbacks: `OnStepStarted(index, device, method)`, `OnStepCompleted(index, success)`, `OnLoopIteration(index, current, total)`.
-
-### Process Plugin System
-
-Plugins define reusable process step templates. Each implements `IProcessPlugin` with metadata (`Id`, `DisplayName`, `Category`, `Description`, `Parameters`) and a `BuildSteps()` method that emits `ProcessStep`s via `ProcessBuilder`.
-
-- **Discovery**: `ProcessPluginRegistry.DiscoverPlugins(assemblies)` finds plugins via reflection (parameterless constructor required)
-- **Parameter metadata**: `PluginParamDef` with types: Text, Number, Boolean, Enum, FilePath, MotionDevice, CameraDevice, NamedPosition, Axis
-- **Dependent params**: `DependsOnDevice` chains dropdowns (e.g., NamedPosition refreshes when MotionDevice changes)
-- **UI binding**: `PropertyTable` control auto-generates forms from `PluginParamDef` metadata
-- **Location**: `Horizon.Process/Plugins/` (15 built-in plugins across Motion, Camera, System, Variables categories)
-
-### Expression Evaluator
-
-`ExpressionEvaluator` in `Horizon.Process` — lightweight recursive-descent parser (`ref struct` on `ReadOnlySpan<char>`). Supports `+`, `-`, `*`, `/`, parentheses, float literals (with scientific notation), and variable references resolved from `ProcessContext`. Division by zero returns IEEE 754 Infinity.
-
-Three usage patterns:
-1. **Plugin**: `CalculateExpressionPlugin` evaluates expression → stores result in context variable
-2. **Parameter prefix**: Any handler parameter with `expr:EXPRESSION` computes inline (e.g., `expr:distance * 0.5`)
-3. **Log interpolation**: `{=EXPRESSION}` in SystemCommandHandler log messages (e.g., `Distance = {=posA - posB}`)
-
-### Recipe Engine
-
-`Horizon.Process.Recipe.RecipeEngine` — tree-walking interpreter for `.hrcp` recipe scripts (separate from ProcessEngine). Has its own lexer (`RecipeLexer`), parser (`RecipeParser` → AST), and `RecipeMethodRegistry` for binding hardware methods. Supports cancellation, timeout, breakpoints, step-by-step debugging, and UI callbacks. Shares `HardwareExecutionLock` with ProcessEngine to prevent concurrent execution.
-
-### ProductManager
-
-`Horizon.Core.ProductManager` — manages per-product directories under `%APPDATA%\Horizon\products\{name}/` with subdirs `recipes/`, `processes/`, `decks/`, and `positions.json`. Active product tracked in `products/active.json`. When a product is loaded, its positions sync into `TeachPointManager`. Falls back to shared directories (`%APPDATA%\Horizon\recipes/`, `processes/`, `decks/`) when no product is active. Auto-migrates old `teach-points/` folder on first run.
-
-### NeedleCameraCalibration
-
-`NeedleCameraCalibrationModels` + `NeedleCameraCalibrationStore` in Core — stores per-product needle-to-camera offset calibration data. Used by `NeedleCameraTrainerPanel` for teaching the XY offset between needle and camera positions via a pneumatic slide.
-
-### Dispensing System
-
-`Horizon.Core.Dispensing.DispenseExecutor` — orchestrates a glue/adhesive dispense cycle: move to camera-verify position, optional camera verification prompt, descend to dispense Z, actuate the pneumatic slide for `DispenseDurationMs`, then lift off. Settings live in `DispenseProfile` (per-product, persisted by `DispenseProfileStore` under the product directory). `DispenseTypes.cs` holds `DispenseProfile` / `DispensePosition` records.
-
-- `PromptUser` delegate (injected by `AppContext`) shows WPF dialogs for camera verification from the executor.
-- Uses `NeedleCameraCalibrationStore` to apply the needle↔camera XY offset.
-- Triggered from process programs via `DispensePlugin` (`Horizon.Process/Plugins/`) and from `SystemCommandHandler`.
-- Per-axis velocity control: `IMotionController.SetVelocity`/`GetVelocity` (implemented by ACS and PI adapters); the executor uses profile `Velocity`, `SafetySpeed`, and `LiftOffSpeed` for different motion phases.
-
-### Safety Watchdog
-
-`Horizon.Safety.SafetyWatchManager` — background IO pin polling (50ms) with enforcement actions. Config: `safety_watch.json` with `watchedInputs` (device, pin, trigger edge, severity) and `emergencyActions` (stopMotion, retractPneumatics, cancelExecution, blockNewExecution, killIO). When a watched input triggers:
-
-1. Cancels shared `CancellationTokenSource` → stops ProcessEngine + RecipeEngine
-2. Calls `UnifiedMotionManager.StopAllDevices()`
-3. Kills configured IO outputs (specific pins or all)
-4. Retracts all pneumatic slides
-5. Blocks new execution via `SafetyGate` on both engines until `AcknowledgeSafetyFlag()`
-
-Enforcement delegates injected from `AppContext` (delegate injection pattern — Safety module can't reference Motion/Pneumatic). UI panels link execution tokens via `LinkExecutionCts(panelToken)`. SafetyPanel provides watched input management (add/remove/save) and event log. MainWindow toolbar shows green/orange/red safety indicator.
-
-### Motion Interlocks
-
-`Horizon.Core.Interlock.InterlockService` — pre-motion collision prevention. Config: `motion_interlocks.json` with rules specifying which pneumatic slides must be retracted before specific motions are allowed. Delegate `Func<string, string, int, (bool, string?)>` injected into `UnifiedMotionManager.InterlockCheck` from `AppContext`.
-
-Key concepts:
-- **AxisBlock**: `All`, `XY`, `Z` — which axes the rule restricts
-- **EnforcementLayer**: `ScriptOnly` (default), `JogOnly`, `All` — jog is typically unrestricted for teaching
-- **MotionSource**: Tagged by callers (0=Jog, 1=Process, 2=Recipe, 3=Manual) via `MotionSourceContext`
-- **OverrideMode**: Allows motion despite interlocks (logged as warning, not persisted, resets on restart)
-- **Fail-safe**: Disconnected/unknown slide state = condition NOT met = motion blocked
-
-SafetyPanel "Interlocks" tab shows live rule statuses with add/remove/save. JogPanel has "Interlock Override" checkbox. MainWindow toolbar shows green/yellow/orange interlock indicator.
-
-### Camera Defaults
-
-On connect, `CameraManager.ConnectCamera()` applies `new ExposureSettings()` defaults: AutoGain=off, Gain=0, AutoExposure=off, ExposureTime=10ms, FrameRate=10fps. Applied regardless of connection source (startup, manual reconnect). IDS Peak adapter does not implement FrameRate control (Pylon does).
-
-### ProcessProgram Persistence
-
-`ProcessProgram` model with `ProcessProgramStep` entries (PluginId, Parameters dict, Enabled flag, Uid, CustomName). Serialized as JSON `.hproc` files in `%APPDATA%\Horizon\processes\`. Last-opened file tracked in `.lastprogram`.
-
-### UI Panels (AvalonDock)
-
-MainWindow creates document panels per hardware device: IOPanel, MotionPanel, PneumaticPanel, CurrentMeasurementPanel, CurrentChartPanel, LaserControllerPanel, LiveFeedPanel, CameraInfoWindow, OverlayWindow. Each panel polls its hardware independently (DispatcherTimer) and exposes LogMessage/StatusChanged events for the output log and hardware tree. RunPanel executes process programs with deck management. RecipeEditorPanel edits/runs `.hrcp` recipe scripts. TeachPointPanel manages taught positions with a MoveMap graph editor. NeedleCameraTrainerPanel calibrates needle-to-camera XY offset. SafetyPanel has two tabs: "Safety Watch" (watched inputs, add/remove, event log) and "Interlocks" (rules, override toggle, live status).
-
-JogPanel includes quick-access tabs below the STOP button: Pneumatic (extend/retract buttons per slide), IO Output (toggle per output pin), Camera (exposure + gain sliders per camera). Interlock Override checkbox allows jog during teaching with slides extended.
-
-ProcessPanel includes a plugin catalog (TreeView by category), builder list with step highlighting (yellow=current, green=success, red=failure), PropertyTable for parameter editing, and a Context Watch DataGrid showing live variables during execution.
-
-TrainerPanel is a 3-step wizard for position accuracy training: (1) teach bonding positions via corner capture, (2) teach reference points to establish a coordinate frame, (3) retrace/align by re-visiting references and computing corrected positions. Uses `TeachPointManager` + `TrainerModels.cs` in Core. See `docs/position-accuracy-trainer.md` for coordinate math details.
+`Horizon.ConfigTool` is preset-driven console tooling for authoring these files
+with cross-reference validation (e.g. a pneumatic slide referencing a
+nonexistent IO pin). Authoring-side only — not part of the runtime stack.
 
 ## Conventions
 
-- Nullable enabled, implicit usings, AllowUnsafeBlocks in App only
-- Thread safety: `ConcurrentDictionary` for device collections, `lock` for hardware access, `PeriodicTimer` for async polling
-- Error enums per domain: `IOError`, `PneumaticError`, `MotionError`, `CurrentMeasurementError`, `LaserControllerError` — plus unified `ErrorCode` (hex-categorized) in Common
-- Pin names use `StringComparer.OrdinalIgnoreCase` throughout
-- Native DLLs (PI, Fastech, VISA, uEye) are copied to output via `<None Include="..." CopyToOutputDirectory="PreserveNewest">`
-- VISA instruments (Keithley, Thorlabs CLD101x) share `Native/VisaNative.cs` P/Invoke pattern
-- Logging: `ILogSink` interface in Core, `SerilogLogSink` adapter in App (rolling daily files + WPF output sink)
-- NuGet: AvalonDock 4.72.1, SkiaSharp.Views.WPF 3.116.1, MVTec HALCON 24.05 (`MVTec.HalconDotNet` managed wrapper in Horizon.Camera; `MVTec.HalconDotNet-Windows` native-bundling package in Horizon.App). HALCON 24.05 is x64-only — matches the solution's x64-only platform set.
+- Nullable enabled, implicit usings; `AllowUnsafeBlocks` in UI/App only.
+- Thread safety: `ConcurrentDictionary` for device collections, `lock` for
+  hardware access, `PeriodicTimer` for async polling.
+- Engine API is **async/Task-based** throughout.
+- Error enums per domain plus unified `ErrorCode` (hex-categorized) and
+  `Result<T>`/`Result` in `Horizon.Common`.
+- Pin/device names use `StringComparer.OrdinalIgnoreCase`.
+- Native DLLs (PI, Fastech, VISA, uEye) copied to output via
+  `<None Include="..." CopyToOutputDirectory="PreserveNewest">`.
+- VISA instruments share a `Native/VisaNative.cs` P/Invoke pattern.
+- Logging: `ILogSink` / `Logging.cs` interfaces; Serilog 4.2.0 in host projects.
+- NuGet: AvalonDock 4.72.1 (legacy App only), SkiaSharp.Views.WPF 3.116.1,
+  Spectre.Console 0.49.1 (console hosts), MVTec HALCON 24.05 — `MVTec.HalconDotNet`
+  managed wrapper in library projects, `MVTec.HalconDotNet-Windows`
+  native-bundling package in executable projects. HALCON 24.05 is x64-only.
 
 ## Documentation
 
-Detailed per-module docs live in `docs/modules/` (one .md per project). Architecture overview in `docs/architecture.md`. Trainer design docs in `docs/position-accuracy-trainer.md` and `docs/multi-device-trainer-design.md`.
+- 3-layer design: `docs/headless-engine-concept.md`, `docs/layer1-*.md`,
+  `docs/layer2-*.md`, `docs/layer3-ui-design.md`, `docs/config-tool-design.md`.
+- Legacy per-module docs in `docs/modules/` and `docs/architecture*.md` describe
+  the `Horizon.App`/`Core`/`Process` stack — accurate for legacy code only.
+- Trainer design: `docs/position-accuracy-trainer.md`,
+  `docs/multi-device-trainer-design.md`.
+- Hexapod beam-alignment scan: `docs/hexapod-scanning.md`.
+- Bobcat → Horizon recipe migration: `docs/recipe-migration.md`.

@@ -14,6 +14,10 @@ public sealed record WorkflowStep
     public bool Enabled { get; init; } = true;
     /// <summary>When true, the runner pauses before executing this step.</summary>
     public bool Breakpoint { get; init; }
+    /// <summary>Milliseconds the runner waits before dispatching this step. 0 = none.</summary>
+    public int DelayBeforeMs { get; init; }
+    /// <summary>Milliseconds the runner waits after this step succeeds. 0 = none.</summary>
+    public int DelayAfterMs { get; init; }
 }
 
 /// <summary>A runnable process program — an ordered sequence of steps.</summary>

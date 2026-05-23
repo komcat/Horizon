@@ -17,6 +17,8 @@ public sealed class ProcessService : IProcessService
     private ProgramStore? _programs;     // null when no product is active
     private RecipeStore? _recipes;       // null when no product is active
     private DeckStore? _decks;           // null when no product is active
+    private DutStore? _dut;              // null when no product is active
+    private readonly DeviceLinkStore _deviceLinks = new();   // machine-global, not per-product
     private PauseController? _pause;     // non-null only while a program runs
 
     public ProcessService(IHorizonEngine engine)
@@ -31,6 +33,7 @@ public sealed class ProcessService : IProcessService
             _programs = new ProgramStore(dir);
             _recipes = new RecipeStore(dir);
             _decks = new DeckStore(dir);
+            _dut = new DutStore(dir, _products.ActiveProduct!);
         }
     }
 
@@ -79,6 +82,7 @@ public sealed class ProcessService : IProcessService
             _programs = null;
             _recipes = null;
             _decks = null;
+            _dut = null;
         }
 
         Log(LogLevel.Info, $"Product deleted: {name}");
@@ -96,6 +100,7 @@ public sealed class ProcessService : IProcessService
         _programs = new ProgramStore(dir);
         _recipes = new RecipeStore(dir);
         _decks = new DeckStore(dir);
+        _dut = new DutStore(dir, name);
         Log(LogLevel.Info, $"Product loaded: {name}");
         return Result.Ok();
     }
@@ -107,6 +112,7 @@ public sealed class ProcessService : IProcessService
         _programs = null;
         _recipes = null;
         _decks = null;
+        _dut = null;
         Log(LogLevel.Info, "Product unloaded.");
     }
 
@@ -205,7 +211,8 @@ public sealed class ProcessService : IProcessService
         return Result.Ok();
     }
 
-    public async Task<Result> RunAsync(WorkflowProgram program, CancellationToken ct = default)
+    public async Task<Result> RunAsync(
+        WorkflowProgram program, string? serial = null, CancellationToken ct = default)
     {
         var pause = new PauseController();
         pause.PausedChanged += OnPausedChanged;
@@ -214,15 +221,24 @@ public sealed class ProcessService : IProcessService
         var runner = new WorkflowRunner(
             _engine,
             MoveToNamedPositionAsync,
+            name => _programs?.Load(name),
+            (device, name) => _positions?.Get(device, name),
+            SaveNamedPosition,
+            _deviceLinks,
             OperatorPrompt,
             pause,
             e => StepEvent?.Invoke(e),
             Log);
 
-        Log(LogLevel.Info, $"Program started: {program.Name}");
+        var ctx = new WorkflowContext();
+        var dut = BeginDut(serial, program.Name, ctx);
+
+        Log(LogLevel.Info, $"Program started: {program.Name}" + (dut != null ? $" [DUT {dut.Value.Record.Serial}]" : ""));
+        var verdict = DutVerdict.Fail;
         try
         {
-            var result = await runner.RunAsync(program, ct).ConfigureAwait(false);
+            var result = await runner.RunAsync(program, ctx, ct).ConfigureAwait(false);
+            verdict = result.IsSuccess ? DutVerdict.Pass : DutVerdict.Fail;
             var summary = $"Program {(result.IsSuccess ? "completed" : "failed")}: {program.Name}";
             if (!string.IsNullOrEmpty(result.Message))
                 summary += $" — {result.Message}";
@@ -231,6 +247,7 @@ public sealed class ProcessService : IProcessService
         }
         catch (OperationCanceledException)
         {
+            verdict = DutVerdict.Aborted;
             Log(LogLevel.Warning, $"Program cancelled: {program.Name}");
             return Result.Fail(ErrorCode.OperationFailed, "Program cancelled.");
         }
@@ -238,10 +255,70 @@ public sealed class ProcessService : IProcessService
         {
             pause.PausedChanged -= OnPausedChanged;
             _pause = null;
+            EndDut(dut, verdict);
         }
     }
 
     private void OnPausedChanged(bool paused) => PausedChanged?.Invoke(paused);
+
+    /// <summary>
+    /// Writes a named position into the active product — the back-end for the
+    /// <c>motion.updatePosition</c> / <c>updatePositionAxis</c> steps.
+    /// </summary>
+    private Result SaveNamedPosition(string device, string name, MotionPosition coordinates, double velocity)
+    {
+        if (_positions == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — cannot update positions.");
+        _positions.Set(device, name, coordinates, velocity);
+        return Result.Ok();
+    }
+
+    // --- DUT test records ---
+
+    public IReadOnlyList<string> ListDutRecords() => _dut?.List() ?? Array.Empty<string>();
+
+    /// <summary>
+    /// Opens (or creates) the DUT record for a run and attaches a fresh
+    /// <see cref="DutRun"/> to <paramref name="ctx"/>. Returns null when no
+    /// serial was given or no product is active — the run then records nothing.
+    /// </summary>
+    private (DutRecord Record, DutRun Run)? BeginDut(string? serial, string source, WorkflowContext ctx)
+    {
+        if (string.IsNullOrWhiteSpace(serial) || _dut == null)
+            return null;
+
+        var record = _dut.LoadOrCreate(serial.Trim());
+        var run = new DutRun { StartedUtc = DateTime.UtcNow, Source = source };
+        ctx.Dut = run;
+        return (record, run);
+    }
+
+    /// <summary>Finalises a DUT run with its verdict and persists the record.</summary>
+    private void EndDut((DutRecord Record, DutRun Run)? dut, DutVerdict verdict)
+    {
+        if (dut == null) return;
+
+        var (record, run) = dut.Value;
+        run.EndedUtc = DateTime.UtcNow;
+        run.Verdict = verdict;
+        record.Runs.Add(run);
+
+        if (_dut == null)
+        {
+            Log(LogLevel.Warning, $"DUT record for {record.Serial} not saved — product unloaded mid-run.");
+            return;
+        }
+        try
+        {
+            _dut.Save(record);
+            Log(LogLevel.Info,
+                $"DUT record saved: {record.Serial} — run {verdict}, {run.Entries.Count} entry(ies).");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"DUT record save failed for {record.Serial}: {ex.Message}");
+        }
+    }
 
     // --- Recipes ---
 
@@ -351,7 +428,8 @@ public sealed class ProcessService : IProcessService
         return Result.Ok();
     }
 
-    public async Task<Result> RunDeck(WorkflowDeck deck, CancellationToken ct = default)
+    public async Task<Result> RunDeck(
+        WorkflowDeck deck, string? serial = null, CancellationToken ct = default)
     {
         if (_programs == null)
             return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
@@ -365,6 +443,10 @@ public sealed class ProcessService : IProcessService
         var runner = new WorkflowRunner(
             _engine,
             MoveToNamedPositionAsync,
+            name => _programs?.Load(name),
+            (device, name) => _positions?.Get(device, name),
+            SaveNamedPosition,
+            _deviceLinks,
             OperatorPrompt,
             pause,
             e => StepEvent?.Invoke(e),
@@ -376,10 +458,17 @@ public sealed class ProcessService : IProcessService
             onProgress: p => DeckStepEvent?.Invoke(p),
             log: Log);
 
-        Log(LogLevel.Info, $"Deck started: {deck.Name}");
+        // One context for the whole deck — also carries the DUT run, so every
+        // program in the deck records into the same per-unit run.
+        var ctx = new WorkflowContext();
+        var dut = BeginDut(serial, deck.Name, ctx);
+
+        Log(LogLevel.Info, $"Deck started: {deck.Name}" + (dut != null ? $" [DUT {dut.Value.Record.Serial}]" : ""));
+        var verdict = DutVerdict.Fail;
         try
         {
-            var result = await deckRunner.RunAsync(deck, ct).ConfigureAwait(false);
+            var result = await deckRunner.RunAsync(deck, ctx, ct).ConfigureAwait(false);
+            verdict = result.IsSuccess ? DutVerdict.Pass : DutVerdict.Fail;
             var summary = $"Deck {(result.IsSuccess ? "completed" : "stopped")}: {deck.Name}";
             if (!string.IsNullOrEmpty(result.Message))
                 summary += $" — {result.Message}";
@@ -388,6 +477,7 @@ public sealed class ProcessService : IProcessService
         }
         catch (OperationCanceledException)
         {
+            verdict = DutVerdict.Aborted;
             Log(LogLevel.Warning, $"Deck cancelled: {deck.Name}");
             return Result.Fail(ErrorCode.OperationFailed, "Deck cancelled.");
         }
@@ -395,6 +485,7 @@ public sealed class ProcessService : IProcessService
         {
             pause.PausedChanged -= OnPausedChanged;
             _pause = null;
+            EndDut(dut, verdict);
         }
     }
 
