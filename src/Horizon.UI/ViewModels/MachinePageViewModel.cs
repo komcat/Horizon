@@ -43,6 +43,8 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         Pneumatic = new PneumaticSectionViewModel(host);
         Motion = new MotionSectionViewModel(host);
         Laser = new LaserSectionViewModel(host);
+        Tec = new TecSectionViewModel(host);
+        PowerSupply = new PowerSupplySectionViewModel(host);
         Camera = new CameraSectionViewModel(host);
         Sections = new object[]
         {
@@ -51,6 +53,8 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
             Io,
             Pneumatic,
             Laser,
+            Tec,
+            PowerSupply,
             Measurement,
             Smu,
             Camera,
@@ -88,6 +92,12 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     /// <summary>The Laser section, kept typed for the sampler to refresh its readouts.</summary>
     public LaserSectionViewModel Laser { get; }
+
+    /// <summary>The TEC section (standalone TED4015 / TTC-001), refreshed by the sampler.</summary>
+    public TecSectionViewModel Tec { get; }
+
+    /// <summary>The Power-supply section, refreshed by the sampler.</summary>
+    public PowerSupplySectionViewModel PowerSupply { get; }
 
     /// <summary>The Camera section, kept typed for the sampler to refresh its grab state.</summary>
     public CameraSectionViewModel Camera { get; }
@@ -150,6 +160,12 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         Pneumatic.Refresh();
         Motion.Refresh();
         Laser.Refresh();
+        // TEC and PSU drive a hardware poll per tick (5 Hz) so the Machine page
+        // shows live readings rather than the engine's 2 s background-poll
+        // cache. Both methods are in-flight-guarded and run the USB I/O off
+        // the UI thread.
+        _ = Tec.RefreshAsync();
+        _ = PowerSupply.RefreshAsync();
         Camera.Refresh();
 
         // GetStatusSnapshot() reads each device's IsConnected, which takes the

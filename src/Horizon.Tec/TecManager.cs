@@ -18,8 +18,20 @@ public sealed class TecManager : IDisposable
     public void AddDevice(TecDeviceConfig config)
     {
         if (string.IsNullOrWhiteSpace(config.Name)) return;
-        if (_devices.TryAdd(config.Name, new Ted4015Adapter(config)))
+        var adapter = CreateAdapter(config);
+        if (_devices.TryAdd(config.Name, adapter))
             Log.Information("[TEC] device added: {Device} ({Type})", config.Name, config.ControllerType);
+    }
+
+    private static ITecDevice CreateAdapter(TecDeviceConfig config)
+    {
+        // Dispatch by controller type. Unknown types fall back to the
+        // VISA-based TED4015 adapter, matching the historical default.
+        return config.ControllerType?.ToLowerInvariant() switch
+        {
+            "ttc001" or "ttc-001" => new TTC001Adapter(config),
+            _                     => new Ted4015Adapter(config),
+        };
     }
 
     public ITecDevice? GetDevice(string name)

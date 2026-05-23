@@ -18,8 +18,21 @@ public sealed class PowerSupplyManager : IDisposable
     public void AddDevice(PowerSupplyConfig config)
     {
         if (string.IsNullOrWhiteSpace(config.Name)) return;
-        if (_devices.TryAdd(config.Name, new KeysightPowerSupplyAdapter(config)))
+        var adapter = CreateAdapter(config);
+        if (_devices.TryAdd(config.Name, adapter))
             Log.Information("[PSU] device added: {Device} ({Type})", config.Name, config.Type);
+    }
+
+    private static IPowerSupplyDevice CreateAdapter(PowerSupplyConfig config)
+    {
+        // Dispatch by type. Unknown types fall back to the Keysight LXI adapter,
+        // matching the historical default.
+        return config.Type?.ToLowerInvariant() switch
+        {
+            "unit_t_udp3305s" or "unitt_udp3305s" or "udp3305s"
+                => new UnitTUDP3305SAdapter(config),
+            _   => new KeysightPowerSupplyAdapter(config),
+        };
     }
 
     public IPowerSupplyDevice? GetDevice(string name)

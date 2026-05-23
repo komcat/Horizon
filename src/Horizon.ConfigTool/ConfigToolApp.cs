@@ -397,9 +397,14 @@ internal sealed class ConfigToolApp
         new("VISA resource", d => d.VisaResource, d => d with { VisaResource = Ask("VISA resource", d.VisaResource) }),
         new("IP address", d => d.IpAddress, d => d with { IpAddress = Ask("IP address", d.IpAddress) }),
         new("Port", d => d.Port.ToString(), d => d with { Port = AskInt("Port", d.Port) }),
+        new("Serial number", d => d.SerialNumber, d => d with { SerialNumber = Ask("Serial number (TTC-001)", d.SerialNumber) }),
         new("Enabled", d => YesNo(d.Enabled), d => d with { Enabled = AnsiConsole.Confirm("Enabled?", d.Enabled) }),
         new("Default temperature", d => $"{d.DefaultTemperature} C", d => d with { DefaultTemperature = AskDouble("Default temperature", d.DefaultTemperature) }),
         new("Default laser current", d => $"{d.DefaultLaserCurrent} mA", d => d with { DefaultLaserCurrent = AskDouble("Default laser current", d.DefaultLaserCurrent) }),
+        new("Sensor mode", d => d.SensorMode, d => d with { SensorMode = Ask("Sensor mode (transducer | thermistor_20k | thermistor_200k)", d.SensorMode) }),
+        new("Thermistor beta", d => d.ThermistorBeta.ToString(), d => d with { ThermistorBeta = AskDouble("Thermistor beta (K)", d.ThermistorBeta) }),
+        new("Thermistor R0", d => $"{d.ThermistorR0Ohms} Ohm", d => d with { ThermistorR0Ohms = AskDouble("Thermistor R0 (Ohm)", d.ThermistorR0Ohms) }),
+        new("Thermistor T0", d => $"{d.ThermistorT0Celsius} C", d => d with { ThermistorT0Celsius = AskDouble("Thermistor T0 (C)", d.ThermistorT0Celsius) }),
     };
 
     private static List<FieldSpec<SmuDeviceConfig>> SmuFields() => new()
@@ -422,6 +427,7 @@ internal sealed class ConfigToolApp
         new("Type", d => d.Type, d => d with { Type = Ask("Type", d.Type) }),
         new("IP address", d => d.Ip, d => d with { Ip = Ask("IP address", d.Ip) }),
         new("Port", d => d.Port.ToString(), d => d with { Port = AskInt("Port", d.Port) }),
+        new("VISA resource", d => d.VisaResource, d => d with { VisaResource = Ask("VISA resource (USB/USBTMC)", d.VisaResource) }),
         new("Channels", d => d.Channels.ToString(), d => d with { Channels = AskInt("Channels", d.Channels) }),
     };
 
@@ -601,19 +607,29 @@ internal sealed class ConfigToolApp
 
     private void AddTec()
     {
-        var preset = PickPreset("Thorlabs CLD101x (laser + TEC)", "Thorlabs TED4015 (TEC only)");
+        var preset = PickPreset(
+            "Thorlabs CLD101x (laser + TEC)",
+            "Thorlabs TED4015 (TEC only)",
+            "Thorlabs TTC-001 (T-Cube TEC, Kinesis USB)");
         if (preset == null) return;
 
         var devices = TecJsonLoader.Load(_configDir).ToList();
         var isTed = preset.Contains("TED4015");
+        var isTtc = preset.Contains("TTC-001");
         var device = new TecDeviceConfig
         {
-            Name = UniqueName("tec", devices.Select(d => d.Name)),
-            ControllerType = isTed ? "TED4015_Direct" : "CLD101x_Direct",
-            VisaResource = isTed ? "USB0::0x1313::0x8048::INSTR" : "USB0::0x1313::0x804F::INSTR",
+            Name = UniqueName(isTtc ? "ttc" : "tec", devices.Select(d => d.Name)),
+            ControllerType = isTtc ? "TTC001" : isTed ? "TED4015_Direct" : "CLD101x_Direct",
+            // TTC-001 uses a Kinesis USB serial, not a VISA resource string.
+            VisaResource = isTtc ? "" : isTed ? "USB0::0x1313::0x8048::INSTR" : "USB0::0x1313::0x804F::INSTR",
+            SerialNumber = isTtc ? "00000000" : "",
             Enabled = true,
             DefaultTemperature = 25.0,
-            DefaultLaserCurrent = isTed ? 0.0 : 50.0,
+            DefaultLaserCurrent = (isTed || isTtc) ? 0.0 : 50.0,
+            SensorMode = isTtc ? "thermistor_20k" : "",
+            ThermistorBeta = 3977.0,
+            ThermistorR0Ohms = 10000.0,
+            ThermistorT0Celsius = 25.0,
         };
         AddEntry("TEC device", device, devices, TecFields(), d => d.Name,
             "tec_devices.json", list => TecJsonLoader.Save(list, _configDir));
@@ -649,18 +665,26 @@ internal sealed class ConfigToolApp
 
     private void AddPowerSupply()
     {
-        var preset = PickPreset("Keysight E36441A — 4-channel", "Keysight E36103B — single-channel");
+        var preset = PickPreset(
+            "Keysight E36441A — 4-channel (LXI)",
+            "Keysight E36103B — single-channel (LXI)",
+            "UNI-T UDP3305S — 3-channel (USB/VISA)");
         if (preset == null) return;
 
         var devices = PowerSupplyJsonLoader.Load(_configDir).ToList();
         var quad = preset.Contains("E36441A");
+        var udp = preset.Contains("UDP3305S");
         var device = new PowerSupplyConfig
         {
-            Name = UniqueName("psu", devices.Select(d => d.Name)),
-            Type = quad ? "keysight_e36441a_direct" : "keysight_e36103b_direct",
-            Ip = quad ? "192.168.0.32" : "192.168.0.33",
-            Port = 5025,
-            Channels = quad ? 4 : 1,
+            Name = UniqueName(udp ? "udp3305s" : "psu", devices.Select(d => d.Name)),
+            Type = udp ? "unit_t_udp3305s"
+                       : quad ? "keysight_e36441a_direct"
+                              : "keysight_e36103b_direct",
+            // UNI-T enumerates with the STMicro USB VID 0x0483, not a UNI-T VID.
+            VisaResource = udp ? "USB0::0x0483::0x5740::ADP3424500154::INSTR" : "",
+            Ip = udp ? "" : quad ? "192.168.0.32" : "192.168.0.33",
+            Port = udp ? 0 : 5025,
+            Channels = udp ? 3 : quad ? 4 : 1,
         };
         AddEntry("Power supply", device, devices, PowerSupplyFields(), d => d.Name,
             "power_supply_config.json", list => PowerSupplyJsonLoader.Save(list, _configDir));

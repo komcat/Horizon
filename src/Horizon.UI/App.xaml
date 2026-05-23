@@ -105,6 +105,12 @@
             <DataTemplate DataType="{x:Type vms:LaserSectionViewModel}">
                 <vsec:LaserSectionView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vms:TecSectionViewModel}">
+                <vsec:TecSectionView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vms:PowerSupplySectionViewModel}">
+                <vsec:PowerSupplySectionView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vms:CameraSectionViewModel}">
                 <vsec:CameraSectionView />
             </DataTemplate>

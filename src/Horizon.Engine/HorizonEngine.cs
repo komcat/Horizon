@@ -214,12 +214,15 @@ public sealed class HorizonEngine : IHorizonEngine
         }
         _lightingFacet = new LightingFacet(_lightingManager, RaiseStatusChanged, Log);
 
-        // --- TEC domain (standalone TED4015; CLD101x stays in the Laser domain) ---
+        // --- TEC domain (standalone TED4015 + Thorlabs TTC-001; CLD101x stays
+        //     in the Laser domain because it's a combined laser+TEC controller). ---
         _tecManager = new TecManager();
         try
         {
             var devices = TecJsonLoader.Load(_configDirectory)
-                .Where(d => d.ControllerType.Contains("TED4015", StringComparison.OrdinalIgnoreCase))
+                .Where(d => d.ControllerType.Contains("TED4015", StringComparison.OrdinalIgnoreCase)
+                         || d.ControllerType.Contains("TTC001", StringComparison.OrdinalIgnoreCase)
+                         || d.ControllerType.Contains("TTC-001", StringComparison.OrdinalIgnoreCase))
                 .ToList();
             foreach (var device in devices)
                 _tecManager.AddDevice(device);

@@ -805,6 +805,7 @@ internal sealed class ConsoleApp
         const string SetCurrentLimit = "Set current limit";
         const string OutputOn = "Output ON";
         const string OutputOff = "Output OFF";
+        const string Stream = "Stream (live)";
         const string Refresh = "Refresh";
 
         while (true)
@@ -815,7 +816,7 @@ internal sealed class ConsoleApp
             var connected = _engine.PowerSupply.IsConnected(device);
             var choices = new List<string>();
             if (connected)
-                choices.AddRange(new[] { SetVoltage, SetCurrentLimit, OutputOn, OutputOff, Disconnect });
+                choices.AddRange(new[] { SetVoltage, SetCurrentLimit, OutputOn, OutputOff, Stream, Disconnect });
             else
                 choices.Add(Connect);
             choices.Add(Refresh);
@@ -854,12 +855,94 @@ internal sealed class ConsoleApp
                     var offCh = PromptChannel(device);
                     ReportResult(await _engine.PowerSupply.OutputOffAsync(device, offCh), $"Output OFF CH{offCh}");
                     break;
+                case Stream:
+                    await PowerSupplyStreamAsync(device);
+                    break;
                 case Refresh:
                     break;
                 case Back:
                     return;
             }
         }
+    }
+
+    /// <summary>
+    /// Loops <see cref="IPowerSupplyFacet.RefreshAsync"/> at the chosen interval
+    /// and renders the live channel table until a key is pressed. Each refresh
+    /// drives one VISA poll cycle (≈3 queries per channel), so very small
+    /// intervals just bottleneck on USB; 200 ms (5 Hz) is the practical floor
+    /// for the 3-channel UDP3305S.
+    /// </summary>
+    private async Task PowerSupplyStreamAsync(string device)
+    {
+        var intervalMs = AnsiConsole.Prompt(
+            new TextPrompt<int>("Refresh interval (ms):").DefaultValue(250));
+
+        AnsiConsole.MarkupLine("[yellow]Streaming — press any key to stop.[/]");
+
+        using var cts = new CancellationTokenSource();
+        var start = DateTime.UtcNow;
+        long samples = 0;
+
+        await AnsiConsole.Live(BuildPowerSupplyStreamDisplay(device, samples, TimeSpan.Zero))
+            .StartAsync(async ctx =>
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    await _engine.PowerSupply.RefreshAsync();
+                    samples++;
+                    var now = DateTime.UtcNow;
+                    ctx.UpdateTarget(BuildPowerSupplyStreamDisplay(device, samples, now - start));
+                    ctx.Refresh();
+
+                    if (Console.KeyAvailable)
+                    {
+                        Console.ReadKey(intercept: true);
+                        cts.Cancel();
+                        break;
+                    }
+                    try { await Task.Delay(Math.Max(50, intervalMs), cts.Token); }
+                    catch (OperationCanceledException) { break; }
+                }
+            });
+
+        var elapsed = DateTime.UtcNow - start;
+        var rate = elapsed.TotalSeconds > 0 ? samples / elapsed.TotalSeconds : 0;
+        AnsiConsole.MarkupLineInterpolated(
+            $"[green]Stopped[/] — {samples} samples in {elapsed.TotalSeconds:F1} s ({rate:F1}/s).");
+    }
+
+    private IRenderable BuildPowerSupplyStreamDisplay(string device, long samples, TimeSpan elapsed)
+    {
+        var info = _engine.PowerSupply.GetDevice(device);
+        var state = _engine.PowerSupply.GetState(device);
+        var connected = _engine.PowerSupply.IsConnected(device);
+
+        var header = new Markup(
+            $"[aqua]{Markup.Escape(info?.Name ?? device)}[/]  " +
+            $"type: {Markup.Escape(info?.ControllerType ?? "?")}  " +
+            $"connected: {(connected ? "[green]yes[/]" : "[red]no[/]")}  " +
+            $"samples: {samples}  elapsed: {elapsed.TotalSeconds:F1} s");
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Channel");
+        table.AddColumn("Voltage");
+        table.AddColumn("Current");
+        table.AddColumn("Output");
+        foreach (var ch in state.Channels)
+            table.AddRow(
+                $"CH{ch.Channel}",
+                $"{ch.Voltage:F3} V",
+                $"{ch.Current:F4} A",
+                ch.OutputOn ? "[green]ON[/]" : "[grey]off[/]");
+        if (state.Channels.Count == 0)
+            table.AddRow("[grey]—[/]", "[grey]no data[/]", "[grey]—[/]", "[grey]—[/]");
+
+        var footer = string.IsNullOrEmpty(state.LastError)
+            ? (IRenderable)new Markup("[grey]press any key to stop.[/]")
+            : new Markup($"[red]Last error[/] — {Markup.Escape(state.LastError)}");
+
+        return new Rows(header, table, footer);
     }
 
     /// <summary>Prompts for a 1-based channel; auto-selects when the supply has a single channel.</summary>
@@ -1058,6 +1141,7 @@ internal sealed class ConsoleApp
         const string SetTemp = "Set temperature";
         const string TecOn = "TEC ON";
         const string TecOff = "TEC OFF";
+        const string Stream = "Stream (live)";
         const string Refresh = "Refresh";
 
         while (true)
@@ -1068,7 +1152,7 @@ internal sealed class ConsoleApp
             var connected = _engine.Tec.IsConnected(device);
             var choices = new List<string>();
             if (connected)
-                choices.AddRange(new[] { SetTemp, TecOn, TecOff, Disconnect });
+                choices.AddRange(new[] { SetTemp, TecOn, TecOff, Stream, Disconnect });
             else
                 choices.Add(Connect);
             choices.Add(Refresh);
@@ -1097,12 +1181,98 @@ internal sealed class ConsoleApp
                 case TecOff:
                     ReportResult(await _engine.Tec.TecOffAsync(device), $"TEC off {device}");
                     break;
+                case Stream:
+                    await TecStreamAsync(device);
+                    break;
                 case Refresh:
                     break;
                 case Back:
                     return;
             }
         }
+    }
+
+    /// <summary>
+    /// Loops <see cref="ITecFacet.RefreshAsync"/> at the chosen interval and
+    /// renders the live temperature reading until a key is pressed. For TTC-001
+    /// the underlying reads are cached against the Kinesis 250 ms poll, so any
+    /// interval below that just resamples the same value.
+    /// </summary>
+    private async Task TecStreamAsync(string device)
+    {
+        var intervalMs = AnsiConsole.Prompt(
+            new TextPrompt<int>("Refresh interval (ms):").DefaultValue(250));
+
+        AnsiConsole.MarkupLine("[yellow]Streaming — press any key to stop.[/]");
+
+        using var cts = new CancellationTokenSource();
+        var start = DateTime.UtcNow;
+        long samples = 0;
+        double minTemp = double.PositiveInfinity;
+        double maxTemp = double.NegativeInfinity;
+
+        await AnsiConsole.Live(BuildTecStreamDisplay(device, samples, TimeSpan.Zero, minTemp, maxTemp))
+            .StartAsync(async ctx =>
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    await _engine.Tec.RefreshAsync();
+                    samples++;
+                    var state = _engine.Tec.GetState(device);
+                    if (!double.IsNaN(state.Temperature))
+                    {
+                        if (state.Temperature < minTemp) minTemp = state.Temperature;
+                        if (state.Temperature > maxTemp) maxTemp = state.Temperature;
+                    }
+
+                    var now = DateTime.UtcNow;
+                    ctx.UpdateTarget(BuildTecStreamDisplay(device, samples, now - start, minTemp, maxTemp));
+                    ctx.Refresh();
+
+                    if (Console.KeyAvailable)
+                    {
+                        Console.ReadKey(intercept: true);
+                        cts.Cancel();
+                        break;
+                    }
+                    try { await Task.Delay(Math.Max(50, intervalMs), cts.Token); }
+                    catch (OperationCanceledException) { break; }
+                }
+            });
+
+        var elapsed = DateTime.UtcNow - start;
+        var rate = elapsed.TotalSeconds > 0 ? samples / elapsed.TotalSeconds : 0;
+        AnsiConsole.MarkupLineInterpolated(
+            $"[green]Stopped[/] — {samples} samples in {elapsed.TotalSeconds:F1} s ({rate:F1}/s).");
+    }
+
+    private IRenderable BuildTecStreamDisplay(
+        string device, long samples, TimeSpan elapsed, double minTemp, double maxTemp)
+    {
+        var info = _engine.Tec.GetDevice(device);
+        var state = _engine.Tec.GetState(device);
+        var connected = _engine.Tec.IsConnected(device);
+
+        var header = new Markup(
+            $"[aqua]{Markup.Escape(info?.Name ?? device)}[/]  " +
+            $"type: {Markup.Escape(info?.ControllerType ?? "?")}  " +
+            $"connected: {(connected ? "[green]yes[/]" : "[red]no[/]")}  " +
+            $"samples: {samples}  elapsed: {elapsed.TotalSeconds:F1} s");
+
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Property");
+        table.AddColumn("Value");
+        table.AddRow("TEC", state.TecOn ? "[green]ON[/]" : "[grey]off[/]");
+        var tempText = double.IsNaN(state.Temperature)
+            ? "[grey]no reading[/]"
+            : $"{state.Temperature:F2} C";
+        table.AddRow("Temperature", $"{tempText}  (setpoint {state.SetpointTemperature:F2} C)");
+        if (double.IsFinite(minTemp) && double.IsFinite(maxTemp))
+            table.AddRow("Min / Max", $"{minTemp:F2} / {maxTemp:F2} C  (Δ {(maxTemp - minTemp):F2})");
+        table.AddRow("Last error",
+            string.IsNullOrEmpty(state.LastError) ? "[grey]none[/]" : $"[red]{Markup.Escape(state.LastError)}[/]");
+
+        return new Rows(header, table, new Markup("[grey]press any key to stop.[/]"));
     }
 
     private void RenderTecDevice(string device)
