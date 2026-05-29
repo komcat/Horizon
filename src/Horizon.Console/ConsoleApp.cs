@@ -1607,6 +1607,88 @@ internal sealed class ConsoleApp
         AnsiConsole.Write(table);
     }
 
+    /// <summary>
+    /// Starts grabbing and live-refreshes the frame count in place (~5 Hz) until a key
+    /// is pressed, then stops grabbing — lets you confirm frames are actually streaming.
+    /// Frames are counted off the engine's <see cref="ICameraFacet.FrameReady"/> event
+    /// for a real-time count, independent of the facet's 500 ms status poll.
+    /// </summary>
+    private async Task GrabLiveAsync(string id)
+    {
+        long sessionFrames = 0;
+        void OnFrame(CameraFrame f)
+        {
+            if (string.Equals(f.Camera, id, StringComparison.Ordinal))
+                Interlocked.Increment(ref sessionFrames);
+        }
+
+        _engine.Camera.FrameReady += OnFrame;
+        var start = await _engine.Camera.StartGrabbingAsync(id);
+        if (!start.IsSuccess)
+        {
+            _engine.Camera.FrameReady -= OnFrame;
+            AnsiConsole.MarkupLineInterpolated($"[red]Start grabbing failed[/] — {start.Message}");
+            return;
+        }
+
+        // Drain buffered keystrokes so a stray Enter from the menu doesn't stop us instantly.
+        while (Console.KeyAvailable) Console.ReadKey(intercept: true);
+
+        var startTime = DateTime.UtcNow;
+        AnsiConsole.MarkupLine("\n[yellow]Grabbing — press any key to stop.[/]");
+
+        using var cts = new CancellationTokenSource();
+        await AnsiConsole.Live(BuildGrabTable(id, 0, 0, TimeSpan.Zero))
+            .StartAsync(async ctx =>
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    var frames = Interlocked.Read(ref sessionFrames);
+                    var elapsed = DateTime.UtcNow - startTime;
+                    var fps = elapsed.TotalSeconds > 0 ? frames / elapsed.TotalSeconds : 0;
+                    ctx.UpdateTarget(BuildGrabTable(id, frames, fps, elapsed));
+                    ctx.Refresh();
+                    if (Console.KeyAvailable)
+                    {
+                        Console.ReadKey(intercept: true);
+                        cts.Cancel();
+                        break;
+                    }
+                    await Task.Delay(200);
+                }
+            });
+
+        _engine.Camera.FrameReady -= OnFrame;
+        var stop = await _engine.Camera.StopGrabbingAsync(id);
+        if (!stop.IsSuccess)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]Stop grabbing failed[/] — {stop.Message}");
+            return;
+        }
+
+        var total = Interlocked.Read(ref sessionFrames);
+        var secs = (DateTime.UtcNow - startTime).TotalSeconds;
+        var rate = secs > 0 ? total / secs : 0;
+        AnsiConsole.MarkupLineInterpolated(
+            $"[green]Stopped[/] — {total} frame(s) in {secs:F1} s ({rate:F1}/s).");
+    }
+
+    private Table BuildGrabTable(string id, long sessionFrames, double fps, TimeSpan elapsed)
+    {
+        var info = _engine.Camera.GetCamera(id);
+        var state = _engine.Camera.GetState(id);
+        var table = new Table().Border(TableBorder.Rounded);
+        table.Title = new TableTitle($"{Markup.Escape(info?.DisplayName ?? id)} — grabbing (press any key to stop)");
+        table.AddColumn("Property");
+        table.AddColumn("Value");
+        table.AddRow("Resolution", state.Width > 0 ? $"{state.Width} x {state.Height}" : "—");
+        table.AddRow("Exposure", $"{state.Exposure.ExposureUs:F0} us  gain {state.Exposure.Gain:F1}");
+        table.AddRow("Frames received", sessionFrames.ToString());
+        table.AddRow("Elapsed", $"{elapsed.TotalSeconds:F1} s");
+        table.AddRow("FPS", $"{fps:F1}");
+        return table;
+    }
+
     private async Task CameraMenuAsync()
     {
         var cameras = _engine.Camera.CameraIds;
@@ -1665,8 +1747,7 @@ internal sealed class ConsoleApp
                     ReportResult(await _engine.Camera.DisconnectAsync(id), $"Disconnect {id}");
                     break;
                 case StartGrab:
-                    ReportResult(await _engine.Camera.StartGrabbingAsync(id), $"Start grabbing {id}");
-                    await Task.Delay(300);
+                    await GrabLiveAsync(id);
                     break;
                 case StopGrab:
                     ReportResult(await _engine.Camera.StopGrabbingAsync(id), $"Stop grabbing {id}");
