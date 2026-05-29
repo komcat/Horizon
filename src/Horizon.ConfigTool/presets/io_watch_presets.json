@@ -1,0 +1,54 @@
+{
+  // IO watch preset catalog. Each entry is a full IoBinding (input drives output).
+  // trigger: Rising | Falling | Both. Input pins use the io pinout names (switch_N).
+  "presets": [
+    {
+      "name": "Switch 1 -> Vacuum_Base",
+      "input": { "device": "IOBottom", "pinName": "switch_1" },
+      "output": { "device": "IOBottom", "pinName": "Vacuum_Base" },
+      "trigger": "Rising",
+      "debounceMs": 100,
+      "enabled": true
+    },
+    {
+      "name": "Switch 2 -> L_Gripper",
+      "input": { "device": "IOBottom", "pinName": "switch_2" },
+      "output": { "device": "IOBottom", "pinName": "L_Gripper" },
+      "trigger": "Rising",
+      "debounceMs": 100,
+      "enabled": true
+    },
+    {
+      "name": "Switch 3 -> R_Gripper",
+      "input": { "device": "IOBottom", "pinName": "switch_3" },
+      "output": { "device": "IOBottom", "pinName": "R_Gripper" },
+      "trigger": "Rising",
+      "debounceMs": 100,
+      "enabled": true
+    },
+    {
+      "name": "Switch 4 -> UV_Head",
+      "input": { "device": "IOBottom", "pinName": "switch_4" },
+      "output": { "device": "IOBottom", "pinName": "UV_Head" },
+      "trigger": "Rising",
+      "debounceMs": 100,
+      "enabled": true
+    },
+    {
+      "name": "Switch 5 -> Dispenser_Head",
+      "input": { "device": "IOBottom", "pinName": "switch_5" },
+      "output": { "device": "IOBottom", "pinName": "Dispenser_Head" },
+      "trigger": "Rising",
+      "debounceMs": 100,
+      "enabled": true
+    },
+    {
+      "name": "Switch 6 -> Dispenser_Shot",
+      "input": { "device": "IOBottom", "pinName": "switch_6" },
+      "output": { "device": "IOBottom", "pinName": "Dispenser_Shot" },
+      "trigger": "Rising",
+      "debounceMs": 100,
+      "enabled": true
+    }
+  ]
+}

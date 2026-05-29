@@ -1,0 +1,26 @@
+{
+  // Pneumatic preset catalog. Output/sensors reference IO pins by device+pin name.
+  "presets": [
+    {
+      "name": "UV_Head",
+      "output": { "deviceName": "IOBottom", "pinName": "UV_Head" },
+      "extendedSensor": { "deviceName": "IOTop", "pinName": "UV_Head_Down" },
+      "retractedSensor": { "deviceName": "IOTop", "pinName": "UV_Head_Up" },
+      "timeoutMs": 5000
+    },
+    {
+      "name": "Dispenser_Head",
+      "output": { "deviceName": "IOBottom", "pinName": "Dispenser_Head" },
+      "extendedSensor": { "deviceName": "IOTop", "pinName": "Dispenser_Head_Down" },
+      "retractedSensor": { "deviceName": "IOTop", "pinName": "Dispenser_Head_Up" },
+      "timeoutMs": 5000
+    },
+    {
+      "name": "Pick_Up_Tool",
+      "output": { "deviceName": "IOBottom", "pinName": "Pick_Up_Tool" },
+      "extendedSensor": { "deviceName": "IOTop", "pinName": "Pick_Up_Tool_Down" },
+      "retractedSensor": { "deviceName": "IOTop", "pinName": "Pick_Up_Tool_Up" },
+      "timeoutMs": 10000
+    }
+  ]
+}

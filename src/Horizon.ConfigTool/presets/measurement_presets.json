@@ -1,0 +1,13 @@
+{
+  // Current-measurement preset catalog. Each entry is a full CurrentMeasurementDeviceConfig.
+  "presets": [
+    {
+      "name": "Keithley_6482",
+      "type": "keithley_6482",
+      "visaResource": "GPIB0::1::INSTR",
+      "enabled": true,
+      "channelCount": 2,
+      "enabledChannels": [ 1, 2 ]
+    }
+  ]
+}

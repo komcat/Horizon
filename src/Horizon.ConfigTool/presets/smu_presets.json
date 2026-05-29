@@ -1,0 +1,30 @@
+{
+  // SMU preset catalog. Each entry is a full SmuDeviceConfig.
+  "presets": [
+    {
+      "name": "Keithley_6482",
+      "type": "keithley_6482",
+      "visaResource": "GPIB0::1::INSTR",
+      "enabled": true,
+      "channelCount": 2,
+      "enabledChannels": [ 1, 2 ],
+      "measurementNplc": 5,
+      "autoRange": true,
+      "fixedRange": 0.0
+    },
+    {
+      "name": "Keithley_2400",
+      "type": "keithley_2400",
+      "visaResource": "GPIB1::24::INSTR",
+      "enabled": true,
+      "channelCount": 1,
+      "enabledChannels": [ 1 ],
+      "measurementNplc": 1.0,
+      "autoRange": true,
+      "fixedRange": 0.0,
+      "defaultVoltage": 0.0,
+      "defaultCurrent": 0.0,
+      "defaultCompliance": 0.001
+    }
+  ]
+}

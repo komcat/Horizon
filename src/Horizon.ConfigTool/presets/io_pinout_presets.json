@@ -1,0 +1,75 @@
+{
+  // IO pinout preset catalog. Each entry is a NAMED pin map ("UAA", ...) covering
+  // one or more IO devices (matched to io_devices.json by device name). Applying a
+  // pinout overwrites the matched devices' input/output pin names — the device
+  // connection (ip, counts) comes from the io device presets, kept separate.
+  "presets": [
+    {
+      "name": "UAA",
+      "devices": [
+        {
+          "deviceName": "IOBottom",
+          "inputPins": [
+            { "name": "switch_0", "pin": 0 },
+            { "name": "switch_1", "pin": 1 },
+            { "name": "switch_2", "pin": 2 },
+            { "name": "switch_3", "pin": 3 },
+            { "name": "switch_4", "pin": 4 },
+            { "name": "switch_5", "pin": 5 },
+            { "name": "switch_6", "pin": 6 },
+            { "name": "switch_7", "pin": 7 },
+            { "name": "switch_8", "pin": 8 },
+            { "name": "switch_9", "pin": 9 },
+            { "name": "switch_10", "pin": 10 },
+            { "name": "switch_11", "pin": 11 },
+            { "name": "switch_12", "pin": 12 },
+            { "name": "switch_13", "pin": 13 },
+            { "name": "switch_14", "pin": 14 },
+            { "name": "switch_15", "pin": 15 }
+          ],
+          "outputPins": [
+            { "name": "L_Gripper", "pin": 0 },
+            { "name": "P1", "pin": 1 },
+            { "name": "R_Gripper", "pin": 2 },
+            { "name": "R_Safety", "pin": 3 },
+            { "name": "UV_Head", "pin": 4 },
+            { "name": "Dispenser_Head", "pin": 5 },
+            { "name": "Pick_Up_Tool", "pin": 6 },
+            { "name": "Vacuum_Base", "pin": 7 },
+            { "name": "P8", "pin": 8 },
+            { "name": "P9", "pin": 9 },
+            { "name": "P10", "pin": 10 },
+            { "name": "P11", "pin": 11 },
+            { "name": "Reserve_UV_PLC3", "pin": 12 },
+            { "name": "UV_PLC2", "pin": 13 },
+            { "name": "UV_PLC1", "pin": 14 },
+            { "name": "Dispenser_Shot", "pin": 15 }
+          ]
+        },
+        {
+          "deviceName": "IOTop",
+          "inputPins": [
+            { "name": "Input0", "pin": 0 },
+            { "name": "UV_Head_Up", "pin": 1 },
+            { "name": "UV_Head_Down", "pin": 2 },
+            { "name": "Dispenser_Head_Up", "pin": 3 },
+            { "name": "Dispenser_Head_Down", "pin": 4 },
+            { "name": "Pick_Up_Tool_Up", "pin": 5 },
+            { "name": "Pick_Up_Tool_Down", "pin": 6 },
+            { "name": "Input7", "pin": 7 }
+          ],
+          "outputPins": [
+            { "name": "Output0", "pin": 0 },
+            { "name": "Output1", "pin": 1 },
+            { "name": "Output2", "pin": 2 },
+            { "name": "Output3", "pin": 3 },
+            { "name": "Output4", "pin": 4 },
+            { "name": "Output5", "pin": 5 },
+            { "name": "Output6", "pin": 6 },
+            { "name": "Output7", "pin": 7 }
+          ]
+        }
+      ]
+    }
+  ]
+}

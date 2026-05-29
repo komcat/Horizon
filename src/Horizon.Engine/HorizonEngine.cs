@@ -30,6 +30,9 @@ public sealed class HorizonEngine : IHorizonEngine
     private EziIOManager? _ioManager;
     private IoFacet? _ioFacet;
 
+    private IoWatchManager? _ioWatch;
+    private IoWatchFacet? _ioWatchFacet;
+
     private UnifiedMotionManager? _motionManager;
     private MotionFacet? _motionFacet;
 
@@ -68,6 +71,9 @@ public sealed class HorizonEngine : IHorizonEngine
 
     public IIOFacet IO =>
         _ioFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
+
+    public IIoWatchFacet IoWatch =>
+        _ioWatchFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
 
     public IMotionFacet Motion =>
         _motionFacet ?? throw new InvalidOperationException("Engine is not initialized — call InitializeAsync first.");
@@ -131,6 +137,19 @@ public sealed class HorizonEngine : IHorizonEngine
             Log(LogLevel.Error, $"IO config load failed: {ex.Message}");
         }
         _ioFacet = new IoFacet(_ioManager, RaiseStatusChanged, Log);
+
+        // --- IO watch domain (input→output bindings; pure IO, no cross-facet reach) ---
+        _ioWatch = new IoWatchManager(_ioManager);
+        try
+        {
+            var count = _ioWatch.LoadConfig(_configDirectory);
+            Log(LogLevel.Info, $"IO watch bindings loaded: {count}");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"IO watch config load failed: {ex.Message}");
+        }
+        _ioWatchFacet = new IoWatchFacet(_ioWatch, RaiseStatusChanged, Log);
 
         // --- Motion domain ---
         _motionManager = new UnifiedMotionManager();
@@ -367,6 +386,12 @@ public sealed class HorizonEngine : IHorizonEngine
             progress?.Report($"Safety: watching {_safetyWatch.WatchedInputs.Count} input(s).");
         }
 
+        if (_ioWatch != null)
+        {
+            _ioWatch.StartWatching();
+            progress?.Report($"IO watch: {_ioWatch.Bindings.Count} binding(s).");
+        }
+
         lock (_gate) _state = EngineState.Connected;
         Log(LogLevel.Info, "ConnectAll complete.");
     }
@@ -512,6 +537,12 @@ public sealed class HorizonEngine : IHorizonEngine
             devices.Add(new DeviceStatus("Safety", "Watchdog", ss.IsWatching, detail));
         }
 
+        if (_ioWatchFacet != null)
+        {
+            var ws = _ioWatchFacet.GetState();
+            devices.Add(new DeviceStatus("IoWatch", "Bindings", ws.IsRunning, $"{ws.BindingCount} binding(s)"));
+        }
+
         return new HardwareStatusSnapshot(state, devices);
     }
 
@@ -534,6 +565,11 @@ public sealed class HorizonEngine : IHorizonEngine
         _safetyFacet = null;
         _safetyWatch?.Dispose();   // stops the 50 ms watch loop before motion/IO teardown
         _safetyWatch = null;
+
+        _ioWatchFacet?.Dispose();  // unsubscribes from binding events
+        _ioWatchFacet = null;
+        _ioWatch?.Dispose();       // stops the io-watch loop before IO teardown
+        _ioWatch = null;
 
         _visionFacet?.Dispose();   // unsubscribes from camera frames
         _visionFacet = null;

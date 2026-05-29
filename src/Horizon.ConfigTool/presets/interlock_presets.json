@@ -1,0 +1,17 @@
+{
+  // Interlock-rule preset catalog. Each entry is a full InterlockRule.
+  // axisBlock: All | XY | Z.  layer: All | ScriptOnly | JogOnly.
+  // condition type: allRetracted | allExtended | ioPin.
+  "presets": [
+    {
+      "name": "slide-retracted-before-motion",
+      "enabled": true,
+      "targetDevices": [ "gantry-main" ],
+      "axisBlock": "All",
+      "layer": "ScriptOnly",
+      "conditions": [
+        { "type": "allRetracted", "slides": [] }
+      ]
+    }
+  ]
+}

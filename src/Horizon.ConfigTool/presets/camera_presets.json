@@ -1,0 +1,18 @@
+{
+  // Camera preset catalog. Each entry is a full CameraConfigEntry (camera-config.json shape).
+  // sdkType: Pylon | IDS | Unknown.  connectionType: "USB" or "IP".
+  // width/height 0 = auto-detect; mmPerPixel 0 = uncalibrated.
+  "presets": [
+    {
+      "name": "main_camera",
+      "serialNumber": "",
+      "sdkType": "Pylon",
+      "connectionType": "IP",
+      "ipAddress": "192.168.0.88",
+      "width": 0,
+      "height": 0,
+      "mmPerPixel": 0.0017,
+      "magnification": 1.0
+    }
+  ]
+}

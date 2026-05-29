@@ -13,6 +13,7 @@ internal sealed class ConsoleApp
 {
     private const string ShowStatus = "Show hardware status";
     private const string IoDevices = "IO devices";
+    private const string IoWatchMenu = "IO watch";
     private const string MotionDevices = "Motion devices";
     private const string PneumaticSlides = "Pneumatic slides";
     private const string CurrentMeasurement = "Current measurement";
@@ -41,7 +42,7 @@ internal sealed class ConsoleApp
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
                     .Title("\n[aqua]Horizon engine[/] — choose an action:")
-                    .AddChoices(ShowStatus, IoDevices, MotionDevices, PneumaticSlides,
+                    .AddChoices(ShowStatus, IoDevices, IoWatchMenu, MotionDevices, PneumaticSlides,
                                 CurrentMeasurement, LaserControllers, PowerSupplies, Lighting,
                                 TecControllers, Smu, Cameras, Vision, Safety,
                                 ParallelTest, Reconnect, Exit));
@@ -54,6 +55,10 @@ internal sealed class ConsoleApp
 
                 case IoDevices:
                     await IoMenuAsync();
+                    break;
+
+                case IoWatchMenu:
+                    await IoWatchMenuAsync();
                     break;
 
                 case MotionDevices:
@@ -1806,6 +1811,87 @@ internal sealed class ConsoleApp
                     return;
             }
         }
+    }
+
+    private async Task IoWatchMenuAsync()
+    {
+        const string ListBindings = "List bindings";
+        const string WatchLive = "Watch live (Enter to stop)";
+        const string Refresh = "Refresh";
+
+        while (true)
+        {
+            var state = _engine.IoWatch.GetState();
+            var runText = state.IsRunning ? "[green]running[/]" : "[red]stopped[/]";
+            var enText = state.Enabled ? "enabled" : "[grey]disabled[/]";
+
+            AnsiConsole.MarkupLine(
+                $"\n[aqua]IO watch[/] — {runText}  {enText}  " +
+                $"bindings: {state.BindingCount}  poll: {state.PollIntervalMs} ms");
+
+            var action = AnsiConsole.Prompt(
+                new SelectionPrompt<string>().Title("Action:")
+                    .AddChoices(ListBindings, WatchLive, Refresh, Back));
+
+            switch (action)
+            {
+                case ListBindings:
+                    RenderIoBindings();
+                    break;
+
+                case WatchLive:
+                    await WatchIoLiveAsync();
+                    break;
+
+                case Refresh:
+                    break;
+
+                case Back:
+                    return;
+            }
+        }
+    }
+
+    /// <summary>Subscribes to binding-fired events and prints them until Enter is pressed.</summary>
+    private async Task WatchIoLiveAsync()
+    {
+        void OnFired(IoBindingFired e) =>
+            AnsiConsole.MarkupLineInterpolated(
+                $"[green]fired[/] {e.Name} → {e.Output} = {(e.State ? "ON" : "OFF")}");
+
+        _engine.IoWatch.Fired += OnFired;
+        AnsiConsole.MarkupLine("[grey]Listening for binding fires — flip a switch; press Enter to stop.[/]");
+        try { await Task.Run(() => Console.ReadLine()); }
+        finally { _engine.IoWatch.Fired -= OnFired; }
+    }
+
+    private void RenderIoBindings()
+    {
+        var bindings = _engine.IoWatch.Bindings;
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Name");
+        table.AddColumn("Input");
+        table.AddColumn("Output");
+        table.AddColumn("Trigger");
+        table.AddColumn("Debounce");
+        table.AddColumn("Enabled");
+
+        if (bindings.Count == 0)
+        {
+            table.AddRow("[grey]—[/]", "[grey]no bindings[/]", "[grey]—[/]", "[grey]—[/]", "[grey]—[/]", "[grey]—[/]");
+        }
+        else
+        {
+            foreach (var b in bindings)
+                table.AddRow(
+                    Markup.Escape(b.Name),
+                    Markup.Escape(b.Input),
+                    Markup.Escape(b.Output),
+                    Markup.Escape(b.Trigger),
+                    $"{b.DebounceMs} ms",
+                    b.Enabled ? "[green]yes[/]" : "[grey]no[/]");
+        }
+        AnsiConsole.Write(table);
     }
 
     private async Task SafetyMenuAsync()

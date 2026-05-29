@@ -1,0 +1,13 @@
+{
+  // Laser-controller preset catalog. Each entry is a full LaserControllerDeviceConfig.
+  "presets": [
+    {
+      "name": "laser-main",
+      "controllerType": "cld101x_direct",
+      "visaResource": "USB0::0x1313::0x804F::INSTR",
+      "enabled": true,
+      "defaultTemperature": 25.0,
+      "defaultLaserCurrent": 50.0
+    }
+  ]
+}

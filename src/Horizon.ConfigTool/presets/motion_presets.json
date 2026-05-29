@@ -1,0 +1,43 @@
+{
+  // Motion preset catalog for Horizon.ConfigTool.
+  // Each entry is a full MotionDevice; the "name" is shown in the Add menu.
+  // Edit / add entries here and re-run the tool — no recompile of code needed.
+  "presets": [
+    {
+      "id": 3,
+      "name": "gantry-main",
+      "ipAddress": "192.168.0.50",
+      "port": 701,
+      "controllerType": "ACS",
+      "installedAxes": [ "X", "Y", "Z" ],
+      "enabled": true
+    },
+    {
+      "id": 0,
+      "name": "hex-left",
+      "ipAddress": "192.168.0.10",
+      "port": 50000,
+      "controllerType": "PI",
+      "installedAxes": [ "X", "Y", "Z", "U", "V", "W" ],
+      "enabled": true
+    },
+    {
+      "id": 2,
+      "name": "hex-right",
+      "ipAddress": "192.168.0.30",
+      "port": 50000,
+      "controllerType": "PI",
+      "installedAxes": [ "X", "Y", "Z", "U", "V", "W" ],
+      "enabled": true
+    },
+    {
+      "id": 1,
+      "name": "hex-bottom",
+      "ipAddress": "192.168.0.20",
+      "port": 50000,
+      "controllerType": "PI",
+      "installedAxes": [ "X", "Y", "Z", "U", "V", "W" ],
+      "enabled": false
+    }
+  ]
+}

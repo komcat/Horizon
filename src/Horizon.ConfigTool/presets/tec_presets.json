@@ -1,0 +1,34 @@
+{
+  // TEC / laser-controller preset catalog. Each entry is a full TecDeviceConfig.
+  // Thermistor params are left at defaults (only used by TTC-001).
+  "presets": [
+    {
+      "comment": "Direct VISA adapter - UPDATE visaResource after running find_visa_devices.exe",
+      "name": "laser-main",
+      "controllerType": "CLD101x_Direct",
+      "visaResource": "USB0::0x1313::0x804F::M00930341::INSTR",
+      "enabled": true,
+      "defaultTemperature": 25.0,
+      "defaultLaserCurrent": 50.0
+    },
+    {
+      "comment": "Legacy TCP adapter (kept for reference)",
+      "name": "laser-backup",
+      "controllerType": "CLD101x",
+      "ipAddress": "127.0.0.88",
+      "port": 65432,
+      "enabled": false,
+      "defaultTemperature": 25.0,
+      "defaultLaserCurrent": 50.0
+    },
+    {
+      "comment": "Thorlabs TED4015 TEC Controller (TEC-only, no laser diode control)",
+      "name": "tec-main",
+      "controllerType": "TED4015_Direct",
+      "visaResource": "USB0::0x1313::0x8048::M01256053::INSTR",
+      "enabled": true,
+      "defaultTemperature": 25.0,
+      "defaultLaserCurrent": 0.0
+    }
+  ]
+}

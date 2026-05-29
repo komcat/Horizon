@@ -13,6 +13,9 @@ public interface IHorizonEngine : IAsyncDisposable
     /// <summary>Digital IO domain (Fastech Ezi-IO). Valid after <see cref="InitializeAsync"/>.</summary>
     IIOFacet IO { get; }
 
+    /// <summary>IO-watch domain (input→output bindings). Valid after <see cref="InitializeAsync"/>.</summary>
+    IIoWatchFacet IoWatch { get; }
+
     /// <summary>Motion domain (PI GCS2, ACS SPiiPlus). Valid after <see cref="InitializeAsync"/>.</summary>
     IMotionFacet Motion { get; }
 

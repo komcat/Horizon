@@ -1,0 +1,28 @@
+{
+  // IO DEVICE preset catalog — the connection only (deviceId, ip, in/out counts).
+  // Named pins are NOT here: apply a pinout preset (io_pinout_presets.json, e.g.
+  // "UAA") after adding a device to stamp its input/output pin names.
+  // deviceType is omitted → defaults to "IOModule". WAGO is not supported.
+  "presets": [
+    {
+      "device": {
+        "deviceId": 0,
+        "name": "IOBottom",
+        "ipAddress": "192.168.0.3",
+        "inputCount": 16,
+        "outputCount": 16,
+        "enabled": true
+      }
+    },
+    {
+      "device": {
+        "deviceId": 1,
+        "name": "IOTop",
+        "ipAddress": "192.168.0.5",
+        "inputCount": 8,
+        "outputCount": 8,
+        "enabled": true
+      }
+    }
+  ]
+}

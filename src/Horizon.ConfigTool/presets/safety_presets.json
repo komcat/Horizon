@@ -1,0 +1,15 @@
+{
+  // Safety watched-input preset catalog. Each entry is a full WatchedInput.
+  // trigger: Rising | Falling | Both. pinName matches the IO pinout (e.g. switch_0).
+  "presets": [
+    {
+      "deviceName": "IOBottom",
+      "pinName": "switch_0",
+      "trigger": "Falling",
+      "alertTitle": "Emergency Stop Activated",
+      "alertMessage": "E-Stop pressed. All operations halted. Acknowledge to resume.",
+      "isCritical": true,
+      "enabled": true
+    }
+  ]
+}

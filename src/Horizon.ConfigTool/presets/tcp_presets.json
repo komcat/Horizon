@@ -1,0 +1,35 @@
+{
+  // TCP data-stream client preset catalog. Each entry is a full TcpClientConfig.
+  // protocolType "single" uses dataChannel; "multi" uses dataChannels.
+  "presets": [
+    {
+      "id": "voltage_client",
+      "name": "Voltage Monitor",
+      "host": "127.0.0.1",
+      "port": 8888,
+      "protocolType": "single",
+      "dataChannel": "Voltage",
+      "autoConnect": false,
+      "autoReconnect": false,
+      "description": "Real-time voltage measurement (single-channel mode)"
+    },
+    {
+      "id": "siphog_01",
+      "name": "SiPhOG Multi-Channel Monitor",
+      "host": "127.0.0.1",
+      "port": 65432,
+      "protocolType": "multi",
+      "dataChannels": [
+        "SLED_Current_mA",
+        "Photo_Current_uA",
+        "SLED_Temp_C",
+        "Target_SAG_PWR_V",
+        "SAG_PWR_V",
+        "TEC_Current_mA"
+      ],
+      "autoConnect": true,
+      "autoReconnect": true,
+      "description": "SiPhOG FNW Server V08 - 6 channel data stream"
+    }
+  ]
+}

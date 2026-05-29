@@ -14,8 +14,16 @@
     <PackageReference Include="Spectre.Console" Version="0.49.1" />
   </ItemGroup>
 
+  <!-- Preset catalogs (<domain>_presets.json) ship next to the exe so they can
+       be edited to add/change presets without recompiling. -->
+  <ItemGroup>
+    <None Include="presets\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- Reuses the real config models + symmetric loaders (Phase 0).
-       Camera is deferred until RegisteredCamera is relocated off the SDK assembly. -->
+       Camera is NOT referenced (it pulls in the Basler/IDS native SDKs); instead
+       CameraConfig.cs holds a local mirror of RegisteredCamera and reads/writes
+       camera-config.json directly. -->
   <ItemGroup>
     <ProjectReference Include="..\Horizon.Common\Horizon.Common.csproj" />
     <ProjectReference Include="..\Horizon.IO\Horizon.IO.csproj" />
