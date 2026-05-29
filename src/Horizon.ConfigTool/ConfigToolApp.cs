@@ -87,10 +87,10 @@ internal sealed class ConfigToolApp
                 case Camera:      DomainMenu(Camera, "camera-config.json", ViewCamera, AddCamera, EditCamera, RemoveCamera); break;
                 case Safety:      DomainMenu(Safety, "safety_watch.json", ViewSafety, AddSafety, EditSafety, RemoveSafety); break;
                 case Interlocks:  DomainMenu(Interlocks, "motion_interlocks.json", ViewInterlocks, AddInterlock, EditInterlock, RemoveInterlock); break;
-                case Lighting:    DomainMenu(Lighting, "lighting_config.json", ViewLighting, AddLighting, EditLighting, RemoveLighting); break;
+                case Lighting:    DomainMenu(Lighting, "lighting_devices.json", ViewLighting, AddLighting, EditLighting, RemoveLighting); break;
                 case Tec:         DomainMenu(Tec, "tec_devices.json", ViewTec, AddTec, EditTec, RemoveTec); break;
                 case Smu:         DomainMenu(Smu, "smu_devices.json", ViewSmu, AddSmu, EditSmu, RemoveSmu); break;
-                case PowerSupply: DomainMenu(PowerSupply, "power_supply_config.json", ViewPowerSupply, AddPowerSupply, EditPowerSupply, RemovePowerSupply); break;
+                case PowerSupply: DomainMenu(PowerSupply, "power_supply_devices.json", ViewPowerSupply, AddPowerSupply, EditPowerSupply, RemovePowerSupply); break;
                 case TcpClients:  DomainMenu(TcpClients, "tcp_clients.json", ViewTcp, AddTcp, EditTcp, RemoveTcp); break;
                 case ViewAllDomains: ViewAll(); break;
                 case ExportBundle: ExportBundleFlow(); break;
@@ -479,7 +479,7 @@ internal sealed class ConfigToolApp
     private void ViewLighting()
     {
         var controllers = LightingJsonLoader.Load(_configDir);
-        if (controllers.Count == 0) { Empty("lighting_config.json"); return; }
+        if (controllers.Count == 0) { Empty("lighting_devices.json"); return; }
 
         var table = NewTable("Lighting controllers",
             "Device id", "Name", "Type", "IP", "Port", "Channels", "Enabled");
@@ -523,7 +523,7 @@ internal sealed class ConfigToolApp
     private void ViewPowerSupply()
     {
         var devices = PowerSupplyJsonLoader.Load(_configDir);
-        if (devices.Count == 0) { Empty("power_supply_config.json"); return; }
+        if (devices.Count == 0) { Empty("power_supply_devices.json"); return; }
 
         var table = NewTable("Power supplies", "Name", "Type", "IP", "Port", "Channels");
         foreach (var d in devices)
@@ -877,7 +877,7 @@ internal sealed class ConfigToolApp
         var controllers = LightingJsonLoader.Load(_configDir).ToList();
         var controller = preset with { DeviceId = UniqueName(preset.DeviceId, controllers.Select(c => c.DeviceId)) };
         AddEntry("Lighting controller", controller, controllers, LightingFields(), c => c.DeviceId,
-            "lighting_config.json", list => LightingJsonLoader.Save(list, _configDir));
+            "lighting_devices.json", list => LightingJsonLoader.Save(list, _configDir));
     }
 
     private void AddTec()
@@ -910,7 +910,7 @@ internal sealed class ConfigToolApp
         var devices = PowerSupplyJsonLoader.Load(_configDir).ToList();
         var device = preset with { Name = UniqueName(preset.Name, devices.Select(d => d.Name)) };
         AddEntry("Power supply", device, devices, PowerSupplyFields(), d => d.Name,
-            "power_supply_config.json", list => PowerSupplyJsonLoader.Save(list, _configDir));
+            "power_supply_devices.json", list => PowerSupplyJsonLoader.Save(list, _configDir));
     }
 
     private void AddTcp()

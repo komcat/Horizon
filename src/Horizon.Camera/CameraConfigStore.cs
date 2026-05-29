@@ -10,11 +10,6 @@ public sealed class CameraConfigStore
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Horizon", "config", "camera-config.json");
 
-    // Migrate from old location if needed
-    private static readonly string LegacyFilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Horizon", "camera-config.json");
-
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -25,13 +20,6 @@ public sealed class CameraConfigStore
     {
         try
         {
-            // Migrate from old location
-            if (!File.Exists(FilePath) && File.Exists(LegacyFilePath))
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-                File.Move(LegacyFilePath, FilePath);
-            }
-
             if (!File.Exists(FilePath))
             {
                 Log.Warning("[Camera] Config file not found: {FilePath}", FilePath);

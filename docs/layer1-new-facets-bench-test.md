@@ -40,10 +40,10 @@ The engine reads `%APPDATA%\Horizon\config\`. Author these with
 `Horizon.ConfigTool` (Lighting / TEC / SMU / Power supply domains → Add → edit
 fields → Save) or hand-write them:
 
-- `lighting_config.json` — `{ "lightingControllers": [ { deviceId, ipAddress, port, controllerType:"CCS_PD3", channels:[…] } ] }`
+- `lighting_devices.json` — `{ "lightingControllers": [ { deviceId, ipAddress, port, controllerType:"CCS_PD3", channels:[…] } ] }`
 - `tec_devices.json` — `{ "tecDevices": [ { name, controllerType:"TED4015_Direct", visaResource } ] }`
 - `smu_devices.json` — `{ "devices": [ { name, type:"keithley_2400", visaResource } ] }`
-- `power_supply_config.json` — `{ "devices": [ { name, type, ip, port:5025, channels } ] }`
+- `power_supply_devices.json` — `{ "devices": [ { name, type, ip, port:5025, channels } ] }`
 
 **Engine filters:** `tec_devices.json` is read for `TED4015`-type rows only
 (CLD101x stays in the Laser facet); `smu_devices.json` for `keithley_2400`-type
@@ -117,7 +117,7 @@ with a `RefreshAsync()` so the status table updates immediately after a command.
   (`ISmuFacet` surface) — drives the first `enabledChannels` entry.
 - **Power supply — PASS.** Keysight E36441A at `10.0.0.21:5025`. Connects `1/1`;
   set-voltage and output ON/OFF confirmed across all 4 channels.
-- **Lighting — PASS (fixed-then-pass).** `lighting_config.json` had an empty
+- **Lighting — PASS (fixed-then-pass).** `lighting_devices.json` had an empty
   `channels` array → `InvalidChannel`; fixed by populating channels 0–3. The
   `CcsPd3Adapter` wire format was a wrong placeholder — rewrote `SendIntensity`
   to the real PD3 checksummed frame (`@ccFddd` + checksum + CRLF, response

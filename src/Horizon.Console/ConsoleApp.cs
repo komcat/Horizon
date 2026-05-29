@@ -786,7 +786,7 @@ internal sealed class ConsoleApp
         var devices = _engine.PowerSupply.DeviceNames;
         if (devices.Count == 0)
         {
-            AnsiConsole.MarkupLine("[yellow]No power supplies configured (check power_supply_config.json).[/]");
+            AnsiConsole.MarkupLine("[yellow]No power supplies configured (check power_supply_devices.json).[/]");
             return;
         }
 
@@ -1005,7 +1005,7 @@ internal sealed class ConsoleApp
         var devices = _engine.Lighting.DeviceNames;
         if (devices.Count == 0)
         {
-            AnsiConsole.MarkupLine("[yellow]No lighting controllers configured (check lighting_config.json).[/]");
+            AnsiConsole.MarkupLine("[yellow]No lighting controllers configured (check lighting_devices.json).[/]");
             return;
         }
 

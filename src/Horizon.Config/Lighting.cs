@@ -30,7 +30,7 @@ public record LightingControllerConfig
     public List<LightingChannelConfig> Channels { get; init; } = new();
 }
 
-/// <summary>Loads / saves <c>lighting_config.json</c>.</summary>
+/// <summary>Loads / saves <c>lighting_devices.json</c>.</summary>
 public static class LightingJsonLoader
 {
     private record LightingFile
@@ -41,14 +41,14 @@ public static class LightingJsonLoader
     public static IReadOnlyList<LightingControllerConfig> Load(string? configDir = null)
     {
         configDir ??= ConfigLoader.GetConfigDirectory();
-        return ConfigLoader.LoadJson<LightingFile>(configDir, "lighting_config")?.LightingControllers
+        return ConfigLoader.LoadJson<LightingFile>(configDir, "lighting_devices")?.LightingControllers
                ?? new List<LightingControllerConfig>();
     }
 
     public static void Save(IReadOnlyList<LightingControllerConfig> controllers, string? configDir = null)
     {
         configDir ??= ConfigLoader.GetConfigDirectory();
-        ConfigLoader.SaveJson(configDir, "lighting_config",
+        ConfigLoader.SaveJson(configDir, "lighting_devices",
             new LightingFile { LightingControllers = controllers.ToList() });
     }
 }

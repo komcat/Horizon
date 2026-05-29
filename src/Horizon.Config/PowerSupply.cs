@@ -28,7 +28,7 @@ public record PowerSupplyConfig
     public int Channels { get; init; } = 1;
 }
 
-/// <summary>Loads / saves <c>power_supply_config.json</c>.</summary>
+/// <summary>Loads / saves <c>power_supply_devices.json</c>.</summary>
 public static class PowerSupplyJsonLoader
 {
     private record PowerSupplyFile
@@ -39,14 +39,14 @@ public static class PowerSupplyJsonLoader
     public static IReadOnlyList<PowerSupplyConfig> Load(string? configDir = null)
     {
         configDir ??= ConfigLoader.GetConfigDirectory();
-        return ConfigLoader.LoadJson<PowerSupplyFile>(configDir, "power_supply_config")?.Devices
+        return ConfigLoader.LoadJson<PowerSupplyFile>(configDir, "power_supply_devices")?.Devices
                ?? new List<PowerSupplyConfig>();
     }
 
     public static void Save(IReadOnlyList<PowerSupplyConfig> devices, string? configDir = null)
     {
         configDir ??= ConfigLoader.GetConfigDirectory();
-        ConfigLoader.SaveJson(configDir, "power_supply_config",
+        ConfigLoader.SaveJson(configDir, "power_supply_devices",
             new PowerSupplyFile { Devices = devices.ToList() });
     }
 }

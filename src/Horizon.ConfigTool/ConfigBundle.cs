@@ -46,10 +46,10 @@ internal static class ConfigBundle
         new("camera", "camera-config.json"),
         new("safety", "safety_watch.json"),
         new("interlocks", "motion_interlocks.json"),
-        new("lighting", "lighting_config.json"),
+        new("lighting", "lighting_devices.json"),
         new("tec", "tec_devices.json"),
         new("smu", "smu_devices.json"),
-        new("powerSupply", "power_supply_config.json"),
+        new("powerSupply", "power_supply_devices.json"),
         new("tcp", "tcp_clients.json"),
         new("deviceLinks", "device_links.json"),
     };

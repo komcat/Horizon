@@ -164,10 +164,10 @@ own domain project if/when it gets a real driver.
 
 | File | Model | Notes |
 |---|---|---|
-| `lighting_config.json` | `LightingControllerConfig` (+ `LightingChannelConfig`) | LED controller (e.g. CCS_PD3) with per-channel color / group / intensity |
+| `lighting_devices.json` | `LightingControllerConfig` (+ `LightingChannelConfig`) | LED controller (e.g. CCS_PD3) with per-channel color / group / intensity |
 | `tec_devices.json` | `TecDeviceConfig` | TEC + laser controllers — CLD101x (VISA or TCP) and standalone TED4015 |
 | `smu_devices.json` | `SmuDeviceConfig` | Keithley 6482 / 2400; adds `measurementNplc`, `autoRange`, compliance |
-| `power_supply_config.json` | `PowerSupplyConfig` | Keysight E36441A / E36103B (LXI, ip:port, channels) |
+| `power_supply_devices.json` | `PowerSupplyConfig` | Keysight E36441A / E36103B (LXI, ip:port, channels) |
 | `tcp_clients.json` | `TcpClientConfig` | single- or multi-channel data-stream clients |
 
 Field shapes are taken from the M3/M4 machine configs as the **parameter spec**;
