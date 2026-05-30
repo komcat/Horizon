@@ -6,8 +6,8 @@
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         WindowStyle="None"
-        Background="#1E1E22">
-    <Border BorderBrush="#3A3A40" BorderThickness="1">
+        Background="{StaticResource Bg}">
+    <Border BorderBrush="{StaticResource Edge}" BorderThickness="1">
         <Grid Margin="28">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -18,28 +18,28 @@
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Text="HORIZON"
-                       Foreground="#4FC3F7" FontSize="34" FontWeight="Bold" />
+                       Foreground="{StaticResource Accent}" FontSize="34" FontWeight="Bold" />
             <TextBlock Grid.Row="1" Text="Layer 3 operator UI"
-                       Foreground="#8A8A92" FontSize="13" Margin="2,0,0,18" />
+                       Foreground="{StaticResource Subtle}" FontSize="13" Margin="2,0,0,18" />
 
             <StackPanel Grid.Row="2">
                 <TextBlock x:Name="StatusText" Text="Starting…"
-                           Foreground="#E0E0E0" FontSize="14" Margin="0,0,0,8" />
+                           Foreground="{StaticResource Text}" FontSize="14" Margin="0,0,0,8" />
                 <ProgressBar x:Name="Progress" Height="4" IsIndeterminate="True"
-                             Foreground="#4FC3F7" Background="#2A2A30" BorderThickness="0" />
+                             Foreground="{StaticResource Accent}" Background="{StaticResource Panel}" BorderThickness="0" />
             </StackPanel>
 
             <Border Grid.Row="3" Margin="0,16,0,0"
-                    Background="#161618" BorderBrush="#2A2A30" BorderThickness="1">
+                    Background="{StaticResource Panel}" BorderBrush="{StaticResource Panel}" BorderThickness="1">
                 <ScrollViewer x:Name="LogScroller" VerticalScrollBarVisibility="Auto">
-                    <TextBlock x:Name="LogText" Foreground="#9AA0A6"
+                    <TextBlock x:Name="LogText" Foreground="{StaticResource Subtle}"
                                FontFamily="Consolas" FontSize="11.5"
                                TextWrapping="Wrap" Margin="8" />
                 </ScrollViewer>
             </Border>
 
             <Grid Grid.Row="4" Margin="0,16,0,0">
-                <TextBlock x:Name="ErrorText" Foreground="#E74C3C" FontSize="12.5"
+                <TextBlock x:Name="ErrorText" Foreground="{StaticResource Danger}" FontSize="12.5"
                            TextWrapping="Wrap" VerticalAlignment="Center"
                            HorizontalAlignment="Left" Visibility="Collapsed" />
                 <StackPanel x:Name="ErrorButtons" Orientation="Horizontal"

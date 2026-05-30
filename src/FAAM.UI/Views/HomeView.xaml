@@ -1,0 +1,55 @@
+<UserControl x:Class="FAAM.UI.Views.HomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- Big launcher tile. -->
+        <Style x:Key="Tile" TargetType="Button">
+            <Setter Property="FontSize" Value="22" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="10" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- A dimmed tile for the not-yet-built slots. -->
+        <Style x:Key="ReserveTile" TargetType="Button" BasedOn="{StaticResource Tile}">
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+            <Setter Property="IsEnabled" Value="False" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="6">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Button Grid.Row="0" Grid.Column="0" Content="RUN"
+                Style="{StaticResource Tile}" Click="OnRunClick" />
+        <Button Grid.Row="0" Grid.Column="1" Content="reserve"
+                Style="{StaticResource ReserveTile}" />
+        <Button Grid.Row="1" Grid.Column="0" Content="Machine"
+                Style="{StaticResource Tile}" Click="OnMachineClick" />
+        <Button Grid.Row="1" Grid.Column="1" Content="reserve"
+                Style="{StaticResource ReserveTile}" />
+    </Grid>
+</UserControl>

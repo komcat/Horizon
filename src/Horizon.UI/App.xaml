@@ -13,6 +13,22 @@
             <mvvm:BoolToStatusTextConverter x:Key="BoolToStatusText" />
             <BooleanToVisibilityConverter x:Key="BoolToVis" />
 
+            <!-- Theme palette — bound to Windows SystemColors so Horizon.UI follows
+                 the user's system colours/accent (live via DynamicResource). Must
+                 precede any style/template below that references these keys. -->
+            <SolidColorBrush x:Key="Bg"       Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}" />
+            <SolidColorBrush x:Key="Panel"    Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}" />
+            <SolidColorBrush x:Key="Text"     Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" />
+            <SolidColorBrush x:Key="Subtle"   Color="{DynamicResource {x:Static SystemColors.GrayTextColorKey}}" />
+            <SolidColorBrush x:Key="Edge"     Color="{DynamicResource {x:Static SystemColors.ActiveBorderColorKey}}" />
+            <SolidColorBrush x:Key="Accent"   Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
+            <SolidColorBrush x:Key="OnAccent" Color="{DynamicResource {x:Static SystemColors.HighlightTextColorKey}}" />
+
+            <!-- Fixed status colours — semantic, intentionally theme-independent. -->
+            <SolidColorBrush x:Key="Danger" Color="#E74C3C" />
+            <SolidColorBrush x:Key="Warn"   Color="#FFB74D" />
+            <SolidColorBrush x:Key="Ok"     Color="#81C784" />
+
             <!-- Horizontal device picker — a persistent button per device,
                  single-select with the active one highlighted. Used by every
                  Machine-page section in place of a device drop-down. -->
@@ -31,8 +47,8 @@
                 <Setter Property="ItemContainerStyle">
                     <Setter.Value>
                         <Style TargetType="ListBoxItem">
-                            <Setter Property="Background" Value="#2A2A30" />
-                            <Setter Property="Foreground" Value="#D0D0D4" />
+                            <Setter Property="Background" Value="{StaticResource Panel}" />
+                            <Setter Property="Foreground" Value="{StaticResource Text}" />
                             <Setter Property="Padding" Value="14,5" />
                             <Setter Property="Margin" Value="0,2,6,2" />
                             <Setter Property="Cursor" Value="Hand" />
@@ -40,17 +56,17 @@
                                 <Setter.Value>
                                     <ControlTemplate TargetType="ListBoxItem">
                                         <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                                BorderBrush="#3A3A40" BorderThickness="1" CornerRadius="3"
+                                                BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3"
                                                 Padding="{TemplateBinding Padding}">
                                             <ContentPresenter VerticalAlignment="Center" />
                                         </Border>
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="Bd" Property="BorderBrush" Value="#4FC3F7" />
+                                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
                                             </Trigger>
                                             <Trigger Property="IsSelected" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="#2D6CDF" />
-                                                <Setter TargetName="Bd" Property="BorderBrush" Value="#2D6CDF" />
+                                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Accent}" />
+                                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
                                                 <Setter Property="Foreground" Value="White" />
                                             </Trigger>
                                         </ControlTemplate.Triggers>
@@ -113,6 +129,9 @@
             </DataTemplate>
             <DataTemplate DataType="{x:Type vms:CameraSectionViewModel}">
                 <vsec:CameraSectionView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vms:SettingsSectionViewModel}">
+                <vsec:SettingsSectionView />
             </DataTemplate>
         </ResourceDictionary>
     </Application.Resources>

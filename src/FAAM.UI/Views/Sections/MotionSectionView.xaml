@@ -1,0 +1,73 @@
+<UserControl x:Class="FAAM.UI.Views.Sections.MotionSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Background="{StaticResource Panel}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Device-level controls + Stop -->
+        <Border Grid.Row="0" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1" Padding="12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Text="Device" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                    <ListBox Style="{StaticResource DeviceSelector}" Margin="8,0,16,0" VerticalAlignment="Center"
+                             ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" />
+                    <TextBlock Text="Connected" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Connected}" Foreground="{StaticResource Text}"
+                               Margin="8,0,16,0" VerticalAlignment="Center" />
+                    <TextBlock Text="Moving" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding IsMoving}" Foreground="{StaticResource Warn}"
+                               Margin="8,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <Button Grid.Column="1" Content="STOP" Width="110" Height="34"
+                        FontWeight="Bold" Foreground="White" Background="{StaticResource Danger}" BorderThickness="0"
+                        Command="{Binding StopCommand}" />
+            </Grid>
+        </Border>
+
+        <!-- Jog step + velocity -->
+        <Border Grid.Row="1" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Padding="12,8">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Jog step" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                <TextBox Width="70" Margin="8,0,16,0" VerticalAlignment="Center" Text="{Binding JogStep}" />
+                <TextBlock Text="Velocity" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                <TextBox Width="70" Margin="8,0,8,0" VerticalAlignment="Center" Text="{Binding Velocity}" />
+                <Button Content="Apply" Width="64" Height="26" Margin="0,0,16,0"
+                        Command="{Binding ApplyVelocityCommand}" />
+                <TextBlock Text="{Binding Status}" Foreground="{StaticResource Subtle}" FontStyle="Italic"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <!-- Per-axis position + jog -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">
+            <ItemsControl ItemsSource="{Binding Axes}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Padding="12,6">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Name}" Foreground="{StaticResource Accent}" FontWeight="SemiBold"
+                                           Width="60" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Position}" Foreground="{StaticResource Text}" FontFamily="Consolas"
+                                           Width="140" VerticalAlignment="Center" />
+                                <Button Content="−" Width="44" Height="28" Margin="0,0,6,0"
+                                        FontSize="16" Command="{Binding JogNegativeCommand}" />
+                                <Button Content="+" Width="44" Height="28"
+                                        FontSize="16" Command="{Binding JogPositiveCommand}" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

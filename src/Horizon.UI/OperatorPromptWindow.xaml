@@ -6,17 +6,17 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         WindowStyle="None"
-        Background="#1E1E22">
-    <Border BorderBrush="#3A3A40" BorderThickness="1">
+        Background="{StaticResource Bg}">
+    <Border BorderBrush="{StaticResource Edge}" BorderThickness="1">
         <StackPanel Margin="24,20">
-            <TextBlock x:Name="PromptTitle" Foreground="#4FC3F7" FontSize="16" FontWeight="SemiBold"
+            <TextBlock x:Name="PromptTitle" Foreground="{StaticResource Accent}" FontSize="16" FontWeight="SemiBold"
                        TextWrapping="Wrap" Margin="0,0,0,10" />
-            <TextBlock x:Name="PromptMessage" Foreground="#D0D0D4" FontSize="13"
+            <TextBlock x:Name="PromptMessage" Foreground="{StaticResource Text}" FontSize="13"
                        TextWrapping="Wrap" Margin="0,0,0,20" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="Cancel" Width="92" Height="30" Margin="0,0,8,0" IsCancel="True" />
                 <Button Content="Confirm" Width="92" Height="30"
-                        FontWeight="SemiBold" Foreground="White" Background="#2D6CDF" BorderThickness="0"
+                        FontWeight="SemiBold" Foreground="White" Background="{StaticResource Accent}" BorderThickness="0"
                         IsDefault="True" Click="OnConfirm" />
             </StackPanel>
         </StackPanel>

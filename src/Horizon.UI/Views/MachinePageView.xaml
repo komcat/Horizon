@@ -1,7 +1,7 @@
 <UserControl x:Class="Horizon.UI.Views.MachinePageView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid Background="#1E1E22" Margin="12">
+    <Grid Background="{StaticResource Bg}" Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="2*" MinHeight="200" />
@@ -18,19 +18,19 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="HORIZON" Foreground="#4FC3F7"
+                <TextBlock Text="HORIZON" Foreground="{StaticResource Accent}"
                            FontSize="20" FontWeight="Bold" VerticalAlignment="Center" />
-                <Border Background="#2A2A30" CornerRadius="3" Padding="8,3" Margin="14,0,0,0"
+                <Border Background="{StaticResource Panel}" CornerRadius="3" Padding="8,3" Margin="14,0,0,0"
                         VerticalAlignment="Center">
                     <TextBlock VerticalAlignment="Center">
-                        <Run Text="Engine: " Foreground="#8A8A92" />
-                        <Run Text="{Binding EngineState, Mode=OneWay}" Foreground="#E0E0E0" FontWeight="SemiBold" />
+                        <Run Text="Engine: " Foreground="{StaticResource Subtle}" />
+                        <Run Text="{Binding EngineState, Mode=OneWay}" Foreground="{StaticResource Text}" FontWeight="SemiBold" />
                     </TextBlock>
                 </Border>
             </StackPanel>
 
             <TextBlock Grid.Column="1" Text="{Binding DeviceSummary, Mode=OneWay}"
-                       Foreground="#8A8A92" VerticalAlignment="Center"
+                       Foreground="{StaticResource Subtle}" VerticalAlignment="Center"
                        HorizontalAlignment="Center" FontSize="13" />
 
             <Button Grid.Column="2" Content="Reconnect" Width="100" Height="30"
@@ -46,14 +46,14 @@
 
             <ListBox Grid.Column="0" ItemsSource="{Binding Sections}"
                      SelectedItem="{Binding CurrentSection}"
-                     Background="#161618" BorderBrush="#3A3A40" Foreground="#D0D0D4">
+                     Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" Foreground="{StaticResource Text}">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
                         <Setter Property="Padding" Value="10,8" />
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                         <Style.Triggers>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Background" Value="#2D6CDF" />
+                                <Setter Property="Background" Value="{StaticResource Accent}" />
                                 <Setter Property="Foreground" Value="White" />
                             </Trigger>
                         </Style.Triggers>
@@ -70,12 +70,12 @@
         </Grid>
 
         <GridSplitter Grid.Row="2" Height="6" HorizontalAlignment="Stretch"
-                      Background="#2A2A30" Margin="0,4" />
+                      Background="{StaticResource Panel}" Margin="0,4" />
 
         <!-- Global log -->
-        <Border Grid.Row="3" Background="#161618" BorderBrush="#3A3A40" BorderThickness="1">
+        <Border Grid.Row="3" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1">
             <ListBox x:Name="LogList" ItemsSource="{Binding Log}"
-                     Background="Transparent" BorderThickness="0" Foreground="#D0D0D4"
+                     Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">

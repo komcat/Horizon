@@ -1,3 +1,4 @@
+using System.Windows;
 using System.Windows.Media;
 using Horizon.Engine;
 
@@ -6,8 +7,10 @@ namespace Horizon.UI.ViewModels;
 /// <summary>A single log line, with display strings and a level colour precomputed for binding.</summary>
 public sealed class LogLineViewModel
 {
-    private static readonly Brush DebugBrush = Frozen(0x80, 0x80, 0x88);
-    private static readonly Brush InfoBrush = Frozen(0xD0, 0xD0, 0xD4);
+    // Debug/Info follow the system text colours so they stay readable in any
+    // theme; Warning/Error are fixed status colours.
+    private static readonly Brush DebugBrush = SystemColors.GrayTextBrush;
+    private static readonly Brush InfoBrush = SystemColors.ControlTextBrush;
     private static readonly Brush WarningBrush = Frozen(0xF1, 0xC4, 0x0F);
     private static readonly Brush ErrorBrush = Frozen(0xE7, 0x4C, 0x3C);
 

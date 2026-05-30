@@ -46,6 +46,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         Tec = new TecSectionViewModel(host);
         PowerSupply = new PowerSupplySectionViewModel(host);
         Camera = new CameraSectionViewModel(host);
+        Settings = new SettingsSectionViewModel(host);
         Sections = new object[]
         {
             Status,
@@ -58,6 +59,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
             Measurement,
             Smu,
             Camera,
+            Settings,
         };
         _currentSection = Status;
 
@@ -101,6 +103,9 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     /// <summary>The Camera section, kept typed for the sampler to refresh its grab state.</summary>
     public CameraSectionViewModel Camera { get; }
+
+    /// <summary>The Settings section — application settings (mm/pixel, MoveClick mapping).</summary>
+    public SettingsSectionViewModel Settings { get; }
 
     /// <summary>Engine + workflow log lines, oldest first, capped at <see cref="MaxLogLines"/>.</summary>
     public ObservableCollection<LogLineViewModel> Log { get; } = new();

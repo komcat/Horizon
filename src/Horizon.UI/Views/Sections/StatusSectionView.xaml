@@ -3,10 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <UserControl.Resources>
         <Style TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="#2A2A30" />
-            <Setter Property="Foreground" Value="#C8C8CE" />
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
             <Setter Property="Padding" Value="8,5" />
-            <Setter Property="BorderBrush" Value="#3A3A40" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
             <Setter Property="BorderThickness" Value="0,0,1,1" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
@@ -16,9 +16,9 @@
               AutoGenerateColumns="False" IsReadOnly="True"
               CanUserAddRows="False" CanUserDeleteRows="False"
               HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-              Background="#161618" RowBackground="#1E1E22" AlternatingRowBackground="#212126"
-              Foreground="#D0D0D4" BorderBrush="#3A3A40"
-              HorizontalGridLinesBrush="#2A2A30">
+              Background="{StaticResource Panel}" RowBackground="{StaticResource Bg}" AlternatingRowBackground="{StaticResource Bg}"
+              Foreground="{StaticResource Text}" BorderBrush="{StaticResource Edge}"
+              HorizontalGridLinesBrush="{StaticResource Panel}">
         <DataGrid.Columns>
             <DataGridTextColumn Header="Domain" Binding="{Binding Domain}" Width="120" />
             <DataGridTextColumn Header="Device" Binding="{Binding Name}" Width="170" />

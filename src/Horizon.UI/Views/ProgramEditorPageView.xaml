@@ -6,33 +6,33 @@
         <Style x:Key="StepItem" TargetType="ListBoxItem">
             <Setter Property="Padding" Value="8,5" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Foreground" Value="#D0D0D4" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
             <Style.Triggers>
                 <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#2D6CDF" />
+                    <Setter Property="Background" Value="{StaticResource Accent}" />
                     <Setter Property="Foreground" Value="White" />
                 </Trigger>
             </Style.Triggers>
         </Style>
         <Style x:Key="RunStatusText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#8A8A92" />
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
             <Setter Property="FontFamily" Value="Consolas" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding RunStatus}" Value="Running">
-                    <Setter Property="Foreground" Value="#FFB74D" />
+                    <Setter Property="Foreground" Value="{StaticResource Warn}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding RunStatus}" Value="Passed">
-                    <Setter Property="Foreground" Value="#81C784" />
+                    <Setter Property="Foreground" Value="{StaticResource Ok}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding RunStatus}" Value="Failed">
-                    <Setter Property="Foreground" Value="#E57373" />
+                    <Setter Property="Foreground" Value="{StaticResource Danger}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
     </UserControl.Resources>
 
-    <Grid Background="#1E1E22" Margin="12">
+    <Grid Background="{StaticResource Bg}" Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="2*" MinHeight="220" />
@@ -41,22 +41,22 @@
         </Grid.RowDefinitions>
 
         <!-- Toolbar -->
-        <Border Grid.Row="0" Background="#161618" BorderBrush="#3A3A40" BorderThickness="1" Padding="12,8">
+        <Border Grid.Row="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" Padding="12,8">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <TextBlock Text="Product" Foreground="#8A8A92" VerticalAlignment="Center" />
+                    <TextBlock Text="Product" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
                     <ComboBox Width="140" Margin="8,0,20,0" VerticalAlignment="Center"
                               ItemsSource="{Binding Products}" SelectedItem="{Binding SelectedProduct}" />
-                    <TextBlock Text="Program" Foreground="#8A8A92" VerticalAlignment="Center" />
+                    <TextBlock Text="Program" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
                     <ComboBox Width="170" Margin="8,0,6,0" VerticalAlignment="Center"
                               ItemsSource="{Binding Programs}" SelectedItem="{Binding SelectedProgram}" />
                     <Button Content="New" Width="56" Height="26" Margin="0,0,20,0"
                             Command="{Binding NewProgramCommand}" />
-                    <TextBlock Text="Name" Foreground="#8A8A92" VerticalAlignment="Center" />
+                    <TextBlock Text="Name" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
                     <TextBox Width="170" Margin="8,0,6,0" VerticalAlignment="Center" Text="{Binding ProgramName}" />
                     <Button Content="Save" Width="56" Height="26" Command="{Binding SaveProgramCommand}" />
                 </StackPanel>
@@ -76,14 +76,14 @@
             </Grid.ColumnDefinitions>
 
             <!-- Step list -->
-            <Border Grid.Column="0" Background="#161618" BorderBrush="#3A3A40" BorderThickness="1" Margin="0,0,4,0">
+            <Border Grid.Column="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" Margin="0,0,4,0">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="Steps" Foreground="#8A8A92" FontWeight="SemiBold" Padding="10,7" />
+                    <TextBlock Grid.Row="0" Text="Steps" Foreground="{StaticResource Subtle}" FontWeight="SemiBold" Padding="10,7" />
                     <ListBox Grid.Row="1" ItemsSource="{Binding Steps}" SelectedItem="{Binding SelectedStep}"
                              Background="Transparent" BorderThickness="0"
                              ItemContainerStyle="{StaticResource StepItem}">
@@ -118,35 +118,35 @@
             </Border>
 
             <!-- Step detail -->
-            <Border Grid.Column="1" Background="#161618" BorderBrush="#3A3A40" BorderThickness="1" Margin="4,0,0,0">
+            <Border Grid.Column="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" Margin="4,0,0,0">
                 <Grid>
-                    <TextBlock Text="Select a step to edit" Foreground="#6A6A72"
+                    <TextBlock Text="Select a step to edit" Foreground="{StaticResource Subtle}"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                Visibility="{Binding HasNoSelectedStep, Converter={StaticResource BoolToVis}}" />
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   Visibility="{Binding HasSelectedStep, Converter={StaticResource BoolToVis}}">
                         <StackPanel Margin="14,12">
-                            <TextBlock Text="Step" Foreground="#4FC3F7" FontWeight="SemiBold" Margin="0,0,0,8" />
+                            <TextBlock Text="Step" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,0,0,8" />
 
-                            <TextBlock Text="Name" Foreground="#8A8A92" Margin="0,0,0,2" />
+                            <TextBlock Text="Name" Foreground="{StaticResource Subtle}" Margin="0,0,0,2" />
                             <TextBox Margin="0,0,0,8" Text="{Binding SelectedStep.Name, UpdateSourceTrigger=PropertyChanged}" />
 
-                            <TextBlock Text="Operation" Foreground="#8A8A92" Margin="0,0,0,2" />
+                            <TextBlock Text="Operation" Foreground="{StaticResource Subtle}" Margin="0,0,0,2" />
                             <ComboBox IsEditable="True" Margin="0,0,0,8"
                                       ItemsSource="{Binding Ops}"
                                       Text="{Binding SelectedStep.Op, UpdateSourceTrigger=PropertyChanged}" />
 
-                            <TextBlock Text="Device" Foreground="#8A8A92" Margin="0,0,0,2" />
+                            <TextBlock Text="Device" Foreground="{StaticResource Subtle}" Margin="0,0,0,2" />
                             <TextBox Margin="0,0,0,8" Text="{Binding SelectedStep.Device, UpdateSourceTrigger=PropertyChanged}" />
 
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                <CheckBox Content="Enabled" Foreground="#D0D0D4" Margin="0,0,20,0"
+                                <CheckBox Content="Enabled" Foreground="{StaticResource Text}" Margin="0,0,20,0"
                                           IsChecked="{Binding SelectedStep.Enabled}" />
-                                <CheckBox Content="Breakpoint" Foreground="#D0D0D4"
+                                <CheckBox Content="Breakpoint" Foreground="{StaticResource Text}"
                                           IsChecked="{Binding SelectedStep.Breakpoint}" />
                             </StackPanel>
 
-                            <TextBlock Text="Parameters" Foreground="#4FC3F7" FontWeight="SemiBold" Margin="0,0,0,6" />
+                            <TextBlock Text="Parameters" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,0,0,6" />
                             <ItemsControl ItemsSource="{Binding SelectedStep.Parameters}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
@@ -175,21 +175,21 @@
         </Grid>
 
         <!-- Status -->
-        <Border Grid.Row="2" Background="#161618" BorderBrush="#3A3A40" BorderThickness="1" Padding="12,7" Margin="0,8,0,0">
-            <TextBlock Text="{Binding Status}" Foreground="#9AA0A6" FontStyle="Italic" />
+        <Border Grid.Row="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" Padding="12,7" Margin="0,8,0,0">
+            <TextBlock Text="{Binding Status}" Foreground="{StaticResource Subtle}" FontStyle="Italic" />
         </Border>
 
         <!-- Execution log -->
-        <Border Grid.Row="3" Background="#161618" BorderBrush="#3A3A40" BorderThickness="1" Margin="0,8,0,0">
+        <Border Grid.Row="3" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" Margin="0,8,0,0">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Text="Execution log" Foreground="#8A8A92"
+                <TextBlock Grid.Row="0" Text="Execution log" Foreground="{StaticResource Subtle}"
                            FontWeight="SemiBold" Padding="10,6" />
                 <ListBox x:Name="LogList" Grid.Row="1" ItemsSource="{Binding Log}"
-                         Background="Transparent" BorderThickness="0" Foreground="#9AA0A6"
+                         Background="Transparent" BorderThickness="0" Foreground="{StaticResource Subtle}"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">

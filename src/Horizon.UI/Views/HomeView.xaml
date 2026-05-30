@@ -11,17 +11,17 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Card" CornerRadius="6" Background="#2A2A30"
-                                BorderBrush="#3A3A40" BorderThickness="1">
+                        <Border x:Name="Card" CornerRadius="6" Background="{StaticResource Panel}"
+                                BorderBrush="{StaticResource Edge}" BorderThickness="1">
                             <ContentPresenter Margin="18" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Card" Property="Background" Value="#34343C" />
-                                <Setter TargetName="Card" Property="BorderBrush" Value="#4FC3F7" />
+                                <Setter TargetName="Card" Property="Background" Value="{StaticResource Panel}" />
+                                <Setter TargetName="Card" Property="BorderBrush" Value="{StaticResource Accent}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Card" Property="Background" Value="#3C3C46" />
+                                <Setter TargetName="Card" Property="Background" Value="{StaticResource Panel}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -30,11 +30,11 @@
         </Style>
     </UserControl.Resources>
 
-    <Grid Background="#1E1E22">
+    <Grid Background="{StaticResource Bg}">
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-            <TextBlock Text="HORIZON" Foreground="#4FC3F7" FontSize="40" FontWeight="Bold"
+            <TextBlock Text="HORIZON" Foreground="{StaticResource Accent}" FontSize="40" FontWeight="Bold"
                        HorizontalAlignment="Center" />
-            <TextBlock Text="Select a workspace" Foreground="#8A8A92" FontSize="13"
+            <TextBlock Text="Select a workspace" Foreground="{StaticResource Subtle}" FontSize="13"
                        HorizontalAlignment="Center" Margin="0,2,0,26" />
 
             <ItemsControl ItemsSource="{Binding Tiles}">
@@ -47,9 +47,9 @@
                     <DataTemplate>
                         <Button Style="{StaticResource TileButton}" Command="{Binding Open}">
                             <StackPanel>
-                                <TextBlock Text="{Binding Title}" Foreground="#4FC3F7"
+                                <TextBlock Text="{Binding Title}" Foreground="{StaticResource Accent}"
                                            FontSize="19" FontWeight="Bold" />
-                                <TextBlock Text="{Binding Description}" Foreground="#9AA0A6"
+                                <TextBlock Text="{Binding Description}" Foreground="{StaticResource Subtle}"
                                            FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" />
                             </StackPanel>
                         </Button>

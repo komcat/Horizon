@@ -1,0 +1,189 @@
+<UserControl x:Class="FAAM.UI.Views.JogPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- Jog direction button — press-and-hold to jog, release to stop. -->
+        <Style x:Key="JogBtn" TargetType="Button">
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="Background" Value="{StaticResource Bg}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <EventSetter Event="Click" Handler="OnJog" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{StaticResource Edge}"
+                                BorderThickness="1" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Step-size preset — small selectable chip; accent when active. -->
+        <Style x:Key="StepBtn" TargetType="ToggleButton">
+            <Setter Property="Width" Value="52" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="Background" Value="{StaticResource Bg}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{StaticResource Edge}"
+                                BorderThickness="1" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Accent}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Velocity preset — selectable; accent when active. -->
+        <Style x:Key="VelBtn" TargetType="ToggleButton">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="Background" Value="{StaticResource Bg}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{StaticResource Edge}"
+                                BorderThickness="1" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Accent}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="4">
+        <StackPanel Margin="8">
+            <TextBlock Text="JOG" Foreground="{StaticResource Subtle}" FontWeight="Bold" FontSize="12"
+                       Margin="2,0,0,6" />
+
+            <!-- STOP — halts all motion. -->
+            <Button Content="STOP" Click="OnStop" Height="36" Margin="0,0,0,8"
+                    Background="{StaticResource Danger}" Foreground="White" BorderThickness="0"
+                    FontSize="15" FontWeight="Bold" Cursor="Hand" />
+
+            <!-- Connected motion devices (single-select). -->
+            <StackPanel x:Name="DeviceList" />
+
+            <!-- Live position readout for the selected device. -->
+            <Border Margin="0,8,0,0" Background="Black" CornerRadius="3" Padding="8,5">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.Resources>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="FontFamily" Value="Consolas" />
+                            <Setter Property="FontSize" Value="12.5" />
+                        </Style>
+                    </Grid.Resources>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="X" Foreground="#2E9E2E" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Y" Foreground="#2E9E2E" />
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Z" Foreground="#2E9E2E" />
+                    <TextBlock x:Name="PosX" Grid.Row="0" Grid.Column="1" Text="—" Foreground="#33FF33" TextAlignment="Right" />
+                    <TextBlock x:Name="PosY" Grid.Row="1" Grid.Column="1" Text="—" Foreground="#33FF33" TextAlignment="Right" />
+                    <TextBlock x:Name="PosZ" Grid.Row="2" Grid.Column="1" Text="—" Foreground="#33FF33" TextAlignment="Right" />
+
+                    <TextBlock Grid.Row="0" Grid.Column="3" Text="U" Foreground="#2E9E2E" />
+                    <TextBlock Grid.Row="1" Grid.Column="3" Text="V" Foreground="#2E9E2E" />
+                    <TextBlock Grid.Row="2" Grid.Column="3" Text="W" Foreground="#2E9E2E" />
+                    <TextBlock x:Name="PosU" Grid.Row="0" Grid.Column="4" Text="—" Foreground="#33FF33" TextAlignment="Right" />
+                    <TextBlock x:Name="PosV" Grid.Row="1" Grid.Column="4" Text="—" Foreground="#33FF33" TextAlignment="Right" />
+                    <TextBlock x:Name="PosW" Grid.Row="2" Grid.Column="4" Text="—" Foreground="#33FF33" TextAlignment="Right" />
+                </Grid>
+            </Border>
+
+            <!-- Step-size presets — each jog click moves by the selected step. -->
+            <TextBlock Text="Step" Foreground="{StaticResource Subtle}" FontSize="11" Margin="2,8,0,2" />
+            <WrapPanel x:Name="StepList" />
+
+            <!-- X / Y / Z jog pad. -->
+            <Grid Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" /><ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Button Grid.Row="0" Grid.Column="1" Content="Y-" Tag="Y-" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="0" Grid.Column="4" Content="Z-" Tag="Z-" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="1" Grid.Column="0" Content="X-" Tag="X-" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="1" Grid.Column="1" Content="Y+" Tag="Y+" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="1" Grid.Column="2" Content="X+" Tag="X+" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="1" Grid.Column="4" Content="Z+" Tag="Z+" Style="{StaticResource JogBtn}" />
+            </Grid>
+
+            <!-- Velocity presets (left) + U / V / W jog (right). -->
+            <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <ToggleButton x:Name="Vel0" Grid.Row="0" Grid.Column="0" Style="{StaticResource VelBtn}" Click="OnVelocity" />
+                <ToggleButton x:Name="Vel1" Grid.Row="0" Grid.Column="1" Style="{StaticResource VelBtn}" Click="OnVelocity" />
+                <ToggleButton x:Name="Vel2" Grid.Row="1" Grid.Column="0" Style="{StaticResource VelBtn}" Click="OnVelocity" />
+                <ToggleButton x:Name="Vel3" Grid.Row="1" Grid.Column="1" Style="{StaticResource VelBtn}" Click="OnVelocity" />
+                <ToggleButton x:Name="Vel4" Grid.Row="2" Grid.Column="0" Style="{StaticResource VelBtn}" Click="OnVelocity" />
+                <ToggleButton x:Name="Vel5" Grid.Row="2" Grid.Column="1" Style="{StaticResource VelBtn}" Click="OnVelocity" />
+
+                <Button Grid.Row="0" Grid.Column="3" Content="U-" Tag="U-" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="0" Grid.Column="4" Content="U+" Tag="U+" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="1" Grid.Column="3" Content="V-" Tag="V-" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="1" Grid.Column="4" Content="V+" Tag="V+" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="2" Grid.Column="3" Content="W-" Tag="W-" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="2" Grid.Column="4" Content="W+" Tag="W+" Style="{StaticResource JogBtn}" />
+            </Grid>
+
+            <TextBlock x:Name="JogStatus" Foreground="{StaticResource Subtle}" FontSize="11"
+                       TextWrapping="Wrap" Margin="2,8,0,0" />
+        </StackPanel>
+    </Border>
+</UserControl>

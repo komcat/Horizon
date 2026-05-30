@@ -4,24 +4,24 @@
     <UserControl.Resources>
         <!-- Run status — colour-coded per deck-entry state. -->
         <Style x:Key="RunStatusText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#8A8A92" />
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
             <Setter Property="FontFamily" Value="Consolas" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding RunStatus}" Value="Running">
-                    <Setter Property="Foreground" Value="#FFB74D" />
+                    <Setter Property="Foreground" Value="{StaticResource Warn}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding RunStatus}" Value="Passed">
-                    <Setter Property="Foreground" Value="#81C784" />
+                    <Setter Property="Foreground" Value="{StaticResource Ok}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding RunStatus}" Value="Failed">
-                    <Setter Property="Foreground" Value="#E57373" />
+                    <Setter Property="Foreground" Value="{StaticResource Danger}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
     </UserControl.Resources>
 
-    <Grid Background="#1E1E22" Margin="12">
+    <Grid Background="{StaticResource Bg}" Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -31,7 +31,7 @@
         </Grid.RowDefinitions>
 
         <!-- Toolbar -->
-        <Border Grid.Row="0" Background="#161618" BorderBrush="#3A3A40" BorderThickness="1" Padding="12,8">
+        <Border Grid.Row="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" Padding="12,8">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -39,15 +39,15 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <TextBlock Text="Product" Foreground="#8A8A92" VerticalAlignment="Center" />
+                    <TextBlock Text="Product" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
                     <ComboBox Width="150" Margin="8,0,20,0" VerticalAlignment="Center"
                               ItemsSource="{Binding Products}" SelectedItem="{Binding SelectedProduct}" />
-                    <TextBlock Text="Deck" Foreground="#8A8A92" VerticalAlignment="Center" />
+                    <TextBlock Text="Deck" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
                     <ComboBox Width="170" Margin="8,0,6,0" VerticalAlignment="Center"
                               ItemsSource="{Binding Decks}" SelectedItem="{Binding SelectedDeck}" />
                     <Button Content="New" Width="56" Height="26" Margin="0,0,20,0"
                             Command="{Binding NewDeckCommand}" />
-                    <TextBlock Text="Name" Foreground="#8A8A92" VerticalAlignment="Center" />
+                    <TextBlock Text="Name" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
                     <TextBox Width="160" Margin="8,0,6,0" VerticalAlignment="Center" Text="{Binding DeckName}" />
                     <Button Content="Save" Width="56" Height="26" Command="{Binding SaveDeckCommand}" />
                 </StackPanel>
@@ -61,7 +61,7 @@
         </Border>
 
         <!-- Column headers -->
-        <Border Grid.Row="1" Background="#1E1E22" BorderBrush="#3A3A40" BorderThickness="1,0,1,1" Padding="12,6">
+        <Border Grid.Row="1" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Padding="12,6">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="220" />
@@ -70,10 +70,10 @@
                     <ColumnDefinition Width="84" />
                     <ColumnDefinition Width="172" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Program" Foreground="#8A8A92" FontWeight="SemiBold" />
-                <TextBlock Grid.Column="1" Text="Enabled" Foreground="#8A8A92" FontWeight="SemiBold" />
-                <TextBlock Grid.Column="2" Text="Condition to run" Foreground="#8A8A92" FontWeight="SemiBold" />
-                <TextBlock Grid.Column="3" Text="Status" Foreground="#8A8A92" FontWeight="SemiBold" />
+                <TextBlock Grid.Column="0" Text="Program" Foreground="{StaticResource Subtle}" FontWeight="SemiBold" />
+                <TextBlock Grid.Column="1" Text="Enabled" Foreground="{StaticResource Subtle}" FontWeight="SemiBold" />
+                <TextBlock Grid.Column="2" Text="Condition to run" Foreground="{StaticResource Subtle}" FontWeight="SemiBold" />
+                <TextBlock Grid.Column="3" Text="Status" Foreground="{StaticResource Subtle}" FontWeight="SemiBold" />
             </Grid>
         </Border>
 
@@ -82,7 +82,7 @@
             <ItemsControl ItemsSource="{Binding Entries}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border Background="#161618" BorderBrush="#3A3A40" BorderThickness="1,0,1,1" Padding="12,6">
+                        <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Padding="12,6">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="220" />
@@ -124,26 +124,26 @@
         </ScrollViewer>
 
         <!-- Footer -->
-        <Border Grid.Row="3" Background="#161618" BorderBrush="#3A3A40" BorderThickness="1" Padding="12,8">
+        <Border Grid.Row="3" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" Padding="12,8">
             <StackPanel Orientation="Horizontal">
                 <Button Content="+ Add program" Width="120" Height="28" Margin="0,0,16,0"
                         Command="{Binding AddEntryCommand}" />
-                <TextBlock Text="{Binding Status}" Foreground="#9AA0A6" FontStyle="Italic"
+                <TextBlock Text="{Binding Status}" Foreground="{StaticResource Subtle}" FontStyle="Italic"
                            VerticalAlignment="Center" />
             </StackPanel>
         </Border>
 
         <!-- Execution log -->
-        <Border Grid.Row="4" Background="#161618" BorderBrush="#3A3A40" BorderThickness="1" Margin="0,8,0,0">
+        <Border Grid.Row="4" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" Margin="0,8,0,0">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Text="Execution log" Foreground="#8A8A92"
+                <TextBlock Grid.Row="0" Text="Execution log" Foreground="{StaticResource Subtle}"
                            FontWeight="SemiBold" Padding="10,6" />
                 <ListBox x:Name="LogList" Grid.Row="1" ItemsSource="{Binding Log}"
-                         Background="Transparent" BorderThickness="0" Foreground="#9AA0A6"
+                         Background="Transparent" BorderThickness="0" Foreground="{StaticResource Subtle}"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">

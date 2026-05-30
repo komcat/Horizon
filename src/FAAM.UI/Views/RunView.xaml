@@ -1,0 +1,181 @@
+<UserControl x:Class="FAAM.UI.Views.RunView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:FAAM.UI.Views">
+    <UserControl.Resources>
+        <!-- Colour the crosshair + toggle take on while MoveClick is armed. -->
+        <SolidColorBrush x:Key="MoveOn" Color="#00C8FF" />
+
+        <!-- MoveClick enable toggle — cyan when armed (matches the armed crosshair). -->
+        <Style x:Key="MoveToggle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="{StaticResource MoveOn}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource MoveOn}" />
+                    <Setter Property="Foreground" Value="Black" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Crosshair line — yellow normally, cyan while MoveClick is armed. -->
+        <Style x:Key="CrosshairLine" TargetType="Rectangle">
+            <Setter Property="Fill" Value="{StaticResource Crosshair}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsChecked, ElementName=MoveToggle}" Value="True">
+                    <Setter Property="Fill" Value="{StaticResource MoveOn}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Main area: left content + camera column. -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <!-- Auto so the camera column shrinks to the (aspect-correct) feed
+                     width instead of pillar-boxing it; the left column takes the rest. -->
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left column — process steps panel. -->
+            <v:ProcessStepsPanel Grid.Column="0" x:Name="StepsPanel" Margin="0,0,8,0"
+                                 HorizontalAlignment="Left" Width="240" />
+
+            <!-- Camera column. -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Main live feed with crosshair + center-ROI overlay. Clicking the
+                     surface while MoveClick is armed measures (and jogs) — see code-behind. -->
+                <Border Grid.Row="0" Background="{StaticResource VideoBg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                        CornerRadius="3" MouseLeftButtonDown="OnFeedClick"
+                        MouseMove="OnFeedMouseMove" MouseLeave="OnFeedMouseLeave"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Grid>
+                        <!-- Cap at the camera's max (1280×1024); Uniform keeps aspect, so the
+                             Border hugs the image with no black letterbox. -->
+                        <Image x:Name="MainImage" Stretch="Uniform" Margin="2" MaxWidth="1280" MaxHeight="1024" />
+
+                        <!-- Crosshair: full-span center lines. -->
+                        <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                                   Style="{StaticResource CrosshairLine}" />
+                        <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                   Style="{StaticResource CrosshairLine}" />
+
+                        <!-- Cursor crosshair — follows the mouse while MoveClick is armed. -->
+                        <Grid x:Name="MainCursor" Width="20" Height="20" IsHitTestVisible="False"
+                              HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
+                            <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch" Fill="{StaticResource MoveOn}" />
+                            <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Fill="{StaticResource MoveOn}" />
+                        </Grid>
+
+                        <!-- Center ROI box (sized to 200×200 source px at the feed's display scale). -->
+                        <Rectangle x:Name="RoiBox" Stroke="{StaticResource Roi}" StrokeThickness="1"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Width="0" Height="0" Visibility="Collapsed" />
+
+                        <TextBlock x:Name="NoVideo" Text="No video"
+                                   Foreground="{StaticResource Subtle}" FontSize="18"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                        <!-- Top-left: MoveClick toggle + camera name. -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="6">
+                            <ToggleButton x:Name="MoveToggle" Style="{StaticResource MoveToggle}" Content="MoveClick"
+                                          Unchecked="OnMoveDisarmed"
+                                          ToolTip="Enable MoveClick — click the image to measure (and jog) from the crosshair centre" />
+                            <Border Background="{StaticResource Overlay}" CornerRadius="3" Padding="8,3" Margin="8,0,0,0"
+                                    VerticalAlignment="Center">
+                                <TextBlock x:Name="MainLabel" Text="—" Foreground="{StaticResource Accent}"
+                                           FontSize="13" FontWeight="SemiBold" />
+                            </Border>
+                        </StackPanel>
+
+                        <!-- Bottom-left: last MoveClick measurement. -->
+                        <Border x:Name="MoveReadoutBox" VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                                Background="{StaticResource Overlay}" CornerRadius="3" Margin="6" Padding="8,3"
+                                Visibility="Collapsed">
+                            <TextBlock x:Name="MoveReadout" Foreground="{StaticResource Roi}"
+                                       FontFamily="Consolas" FontSize="12.5" />
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Zoom2x inset + thumbnail strip. -->
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
+                    <Border Width="200" Height="200"
+                            Background="{StaticResource VideoBg}" BorderBrush="{StaticResource Accent}" BorderThickness="1"
+                            CornerRadius="3" Margin="0,0,8,0" MouseLeftButtonDown="OnZoomClick"
+                            MouseMove="OnZoomMouseMove" MouseLeave="OnZoomMouseLeave">
+                        <Grid>
+                            <Image x:Name="ZoomImage" Stretch="Uniform" Margin="2" />
+
+                            <!-- Crosshair: full-span center lines, matching the main feed. -->
+                            <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                                       Style="{StaticResource CrosshairLine}" />
+                            <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                       Style="{StaticResource CrosshairLine}" />
+
+                            <!-- Cursor crosshair — follows the mouse while MoveClick is armed. -->
+                            <Grid x:Name="ZoomCursor" Width="20" Height="20" IsHitTestVisible="False"
+                                  HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
+                                <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch" Fill="{StaticResource MoveOn}" />
+                                <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Fill="{StaticResource MoveOn}" />
+                            </Grid>
+
+                            <Border VerticalAlignment="Top" HorizontalAlignment="Left"
+                                    Background="{StaticResource Overlay}" CornerRadius="2" Margin="4" Padding="5,1">
+                                <TextBlock Text="Zoom 2×" Foreground="{StaticResource Accent}" FontSize="11"
+                                           FontWeight="SemiBold" />
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="ThumbStrip" Orientation="Horizontal" />
+                    </ScrollViewer>
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <!-- Log area. -->
+        <Border Grid.Row="1" Height="120" Margin="0,8,0,0"
+                Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Log" Foreground="{StaticResource Subtle}" FontSize="11"
+                           FontWeight="SemiBold" Margin="8,5,0,2" />
+                <TextBox x:Name="LogBox" Grid.Row="1" IsReadOnly="True"
+                         Background="Transparent" Foreground="{StaticResource Text}" BorderThickness="0"
+                         FontFamily="Consolas" FontSize="11.5"
+                         VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap"
+                         Margin="6,0,2,4" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

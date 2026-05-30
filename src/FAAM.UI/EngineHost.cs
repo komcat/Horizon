@@ -1,0 +1,108 @@
+using FAAM.UI.Telemetry;
+using Horizon.Common;
+using Horizon.Engine;
+using Horizon.Workflow;
+
+namespace FAAM.UI;
+
+/// <summary>
+/// FAAM's Layer 3 composition root — a second operator head on the same Horizon
+/// engine stack. Owns the single <see cref="HorizonEngine"/> (Layer 1) and
+/// <see cref="ProcessService"/> (Layer 2) for the whole application; the role
+/// Horizon.UI's own <c>EngineHost</c> plays.
+///
+/// One process, one engine, one host. FAAM.UI and Horizon.UI must not run at the
+/// same time against the same rig — whichever launches owns the hardware SDKs.
+/// </summary>
+public sealed class EngineHost : IAsyncDisposable
+{
+    /// <summary>The Layer 1 hardware engine.</summary>
+    public HorizonEngine Engine { get; }
+
+    /// <summary>The Layer 2 product / process facade, built on the engine.</summary>
+    public ProcessService Process { get; }
+
+    /// <summary>Buffered log surface — captures engine + workflow logs from launch.</summary>
+    public LogHub Log { get; }
+
+    /// <summary>Live telemetry history — ring buffers fed by engine sample events.</summary>
+    public TelemetryStore Telemetry { get; }
+
+    /// <summary>Application settings (mm/pixel, MoveClick mapping) — load/save to app_settings.json.</summary>
+    public AppSettingsStore Settings { get; }
+
+    private bool _smuWired;
+    private bool _measurementWired;
+
+    public EngineHost()
+    {
+        Engine = new HorizonEngine();
+        Process = new ProcessService(Engine);
+        Log = new LogHub();
+        Telemetry = new TelemetryStore();
+        Settings = new AppSettingsStore();
+
+        // Capture both logging surfaces from construction so startup-time
+        // (InitializeAsync) lines are not lost before the shell exists.
+        Engine.LogEmitted += Log.Add;
+        Process.LogEmitted += Log.Add;
+    }
+
+    private void OnSmuSampled(SmuSample s)
+    {
+        Telemetry.Push($"{s.Device}.CH{s.Channel}.current", s.Current, s.Timestamp);
+        Telemetry.Push($"{s.Device}.CH{s.Channel}.voltage", s.Voltage, s.Timestamp);
+    }
+
+    private void OnMeasurementChanged(MeasurementChanged m)
+    {
+        // The Keithley 6482 picoammeter polls continuously once connected, so
+        // every poll update streams straight into telemetry. Channels are 0-based
+        // in the state; telemetry keys are 1-based.
+        var now = DateTime.UtcNow;
+        var channels = m.State.Channels;
+        for (int i = 0; i < channels.Count; i++)
+            Telemetry.Push($"{m.Device}.CH{i + 1}.current", channels[i], now);
+    }
+
+    /// <summary>
+    /// Brings the engine up: config load + device build, then connect-all.
+    /// <see cref="HorizonEngine.InitializeAsync"/> does synchronous config file
+    /// I/O, so it is pushed to a background thread — the UI thread never blocks.
+    /// </summary>
+    public async Task InitializeAndConnectAsync(IProgress<string> progress, CancellationToken ct = default)
+    {
+        progress.Report("Initializing engine…");
+        await Task.Run(async () => await Engine.InitializeAsync(ct).ConfigureAwait(false), ct)
+                  .ConfigureAwait(true);
+
+        // Facets exist only after InitializeAsync — wire the telemetry streaming
+        // hooks now. SMU fills current + voltage; the measure-only Keithley 6482
+        // is driven by its per-poll StateChanged event.
+        Engine.Smu.Sampled += OnSmuSampled;
+        _smuWired = true;
+        Engine.Measurement.StateChanged += OnMeasurementChanged;
+        _measurementWired = true;
+
+        await Engine.ConnectAllAsync(progress, ct).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Detaches engine event hooks, then runs the engine's ordered hardware
+    /// shutdown. <paramref name="progress"/> receives a line per teardown step.
+    /// Idempotent: the engine's shutdown is state-gated, so a second call (the
+    /// App.OnExit safety net) no-ops.
+    /// </summary>
+    public async Task ShutdownAsync(IProgress<string>? progress = null)
+    {
+        Engine.LogEmitted -= Log.Add;
+        Process.LogEmitted -= Log.Add;
+        if (_smuWired)
+            Engine.Smu.Sampled -= OnSmuSampled;
+        if (_measurementWired)
+            Engine.Measurement.StateChanged -= OnMeasurementChanged;
+        await Engine.ShutdownAsync(progress).ConfigureAwait(false);
+    }
+
+    public async ValueTask DisposeAsync() => await ShutdownAsync().ConfigureAwait(false);
+}

@@ -4,27 +4,27 @@
         Title="Horizon — Camera"
         Height="620" Width="860"
         WindowStartupLocation="CenterScreen"
-        Background="#101012">
+        Background="{StaticResource Panel}">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Background="#1E1E22" BorderBrush="#3A3A40" BorderThickness="0,0,0,1" Padding="12,7">
+        <Border Grid.Row="0" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="0,0,0,1" Padding="12,7">
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="{Binding SelectedCamera}" Foreground="#4FC3F7" FontWeight="SemiBold"
+                <TextBlock Text="{Binding SelectedCamera}" Foreground="{StaticResource Accent}" FontWeight="SemiBold"
                            VerticalAlignment="Center" />
-                <TextBlock Text="{Binding Resolution}" Foreground="#9AA0A6" FontFamily="Consolas"
+                <TextBlock Text="{Binding Resolution}" Foreground="{StaticResource Subtle}" FontFamily="Consolas"
                            Margin="16,0,0,0" VerticalAlignment="Center" />
-                <TextBlock Text="{Binding Fps}" Foreground="#9AA0A6" FontFamily="Consolas"
+                <TextBlock Text="{Binding Fps}" Foreground="{StaticResource Subtle}" FontFamily="Consolas"
                            Margin="16,0,0,0" VerticalAlignment="Center" />
             </StackPanel>
         </Border>
 
         <Grid Grid.Row="1">
             <TextBlock Text="No video — Start grabbing in the Camera section"
-                       Foreground="#6A6A72" HorizontalAlignment="Center" VerticalAlignment="Center"
+                       Foreground="{StaticResource Subtle}" HorizontalAlignment="Center" VerticalAlignment="Center"
                        Visibility="{Binding HasNoVideo, Converter={StaticResource BoolToVis}}" />
             <Image Source="{Binding Frame}" Stretch="Uniform" Margin="6"
                    HorizontalAlignment="Left" VerticalAlignment="Top"

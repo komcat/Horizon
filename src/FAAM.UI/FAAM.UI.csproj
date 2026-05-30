@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- 10.0.19041 platform version to match the Horizon Layer 3 head — keeps
+         WPF package resolution (SkiaSharp etc.) on net8.0-windows, not net462. -->
+    <TargetFramework>net8.0-windows10.0.19041</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>FAAM.UI</RootNamespace>
+    <AssemblyName>FAAM.UI</AssemblyName>
+  </PropertyGroup>
+
+  <!-- HALCON native bundle — Horizon.Engine references the managed
+       MVTec.HalconDotNet (Vision facet), so the executable head must carry the
+       native-bundling package or the HALCON DLLs won't be in the output. -->
+  <ItemGroup>
+    <PackageReference Include="MVTec.HalconDotNet-Windows" Version="24050.0.0" />
+    <!-- Required by the ported SMU / Measurement chart views (SKElement). -->
+    <PackageReference Include="SkiaSharp.Views.WPF" Version="3.116.1" />
+  </ItemGroup>
+
+  <!-- A second Layer 3 head: references the Layer 1 engine + Layer 2 workflow
+       interfaces only, exactly like Horizon.UI. Never the hardware adapters or
+       the legacy Core/Process stack. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Horizon.Engine\Horizon.Engine.csproj" />
+    <ProjectReference Include="..\Horizon.Workflow\Horizon.Workflow.csproj" />
+    <ProjectReference Include="..\Horizon.Common\Horizon.Common.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="assets\" />
+    <!-- Embed image assets (teach.png etc.) as WPF resources. -->
+    <Resource Include="assets\**\*.png" />
+  </ItemGroup>
+
+</Project>

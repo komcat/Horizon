@@ -1,3 +1,4 @@
+using Horizon.Common;
 using Horizon.Engine;
 using Horizon.UI.Telemetry;
 using Horizon.Workflow;
@@ -25,6 +26,9 @@ public sealed class EngineHost : IAsyncDisposable
     /// <summary>Live telemetry history — ring buffers fed by engine sample events.</summary>
     public TelemetryStore Telemetry { get; }
 
+    /// <summary>Application settings (mm/pixel, MoveClick mapping) — load/save to app_settings.json.</summary>
+    public AppSettingsStore Settings { get; }
+
     private bool _smuWired;
     private bool _measurementWired;
 
@@ -34,6 +38,7 @@ public sealed class EngineHost : IAsyncDisposable
         Process = new ProcessService(Engine);
         Log = new LogHub();
         Telemetry = new TelemetryStore();
+        Settings = new AppSettingsStore();
 
         // Capture both logging surfaces from construction so startup-time
         // (InitializeAsync) lines are not lost before MainWindow exists.
