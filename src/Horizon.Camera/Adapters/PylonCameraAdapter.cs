@@ -163,8 +163,15 @@ public sealed class PylonCameraAdapter : ICameraHardware
             if (!settings.AutoGain)
                 SetAutoGain(false);
 
-            SetExposureTime(settings.ExposureTimeUs);
-            SetGain(settings.Gain);
+            // Only push manual values when the matching auto mode is off, and
+            // only when the value is positive. Pylon throws if ExposureTime/Gain
+            // is set below the camera's minimum (e.g. 0), which would fail the
+            // whole apply — so a 0 in the UI while Auto exposure is checked must
+            // not be written.
+            if (!settings.AutoExposure && settings.ExposureTimeUs > 0)
+                SetExposureTime(settings.ExposureTimeUs);
+            if (!settings.AutoGain && settings.Gain > 0)
+                SetGain(settings.Gain);
 
             // Enable auto modes AFTER setting manual values (as base values)
             if (settings.AutoExposure)
