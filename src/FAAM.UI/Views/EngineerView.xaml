@@ -9,6 +9,19 @@
             <TextBlock Text="Engineering tools — to be built."
                        Foreground="{StaticResource Subtle}" FontSize="14"
                        HorizontalAlignment="Center" Margin="0,8,0,0" />
+
+            <!-- TEMPORARY motion-firing test — remove once motion is verified. -->
+            <Border Margin="0,28,0,0" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                    CornerRadius="4" Padding="18">
+                <StackPanel>
+                    <TextBlock Text="⚠ TEMP TEST — moves gantry-main" Foreground="{StaticResource Danger}"
+                               FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" />
+                    <Button x:Name="GantryTestButton" Content="Gantry round trip: PIC → FAU → PIC @ 1 mm/s"
+                            Click="OnGantryTestClick" Margin="0,10,0,0" Padding="16,8" Cursor="Hand" />
+                    <TextBlock x:Name="StatusText" Foreground="{StaticResource Subtle}" FontSize="12"
+                               Margin="0,10,0,0" HorizontalAlignment="Center" TextAlignment="Center" />
+                </StackPanel>
+            </Border>
         </StackPanel>
     </Border>
 </UserControl>

@@ -21,7 +21,7 @@ public partial class ShellWindow : Window
     private readonly MachinePageViewModel _machineVm;
     private readonly MachinePageView _machine;
     private readonly RunView _run;
-    private readonly EngineerView _engineer = new();
+    private readonly EngineerView _engineer;
     private bool _exiting;
 
     public ShellWindow(EngineHost host)
@@ -30,6 +30,7 @@ public partial class ShellWindow : Window
         _machineVm = new MachinePageViewModel(host);
         _machine = new MachinePageView { DataContext = _machineVm };
         _run = new RunView(host);
+        _engineer = new EngineerView(host);
         InitializeComponent();
 
         // The shell top-bar engine-status panel binds to the Machine page VM
