@@ -21,6 +21,7 @@ public partial class ShellWindow : Window
     private readonly MachinePageViewModel _machineVm;
     private readonly MachinePageView _machine;
     private readonly RunView _run;
+    private readonly EngineerView _engineer = new();
     private bool _exiting;
 
     public ShellWindow(EngineHost host)
@@ -44,6 +45,7 @@ public partial class ShellWindow : Window
 
         _home.MachineRequested += ShowMachine;
         _home.RunRequested += ShowRun;
+        _home.EngineerRequested += ShowEngineer;
 
         ShowHome();
 
@@ -83,6 +85,14 @@ public partial class ShellWindow : Window
         EngineHeader.Visibility = Visibility.Collapsed;
         _run.Activate();   // starts grabbing + frame routing
         PageHost.Content = _run;
+    }
+
+    private void ShowEngineer()
+    {
+        LeaveCurrent();
+        Header1Text.Text = "ENGINEER";
+        EngineHeader.Visibility = Visibility.Collapsed;
+        PageHost.Content = _engineer;
     }
 
     private void OnHomeClick(object sender, RoutedEventArgs e) => ShowHome();
