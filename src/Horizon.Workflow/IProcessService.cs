@@ -45,8 +45,17 @@ public interface IProcessService
     /// <summary>
     /// Stores a named position from explicit coordinates (manual entry).
     /// <paramref name="velocity"/> of 0 = no velocity applied on recall.
+    /// Preserves any existing camera / exposure on the position.
     /// </summary>
     Result SetPosition(string device, string name, MotionPosition position, double velocity);
+
+    /// <summary>
+    /// Stores a named position with all recall settings — coordinates, velocity,
+    /// and the camera + exposure to apply during the move. <paramref name="camera"/>
+    /// null/empty or <paramref name="exposureUs"/> null = leave the camera untouched.
+    /// </summary>
+    Result SetPositionFull(string device, string name, MotionPosition position, double velocity,
+        string? camera, double? exposureUs);
 
     /// <summary>
     /// Captures the device's current position and stores it under a name.

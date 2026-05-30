@@ -157,6 +157,52 @@
                         <StackPanel x:Name="ThumbStrip" Orientation="Horizontal" />
                     </ScrollViewer>
                 </StackPanel>
+
+                <!-- Motion inspector — fills the camera column when a step's
+                     "Inspect Motion" is chosen; Close returns to the live feed. -->
+                <Border x:Name="InspectorPanel" Grid.Row="0" Grid.RowSpan="2" Visibility="Collapsed"
+                        MinWidth="600" Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}"
+                        BorderThickness="1" CornerRadius="3">
+                    <DockPanel Margin="8">
+                        <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                            <TextBlock Text="Motion Inspector — process positions" Foreground="{StaticResource Accent}"
+                                       FontSize="14" FontWeight="Bold" VerticalAlignment="Center" />
+                            <Button Content="✕ Close" Click="OnCloseInspector" HorizontalAlignment="Right"
+                                    Padding="10,3" Cursor="Hand" />
+                        </Grid>
+                        <!-- All numeric/text columns star-share the width (so the grid fills the
+                             container, no empty filler); MinWidth keeps each header readable. The
+                             trailing action column is fixed-width with a green per-row edit button. -->
+                        <DataGrid x:Name="InspectorGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                                  HeadersVisibility="Column" GridLinesVisibility="All"
+                                  Background="Transparent" RowBackground="Transparent"
+                                  CanUserAddRows="False" CanUserResizeRows="False" FontSize="12.5">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Position" Binding="{Binding Position}" Width="2*" MinWidth="64" />
+                                <DataGridTextColumn Header="Device" Binding="{Binding Device}" Width="1.6*" MinWidth="72" />
+                                <DataGridTextColumn Header="Vel" Binding="{Binding Velocity}" Width="*" MinWidth="44" />
+                                <DataGridTextColumn Header="X" Binding="{Binding X}" Width="*" MinWidth="40" />
+                                <DataGridTextColumn Header="Y" Binding="{Binding Y}" Width="*" MinWidth="40" />
+                                <DataGridTextColumn Header="Z" Binding="{Binding Z}" Width="*" MinWidth="40" />
+                                <DataGridTextColumn Header="U" Binding="{Binding U}" Width="*" MinWidth="40" />
+                                <DataGridTextColumn Header="V" Binding="{Binding V}" Width="*" MinWidth="40" />
+                                <DataGridTextColumn Header="W" Binding="{Binding W}" Width="*" MinWidth="40" />
+                                <DataGridTextColumn Header="Camera" Binding="{Binding Camera}" Width="1.6*" MinWidth="64" />
+                                <DataGridTextColumn Header="Exp µs" Binding="{Binding Exposure}" Width="*" MinWidth="52" />
+                                <DataGridTemplateColumn Header="" Width="Auto" CanUserSort="False">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content=".." Click="OnEditRow" ToolTip="Edit velocity / axis values"
+                                                    Width="30" Height="20" Margin="2" Padding="0"
+                                                    Background="#2E7D32" Foreground="White" FontWeight="Bold"
+                                                    BorderThickness="0" Cursor="Hand" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </Border>
             </Grid>
         </Grid>
 

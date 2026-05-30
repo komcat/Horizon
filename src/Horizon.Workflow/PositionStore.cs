@@ -40,10 +40,26 @@ internal sealed class PositionStore
         return rec == null
             ? null
             : new NamedPosition(rec.Device, rec.Name,
-                new MotionPosition(rec.X, rec.Y, rec.Z, rec.U, rec.V, rec.W), rec.Velocity);
+                new MotionPosition(rec.X, rec.Y, rec.Z, rec.U, rec.V, rec.W), rec.Velocity,
+                string.IsNullOrEmpty(rec.Camera) ? null : rec.Camera, rec.ExposureUs);
     }
 
+    /// <summary>
+    /// Upserts coordinates + velocity, <b>preserving</b> any existing camera /
+    /// exposure on the position. Used by teach and the in-program update steps,
+    /// which change only the pose.
+    /// </summary>
     public void Set(string device, string name, MotionPosition pos, double velocity)
+    {
+        var existing = Find(device, name);
+        Upsert(device, name, pos, velocity, existing?.Camera ?? string.Empty, existing?.ExposureUs);
+    }
+
+    /// <summary>Upserts every field, including camera / exposure — used by the explicit position editor.</summary>
+    public void SetFull(string device, string name, MotionPosition pos, double velocity, string? camera, double? exposureUs)
+        => Upsert(device, name, pos, velocity, camera ?? string.Empty, exposureUs);
+
+    private void Upsert(string device, string name, MotionPosition pos, double velocity, string camera, double? exposureUs)
     {
         _positions.RemoveAll(p =>
             p.Device.Equals(device, StringComparison.OrdinalIgnoreCase) &&
@@ -54,6 +70,8 @@ internal sealed class PositionStore
             Name = name,
             X = pos.X, Y = pos.Y, Z = pos.Z, U = pos.U, V = pos.V, W = pos.W,
             Velocity = velocity,
+            Camera = camera,
+            ExposureUs = exposureUs,
         });
         Save();
     }
@@ -120,5 +138,13 @@ internal sealed class PositionStore
         public double V { get; init; }
         public double W { get; init; }
         public double Velocity { get; init; }
+
+        /// <summary>Camera id whose exposure this position drives (empty = none).</summary>
+        [JsonPropertyName("camera")]
+        public string Camera { get; init; } = string.Empty;
+
+        /// <summary>Target exposure in microseconds applied on recall (null = leave unchanged).</summary>
+        [JsonPropertyName("exposureUs")]
+        public double? ExposureUs { get; init; }
     }
 }

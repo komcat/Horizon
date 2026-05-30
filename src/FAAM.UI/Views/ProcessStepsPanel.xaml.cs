@@ -2,8 +2,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using FAAM.UI.Process;
 using Horizon.Common;
 using Horizon.Engine;
+using Horizon.Workflow;
 
 namespace FAAM.UI.Views;
 
@@ -22,16 +24,13 @@ public partial class ProcessStepsPanel : UserControl
     private const string TeachDevice = "gantry-main";       // motion device taught + replayed
     private const string IoDevice = "IOBottom";             // IO module carrying the outputs
     private const string GripperPin = "R_Gripper";          // on = close, off = open
-    private const string DispensePin = "";                  // dispense-trigger output (blank = no pulse, dwell only) — SET to enable
+    private const string DispensePin = "Dispenser_Shot";    // dispense-trigger output (blank = no pulse, dwell only)
     private const string DispenserSlide = "Dispenser_Head"; // pneumatic: extend = dispense, retract = idle
     private const string UvSlide = "UV_Head";               // pneumatic: extend = UV, retract = idle
     private const int DispenseMs = 800;                     // dispense pulse / dwell
     private const int UvDwellMs = 3000;                     // UV cure dwell per step
 
-    private const string TeachFile = "faam_teach_points";
-
     private readonly DispatcherTimer _timer;
-    private readonly Dictionary<string, MotionPosition> _taught = new();
     private EngineHost? _host;
     private DateTime _startUtc;
     private bool _running;
@@ -43,13 +42,6 @@ public partial class ProcessStepsPanel : UserControl
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += (_, _) => UpdateTimer();
 
-        // Load any previously-taught points.
-        var loaded = ConfigLoader.LoadJson<Dictionary<string, MotionPosition>>(
-            ConfigLoader.GetConfigDirectory(), TeachFile);
-        if (loaded != null)
-            foreach (var kv in loaded)
-                _taught[kv.Key] = kv.Value;
-
         // Load the button icons; fall back to text if an asset isn't present yet.
         try { TeachIcon.Source = new BitmapImage(new Uri("pack://application:,,,/assets/teach.png")); }
         catch { TeachButton.Content = "Teach"; }
@@ -60,17 +52,23 @@ public partial class ProcessStepsPanel : UserControl
     /// <summary>Supplies the engine host (for the step sequences, teach, STOP, logging).</summary>
     public void Attach(EngineHost host) => _host = host;
 
-    /// <summary>The FAU-attach step list — edit here to retarget the process.</summary>
+    /// <summary>
+    /// The FAU-attach step list — edit here to retarget the process. The third
+    /// field is the reusable teach-point name (the key in faam_teach_points.json),
+    /// modelled on the acs_solution_saa position names (Home, FAU, PIC, UV…). A
+    /// null name means the step does not move (e.g. UV dwell steps); names may be
+    /// shared across steps to reuse a taught pose.
+    /// </summary>
     private static List<ProcessStep> DefaultSteps() => new()
     {
-        new(0, "(1) Gripper open and Move Home"),
-        new(1, "(2) Move to grip FAU and close Gripper"),
-        new(2, "(3) FAU is gripped and move to SiPhog"),
-        new(3, "4.0 Move gantry to dispense"),
-        new(4, "4.1. Dispense and Move to UV"),
+        new(0, "(1) Gripper open and Move Home", "Home"),
+        new(1, "(2) Move to grip FAU and close Gripper", "FAU"),
+        new(2, "(3) FAU is gripped and move to SiPhog", "PIC"),
+        new(3, "4.0 Move gantry to dispense", "Dispense"),
+        new(4, "4.1. Dispense and Move to UV", "UV"),
         new(5, "4.2 — UV step1"),
         new(6, "4.3 — UV step2"),
-        new(7, "(5) Complete UV and unload"),
+        new(7, "(5) Complete UV and unload", "Unload"),
     };
 
     private void OnStepClick(object sender, RoutedEventArgs e)
@@ -150,24 +148,114 @@ public partial class ProcessStepsPanel : UserControl
     private void OnProperties(object sender, RoutedEventArgs e)
         => Log(LogLevel.Info, "Step properties editor — not implemented yet (IO names, debounce/wait delays, camera exposure…).");
 
-    /// <summary>Captures the current gantry pose for a step (Teach mode) and persists it.</summary>
+    /// <summary>
+    /// Raised when a step's "Inspect Motion" context-menu item is chosen. Carries
+    /// one row per distinct process position; the host view (RunView) renders it as
+    /// a grid over the camera column.
+    /// </summary>
+    public event EventHandler<IReadOnlyList<MotionInspectRow>>? InspectMotionRequested;
+
+    /// <summary>
+    /// Builds the motion-inspection table for every distinct position used by the
+    /// process (in step order) from the Layer 2 product: name, device, the
+    /// position's stored velocity, its taught X/Y/Z/U/V/W ("—" when not taught),
+    /// and its camera / exposure. Each row carries an <see cref="MotionInspectRow.Edit"/>
+    /// action that opens the per-position editor.
+    /// </summary>
+    private void OnInspectMotion(object sender, RoutedEventArgs e)
+    {
+        if (_host == null)
+            return;
+
+        var rows = new List<MotionInspectRow>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var step in StepList.ItemsSource?.OfType<ProcessStep>() ?? Enumerable.Empty<ProcessStep>())
+        {
+            if (string.IsNullOrEmpty(step.Position) || !seen.Add(step.Position))
+                continue;   // skip dwell-only steps and positions already listed
+
+            var position = step.Position;
+            var np = _host.Process.GetPosition(TeachDevice, position);
+            var c = np?.Coordinates;
+            rows.Add(new MotionInspectRow(
+                position, TeachDevice, Fmt(np?.Velocity),
+                Fmt(c?.X), Fmt(c?.Y), Fmt(c?.Z), Fmt(c?.U), Fmt(c?.V), Fmt(c?.W),
+                np?.Camera ?? "—", Fmt(np?.ExposureUs))
+            {
+                Edit = () => OpenPositionEditor(position, np),
+            });
+        }
+
+        InspectMotionRequested?.Invoke(this, rows);
+    }
+
+    /// <summary>Opens the non-modal per-position editor; on Apply the position is saved to the product via Layer 2.</summary>
+    private void OpenPositionEditor(string position, NamedPosition? np)
+    {
+        if (_host == null)
+            return;
+
+        var info = _host.Engine.Motion.GetDevice(TeachDevice);
+        if (info == null)
+            return;
+
+        var ctx = new PositionEditContext
+        {
+            Position = position,
+            Device = info.Name,
+            ControllerType = info.ControllerType,
+            Axes = info.Axes,
+            Velocity = np?.Velocity ?? 0,
+            Pose = np?.Coordinates ?? MotionPosition.Zero,
+            Cameras = _host.Engine.Camera.CameraIds,
+            Camera = np?.Camera,
+            ExposureUs = np?.ExposureUs,
+        };
+
+        new PositionEditorWindow(ctx, ApplyPositionEditAsync)
+        {
+            Owner = Window.GetWindow(this),
+        }.Show();
+    }
+
+    /// <summary>Persists an edited position (coords + velocity + camera/exposure) to the product, then refreshes the grid.</summary>
+    private Task ApplyPositionEditAsync(PositionEditResult result)
+    {
+        var r = _host!.Process.SetPositionFull(
+            result.Device, result.Position, result.Pose, result.Velocity, result.Camera, result.ExposureUs);
+        Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
+            r.IsSuccess
+                ? $"Position '{result.Position}' saved (velocity {result.Velocity:0.###})."
+                : $"Save '{result.Position}' failed: {r.Message}");
+
+        OnInspectMotion(this, new RoutedEventArgs());   // rebuild rows with the new values
+        return Task.CompletedTask;
+    }
+
+    private static string Fmt(double? v) => v.HasValue ? v.Value.ToString("0.###") : "—";
+
+    /// <summary>Captures the current gantry pose under the step's reusable position name (Teach mode) and persists it.</summary>
     private async Task TeachStepAsync(ProcessStep step)
     {
         if (_host == null)
             return;
 
-        var pos = await _host.Engine.Motion.GetPositionAsync(TeachDevice);
-        if (!pos.IsSuccess)
+        if (string.IsNullOrEmpty(step.Position))
         {
-            Log(LogLevel.Warning, $"Teach — position read failed ({TeachDevice}): {pos.Message}");
+            Log(LogLevel.Warning, $"'{step.Label}' has no teachable position (it does not move).");
             return;
         }
 
-        _taught[step.Label] = pos.Value;
-        ConfigLoader.SaveJson(ConfigLoader.GetConfigDirectory(), TeachFile, _taught);
-
-        var p = pos.Value;
-        Log(LogLevel.Info, $"Taught '{step.Label}' @ {TeachDevice}: X={p.X:F3} Y={p.Y:F3} Z={p.Z:F3}");
+        // Teach through Layer 2 — captures the device's current pose under the
+        // position name in the active product, preserving its existing velocity
+        // and camera / exposure settings.
+        var velocity = _host.Process.GetPosition(TeachDevice, step.Position)?.Velocity ?? 0;
+        var r = await _host.Process.TeachPositionAsync(TeachDevice, step.Position, velocity);
+        Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
+            r.IsSuccess
+                ? $"Taught '{step.Position}' @ {TeachDevice}."
+                : $"Teach '{step.Position}' failed: {r.Message}");
     }
 
     private async Task GripperAsync(bool close)
@@ -179,23 +267,17 @@ public partial class ProcessStepsPanel : UserControl
 
     private async Task MoveToTaughtAsync(ProcessStep step)
     {
-        // TODO (guided teach): when a step has no taught pose — or a suspicious
-        // (0,0,0) one — the planned UX is to prompt the operator to jog there
-        // manually, save, then advance to the next step. For now we warn + skip.
-        if (!_taught.TryGetValue(step.Label, out var pos) || IsSuspectZero(pos))
-        {
-            Log(LogLevel.Warning,
-                $"'{step.Label}' has no valid taught position — arm Teach, jog to the spot, then click the step. Skipping move.");
-            return;
-        }
-        var r = await _host!.Engine.Motion.MoveToPositionAsync(TeachDevice, pos);
-        Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
-            $"Move {TeachDevice} → '{step.Label}': {(r.IsSuccess ? "ok" : r.Message)}");
-    }
+        if (string.IsNullOrEmpty(step.Position))
+            return;                                       // step has no move
 
-    /// <summary>A taught pose at the origin is almost certainly un-taught — treat as invalid.</summary>
-    private static bool IsSuspectZero(MotionPosition p)
-        => Math.Abs(p.X) < 1e-6 && Math.Abs(p.Y) < 1e-6 && Math.Abs(p.Z) < 1e-6;
+        // Layer 2 runs the recall routine: set velocity → start move → set camera
+        // exposure (while moving) → settle. Returns Fail for an untaught position.
+        var r = await _host!.Process.MoveToNamedPositionAsync(TeachDevice, step.Position);
+        if (!r.IsSuccess)
+            Log(LogLevel.Warning,
+                $"Move → '{step.Position}' ('{step.Label}') failed: {r.Message}. " +
+                "If untaught: arm Teach, jog to the spot, then click the step.");
+    }
 
     private async Task DispensePulseAsync()
     {
@@ -261,5 +343,19 @@ public partial class ProcessStepsPanel : UserControl
         => _host?.Log.Add(new LogEntry(level, DateTimeOffset.Now, "Process", message));
 }
 
-/// <summary>One process step — its fixed index (drives the hardcoded sequence) and display label.</summary>
-public sealed record ProcessStep(int Index, string Label);
+/// <summary>
+/// One process step — its fixed index (drives the hardcoded sequence), display
+/// label, and an optional reusable teach-point name (<c>Position</c>) used as the
+/// key in faam_teach_points.json. Null <c>Position</c> = the step does not move.
+/// </summary>
+public sealed record ProcessStep(int Index, string Label, string? Position = null);
+
+/// <summary>One row of the motion inspector — a process position and its recall settings (values pre-formatted for display).</summary>
+public sealed record MotionInspectRow(
+    string Position, string Device, string Velocity,
+    string X, string Y, string Z, string U, string V, string W,
+    string Camera, string Exposure)
+{
+    /// <summary>Opens the per-position editor for this row (wired by the inspector builder).</summary>
+    public Action? Edit { get; init; }
+}

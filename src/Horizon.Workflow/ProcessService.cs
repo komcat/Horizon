@@ -147,6 +147,21 @@ public sealed class ProcessService : IProcessService
         return Result.Ok();
     }
 
+    public Result SetPositionFull(string device, string name, MotionPosition position, double velocity,
+        string? camera, double? exposureUs)
+    {
+        if (_positions == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (string.IsNullOrWhiteSpace(name))
+            return Result.Fail(ErrorCode.InvalidParameter, "Position name is required.");
+
+        _positions.SetFull(device, name, position, velocity, camera, exposureUs);
+        Log(LogLevel.Info,
+            $"Position set: {device}.{name} (velocity {velocity}" +
+            (string.IsNullOrWhiteSpace(camera) || exposureUs == null ? ")" : $", {camera} @ {exposureUs}µs)"));
+        return Result.Ok();
+    }
+
     public async Task<Result> TeachPositionAsync(string device, string name, double velocity)
     {
         if (_positions == null)
@@ -172,7 +187,7 @@ public sealed class ProcessService : IProcessService
         if (np == null)
             return Result.Fail(ErrorCode.FileNotFound, $"Position '{name}' not found for '{device}'.");
 
-        // Apply the position's velocity before moving (0 = leave unchanged).
+        // 1) Apply the position's velocity BEFORE moving (0 = leave unchanged).
         if (np.Velocity > 0)
         {
             var vel = await _engine.Motion.SetDeviceVelocityAsync(device, np.Velocity).ConfigureAwait(false);
@@ -181,8 +196,33 @@ public sealed class ProcessService : IProcessService
             Log(LogLevel.Info, $"Velocity set: {device} = {np.Velocity}");
         }
 
+        // 2) Start the move (do not await yet) so the camera exposure can be
+        //    applied AFTER the move has started — i.e. while the stage travels.
         Log(LogLevel.Info, $"Move {device} -> '{name}'");
-        return await _engine.Motion.MoveToPositionAsync(device, np.Coordinates, ct).ConfigureAwait(false);
+        var moveTask = _engine.Motion.MoveToPositionAsync(device, np.Coordinates, ct);
+
+        // 3) While moving, retune the camera exposure (leaving gain / frame rate
+        //    as-is). A camera failure is logged but never fails the move — and is
+        //    caught so the in-flight move is always awaited below.
+        if (!string.IsNullOrWhiteSpace(np.Camera) && np.ExposureUs is > 0)
+        {
+            try
+            {
+                var current = _engine.Camera.GetState(np.Camera).Exposure;
+                var applied = await _engine.Camera
+                    .ApplyExposureAsync(np.Camera, current with { ExposureUs = np.ExposureUs.Value })
+                    .ConfigureAwait(false);
+                Log(applied.IsSuccess ? LogLevel.Info : LogLevel.Warning,
+                    $"Exposure {np.Camera} = {np.ExposureUs}µs: {(applied.IsSuccess ? "ok" : applied.Message)}");
+            }
+            catch (Exception ex)
+            {
+                Log(LogLevel.Warning, $"Exposure {np.Camera} = {np.ExposureUs}µs: {ex.Message}");
+            }
+        }
+
+        // 4) Wait for the move to settle and return its result.
+        return await moveTask.ConfigureAwait(false);
     }
 
     // --- Process programs ---

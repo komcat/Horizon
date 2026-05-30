@@ -1,3 +1,4 @@
+using FAAM.UI.Process;
 using FAAM.UI.Telemetry;
 using Horizon.Common;
 using Horizon.Engine;
@@ -31,6 +32,12 @@ public sealed class EngineHost : IAsyncDisposable
     /// <summary>Application settings (mm/pixel, MoveClick mapping) — load/save to app_settings.json.</summary>
     public AppSettingsStore Settings { get; }
 
+    /// <summary>The single product FAAM operates under (Layer 2 positions are product-scoped).</summary>
+    public const string ProductName = "FAAM";
+
+    /// <summary>Motion device whose legacy teach points migrate into the product.</summary>
+    private const string TeachDevice = "gantry-main";
+
     private bool _smuWired;
     private bool _measurementWired;
 
@@ -46,6 +53,37 @@ public sealed class EngineHost : IAsyncDisposable
         // (InitializeAsync) lines are not lost before the shell exists.
         Engine.LogEmitted += Log.Add;
         Process.LogEmitted += Log.Add;
+
+        // FAAM is a single-purpose head, but Layer 2 scopes named positions to a
+        // product — so ensure ours exists and is active, and fold any legacy
+        // faam_teach_points.json into it. Pure file I/O; no engine connection.
+        EnsureProductLoaded();
+    }
+
+    /// <summary>
+    /// Guarantees the FAAM product exists and is the active one, then performs a
+    /// one-time, idempotent import of legacy <c>faam_teach_points.json</c> points
+    /// that are not already present in the product.
+    /// </summary>
+    private void EnsureProductLoaded()
+    {
+        if (!Process.Products.Contains(ProductName, StringComparer.OrdinalIgnoreCase))
+            Process.CreateProduct(ProductName);
+        if (!string.Equals(Process.ActiveProduct, ProductName, StringComparison.OrdinalIgnoreCase))
+            Process.LoadProduct(ProductName);
+
+        var legacy = new TeachPointStore().All;
+        var imported = 0;
+        foreach (var (name, pose) in legacy)
+        {
+            if (Process.GetPosition(TeachDevice, name) != null)
+                continue;   // already migrated / edited — never clobber
+            Process.SetPosition(TeachDevice, name, pose, velocity: 0);
+            imported++;
+        }
+        if (imported > 0)
+            Log.Add(new LogEntry(LogLevel.Info, DateTimeOffset.Now, "FAAM",
+                $"Migrated {imported} legacy teach point(s) into product '{ProductName}'."));
     }
 
     private void OnSmuSampled(SmuSample s)

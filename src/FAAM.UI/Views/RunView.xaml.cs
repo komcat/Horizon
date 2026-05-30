@@ -58,6 +58,25 @@ public partial class RunView : UserControl
         BuildThumbnails();
 
         StepsPanel.Attach(host);   // process panel logs + STOP via the engine host
+        StepsPanel.InspectMotionRequested += OnInspectMotionRequested;
+    }
+
+    /// <summary>Shows the motion-inspector grid (over the camera column) with the supplied position rows.</summary>
+    private void OnInspectMotionRequested(object? sender, IReadOnlyList<MotionInspectRow> rows)
+    {
+        InspectorGrid.ItemsSource = rows;
+        InspectorPanel.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>Hides the inspector, returning to the live camera feed.</summary>
+    private void OnCloseInspector(object sender, RoutedEventArgs e)
+        => InspectorPanel.Visibility = Visibility.Collapsed;
+
+    /// <summary>Per-row ".." button — opens that position's editor (logic owned by the process panel).</summary>
+    private void OnEditRow(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: MotionInspectRow row })
+            row.Edit?.Invoke();
     }
 
     /// <summary>

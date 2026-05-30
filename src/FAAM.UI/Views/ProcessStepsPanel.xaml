@@ -116,7 +116,13 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Button Style="{StaticResource StepButton}" Content="{Binding Label}"
-                                    Tag="{Binding}" Click="OnStepClick" />
+                                    Tag="{Binding}" Click="OnStepClick">
+                                <Button.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Inspect Motion" Click="OnInspectMotion" />
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                            </Button>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
