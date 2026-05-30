@@ -18,6 +18,7 @@ public sealed class MotionSectionViewModel : ObservableObject
     private double _jogStep = 1.0;
     private double _velocity = 10.0;
     private string _status = "—";
+    private string _newPositionName = string.Empty;
 
     public MotionSectionViewModel(EngineHost host)
     {
@@ -26,6 +27,7 @@ public sealed class MotionSectionViewModel : ObservableObject
         _selectedDevice = Devices.Count > 0 ? Devices[0] : null;
         StopCommand = new AsyncRelayCommand(StopAsync, () => _selectedDevice != null);
         ApplyVelocityCommand = new AsyncRelayCommand(ApplyVelocityAsync, () => _selectedDevice != null);
+        SaveNewPositionCommand = new AsyncRelayCommand(SaveNewPositionAsync, () => _selectedDevice != null);
         RebuildAxes();
     }
 
@@ -36,6 +38,9 @@ public sealed class MotionSectionViewModel : ObservableObject
 
     /// <summary>One entry per installed axis of the selected device.</summary>
     public ObservableCollection<MotionAxisViewModel> Axes { get; } = new();
+
+    /// <summary>The selected device's named positions (active product) — each recallable via its Move command.</summary>
+    public ObservableCollection<NamedPositionViewModel> Positions { get; } = new();
 
     public string? SelectedDevice
     {
@@ -63,8 +68,16 @@ public sealed class MotionSectionViewModel : ObservableObject
     /// <summary>Last command result, shown next to the controls.</summary>
     public string Status { get => _status; private set => SetField(ref _status, value); }
 
+    /// <summary>Name to save the device's current pose under (new or existing position).</summary>
+    public string NewPositionName
+    {
+        get => _newPositionName;
+        set => SetField(ref _newPositionName, value);
+    }
+
     public AsyncRelayCommand StopCommand { get; }
     public AsyncRelayCommand ApplyVelocityCommand { get; }
+    public AsyncRelayCommand SaveNewPositionCommand { get; }
 
     private void RebuildAxes()
     {
@@ -77,6 +90,20 @@ public sealed class MotionSectionViewModel : ObservableObject
 
         foreach (var axis in info.Axes)
             Axes.Add(new MotionAxisViewModel(_host, device, axis, () => _jogStep));
+
+        RebuildPositions();
+    }
+
+    /// <summary>Rebuilds the named-position list for the selected device from the active product.</summary>
+    private void RebuildPositions()
+    {
+        Positions.Clear();
+        var device = _selectedDevice;
+        if (device == null) return;
+
+        var axes = _host.Engine.Motion.GetDevice(device)?.Axes ?? Array.Empty<string>();
+        foreach (var name in _host.Process.GetPositionNames(device))
+            Positions.Add(new NamedPositionViewModel(_host, device, name, axes));
     }
 
     /// <summary>Refreshes connection / motion state and every axis position — called each sampler tick.</summary>
@@ -88,6 +115,11 @@ public sealed class MotionSectionViewModel : ObservableObject
 
         var state = _host.Engine.Motion.GetState(device);
         IsMoving = state.IsMoving;
+
+        // Pick up positions taught/edited on other pages without recreating the
+        // list every tick — only rebuild when the set of names actually changes.
+        if (!_host.Process.GetPositionNames(device).SequenceEqual(Positions.Select(p => p.Name)))
+            RebuildPositions();
 
         // Axis index aligns with MotionPosition.Components (X,Y,Z,U,V,W).
         var components = state.Position.Components;
@@ -109,5 +141,29 @@ public sealed class MotionSectionViewModel : ObservableObject
         if (device == null) return;
         var result = await _host.Engine.Motion.SetDeviceVelocityAsync(device, _velocity).ConfigureAwait(true);
         Status = result.IsSuccess ? $"Velocity set to {_velocity:G}" : result.Message;
+    }
+
+    /// <summary>Captures the device's current pose under <see cref="NewPositionName"/> (new or overwriting), then refreshes the list.</summary>
+    private async Task SaveNewPositionAsync()
+    {
+        var device = _selectedDevice;
+        if (device == null) return;
+
+        var name = _newPositionName.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            Status = "Enter a position name to save.";
+            return;
+        }
+
+        // Preserve velocity if the name already exists (teach only re-captures the pose).
+        var velocity = _host.Process.GetPosition(device, name)?.Velocity ?? 0;
+        var result = await _host.Process.TeachPositionAsync(device, name, velocity).ConfigureAwait(true);
+        Status = result.IsSuccess ? $"Saved '{name}'" : result.Message;
+        if (result.IsSuccess)
+        {
+            NewPositionName = string.Empty;
+            RebuildPositions();
+        }
     }
 }

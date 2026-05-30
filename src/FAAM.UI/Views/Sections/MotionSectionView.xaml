@@ -5,6 +5,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -49,25 +50,73 @@
         </Border>
 
         <!-- Per-axis position + jog -->
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">
-            <ItemsControl ItemsSource="{Binding Axes}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Padding="12,6">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding Name}" Foreground="{StaticResource Accent}" FontWeight="SemiBold"
-                                           Width="60" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding Position}" Foreground="{StaticResource Text}" FontFamily="Consolas"
-                                           Width="140" VerticalAlignment="Center" />
-                                <Button Content="−" Width="44" Height="28" Margin="0,0,6,0"
-                                        FontSize="16" Command="{Binding JogNegativeCommand}" />
-                                <Button Content="+" Width="44" Height="28"
-                                        FontSize="16" Command="{Binding JogPositiveCommand}" />
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+        <ItemsControl Grid.Row="2" ItemsSource="{Binding Axes}" Margin="0,8,0,0">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Padding="12,6">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Name}" Foreground="{StaticResource Accent}" FontWeight="SemiBold"
+                                       Width="60" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Position}" Foreground="{StaticResource Text}" FontFamily="Consolas"
+                                       Width="140" VerticalAlignment="Center" />
+                            <Button Content="−" Width="44" Height="28" Margin="0,0,6,0"
+                                    FontSize="16" Command="{Binding JogNegativeCommand}" />
+                            <Button Content="+" Width="44" Height="28"
+                                    FontSize="16" Command="{Binding JogPositiveCommand}" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Named positions (active product) — each row recalls its position via Layer 2. -->
+        <Grid Grid.Row="3" Margin="0,12,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0" Margin="2,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Positions" Foreground="{StaticResource Subtle}"
+                           FontWeight="SemiBold" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <TextBox Width="130" Margin="0,0,6,0" VerticalAlignment="Center"
+                             Text="{Binding NewPositionName, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Name to save the current pose under (new, or overwrite existing)" />
+                    <Button Content="Save current" Height="26" Padding="12,0"
+                            Command="{Binding SaveNewPositionCommand}" />
+                </StackPanel>
+            </Grid>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Positions}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Padding="12,6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Name}" Foreground="{StaticResource Accent}"
+                                               FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Coordinates}" Foreground="{StaticResource Subtle}"
+                                               FontFamily="Consolas" VerticalAlignment="Center" />
+                                    <Button Grid.Column="2" Content="Move" Width="72" Height="28" Margin="0,0,6,0"
+                                            Command="{Binding MoveCommand}" />
+                                    <Button Grid.Column="3" Content="Save" Width="72" Height="28"
+                                            Command="{Binding SaveCommand}"
+                                            ToolTip="Re-teach: save the device's current pose to this position" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
     </Grid>
 </UserControl>
