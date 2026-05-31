@@ -317,20 +317,29 @@ public sealed class ProcessService : IProcessService
                     $"not taught in product '{ActiveProduct}'.");
         }
 
-        foreach (var step in program.Steps)
+        void Walk(IEnumerable<WorkflowStep> steps)
         {
-            if (!step.Enabled) continue;
-            switch (step.Op.ToLowerInvariant())
+            foreach (var step in steps)
             {
-                case "motion.movetoposition":
-                    Check(step.Device, step.Parameters.GetValueOrDefault("position", string.Empty));
-                    break;
-                case "motion.parallelmove":
-                    for (int i = 1; step.Parameters.TryGetValue($"device{i}", out var dev); i++)
-                        Check(dev, step.Parameters.GetValueOrDefault($"position{i}", string.Empty));
-                    break;
+                if (!step.Enabled) continue;
+                switch (step.Op.ToLowerInvariant())
+                {
+                    case "motion.movetoposition":
+                        Check(step.Device, step.Parameters.GetValueOrDefault("position", string.Empty));
+                        break;
+                    case "motion.parallelmove":
+                        for (int i = 1; step.Parameters.TryGetValue($"device{i}", out var dev); i++)
+                            Check(dev, step.Parameters.GetValueOrDefault($"position{i}", string.Empty));
+                        break;
+                    case "flow.parallel":
+                        foreach (var branch in step.Branches)
+                            Walk(branch.Steps);   // recurse into concurrent branches
+                        break;
+                }
             }
         }
+
+        Walk(program.Steps);
     }
 
     public async Task<Result> RunAsync(

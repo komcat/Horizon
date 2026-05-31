@@ -18,6 +18,24 @@ public sealed record WorkflowStep
     public int DelayBeforeMs { get; init; }
     /// <summary>Milliseconds the runner waits after this step succeeds. 0 = none.</summary>
     public int DelayAfterMs { get; init; }
+    /// <summary>
+    /// Concurrent branches of a <c>flow.parallel</c> step — each runs as its own
+    /// mini-sequence, all started together and joined (wait-all). Empty for every
+    /// other op, so existing programs deserialize unchanged. See
+    /// <c>docs/timeline-sequence-editor-design.md</c>.
+    /// </summary>
+    public List<WorkflowBranch> Branches { get; init; } = new();
+}
+
+/// <summary>
+/// One concurrent lane of a <c>flow.parallel</c> step: an ordered sub-sequence run by
+/// a recursive runner. <see cref="Lane"/> is the authoring/UI row id (often a device
+/// name) — it carries no execution meaning beyond tagging the lane's step events.
+/// </summary>
+public sealed record WorkflowBranch
+{
+    public string Lane { get; init; } = string.Empty;
+    public List<WorkflowStep> Steps { get; init; } = new();
 }
 
 /// <summary>A runnable process program — an ordered sequence of steps.</summary>
@@ -27,11 +45,16 @@ public sealed record WorkflowProgram
     public List<WorkflowStep> Steps { get; init; } = new();
 }
 
-/// <summary>Progress event raised before and after each executed step.</summary>
+/// <summary>
+/// Progress event raised before and after each executed step. <see cref="Lane"/> is
+/// null for top-level steps and the branch lane id for steps run inside a
+/// <c>flow.parallel</c> branch (so a timeline UI can highlight the right row).
+/// </summary>
 public sealed record WorkflowStepEvent(
     int Index,
     int Total,
     string Description,
     bool Completed,
     bool Success,
-    string Message);
+    string Message,
+    string? Lane = null);

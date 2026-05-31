@@ -24,6 +24,9 @@ public sealed class ProcessBlockViewModel : ObservableObject
     private bool _enabled = true;
     private string _runStatus = "—";
     private string _positionPreview = string.Empty;
+    // Concurrent branches of a flow.parallel step. The flat editor can't edit them,
+    // but it must preserve them across load→run so the step keeps its branches.
+    private List<WorkflowBranch> _branches = new();
 
     public ProcessBlockViewModel(EngineHost host, OpSpec spec, string id)
     {
@@ -59,6 +62,7 @@ public sealed class ProcessBlockViewModel : ObservableObject
             _delayBeforeMs = step.DelayBeforeMs,
             _delayAfterMs = step.DelayAfterMs,
             _enabled = step.Enabled,
+            _branches = step.Branches,   // preserved as-is (the flat editor doesn't edit branches)
         };
         // Seed parameter values from the loaded step.
         foreach (var p in vm.Params)
@@ -242,5 +246,6 @@ public sealed class ProcessBlockViewModel : ObservableObject
         Parameters = Params
             .Where(p => !string.IsNullOrWhiteSpace(p.StringValue))
             .ToDictionary(p => p.Key, p => p.StringValue, StringComparer.Ordinal),
+        Branches = _branches,
     };
 }
