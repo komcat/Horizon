@@ -6,31 +6,20 @@
         <!-- Cyan selection highlight (mirrors the MoveOn cyan used in RunView). -->
         <SolidColorBrush x:Key="SelectedBlock" Color="#00C8FF" />
 
-        <!-- Palette command button (the StepButton idiom from ProcessStepsPanel). -->
-        <Style x:Key="PaletteButton" TargetType="Button">
-            <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <!-- Palette command tile — drag onto the sequence, or double-click to append. -->
+        <Style x:Key="PaletteItem" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Bg}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
             <Setter Property="Padding" Value="8,6" />
             <Setter Property="Margin" Value="0,0,0,4" />
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="{StaticResource Text}" />
-            <Setter Property="Background" Value="{StaticResource Bg}" />
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <!-- Per-block run status text colour. -->
@@ -130,8 +119,12 @@
                                         <ItemsControl ItemsSource="{Binding Items}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Button Style="{StaticResource PaletteButton}"
-                                                            Content="{Binding Display}" Command="{Binding AddCommand}" />
+                                                    <Border Style="{StaticResource PaletteItem}"
+                                                            ToolTip="Drag onto the sequence, or double-click to append"
+                                                            PreviewMouseLeftButtonDown="OnPaletteMouseDown"
+                                                            PreviewMouseMove="OnPaletteMouseMove">
+                                                        <TextBlock Text="{Binding Display}" Foreground="{StaticResource Text}" FontSize="12" />
+                                                    </Border>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
@@ -152,8 +145,9 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="0,12">
-                        <ListBox ItemsSource="{Binding Blocks}" SelectedItem="{Binding SelectedBlock}"
+                    <ScrollViewer x:Name="FlowScroller" Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="0,12"
+                                  AllowDrop="True" DragOver="OnFlowDragOver" DragLeave="OnFlowDragLeave" Drop="OnFlowDrop">
+                        <ListBox x:Name="FlowList" ItemsSource="{Binding Blocks}" SelectedItem="{Binding SelectedBlock}"
                                  Background="Transparent" BorderThickness="0"
                                  HorizontalContentAlignment="Center"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -174,6 +168,7 @@
                                 <DataTemplate>
                                     <StackPanel HorizontalAlignment="Center">
                                         <Border x:Name="Box" MinWidth="240" Padding="12,10" CornerRadius="4"
+                                                Margin="0,0,0,8"
                                                 Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
                                                 BorderThickness="1">
                                             <Grid>
@@ -192,8 +187,6 @@
                                                            Margin="8,0,0,0" VerticalAlignment="Center" />
                                             </Grid>
                                         </Border>
-                                        <TextBlock Text="&#x2193;" Foreground="{StaticResource Subtle}" FontSize="18"
-                                                   HorizontalAlignment="Center" Margin="0,2" />
                                     </StackPanel>
                                     <DataTemplate.Triggers>
                                         <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsSelected}"

@@ -145,9 +145,15 @@ public sealed class ProcessEditorViewModel : ObservableObject
 
     private void AddBlock(OpSpec spec)
     {
-        var block = new ProcessBlockViewModel(_host, spec, ProcessBlockViewModel.NewId());
         var at = _selectedBlock != null ? Blocks.IndexOf(_selectedBlock) + 1 : Blocks.Count;
-        Blocks.Insert(at, block);
+        InsertBlock(spec, at);
+    }
+
+    /// <summary>Inserts a new block for <paramref name="spec"/> at <paramref name="index"/> (drag-drop drop point).</summary>
+    public void InsertBlock(OpSpec spec, int index)
+    {
+        var block = new ProcessBlockViewModel(_host, spec, ProcessBlockViewModel.NewId());
+        Blocks.Insert(Math.Clamp(index, 0, Blocks.Count), block);
         SelectedBlock = block;
         RunCommand.RaiseCanExecuteChanged();
     }
