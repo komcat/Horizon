@@ -5,6 +5,46 @@
         Height="620" Width="860"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource Panel}">
+    <Window.Resources>
+        <!-- Cyan when MoveClick is armed (matches the Run page). -->
+        <SolidColorBrush x:Key="MoveOn" Color="#00C8FF" />
+
+        <Style x:Key="MoveToggle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="{StaticResource MoveOn}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource MoveOn}" />
+                    <Setter Property="Foreground" Value="Black" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Crosshair line — yellow normally, cyan while MoveClick is armed. -->
+        <Style x:Key="CrosshairLine" TargetType="Rectangle">
+            <Setter Property="Fill" Value="{StaticResource Crosshair}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsChecked, ElementName=MoveToggle}" Value="True">
+                    <Setter Property="Fill" Value="{StaticResource MoveOn}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -22,13 +62,39 @@
             </StackPanel>
         </Border>
 
-        <Grid Grid.Row="1">
-            <TextBlock Text="No video — Start grabbing in the Camera section"
-                       Foreground="{StaticResource Subtle}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                       Visibility="{Binding HasNoVideo, Converter={StaticResource BoolToVis}}" />
-            <Image Source="{Binding Frame}" Stretch="Uniform" Margin="6"
-                   HorizontalAlignment="Left" VerticalAlignment="Top"
+        <!-- Live feed with center crosshair, hover cursor crosshair, and MoveClick. -->
+        <Grid Grid.Row="1" x:Name="FeedHost" Background="{StaticResource VideoBg}"
+              MouseLeftButtonDown="OnFeedClick" MouseMove="OnFeedMouseMove" MouseLeave="OnFeedMouseLeave">
+            <Image x:Name="MainImage" Source="{Binding Frame}" Stretch="Uniform" Margin="2"
                    RenderOptions.BitmapScalingMode="LowQuality" />
+
+            <!-- Center crosshair: full-span lines. -->
+            <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch" Style="{StaticResource CrosshairLine}" />
+            <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Style="{StaticResource CrosshairLine}" />
+
+            <!-- Short cursor crosshair — follows the mouse while MoveClick is armed. -->
+            <Grid x:Name="MainCursor" Width="20" Height="20" IsHitTestVisible="False"
+                  HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
+                <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch" Fill="{StaticResource MoveOn}" />
+                <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Fill="{StaticResource MoveOn}" />
+            </Grid>
+
+            <TextBlock Text="No video" Foreground="{StaticResource Subtle}" FontSize="18"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       Visibility="{Binding HasNoVideo, Converter={StaticResource BoolToVis}}" />
+
+            <!-- Top-left: MoveClick toggle. -->
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="6">
+                <ToggleButton x:Name="MoveToggle" Style="{StaticResource MoveToggle}" Content="MoveClick"
+                              Unchecked="OnMoveDisarmed"
+                              ToolTip="Click the image to measure (and jog) from the crosshair centre" />
+            </StackPanel>
+
+            <!-- Bottom-left: last MoveClick measurement. -->
+            <Border x:Name="MoveReadoutBox" VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                    Background="{StaticResource Overlay}" CornerRadius="3" Margin="6" Padding="8,3" Visibility="Collapsed">
+                <TextBlock x:Name="MoveReadout" Foreground="{StaticResource Roi}" FontFamily="Consolas" FontSize="12.5" />
+            </Border>
         </Grid>
     </Grid>
 </Window>

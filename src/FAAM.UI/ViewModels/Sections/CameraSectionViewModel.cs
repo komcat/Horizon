@@ -74,6 +74,9 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
         // visible or the pop-out is open (see UpdateSubscription).
     }
 
+    /// <summary>The engine host — used by the pop-out window's MoveClick jog.</summary>
+    public EngineHost Host => _host;
+
     /// <summary>Label shown in the Machine-page section rail.</summary>
     public string Title => "Camera";
 

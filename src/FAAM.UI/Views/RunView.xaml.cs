@@ -396,59 +396,15 @@ public partial class RunView : UserControl
     private async Task DoMoveClickAsync(System.Windows.Point p, double availW, double availH,
                                         int srcW, int srcH, string surface)
     {
-        if (availW <= 0 || availH <= 0 || srcW <= 0 || srcH <= 0) return;
+        var m = MoveClick.Measure(_host, p, availW, availH, srcW, srcH);
+        if (m is not { } meas) return;
 
-        // Uniform-stretch scale: display px → source px → millimetres.
-        double scale = Math.Min(availW / srcW, availH / srcH);
-        if (scale <= 0) return;
-
-        var s = _host.Settings.Current;
-        double dxMm = ((p.X - availW / 2.0) / scale) * s.MmPerPixel;
-        double dyMm = ((p.Y - availH / 2.0) / scale) * s.MmPerPixel;
-        double dist = Math.Sqrt(dxMm * dxMm + dyMm * dyMm);
-
-        MoveReadout.Text = $"dx {dxMm:+0.000;-0.000}  dy {dyMm:+0.000;-0.000}  d {dist:0.000} mm";
+        MoveReadout.Text = meas.Readout;
         MoveReadoutBox.Visibility = Visibility.Visible;
-        Log($"MoveClick ({surface}): dx {dxMm:+0.000;-0.000} dy {dyMm:+0.000;-0.000} d {dist:0.000} mm");
+        Log($"MoveClick ({surface}): {meas.Readout}");
 
-        // Jog by the measured offset. A single coordinated move drives X and Y
-        // SIMULTANEOUSLY — MoveRelativeAsync settles one axis before the next
-        // (per-device lock); MoveToPositionAsync moves all axes together.
-        if (string.IsNullOrWhiteSpace(s.MoveClickDevice)) return;
-        double xJog = dxMm * s.MoveClickXSign;
-        double yJog = dyMm * s.MoveClickYSign;
-        try
-        {
-            var posResult = await _host.Engine.Motion.GetPositionAsync(s.MoveClickDevice);
-            if (!posResult.IsSuccess)
-            {
-                Log($"MoveClick jog — position read failed ({s.MoveClickDevice}): {posResult.Message}");
-                return;
-            }
-
-            var target = AddAxis(AddAxis(posResult.Value, s.MoveClickXAxis, xJog), s.MoveClickYAxis, yJog);
-            var move = await _host.Engine.Motion.MoveToPositionAsync(s.MoveClickDevice, target);
-            Log(move.IsSuccess
-                ? $"MoveClick jog {s.MoveClickDevice}: {s.MoveClickXAxis} {xJog:+0.000;-0.000}, {s.MoveClickYAxis} {yJog:+0.000;-0.000} mm (simultaneous)"
-                : $"MoveClick jog failed ({s.MoveClickDevice}): {move.Message}");
-        }
-        catch (Exception ex)
-        {
-            Log($"MoveClick jog error: {ex.Message}");
-        }
+        await MoveClick.JogAsync(_host, meas, Log);
     }
-
-    /// <summary>Returns a copy of <paramref name="p"/> with <paramref name="delta"/> added to the named axis component.</summary>
-    private static MotionPosition AddAxis(MotionPosition p, string axis, double delta) => axis?.Trim().ToUpperInvariant() switch
-    {
-        "X" => p with { X = p.X + delta },
-        "Y" => p with { Y = p.Y + delta },
-        "Z" => p with { Z = p.Z + delta },
-        "U" => p with { U = p.U + delta },
-        "V" => p with { V = p.V + delta },
-        "W" => p with { W = p.W + delta },
-        _ => p,
-    };
 
     private void SetMain(string camera)
     {
