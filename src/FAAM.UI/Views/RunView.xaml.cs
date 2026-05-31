@@ -64,6 +64,23 @@ public partial class RunView : UserControl
         SiphogChartControl.Attach(SiphogPanelControl.Client);
     }
 
+    /// <summary>
+    /// Show/hide the SiPhOG widget slot. Hiding collapses it (freeing the area for
+    /// another widget) and disconnects the client so it stops streaming. Guarded
+    /// because the CheckBox's initial IsChecked fires before the slot is built.
+    /// </summary>
+    private void OnSiphogToggle(object sender, RoutedEventArgs e)
+    {
+        if (SiphogSlot is null) return;   // fires once during InitializeComponent — slot not ready
+
+        var show = SiphogToggle.IsChecked == true;
+        SiphogSlot.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (show)
+            SiphogPanelControl.EnsureConnected();      // re-shown ⇒ reconnect automatically
+        else
+            SiphogPanelControl.Client.Disconnect();    // hidden ⇒ idle (no socket, no stream)
+    }
+
     /// <summary>Shows the motion-inspector grid (over the camera column) with the supplied position rows.</summary>
     private void OnInspectMotionRequested(object? sender, IReadOnlyList<MotionInspectRow> rows)
     {

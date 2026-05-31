@@ -66,15 +66,27 @@
                 <v:ProcessStepsPanel Grid.Column="0" x:Name="StepsPanel"
                                      HorizontalAlignment="Left" Width="240" />
 
-                <!-- SiPhOG info panel on top, live chart below. -->
+                <!-- Widget slot: a show/hide toggle over the SiPhOG panel (top) + chart
+                     (bottom). Collapsing frees the area for another widget. -->
                 <Grid Grid.Column="1" Margin="12,0,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <v:SiphogPanel Grid.Row="0" x:Name="SiphogPanelControl"
-                                   HorizontalAlignment="Left" Width="360" />
-                    <v:SiphogChart Grid.Row="1" x:Name="SiphogChartControl" Margin="0,8,0,0" />
+
+                    <CheckBox Grid.Row="0" x:Name="SiphogToggle" Content="SiPhOG widget"
+                              IsChecked="True" Foreground="{StaticResource Text}" Margin="2,0,0,6"
+                              Checked="OnSiphogToggle" Unchecked="OnSiphogToggle" />
+
+                    <Grid Grid.Row="1" x:Name="SiphogSlot">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <v:SiphogPanel Grid.Row="0" x:Name="SiphogPanelControl"
+                                       HorizontalAlignment="Left" Width="360" />
+                        <v:SiphogChart Grid.Row="1" x:Name="SiphogChartControl" Margin="0,8,0,0" />
+                    </Grid>
                 </Grid>
             </Grid>
 

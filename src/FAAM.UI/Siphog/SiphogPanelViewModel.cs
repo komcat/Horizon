@@ -106,6 +106,13 @@ public sealed class SiphogPanelViewModel : ObservableObject, IDisposable
     /// <summary>Traffic-light level for <see cref="SagPercent"/>: ok / warn / danger / none — drives the background.</summary>
     public string SagLevel { get => _sagLevel; private set => SetField(ref _sagLevel, value); }
 
+    /// <summary>Connects if not already connected (used when the widget is re-shown).</summary>
+    public void EnsureConnected()
+    {
+        if (!_isConnected)
+            _ = ToggleConnectAsync();
+    }
+
     private async Task ToggleConnectAsync()
     {
         if (_isConnected)

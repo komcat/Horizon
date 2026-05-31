@@ -21,6 +21,9 @@ public partial class SiphogPanel : UserControl
     /// <summary>The shared client — used by the SiPhOG chart so both run off one connection.</summary>
     public SiphogClient Client => _vm.Client;
 
+    /// <summary>Connects if not already connected — used when the widget is re-shown.</summary>
+    public void EnsureConnected() => _vm.EnsureConnected();
+
     /// <summary>Disconnects and tears down the client — call on application shutdown.</summary>
     public void Shutdown() => _vm.Dispose();
 }
