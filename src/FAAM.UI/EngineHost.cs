@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using FAAM.UI.Process;
 using FAAM.UI.Telemetry;
 using Horizon.Common;
@@ -46,6 +47,10 @@ public sealed class EngineHost : IAsyncDisposable
 
     private bool _smuWired;
     private bool _measurementWired;
+    private bool _cameraWired;
+    // Last-seen connected state per camera — drives the connect edge that forces
+    // auto-exposure on (so it fires on first connect AND on Reconnect, once each).
+    private readonly ConcurrentDictionary<string, bool> _cameraConnected = new(StringComparer.OrdinalIgnoreCase);
 
     public EngineHost()
     {
@@ -106,6 +111,44 @@ public sealed class EngineHost : IAsyncDisposable
         Telemetry.Push($"{s.Device}.CH{s.Channel}.voltage", s.Voltage, s.Timestamp);
     }
 
+    /// <summary>
+    /// On the rising edge of a camera's connection (disconnected → connected),
+    /// deliberately forces auto-exposure ON. Fires once per connect — at startup
+    /// bring-up and again after a Reconnect.
+    /// </summary>
+    private void OnCameraStateChanged(CameraStateChanged e)
+    {
+        var wasConnected = _cameraConnected.TryGetValue(e.Camera, out var prev) && prev;
+        _cameraConnected[e.Camera] = e.State.Connected;
+        if (e.State.Connected && !wasConnected)
+            _ = ForceAutoExposureAsync(e.Camera);
+    }
+
+    /// <summary>
+    /// Applies <c>AutoExposure = true</c> to a camera, preserving its other exposure
+    /// settings (gain, frame rate). Failures are logged, never fatal.
+    /// </summary>
+    private async Task ForceAutoExposureAsync(string camera)
+    {
+        try
+        {
+            var current = Engine.Camera.GetState(camera).Exposure;
+            var result = await Engine.Camera
+                .ApplyExposureAsync(camera, current with { AutoExposure = true })
+                .ConfigureAwait(false);
+            Log.Add(new LogEntry(
+                result.IsSuccess ? LogLevel.Info : LogLevel.Warning, DateTimeOffset.Now, "FAAM",
+                result.IsSuccess
+                    ? $"Camera {camera}: auto-exposure enabled on connect."
+                    : $"Camera {camera}: enabling auto-exposure failed — {result.Message}"));
+        }
+        catch (Exception ex)
+        {
+            Log.Add(new LogEntry(LogLevel.Warning, DateTimeOffset.Now, "FAAM",
+                $"Camera {camera}: enabling auto-exposure errored — {ex.Message}"));
+        }
+    }
+
     private void OnMeasurementChanged(MeasurementChanged m)
     {
         // The Keithley 6482 picoammeter polls continuously once connected, so
@@ -136,7 +179,24 @@ public sealed class EngineHost : IAsyncDisposable
         Engine.Measurement.StateChanged += OnMeasurementChanged;
         _measurementWired = true;
 
+        // Force auto-exposure ON whenever a camera connects. Subscribed before
+        // ConnectAllAsync so the connect edges raised during bring-up are caught.
+        Engine.Camera.StateChanged += OnCameraStateChanged;
+        _cameraWired = true;
+
         await Engine.ConnectAllAsync(progress, ct).ConfigureAwait(true);
+
+        // Safety net: force auto-exposure on any camera already connected by the
+        // time bring-up finishes, in case its connect edge fired before we saw it.
+        // Gated by _cameraConnected so it never double-applies with the event hook.
+        foreach (var cam in Engine.Camera.CameraIds)
+        {
+            if (Engine.Camera.IsConnected(cam) && !(_cameraConnected.TryGetValue(cam, out var c) && c))
+            {
+                _cameraConnected[cam] = true;
+                await ForceAutoExposureAsync(cam).ConfigureAwait(true);
+            }
+        }
     }
 
     /// <summary>
@@ -153,6 +213,8 @@ public sealed class EngineHost : IAsyncDisposable
             Engine.Smu.Sampled -= OnSmuSampled;
         if (_measurementWired)
             Engine.Measurement.StateChanged -= OnMeasurementChanged;
+        if (_cameraWired)
+            Engine.Camera.StateChanged -= OnCameraStateChanged;
         await Engine.ShutdownAsync(progress).ConfigureAwait(false);
     }
 
