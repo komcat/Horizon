@@ -12,7 +12,7 @@ public enum DeviceKind { None, Motion, Io, Pneumatic, Camera }
 /// options are filled by the block (positions from the chosen device, the axis
 /// list, or Set/Clear); the rest are a text box / number box / check box.
 /// </summary>
-public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear }
+public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin }
 
 /// <summary>One parameter of an op — its persisted key, a display label, the editor widget, and a default value.</summary>
 public sealed record ParamSpec(string Key, string Label, ParamKind Kind, string Default = "");
@@ -58,7 +58,7 @@ public static class OpCatalog
         new("io.setOutputByName", "Set Output", "IO", DeviceKind.Io,
             new[]
             {
-                new ParamSpec("pin", "Pin name", ParamKind.Text),
+                new ParamSpec("pin", "Output pin", ParamKind.OutputPin),
                 new ParamSpec("state", "State", ParamKind.SetClear, "true"),
             }),
 

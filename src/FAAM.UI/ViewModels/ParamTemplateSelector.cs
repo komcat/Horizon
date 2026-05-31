@@ -21,7 +21,7 @@ public sealed class ParamTemplateSelector : DataTemplateSelector
             {
                 ParamKind.Number => Number,
                 ParamKind.Bool or ParamKind.SetClear => Bool,
-                ParamKind.PositionName or ParamKind.AxisName => Combo,
+                ParamKind.PositionName or ParamKind.AxisName or ParamKind.OutputPin => Combo,
                 _ => Text,
             }
             : Text;

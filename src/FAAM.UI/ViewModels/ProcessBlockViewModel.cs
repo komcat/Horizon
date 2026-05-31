@@ -105,7 +105,7 @@ public sealed class ProcessBlockViewModel : ObservableObject
         set
         {
             if (!SetField(ref _selectedDevice, value)) return;
-            RefreshPositionOptions();
+            RefreshDeviceParamOptions();
             RefreshPositionPreview();
             EditPositionCommand.RaiseCanExecuteChanged();
         }
@@ -136,14 +136,33 @@ public sealed class ProcessBlockViewModel : ObservableObject
     private BlockParamViewModel? PositionParam =>
         Params.FirstOrDefault(p => p.Kind == ParamKind.PositionName);
 
-    private void RefreshPositionOptions()
+    /// <summary>
+    /// Refreshes the option lists of device-dependent combo params for the current
+    /// device: PositionName ← the device's taught positions; OutputPin ← the IO
+    /// device's configured output-pin names. Called whenever the device changes.
+    /// </summary>
+    private void RefreshDeviceParamOptions()
     {
-        var pos = PositionParam;
-        if (pos == null) return;
-        var names = string.IsNullOrEmpty(_selectedDevice)
-            ? Array.Empty<string>()
-            : _host.Process.GetPositionNames(_selectedDevice);
-        pos.SetOptions(names);
+        var device = _selectedDevice;
+        foreach (var p in Params)
+        {
+            switch (p.Kind)
+            {
+                case ParamKind.PositionName:
+                    p.SetOptions(string.IsNullOrEmpty(device)
+                        ? Array.Empty<string>()
+                        : _host.Process.GetPositionNames(device));
+                    break;
+                case ParamKind.OutputPin:
+                    var pins = string.IsNullOrEmpty(device)
+                        ? Enumerable.Empty<string>()
+                        : (_host.Engine.IO.GetDevice(device)?.OutputPins ?? Array.Empty<IoPin>())
+                            .Select(op => op.Name)
+                            .Where(n => !string.IsNullOrWhiteSpace(n));
+                    p.SetOptions(pins);
+                    break;
+            }
+        }
     }
 
     /// <summary>Call when the chosen position name changes — refreshes the recall preview.</summary>
