@@ -208,9 +208,13 @@ public sealed class ProcessService : IProcessService
         {
             try
             {
+                // A position that pins an exposure means "use exactly this" — so
+                // auto-exposure must be turned off, otherwise the camera keeps
+                // auto-adjusting and the pinned value is ignored (the adapter does
+                // not write a manual exposure while AutoExposure is on).
                 var current = _engine.Camera.GetState(np.Camera).Exposure;
                 var applied = await _engine.Camera
-                    .ApplyExposureAsync(np.Camera, current with { ExposureUs = np.ExposureUs.Value })
+                    .ApplyExposureAsync(np.Camera, current with { ExposureUs = np.ExposureUs.Value, AutoExposure = false })
                     .ConfigureAwait(false);
                 Log(applied.IsSuccess ? LogLevel.Info : LogLevel.Warning,
                     $"Exposure {np.Camera} = {np.ExposureUs}µs: {(applied.IsSuccess ? "ok" : applied.Message)}");

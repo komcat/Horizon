@@ -1,7 +1,12 @@
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Windows;
 using FAAM.UI.ViewModels;
+using FAAM.UI.ViewModels.Sections;
 using FAAM.UI.Views;
+using Horizon.Common;
+using Horizon.Engine;
 
 namespace FAAM.UI;
 
@@ -21,7 +26,10 @@ public partial class ShellWindow : Window
     private readonly MachinePageViewModel _machineVm;
     private readonly MachinePageView _machine;
     private readonly RunView _run;
-    private readonly EngineerView _engineer = new();
+    private readonly EngineerView _engineer;
+
+    /// <summary>Camera pop-out windows this shell owns (auto-opened + restored).</summary>
+    private readonly List<DisplayWindow> _cameraWindows = new();
     private bool _exiting;
 
     public ShellWindow(EngineHost host)
@@ -30,7 +38,10 @@ public partial class ShellWindow : Window
         _machineVm = new MachinePageViewModel(host);
         _machine = new MachinePageView { DataContext = _machineVm };
         _run = new RunView(host);
+        _engineer = new EngineerView(host);
         InitializeComponent();
+
+        RestoreMainWindowPlacement();
 
         // The shell top-bar engine-status panel binds to the Machine page VM
         // (whose sampler supplies EngineState / DeviceSummary / Reconnect).
@@ -50,6 +61,28 @@ public partial class ShellWindow : Window
         ShowHome();
 
         Closing += OnClosing;
+
+        // Pop up the live main_camera window as soon as the app is up (the engine
+        // is already connected by the time the shell is shown), if enabled.
+        Loaded += OnShellLoaded;
+    }
+
+    private void OnShellLoaded(object? sender, RoutedEventArgs e)
+    {
+        Loaded -= OnShellLoaded;   // once
+
+        // Reopen the camera windows that were open at last exit, at their saved
+        // positions. The engine is already connected by the time the shell loads.
+        foreach (var p in _host.Settings.Current.CameraWindows)
+        {
+            if (!_host.Engine.Camera.CameraIds.Contains(p.Camera, System.StringComparer.OrdinalIgnoreCase))
+                continue;
+            OpenCameraWindow(p.Camera, new WindowPlacement(p.Left, p.Top, p.Width, p.Height, false));
+        }
+
+        // Auto-open main_camera unless a restored window already shows it.
+        if (_host.Settings.Current.ShowMainCameraOnStartup && !IsCameraWindowOpen("main_camera"))
+            ShowMainCameraWindow();
     }
 
     /// <summary>Stops a page's background work (camera pipeline, status sampler) when leaving it.</summary>
@@ -59,6 +92,8 @@ public partial class ShellWindow : Window
             _run.Deactivate();
         else if (ReferenceEquals(PageHost.Content, _machine))
             _machineVm.OnDeactivated();
+        else if (ReferenceEquals(PageHost.Content, _engineer))
+            _engineer.Deactivate();
     }
 
     private void ShowHome()
@@ -92,7 +127,135 @@ public partial class ShellWindow : Window
         LeaveCurrent();
         Header1Text.Text = "ENGINEER";
         EngineHeader.Visibility = Visibility.Collapsed;
+        _engineer.Activate();
         PageHost.Content = _engineer;
+    }
+
+    /// <summary>
+    /// Opens the <c>main_camera</c> pop-out (or focuses it if already open). Used by
+    /// the startup auto-show.
+    /// </summary>
+    public void ShowMainCameraWindow()
+    {
+        const string cam = "main_camera";
+        var existing = FindCameraWindow(cam);
+        if (existing != null) { existing.Activate(); return; }
+
+        if (!_host.Engine.Camera.CameraIds.Contains(cam, System.StringComparer.OrdinalIgnoreCase))
+        {
+            _host.Log.Add(new LogEntry(LogLevel.Warning, System.DateTimeOffset.Now, "FAAM",
+                $"Auto-show camera: '{cam}' is not among the configured cameras " +
+                $"[{string.Join(", ", _host.Engine.Camera.CameraIds)}]."));
+            return;
+        }
+        OpenCameraWindow(cam, null);
+    }
+
+    /// <summary>
+    /// Opens a live pop-out window for <paramref name="camera"/> at the optional
+    /// saved <paramref name="placement"/>. The window holds one grab lease
+    /// (ref-counted in the camera facet) for its lifetime and releases it on close,
+    /// so it shares the stream with the Run page / Machine camera without blacking
+    /// out the others. Tracked in <see cref="_cameraWindows"/> for save-on-exit.
+    /// </summary>
+    private void OpenCameraWindow(string camera, WindowPlacement? placement)
+    {
+        _ = _host.Engine.Camera.StartGrabbingAsync(camera);   // acquire this window's lease
+
+        var vm = new CameraSectionViewModel(_host) { SelectedCamera = camera };
+        vm.SetActive(true);
+
+        var win = new DisplayWindow { Owner = this, DataContext = vm };
+        if (placement != null && placement.Width > 80 && placement.Height > 80 && IsOnScreen(placement))
+        {
+            win.WindowStartupLocation = WindowStartupLocation.Manual;
+            win.Left = placement.Left;
+            win.Top = placement.Top;
+            win.Width = placement.Width;
+            win.Height = placement.Height;
+        }
+        win.Closed += (_, _) =>
+        {
+            _cameraWindows.Remove(win);
+            // During app exit the engine is being torn down (ShutdownWindow) and
+            // its facets are gone — touching Engine.Camera here throws. The engine's
+            // own teardown stops grabbing, so just drop the window.
+            if (_exiting) return;
+            _ = _host.Engine.Camera.StopGrabbingAsync(camera);   // release this window's lease
+            vm.SetActive(false);
+            vm.Dispose();
+        };
+        _cameraWindows.Add(win);
+        win.Show();
+    }
+
+    private DisplayWindow? FindCameraWindow(string camera)
+        => _cameraWindows.FirstOrDefault(w =>
+            w.DataContext is CameraSectionViewModel vm &&
+            string.Equals(vm.SelectedCamera, camera, System.StringComparison.OrdinalIgnoreCase));
+
+    private bool IsCameraWindowOpen(string camera) => FindCameraWindow(camera) != null;
+
+    /// <summary>Restores the saved main-window bounds / maximized state, if any and on-screen.</summary>
+    private void RestoreMainWindowPlacement()
+    {
+        var p = _host.Settings.Current.MainWindow;
+        if (p == null) return;
+
+        if (p.Width > 200 && p.Height > 150 && IsOnScreen(p))
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = p.Left;
+            Top = p.Top;
+            Width = p.Width;
+            Height = p.Height;
+        }
+        if (p.Maximized)
+            WindowState = WindowState.Maximized;
+    }
+
+    /// <summary>Captures the main window + all open camera windows into settings and persists.</summary>
+    private void SaveWindowLayout()
+    {
+        _host.Settings.Update(_host.Settings.Current with
+        {
+            MainWindow = ToPlacement(this),
+            CameraWindows = Application.Current.Windows.OfType<DisplayWindow>()
+                .Select(w => (w, vm: w.DataContext as CameraSectionViewModel))
+                .Where(t => t.vm?.SelectedCamera is not null)
+                .Select(t =>
+                {
+                    var b = NormalBounds(t.w);
+                    return new CameraWindowPlacement(t.vm!.SelectedCamera!, b.Left, b.Top, b.Width, b.Height);
+                })
+                .ToArray(),
+        });
+        _host.Settings.Save();
+    }
+
+    private static WindowPlacement ToPlacement(Window w)
+    {
+        var b = NormalBounds(w);
+        return new WindowPlacement(b.Left, b.Top, b.Width, b.Height, w.WindowState == WindowState.Maximized);
+    }
+
+    /// <summary>The window's normal (non-maximized) bounds — uses RestoreBounds when maximized.</summary>
+    private static Rect NormalBounds(Window w)
+        => w.WindowState == WindowState.Normal || w.RestoreBounds.IsEmpty
+            ? new Rect(w.Left, w.Top, w.Width, w.Height)
+            : w.RestoreBounds;
+
+    /// <summary>True if the placement's top-left sits within the current virtual desktop.</summary>
+    private static bool IsOnScreen(WindowPlacement p) => IsOnScreen(p.Left, p.Top);
+
+    private static bool IsOnScreen(double left, double top)
+    {
+        double vsLeft = SystemParameters.VirtualScreenLeft;
+        double vsTop = SystemParameters.VirtualScreenTop;
+        double vsRight = vsLeft + SystemParameters.VirtualScreenWidth;
+        double vsBottom = vsTop + SystemParameters.VirtualScreenHeight;
+        return left >= vsLeft - 10 && left <= vsRight - 60 &&
+               top >= vsTop - 10 && top <= vsBottom - 30;
     }
 
     private void OnHomeClick(object sender, RoutedEventArgs e) => ShowHome();
@@ -113,6 +276,10 @@ public partial class ShellWindow : Window
             MessageBoxImage.Question);
         if (answer != MessageBoxResult.Yes)
             return;   // stay open
+
+        // Capture window sizes/positions + open camera windows while everything is
+        // still on screen, before teardown closes them.
+        SaveWindowLayout();
 
         _exiting = true;
         _run.Deactivate();         // stop frame routing before the engine tears down

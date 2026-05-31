@@ -115,13 +115,15 @@ public partial class RunView : UserControl
     /// </summary>
     public void Deactivate()
     {
+        if (!_active) return;   // idempotent — only release the leases this page acquired
+
         if (_subscribed)
         {
             _host.Engine.Camera.FrameReady -= OnFrameReady;
             _subscribed = false;
         }
 
-        // Fire-and-forget: return each camera to idle.
+        // Fire-and-forget: release this page's grab lease on each camera.
         foreach (var cam in _cameras)
             _ = _host.Engine.Camera.StopGrabbingAsync(cam);
 

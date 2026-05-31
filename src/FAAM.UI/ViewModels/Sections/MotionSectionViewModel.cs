@@ -1,5 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Windows;
 using FAAM.UI.Mvvm;
+using FAAM.UI.Process;
+using FAAM.UI.Views;
 
 namespace FAAM.UI.ViewModels.Sections;
 
@@ -28,6 +31,7 @@ public sealed class MotionSectionViewModel : ObservableObject
         StopCommand = new AsyncRelayCommand(StopAsync, () => _selectedDevice != null);
         ApplyVelocityCommand = new AsyncRelayCommand(ApplyVelocityAsync, () => _selectedDevice != null);
         SaveNewPositionCommand = new AsyncRelayCommand(SaveNewPositionAsync, () => _selectedDevice != null);
+        AddPositionCommand = new RelayCommand(AddPosition, () => _selectedDevice != null);
         RebuildAxes();
     }
 
@@ -78,6 +82,7 @@ public sealed class MotionSectionViewModel : ObservableObject
     public AsyncRelayCommand StopCommand { get; }
     public AsyncRelayCommand ApplyVelocityCommand { get; }
     public AsyncRelayCommand SaveNewPositionCommand { get; }
+    public RelayCommand AddPositionCommand { get; }
 
     private void RebuildAxes()
     {
@@ -165,5 +170,62 @@ public sealed class MotionSectionViewModel : ObservableObject
             NewPositionName = string.Empty;
             RebuildPositions();
         }
+    }
+
+    /// <summary>
+    /// Adds a position by manual coordinate entry — opens the position editor for
+    /// <see cref="NewPositionName"/> (seeded with the device's current pose, or the
+    /// existing values if the name is already taught) so the operator can type
+    /// X/Y/Z/U/V/W, velocity, and camera/exposure without jogging the stage there.
+    /// </summary>
+    private void AddPosition()
+    {
+        var device = _selectedDevice;
+        if (device == null) return;
+
+        var name = _newPositionName.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            Status = "Enter a position name to add.";
+            return;
+        }
+
+        var info = _host.Engine.Motion.GetDevice(device);
+        if (info == null) return;
+
+        // Seed from the existing position if the name is taken, else the live pose.
+        var existing = _host.Process.GetPosition(device, name);
+        var pose = existing?.Coordinates ?? _host.Engine.Motion.GetState(device).Position;
+
+        var ctx = new PositionEditContext
+        {
+            Position = name,
+            Device = info.Name,
+            ControllerType = info.ControllerType,
+            Axes = info.Axes,
+            Velocity = existing?.Velocity ?? 0,
+            Pose = pose,
+            Cameras = _host.Engine.Camera.CameraIds,
+            Camera = existing?.Camera,
+            ExposureUs = existing?.ExposureUs,
+        };
+
+        new PositionEditorWindow(ctx, ApplyAddAsync)
+        {
+            Owner = Application.Current?.MainWindow,
+        }.Show();
+    }
+
+    private Task ApplyAddAsync(PositionEditResult r)
+    {
+        var saved = _host.Process.SetPositionFull(
+            r.Device, r.Position, r.Pose, r.Velocity, r.Camera, r.ExposureUs);
+        Status = saved.IsSuccess ? $"Saved '{r.Position}'." : saved.Message;
+        if (saved.IsSuccess)
+        {
+            NewPositionName = string.Empty;
+            RebuildPositions();
+        }
+        return Task.CompletedTask;
     }
 }

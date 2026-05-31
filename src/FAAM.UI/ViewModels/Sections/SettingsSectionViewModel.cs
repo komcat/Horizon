@@ -21,6 +21,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
     private double _moveClickYSign = 1.0;
     private string _hexVelocityPresetsText = "";
     private string _gantryVelocityPresetsText = "";
+    private bool _showMainCameraOnStartup = true;
     private string _status = "—";
 
     public SettingsSectionViewModel(EngineHost host)
@@ -49,6 +50,13 @@ public sealed class SettingsSectionViewModel : ObservableObject
     /// <summary>ACS / gantry-family jog velocity presets (mm/s), comma-separated.</summary>
     public string GantryVelocityPresetsText { get => _gantryVelocityPresetsText; set => SetField(ref _gantryVelocityPresetsText, value); }
 
+    /// <summary>Pop up the main_camera window automatically when the app starts.</summary>
+    public bool ShowMainCameraOnStartup
+    {
+        get => _showMainCameraOnStartup;
+        set => SetField(ref _showMainCameraOnStartup, value);
+    }
+
     public string Status { get => _status; private set => SetField(ref _status, value); }
 
     public RelayCommand SaveCommand { get; }
@@ -65,12 +73,14 @@ public sealed class SettingsSectionViewModel : ObservableObject
         MoveClickYSign = s.MoveClickYSign;
         HexVelocityPresetsText = string.Join(", ", s.HexVelocityPresets);
         GantryVelocityPresetsText = string.Join(", ", s.GantryVelocityPresets);
+        ShowMainCameraOnStartup = s.ShowMainCameraOnStartup;
     }
 
     private void Save()
     {
         var current = _store.Current;
-        _store.Update(new AppSettings
+        // `with` preserves fields this page doesn't edit (window layout, last program).
+        _store.Update(current with
         {
             MmPerPixel = _mmPerPixel,
             MoveClickDevice = _moveClickDevice ?? "",
@@ -80,6 +90,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
             MoveClickYSign = _moveClickYSign,
             HexVelocityPresets = ParsePresets(_hexVelocityPresetsText, current.HexVelocityPresets),
             GantryVelocityPresets = ParsePresets(_gantryVelocityPresetsText, current.GantryVelocityPresets),
+            ShowMainCameraOnStartup = _showMainCameraOnStartup,
         });
         try
         {

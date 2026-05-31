@@ -28,6 +28,15 @@ public sealed class UEyeCameraAdapter : ICameraHardware
     private int _imageHeight;
     private bool _disposed;
 
+    // Reuse a small ring of frame objects for the live grab loop instead of
+    // allocating a new W*H*3 buffer every frame (which churned the GC at video
+    // rates). Each slot keeps its own ImageData, which CaptureFrame only reallocs
+    // when the size grows; the ring gives async UI readers a few frames of slack.
+    // GrabLoop is the only writer, so the index needs no lock.
+    private const int FrameRingSize = 3;
+    private CameraFrameData[]? _liveFrames;
+    private int _liveFrameIndex;
+
     public UEyeCameraAdapter(CameraInfo info, int deviceId)
     {
         _info = info;
@@ -369,6 +378,15 @@ public sealed class UEyeCameraAdapter : ICameraHardware
         }
     }
 
+    /// <summary>Next reusable live-frame slot (round-robin), lazily allocating the ring once.</summary>
+    private CameraFrameData NextLiveFrame()
+    {
+        _liveFrames ??= new CameraFrameData[FrameRingSize];
+        var frame = _liveFrames[_liveFrameIndex] ??= new CameraFrameData();
+        _liveFrameIndex = (_liveFrameIndex + 1) % FrameRingSize;
+        return frame;
+    }
+
     private void GrabLoop(CancellationToken token)
     {
         var frameDuration = TimeSpan.FromMilliseconds(33); // ~30fps
@@ -386,7 +404,7 @@ public sealed class UEyeCameraAdapter : ICameraHardware
                     var callback = FrameCallback;
                     if (callback != null)
                     {
-                        var frame = new CameraFrameData();
+                        var frame = NextLiveFrame();
                         if (CaptureFrame(frame))
                             callback(frame);
                     }

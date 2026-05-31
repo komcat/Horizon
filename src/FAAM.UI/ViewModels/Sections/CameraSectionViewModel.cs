@@ -47,6 +47,11 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
     private bool _sectionActive;
     private bool _subscribed;
 
+    // Cameras this section holds a grab lease on. Grab is ref-counted in the facet,
+    // so the Stop button must release only what this section started — never another
+    // consumer's lease (e.g. the startup pop-out window).
+    private readonly HashSet<string> _leases = new(StringComparer.Ordinal);
+
     public CameraSectionViewModel(EngineHost host)
     {
         _host = host;
@@ -55,11 +60,11 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
         _selectedCamera = Cameras.Count > 0 ? Cameras[0] : null;
 
         StartCommand = new AsyncRelayCommand(
-            () => RunAsync(c => _host.Engine.Camera.StartGrabbingAsync(c), "Grabbing started"),
-            () => _selectedCamera != null && !_grabbing);
+            StartGrabAsync,
+            () => _selectedCamera != null && !_leases.Contains(_selectedCamera));
         StopCommand = new AsyncRelayCommand(
-            () => RunAsync(c => _host.Engine.Camera.StopGrabbingAsync(c), "Grabbing stopped"),
-            () => _grabbing);
+            StopGrabAsync,
+            () => _selectedCamera != null && _leases.Contains(_selectedCamera));
         ApplyExposureCommand = new AsyncRelayCommand(ApplyExposureAsync, () => _selectedCamera != null);
         SnapCommand = new AsyncRelayCommand(SnapAsync, () => _selectedCamera != null);
         PopOutCommand = new RelayCommand(PopOut);
@@ -82,16 +87,9 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
 
     public bool Connected { get => _connected; private set => SetField(ref _connected, value); }
 
-    public bool Grabbing
-    {
-        get => _grabbing;
-        private set
-        {
-            if (!SetField(ref _grabbing, value)) return;
-            StartCommand.RaiseCanExecuteChanged();
-            StopCommand.RaiseCanExecuteChanged();
-        }
-    }
+    /// <summary>Whether the hardware is grabbing (any consumer) — display only; the
+    /// Start/Stop buttons track this section's own lease, not the global state.</summary>
+    public bool Grabbing { get => _grabbing; private set => SetField(ref _grabbing, value); }
 
     /// <summary>Model · type · serial of the selected camera.</summary>
     public string Info { get => _info; private set => SetField(ref _info, value); }
@@ -175,6 +173,34 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
         AutoExposure = exposure.AutoExposure;
         AutoGain = exposure.AutoGain;
         if (exposure.FrameRate > 0) FrameRate = exposure.FrameRate;
+
+        // Start/Stop reflect this section's lease on the now-selected camera.
+        StartCommand.RaiseCanExecuteChanged();
+        StopCommand.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>Acquires a grab lease for the selected camera (Start button).</summary>
+    private async Task StartGrabAsync()
+    {
+        var camera = _selectedCamera;
+        if (camera == null) return;
+        var result = await _host.Engine.Camera.StartGrabbingAsync(camera).ConfigureAwait(true);
+        if (result.IsSuccess) _leases.Add(camera);
+        StartCommand.RaiseCanExecuteChanged();
+        StopCommand.RaiseCanExecuteChanged();
+        Status = result.IsSuccess ? "Grabbing started" : result.Message;
+    }
+
+    /// <summary>Releases this section's grab lease on the selected camera (Stop button).</summary>
+    private async Task StopGrabAsync()
+    {
+        var camera = _selectedCamera;
+        if (camera == null) return;
+        var result = await _host.Engine.Camera.StopGrabbingAsync(camera).ConfigureAwait(true);
+        if (result.IsSuccess) _leases.Remove(camera);
+        StartCommand.RaiseCanExecuteChanged();
+        StopCommand.RaiseCanExecuteChanged();
+        Status = result.IsSuccess ? "Grabbing stopped" : result.Message;
     }
 
     private async Task RunAsync(Func<string, Task<Result>> operation, string okMessage)
@@ -283,6 +309,13 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+
+        // Release every grab lease this section still holds so the count stays
+        // balanced (the hardware stops only if no other consumer holds a lease).
+        foreach (var cam in _leases)
+            _ = _host.Engine.Camera.StopGrabbingAsync(cam);
+        _leases.Clear();
+
         UpdateSubscription();   // _disposed → detaches the frame hook
         _displayWindow?.Close();
     }

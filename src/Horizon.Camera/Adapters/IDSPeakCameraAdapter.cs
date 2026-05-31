@@ -25,6 +25,15 @@ public sealed class IDSPeakCameraAdapter : ICameraHardware
     private Task? _grabTask;
     private bool _disposed;
 
+    // Reuse a small ring of frame objects for the live grab loop instead of
+    // allocating a new W*H*3 buffer every frame (which churned the GC at video
+    // rates). Each slot keeps its own ImageData, which ConvertBufferToFrame only
+    // reallocs when the size grows; the ring gives async UI readers a few frames of
+    // slack. GrabLoop is the only writer, so the index needs no lock.
+    private const int FrameRingSize = 3;
+    private CameraFrameData[]? _liveFrames;
+    private int _liveFrameIndex;
+
     public IDSPeakCameraAdapter(CameraInfo info)
     {
         _info = info;
@@ -376,6 +385,15 @@ public sealed class IDSPeakCameraAdapter : ICameraHardware
         return null;
     }
 
+    /// <summary>Next reusable live-frame slot (round-robin), lazily allocating the ring once.</summary>
+    private CameraFrameData NextLiveFrame()
+    {
+        _liveFrames ??= new CameraFrameData[FrameRingSize];
+        var frame = _liveFrames[_liveFrameIndex] ??= new CameraFrameData();
+        _liveFrameIndex = (_liveFrameIndex + 1) % FrameRingSize;
+        return frame;
+    }
+
     private void GrabLoop(CancellationToken token)
     {
         while (!token.IsCancellationRequested && _isGrabbing)
@@ -390,7 +408,7 @@ public sealed class IDSPeakCameraAdapter : ICameraHardware
                 var callback = FrameCallback;
                 if (callback != null)
                 {
-                    var frame = new CameraFrameData();
+                    var frame = NextLiveFrame();
                     ConvertBufferToFrame(buffer, frame);
                     callback(frame);
                 }

@@ -25,6 +25,13 @@ internal sealed class CameraFacet : ICameraFacet, ICameraFrameSubscriber, IAsync
     private readonly ConcurrentDictionary<string, long> _frameCounts = new(StringComparer.Ordinal);
     private readonly PollLoop _poll;
 
+    // Grab is ref-counted: many UI consumers (Run wall, Machine camera section,
+    // the startup pop-out window) may each independently want the stream. The
+    // hardware grabs while ≥1 lease is held and stops only when the last is
+    // released, so one consumer stopping never blacks out another's view.
+    private readonly object _grabLock = new();
+    private readonly Dictionary<string, int> _grabLeases = new(StringComparer.Ordinal);
+
     public CameraFacet(
         CameraManager manager,
         Action<HardwareStatusChanged> emitStatus,
@@ -77,15 +84,65 @@ internal sealed class CameraFacet : ICameraFacet, ICameraFrameSubscriber, IAsync
             ? Result.Ok()
             : Result.Fail(ErrorCode.CameraNotFound, $"Camera '{id}' not found."));
 
+    /// <summary>
+    /// Acquires a grab lease for <paramref name="id"/>. The first lease starts the
+    /// hardware grab; subsequent leases are a no-op success. Balance each call with
+    /// a <see cref="StopGrabbingAsync"/>.
+    /// </summary>
     public Task<Result> StartGrabbingAsync(string id)
-        => Task.Run(() => _manager.StartGrabbingWithBroadcast(id)
-            ? Result.Ok()
-            : Result.Fail(ErrorCode.CameraGrabFailed, $"Camera '{id}' failed to start grabbing."));
+        => Task.Run(() =>
+        {
+            bool needStart;
+            lock (_grabLock)
+            {
+                var c = _grabLeases.GetValueOrDefault(id);
+                _grabLeases[id] = c + 1;
+                needStart = c == 0;
+            }
+            if (!needStart)
+                return Result.Ok();   // already grabbing for another lease
 
+            if (_manager.StartGrabbingWithBroadcast(id))
+                return Result.Ok();
+
+            // Hardware refused — roll the lease back so the count stays truthful.
+            lock (_grabLock)
+            {
+                var c = _grabLeases.GetValueOrDefault(id);
+                if (c > 0) _grabLeases[id] = c - 1;
+            }
+            return Result.Fail(ErrorCode.CameraGrabFailed, $"Camera '{id}' failed to start grabbing.");
+        });
+
+    /// <summary>
+    /// Releases a grab lease for <paramref name="id"/>. The hardware grab stops only
+    /// when the last lease is released. A release with no outstanding lease is a
+    /// harmless no-op (it never stops another consumer's stream).
+    /// </summary>
     public Task<Result> StopGrabbingAsync(string id)
-        => Task.Run(() => _manager.StopGrabbing(id)
-            ? Result.Ok()
-            : Result.Fail(ErrorCode.CameraGrabFailed, $"Camera '{id}' failed to stop grabbing."));
+        => Task.Run(() =>
+        {
+            bool needStop;
+            lock (_grabLock)
+            {
+                var c = _grabLeases.GetValueOrDefault(id);
+                if (c <= 0)
+                {
+                    needStop = false;   // nothing to release — don't underflow or stop hardware
+                }
+                else
+                {
+                    _grabLeases[id] = c - 1;
+                    needStop = c - 1 == 0;
+                }
+            }
+            if (!needStop)
+                return Result.Ok();
+
+            return _manager.StopGrabbing(id)
+                ? Result.Ok()
+                : Result.Fail(ErrorCode.CameraGrabFailed, $"Camera '{id}' failed to stop grabbing.");
+        });
 
     public Task<Result> ApplyExposureAsync(string id, CameraExposure exposure)
         => Task.Run(() =>

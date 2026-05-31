@@ -85,9 +85,13 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <TextBox Width="130" Margin="0,0,6,0" VerticalAlignment="Center"
                              Text="{Binding NewPositionName, UpdateSourceTrigger=PropertyChanged}"
-                             ToolTip="Name to save the current pose under (new, or overwrite existing)" />
-                    <Button Content="Save current" Height="26" Padding="12,0"
-                            Command="{Binding SaveNewPositionCommand}" />
+                             ToolTip="Name for the new position (or an existing one to overwrite)" />
+                    <Button Content="Save current" Height="26" Padding="12,0" Margin="0,0,6,0"
+                            Command="{Binding SaveNewPositionCommand}"
+                            ToolTip="Capture the device's CURRENT pose under this name" />
+                    <Button Content="Add…" Height="26" Padding="12,0"
+                            Command="{Binding AddPositionCommand}"
+                            ToolTip="Add by typing coordinates (velocity, camera, exposure) — no need to jog there" />
                 </StackPanel>
             </Grid>
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">

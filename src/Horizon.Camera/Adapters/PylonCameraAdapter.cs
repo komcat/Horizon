@@ -16,6 +16,16 @@ public sealed class PylonCameraAdapter : ICameraHardware
     private PixelDataConverter? _converter;
     private bool _disposed;
 
+    // Frame buffers are reused round-robin instead of allocating ~W*H*3 bytes every
+    // frame (that churned the GC hard at video rates). A small ring gives the async
+    // UI readers — which render the latest frame on the dispatcher — a few frames of
+    // slack before a buffer is overwritten. All grab callbacks fire on Pylon's single
+    // grab thread, so the index needs no lock.
+    private const int FrameRingSize = 3;
+    private byte[][]? _frameRing;
+    private int _frameRingBytes;
+    private int _frameRingIndex;
+
     public PylonCameraAdapter(CameraInfo info)
     {
         _info = info;
@@ -330,10 +340,31 @@ public sealed class PylonCameraAdapter : ICameraHardware
         };
 
         var size = frame.Width * frame.Height * 3;
-        frame.ImageData = new byte[size];
+        frame.ImageData = RentFrameBuffer(size);
         _converter?.Convert(frame.ImageData, grabResult);
 
         callback(frame);
+    }
+
+    /// <summary>
+    /// Returns the next ring buffer of <paramref name="size"/> bytes, (re)allocating
+    /// the ring only when the frame size changes. Eliminates the per-frame
+    /// allocation that drove gen-0 GC at video rates.
+    /// </summary>
+    private byte[] RentFrameBuffer(int size)
+    {
+        if (_frameRing == null || _frameRingBytes != size)
+        {
+            _frameRing = new byte[FrameRingSize][];
+            for (int i = 0; i < FrameRingSize; i++)
+                _frameRing[i] = new byte[size];
+            _frameRingBytes = size;
+            _frameRingIndex = 0;
+        }
+
+        var buffer = _frameRing[_frameRingIndex];
+        _frameRingIndex = (_frameRingIndex + 1) % FrameRingSize;
+        return buffer;
     }
 
     private void FillFrameData(IGrabResult grabResult, CameraFrameData frameData)

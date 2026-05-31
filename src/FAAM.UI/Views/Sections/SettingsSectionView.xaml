@@ -77,6 +77,12 @@
                          ToolTip="Comma-separated, e.g. 1, 5, 10, 20, 40, 75" />
             </Grid>
 
+            <TextBlock Text="Camera" Foreground="{StaticResource Text}"
+                       FontSize="14" FontWeight="SemiBold" Margin="0,14,0,8" />
+            <CheckBox Content="Pop up the main_camera window automatically on startup"
+                      Foreground="{StaticResource Text}" Margin="0,0,0,4"
+                      IsChecked="{Binding ShowMainCameraOnStartup}" />
+
             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                 <Button Content="Save" Width="90" Height="30" Command="{Binding SaveCommand}" />
                 <Button Content="Reload" Width="90" Height="30" Margin="8,0,0,0" Command="{Binding ReloadCommand}" />

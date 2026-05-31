@@ -36,4 +36,32 @@ public sealed record AppSettings
 
     /// <summary>Jog velocity presets for ACS / gantry-family devices (everything else).</summary>
     public double[] GantryVelocityPresets { get; init; } = { 1, 5, 10, 20, 40, 75 };
+
+    // --- Camera ---
+
+    /// <summary>
+    /// When true, FAAM auto-starts the <c>main_camera</c> grab and pops up its live
+    /// window as soon as the application has started (engine connected). Independent
+    /// of any process-program run.
+    /// </summary>
+    public bool ShowMainCameraOnStartup { get; init; } = true;
+
+    // --- Window persistence (restored on next launch) ---
+
+    /// <summary>Main shell window placement, or null if never saved.</summary>
+    public WindowPlacement? MainWindow { get; init; }
+
+    /// <summary>Camera pop-out windows that were open at last exit — reopened on launch.</summary>
+    public CameraWindowPlacement[] CameraWindows { get; init; } = Array.Empty<CameraWindowPlacement>();
+
+    // --- Engineer page ---
+
+    /// <summary>Name of the last loaded / saved process program — reloaded on launch. Empty = none.</summary>
+    public string LastProgram { get; init; } = string.Empty;
 }
+
+/// <summary>Saved bounds + maximized state of a window.</summary>
+public sealed record WindowPlacement(double Left, double Top, double Width, double Height, bool Maximized);
+
+/// <summary>A saved camera pop-out window — which camera it showed and where.</summary>
+public sealed record CameraWindowPlacement(string Camera, double Left, double Top, double Width, double Height);
