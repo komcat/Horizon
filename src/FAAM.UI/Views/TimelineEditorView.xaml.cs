@@ -123,4 +123,16 @@ public partial class TimelineEditorView : UserControl
 
     private void OnHistory(object sender, RoutedEventArgs e)
         => new ProgramHistoryWindow(_host, _vm.ProgramName) { Owner = Window.GetWindow(this) }.Show();
+
+    private void OnCopyUid(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SelectedBlock is { } block)
+            try { Clipboard.SetText(block.Id); } catch { /* clipboard busy — ignore */ }
+    }
+
+    private void OnQueryUid(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SelectedBlock is { } block)
+            new ProgramHistoryWindow(_host, _vm.ProgramName, block.Id) { Owner = Window.GetWindow(this) }.Show();
+    }
 }

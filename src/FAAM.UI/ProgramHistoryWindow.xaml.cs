@@ -12,11 +12,13 @@ namespace FAAM.UI;
 /// </summary>
 public partial class ProgramHistoryWindow : Window
 {
+    private readonly EngineHost _host;
     private readonly ProgramHistory _history;
 
-    public ProgramHistoryWindow(EngineHost host, string program)
+    public ProgramHistoryWindow(EngineHost host, string program, string? queryUid = null)
     {
         InitializeComponent();
+        _host = host;
         _history = host.Process.GetProgramHistory(program) ?? new ProgramHistory { Program = program };
         HeaderText.Text = $"History — '{program}'   ({_history.Versions.Count} revision(s))";
 
@@ -25,6 +27,14 @@ public partial class ProgramHistoryWindow : Window
             VersionList.SelectedIndex = 0;
         else
             DiffHeader.Text = "No saved revisions yet.";
+
+        // Opened from a block's "Query" action — jump to the Query tab pre-filled.
+        if (!string.IsNullOrWhiteSpace(queryUid))
+        {
+            HistoryTabs.SelectedIndex = 1;
+            UidBox.Text = queryUid;
+            RunQuery();
+        }
     }
 
     private List<VersionRow> BuildVersionRows()
@@ -58,6 +68,43 @@ public partial class ProgramHistoryWindow : Window
             .ToList();
     }
 
+    // --- cross-program query ---
+
+    private void OnSearch(object sender, RoutedEventArgs e) => RunQuery();
+
+    private void RunQuery()
+    {
+        var query = new HistoryQuery
+        {
+            BlockUid = Nz(UidBox.Text),
+            ParamKey = Nz(KeyBox.Text),
+            Device = Nz(DeviceBox.Text),
+            OperatorId = Nz(OperatorBox.Text),
+            Program = Nz(ProgramBox.Text),
+        };
+
+        var rows = _host.Process.QueryHistory(query)
+            .Select(r => new ResultRow(
+                r.SavedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
+                r.Product, r.Program, "v" + r.Version, r.OperatorName ?? "—",
+                ShortUid(r.BlockUid), r.Op, r.Device, r.Key, r.Value))
+            .ToList();
+
+        ResultsGrid.ItemsSource = rows;
+        QueryStatus.Text = rows.Count == 0
+            ? "No matching parameter history."
+            : $"{rows.Count} row(s)" + (rows.Count >= 2000 ? " (capped at 2000)." : ".");
+    }
+
+    private void OnClearQuery(object sender, RoutedEventArgs e)
+    {
+        UidBox.Clear(); KeyBox.Clear(); DeviceBox.Clear(); OperatorBox.Clear(); ProgramBox.Clear();
+        ResultsGrid.ItemsSource = null;
+        QueryStatus.Text = "Enter a filter and Search.";
+    }
+
+    private static string? Nz(string s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
     private static string Who(ProgramVersion v)
         => string.IsNullOrEmpty(v.OperatorName) ? (v.OperatorId ?? "—") : v.OperatorName;
 
@@ -66,4 +113,8 @@ public partial class ProgramHistoryWindow : Window
     private sealed record VersionRow(string Header, int Index, ProgramVersion Version);
 
     private sealed record DiffRow(string Kind, string Label, string Uid, string Detail);
+
+    private sealed record ResultRow(
+        string When, string Product, string Program, string Version, string Operator,
+        string Uid, string Op, string Device, string Key, string Value);
 }

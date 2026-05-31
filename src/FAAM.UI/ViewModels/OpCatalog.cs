@@ -12,7 +12,7 @@ public enum DeviceKind { None, Motion, Io, Pneumatic, Camera }
 /// options are filled by the block (positions from the chosen device, the axis
 /// list, or Set/Clear); the rest are a text box / number box / check box.
 /// </summary>
-public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin }
+public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName }
 
 /// <summary>One parameter of an op — its persisted key, a display label, the editor widget, and a default value.</summary>
 public sealed record ParamSpec(string Key, string Label, ParamKind Kind, string Default = "");
@@ -43,13 +43,24 @@ public static class OpCatalog
     public static readonly OpSpec[] All =
     {
         // ---- Motion ----
+        // 'velocity' (mm/s) is an optional per-step override applied before the move;
+        // 0 = use the current/position velocity. Capped to the controller type's range.
         new("motion.moveToPosition", "Move to Position", "Motion", DeviceKind.Motion,
-            new[] { new ParamSpec("position", "Position", ParamKind.PositionName) }),
+            new[]
+            {
+                new ParamSpec("position", "Position", ParamKind.PositionName),
+                new ParamSpec("velocity", "Velocity (mm/s, 0=current)", ParamKind.Number, "0"),
+                new ParamSpec("camera", "Camera (optional)", ParamKind.CameraName),
+                new ParamSpec("exposure", "Exposure (µs, 0=skip)", ParamKind.Number, "0"),
+            }),
         new("motion.moveRelative", "Move Relative", "Motion", DeviceKind.Motion,
             new[]
             {
                 new ParamSpec("axis", "Axis", ParamKind.AxisName, "X"),
                 new ParamSpec("distance", "Distance (mm)", ParamKind.Number, "0"),
+                new ParamSpec("velocity", "Velocity (mm/s, 0=current)", ParamKind.Number, "0"),
+                new ParamSpec("camera", "Camera (optional)", ParamKind.CameraName),
+                new ParamSpec("exposure", "Exposure (µs, 0=skip)", ParamKind.Number, "0"),
             }),
         new("motion.setVelocity", "Set Velocity", "Motion", DeviceKind.Motion,
             new[] { new ParamSpec("speed", "Speed (mm/s)", ParamKind.Number, "10") }),

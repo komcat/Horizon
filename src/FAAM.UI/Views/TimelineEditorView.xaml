@@ -267,9 +267,15 @@
                         <StackPanel Margin="14,12" DataContext="{Binding SelectedBlock}">
                             <TextBlock Text="{Binding Display}" Foreground="{StaticResource Accent}"
                                        FontWeight="SemiBold" FontSize="14" Margin="0,0,0,2" />
-                            <TextBlock Text="{Binding Id, StringFormat='UID  {0}'}" Foreground="{StaticResource Subtle}"
-                                       FontFamily="Consolas" FontSize="9" TextTrimming="CharacterEllipsis"
-                                       ToolTip="{Binding Id}" Margin="0,0,0,8" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="{Binding Id, StringFormat='UID  {0}'}" Foreground="{StaticResource Subtle}"
+                                           FontFamily="Consolas" FontSize="9" TextTrimming="CharacterEllipsis" MaxWidth="150"
+                                           ToolTip="{Binding Id}" VerticalAlignment="Center" />
+                                <Button Content="Copy" Width="40" Height="20" Padding="0" FontSize="9" Margin="6,0,0,0"
+                                        Click="OnCopyUid" ToolTip="Copy this block's UID" />
+                                <Button Content="Query" Width="46" Height="20" Padding="0" FontSize="9" Margin="4,0,0,0"
+                                        Click="OnQueryUid" ToolTip="Open History → Query, filtered to this UID" />
+                            </StackPanel>
 
                             <TextBlock Text="Name (optional)" Foreground="{StaticResource Subtle}" Margin="0,0,0,2" />
                             <TextBox Margin="0,0,0,8" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
@@ -282,6 +288,10 @@
 
                             <ItemsControl ItemsSource="{Binding Params}"
                                           ItemTemplateSelector="{StaticResource ParamSelector}" />
+
+                            <TextBlock Text="{Binding VelocityHint}" Foreground="{StaticResource Subtle}"
+                                       FontSize="10" TextWrapping="Wrap" Margin="0,-2,0,10"
+                                       Visibility="{Binding ShowVelocityHint, Converter={StaticResource BoolToVis}}" />
 
                             <Border Visibility="{Binding HasPositionPreview, Converter={StaticResource BoolToVis}}"
                                     Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"

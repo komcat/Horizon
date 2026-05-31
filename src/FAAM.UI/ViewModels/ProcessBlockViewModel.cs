@@ -154,6 +154,26 @@ public sealed class ProcessBlockViewModel : ObservableObject
             RefreshDeviceParamOptions();
             RefreshPositionPreview();
             EditPositionCommand.RaiseCanExecuteChanged();
+            OnPropertyChanged(nameof(VelocityHint));
+            OnPropertyChanged(nameof(ShowVelocityHint));
+        }
+    }
+
+    /// <summary>True when this op has a velocity field and a motion device is chosen.</summary>
+    public bool ShowVelocityHint
+        => Params.Any(p => string.Equals(p.Key, "velocity", StringComparison.OrdinalIgnoreCase))
+           && Spec.DeviceKind == DeviceKind.Motion && !string.IsNullOrEmpty(_selectedDevice);
+
+    /// <summary>The allowed velocity range for the selected device's controller type.</summary>
+    public string VelocityHint
+    {
+        get
+        {
+            if (!ShowVelocityHint) return string.Empty;
+            var type = _host.Engine.Motion.GetDevice(_selectedDevice!)?.ControllerType;
+            var (min, max) = MotionVelocityLimits.For(type);
+            var family = string.Equals(type, "PI", StringComparison.OrdinalIgnoreCase) ? "PI" : "ACS";
+            return $"Allowed {min:0.##}–{max:0.##} mm/s ({family}); 0 = current velocity.";
         }
     }
 
@@ -210,6 +230,9 @@ public sealed class ProcessBlockViewModel : ObservableObject
                             .Select(op => op.Name)
                             .Where(n => !string.IsNullOrWhiteSpace(n));
                     p.SetOptions(pins);
+                    break;
+                case ParamKind.CameraName:
+                    p.SetOptions(_host.Engine.Camera.CameraIds);   // global, device-independent
                     break;
             }
         }

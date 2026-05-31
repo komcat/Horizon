@@ -372,6 +372,28 @@ public sealed class TimelineEditorViewModel : ObservableObject
     /// distance; an expression value (<c>{..}</c>) is allowed since it resolves at
     /// run time. The caller selects the offending block so the operator can fix it.
     /// </summary>
+    /// <summary>
+    /// Clamps every motion block's velocity field to its device's controller range
+    /// (writing the capped value back so the operator sees it). 0 / blank / expression
+    /// values pass through. Called before save and run.
+    /// </summary>
+    private void ClampVelocities()
+    {
+        foreach (var lane in Lanes)
+            foreach (var cell in lane.Cells)
+                foreach (var block in cell.Blocks)
+                {
+                    var vp = block.Params.FirstOrDefault(p => string.Equals(p.Key, "velocity", StringComparison.OrdinalIgnoreCase));
+                    if (vp == null || string.IsNullOrWhiteSpace(vp.StringValue) || vp.StringValue.Contains('{')) continue;
+                    if (!double.TryParse(vp.StringValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) || v <= 0) continue;
+
+                    var type = _host.Engine.Motion.GetDevice(block.SelectedDevice ?? string.Empty)?.ControllerType;
+                    var clamped = MotionVelocityLimits.Clamp(v, type);
+                    if (Math.Abs(clamped - v) > 1e-9)
+                        vp.StringValue = clamped.ToString(CultureInfo.InvariantCulture);
+                }
+    }
+
     private ProcessBlockViewModel? FirstInvalidBlock(out string reason)
     {
         foreach (var lane in Lanes)
@@ -397,6 +419,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(ProgramName)) { Status = "Program name is required."; return; }
 
+        ClampVelocities();
         var invalid = FirstInvalidBlock(out var why);
         if (invalid != null) { SelectedBlock = invalid; Status = $"Can't save — {why}"; return; }
 
@@ -463,6 +486,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     {
         if (IsRunning) return;
 
+        ClampVelocities();
         var invalid = FirstInvalidBlock(out var why);
         if (invalid != null) { SelectedBlock = invalid; Status = $"Can't run — {why}"; return; }
 
