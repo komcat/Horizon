@@ -100,6 +100,12 @@ public interface IProcessService
     ProgramHistory? GetProgramHistory(string name);
 
     /// <summary>
+    /// Cross-program history query (machine-global) — filter saved block parameters by
+    /// UID / key / device / operator / product / program for traceability. Newest first.
+    /// </summary>
+    IReadOnlyList<HistoryRow> QueryHistory(HistoryQuery query);
+
+    /// <summary>
     /// Front-end-supplied operator-prompt handler — the bidirectional callback
     /// the runner blocks on for <c>flow.askUser</c> steps. Null when no
     /// front-end is registered: a program containing an <c>askUser</c> step

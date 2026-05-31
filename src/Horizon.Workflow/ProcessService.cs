@@ -219,7 +219,18 @@ public sealed class ProcessService : IProcessService
         return Result.Ok();
     }
 
-    public async Task<Result> MoveToNamedPositionAsync(string device, string name, CancellationToken ct = default)
+    public Task<Result> MoveToNamedPositionAsync(string device, string name, CancellationToken ct = default)
+        => MoveToNamedPositionCoreAsync(device, name, new MoveOverrides(), ct);
+
+    /// <summary>
+    /// Recalls a named position, applying the step's <see cref="MoveOverrides"/> at the
+    /// start of the move: a velocity / camera / exposure given on the step takes
+    /// precedence over the position's stored values; anything left default falls back
+    /// to the position's. The camera exposure is applied while the stage is already
+    /// travelling. This is the back-end for the move ops' velocity / camera fields.
+    /// </summary>
+    private async Task<Result> MoveToNamedPositionCoreAsync(
+        string device, string name, MoveOverrides overrides, CancellationToken ct)
     {
         if (_positions == null)
             return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
@@ -228,43 +239,29 @@ public sealed class ProcessService : IProcessService
         if (np == null)
             return Result.Fail(ErrorCode.FileNotFound, $"Position '{name}' not found for '{device}'.");
 
-        // 1) Apply the position's velocity BEFORE moving (0 = leave unchanged).
-        if (np.Velocity > 0)
+        // 1) Apply velocity BEFORE moving — the step override wins over the position's
+        //    stored velocity; 0 leaves the device's current velocity unchanged.
+        var velocity = MotionVelocityLimits.Clamp(
+            overrides.Velocity > 0 ? overrides.Velocity : np.Velocity,
+            _engine.Motion.GetDevice(device)?.ControllerType);
+        if (velocity > 0)
         {
-            var vel = await _engine.Motion.SetDeviceVelocityAsync(device, np.Velocity).ConfigureAwait(false);
+            var vel = await _engine.Motion.SetDeviceVelocityAsync(device, velocity).ConfigureAwait(false);
             if (!vel.IsSuccess)
                 return Result.Fail(vel.Error, $"Move {device} -> '{name}': velocity — {vel.Message}");
-            Log(LogLevel.Info, $"Velocity set: {device} = {np.Velocity}");
+            Log(LogLevel.Info, $"Velocity set: {device} = {velocity}");
         }
 
-        // 2) Start the move (do not await yet) so the camera exposure can be
-        //    applied AFTER the move has started — i.e. while the stage travels.
+        // 2) Start the move (do not await yet) so the camera exposure can be applied
+        //    AFTER the move has started — i.e. while the stage travels.
         Log(LogLevel.Info, $"Move {device} -> '{name}'");
         var moveTask = _engine.Motion.MoveToPositionAsync(device, np.Coordinates, ct);
 
-        // 3) While moving, retune the camera exposure (leaving gain / frame rate
-        //    as-is). A camera failure is logged but never fails the move — and is
-        //    caught so the in-flight move is always awaited below.
-        if (!string.IsNullOrWhiteSpace(np.Camera) && np.ExposureUs is > 0)
-        {
-            try
-            {
-                // A position that pins an exposure means "use exactly this" — so
-                // auto-exposure must be turned off, otherwise the camera keeps
-                // auto-adjusting and the pinned value is ignored (the adapter does
-                // not write a manual exposure while AutoExposure is on).
-                var current = _engine.Camera.GetState(np.Camera).Exposure;
-                var applied = await _engine.Camera
-                    .ApplyExposureAsync(np.Camera, current with { ExposureUs = np.ExposureUs.Value, AutoExposure = false })
-                    .ConfigureAwait(false);
-                Log(applied.IsSuccess ? LogLevel.Info : LogLevel.Warning,
-                    $"Exposure {np.Camera} = {np.ExposureUs}µs: {(applied.IsSuccess ? "ok" : applied.Message)}");
-            }
-            catch (Exception ex)
-            {
-                Log(LogLevel.Warning, $"Exposure {np.Camera} = {np.ExposureUs}µs: {ex.Message}");
-            }
-        }
+        // 3) While moving, apply the camera exposure — step override wins, else the
+        //    position's pinned camera / exposure. Never fails the move.
+        var camera = string.IsNullOrWhiteSpace(overrides.Camera) ? np.Camera : overrides.Camera;
+        var exposure = overrides.ExposureUs ?? np.ExposureUs;
+        await MoveExposure.ApplyAsync(_engine.Camera, camera, exposure, Log).ConfigureAwait(false);
 
         // 4) Wait for the move to settle and return its result.
         return await moveTask.ConfigureAwait(false);
@@ -319,6 +316,8 @@ public sealed class ProcessService : IProcessService
         var product = _products.ActiveProduct;
         return product == null ? null : _history.Load(product, name);
     }
+
+    public IReadOnlyList<HistoryRow> QueryHistory(HistoryQuery query) => _history.Query(query);
 
     /// <summary>
     /// Logs (non-fatally) any taught-position reference in the program that does not
@@ -375,7 +374,7 @@ public sealed class ProcessService : IProcessService
 
         var runner = new WorkflowRunner(
             _engine,
-            MoveToNamedPositionAsync,
+            MoveToNamedPositionCoreAsync,
             name => _programs?.Load(name),
             (device, name) => _positions?.Get(device, name),
             SaveNamedPosition,
@@ -616,7 +615,7 @@ public sealed class ProcessService : IProcessService
         pause.PausedChanged += OnPausedChanged;
         _pause = pause;
 
-        var registry = new RecipeMethodRegistry(_engine, MoveToNamedPositionAsync, OperatorPrompt, Log);
+        var registry = new RecipeMethodRegistry(_engine, MoveToNamedPositionCoreAsync, OperatorPrompt, Log);
         var interpreter = new RecipeInterpreter(registry, pause, Log);
 
         Log(LogLevel.Info, $"Recipe started: {name}");
@@ -688,7 +687,7 @@ public sealed class ProcessService : IProcessService
         // pause / step works across the deck just as it does within a program.
         var runner = new WorkflowRunner(
             _engine,
-            MoveToNamedPositionAsync,
+            MoveToNamedPositionCoreAsync,
             name => _programs?.Load(name),
             (device, name) => _positions?.Get(device, name),
             SaveNamedPosition,

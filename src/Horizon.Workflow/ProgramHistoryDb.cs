@@ -105,6 +105,55 @@ public sealed class ProgramHistoryDb
         return history;
     }
 
+    /// <summary>
+    /// Cross-program query over the normalized block/param tables. Each result row is
+    /// one parameter value of a block in a revision matching the (AND-combined)
+    /// filters. Newest first, capped at 2000 rows.
+    /// </summary>
+    public IReadOnlyList<HistoryRow> Query(HistoryQuery q)
+    {
+        var rows = new List<HistoryRow>();
+        if (!_available) return rows;
+
+        var where = new List<string>();
+        void Filter(string? value, string sql) { if (!string.IsNullOrWhiteSpace(value)) where.Add(sql); }
+        Filter(q.BlockUid, "p.block_uid = $uid");
+        Filter(q.ParamKey, "p.key = $key");
+        Filter(q.Device, "r.device = $device");
+        Filter(q.OperatorId, "v.operator_id = $op");
+        Filter(q.Product, "v.product = $product");
+        Filter(q.Program, "v.program = $program");
+
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            @"SELECT v.product, v.program, v.version, v.saved_utc, v.operator_name,
+                     p.block_uid, r.op, r.device, p.key, p.value
+              FROM block_param p
+              JOIN program_version v ON v.id = p.version_id
+              JOIN block_revision r ON r.version_id = p.version_id AND r.block_uid = p.block_uid"
+            + (where.Count > 0 ? " WHERE " + string.Join(" AND ", where) : "")
+            + " ORDER BY v.saved_utc DESC, v.program, p.key LIMIT 2000";
+
+        if (!string.IsNullOrWhiteSpace(q.BlockUid)) cmd.Parameters.AddWithValue("$uid", q.BlockUid);
+        if (!string.IsNullOrWhiteSpace(q.ParamKey)) cmd.Parameters.AddWithValue("$key", q.ParamKey);
+        if (!string.IsNullOrWhiteSpace(q.Device)) cmd.Parameters.AddWithValue("$device", q.Device);
+        if (!string.IsNullOrWhiteSpace(q.OperatorId)) cmd.Parameters.AddWithValue("$op", q.OperatorId);
+        if (!string.IsNullOrWhiteSpace(q.Product)) cmd.Parameters.AddWithValue("$product", q.Product);
+        if (!string.IsNullOrWhiteSpace(q.Program)) cmd.Parameters.AddWithValue("$program", q.Program);
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            rows.Add(new HistoryRow(
+                reader.GetString(0), reader.GetString(1), reader.GetInt32(2),
+                DateTime.Parse(reader.GetString(3), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.GetString(5), reader.IsDBNull(6) ? "" : reader.GetString(6),
+                reader.IsDBNull(7) ? "" : reader.GetString(7),
+                reader.GetString(8), reader.IsDBNull(9) ? "" : reader.GetString(9)));
+        return rows;
+    }
+
     // --- internals ---
 
     private SqliteConnection Open()

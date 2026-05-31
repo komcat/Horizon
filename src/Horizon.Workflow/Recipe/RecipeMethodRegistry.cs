@@ -38,13 +38,13 @@ internal sealed class RecipeMethodRegistry : IRecipeMethodInvoker
 {
     private readonly Dictionary<string, RecipeMethod> _methods = new(StringComparer.OrdinalIgnoreCase);
     private readonly IHorizonEngine _engine;
-    private readonly Func<string, string, CancellationToken, Task<Result>> _moveToNamed;
+    private readonly Func<string, string, MoveOverrides, CancellationToken, Task<Result>> _moveToNamed;
     private readonly IOperatorPrompt? _prompt;
     private readonly Action<LogLevel, string> _log;
 
     public RecipeMethodRegistry(
         IHorizonEngine engine,
-        Func<string, string, CancellationToken, Task<Result>> moveToNamed,
+        Func<string, string, MoveOverrides, CancellationToken, Task<Result>> moveToNamed,
         IOperatorPrompt? prompt,
         Action<LogLevel, string> log)
     {
@@ -268,7 +268,7 @@ internal sealed class RecipeMethodRegistry : IRecipeMethodInvoker
         Register("motion", "moveRelative", Hw("motion", (d, a, ctx, ct) =>
             _engine.Motion.MoveRelativeAsync(d, a.Text("axis"), a.Number("distance"), ct)));
         Register("motion", "moveToPosition", Hw("motion", (d, a, ctx, ct) =>
-            _moveToNamed(d, a.Text("position"), ct)));
+            _moveToNamed(d, a.Text("position"), new MoveOverrides(), ct)));
         Register("motion", "setVelocity", Hw("motion", (d, a, ctx, ct) =>
             _engine.Motion.SetDeviceVelocityAsync(d, a.Number("speed"))));
         Register("motion", "setAxisVelocity", Hw("motion", (d, a, ctx, ct) =>

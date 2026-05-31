@@ -25,7 +25,7 @@ internal sealed class WorkflowRunner
 
     public WorkflowRunner(
         IHorizonEngine engine,
-        Func<string, string, CancellationToken, Task<Result>> moveToNamed,
+        Func<string, string, MoveOverrides, CancellationToken, Task<Result>> moveToNamed,
         Func<string, WorkflowProgram?> loadProgram,
         Func<string, string, NamedPosition?> getPosition,
         Func<string, string, MotionPosition, double, Result> savePosition,

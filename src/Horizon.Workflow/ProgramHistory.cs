@@ -23,6 +23,33 @@ public sealed record ProgramHistory
     public ProgramVersion? Latest => Versions.Count == 0 ? null : Versions[^1];
 }
 
+/// <summary>
+/// Filters for a cross-program history query (all fields optional / AND-combined).
+/// An empty query returns the whole history (capped). Used by
+/// <see cref="IProcessService.QueryHistory"/>.
+/// </summary>
+public sealed record HistoryQuery
+{
+    /// <summary>Exact block UID (e.g. <c>blk-…</c>).</summary>
+    public string? BlockUid { get; init; }
+    /// <summary>Exact parameter key (e.g. <c>distance</c>).</summary>
+    public string? ParamKey { get; init; }
+    /// <summary>Exact device / lane.</summary>
+    public string? Device { get; init; }
+    /// <summary>Exact operator id.</summary>
+    public string? OperatorId { get; init; }
+    /// <summary>Exact product.</summary>
+    public string? Product { get; init; }
+    /// <summary>Exact program name.</summary>
+    public string? Program { get; init; }
+}
+
+/// <summary>One matched parameter value of a block in a revision — a history query result row.</summary>
+public sealed record HistoryRow(
+    string Product, string Program, int Version, DateTime SavedUtc,
+    string? OperatorName, string BlockUid, string Op, string Device,
+    string Key, string Value);
+
 /// <summary>How a block changed between two revisions.</summary>
 public enum BlockChangeKind { Added, Removed, Changed }
 

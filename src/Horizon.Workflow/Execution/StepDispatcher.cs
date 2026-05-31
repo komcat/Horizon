@@ -16,7 +16,8 @@ namespace Horizon.Workflow;
 internal sealed class StepDispatcher
 {
     private readonly IHorizonEngine _engine;
-    private readonly Func<string, string, CancellationToken, Task<Result>> _moveToNamed;
+    // (device, position, overrides, ct) — overrides carry the optional velocity / camera / exposure.
+    private readonly Func<string, string, MoveOverrides, CancellationToken, Task<Result>> _moveToNamed;
     private readonly Func<string, string, NamedPosition?> _getPosition;
     private readonly Func<string, string, MotionPosition, double, Result> _savePosition;
     private readonly DeviceLinkStore _deviceLinks;
@@ -24,7 +25,7 @@ internal sealed class StepDispatcher
 
     public StepDispatcher(
         IHorizonEngine engine,
-        Func<string, string, CancellationToken, Task<Result>> moveToNamed,
+        Func<string, string, MoveOverrides, CancellationToken, Task<Result>> moveToNamed,
         Func<string, string, NamedPosition?> getPosition,
         Func<string, string, MotionPosition, double, Result> savePosition,
         DeviceLinkStore deviceLinks,
@@ -46,7 +47,7 @@ internal sealed class StepDispatcher
                 return await _engine.Motion.SetDeviceVelocityAsync(step.Device, Num(step, "speed", ctx));
 
             case "motion.movetoposition":
-                return await _moveToNamed(step.Device, Str(step, "position", ctx), ct);
+                return await _moveToNamed(step.Device, Str(step, "position", ctx), MoveOverridesOf(step, ctx), ct);
 
             case "motion.parallelmove":
             {
@@ -56,7 +57,7 @@ internal sealed class StepDispatcher
                     if (!step.Parameters.TryGetValue($"device{i}", out var dev) || string.IsNullOrWhiteSpace(dev))
                         break;
                     var posName = step.Parameters.GetValueOrDefault($"position{i}", string.Empty);
-                    tasks.Add(_moveToNamed(dev, posName, ct));
+                    tasks.Add(_moveToNamed(dev, posName, new MoveOverrides(), ct));
                 }
                 if (tasks.Count == 0) return Result.Ok();
                 var results = await Task.WhenAll(tasks).ConfigureAwait(false);
@@ -69,8 +70,24 @@ internal sealed class StepDispatcher
                 if (distance == 0)
                     return Result.Fail(ErrorCode.InvalidParameter,
                         "Move Relative distance must be non-zero.");
-                return await _engine.Motion.MoveRelativeAsync(
-                    step.Device, Str(step, "axis", ctx), distance, ct);
+
+                var ov = MoveOverridesOf(step, ctx);
+
+                // Optional per-step velocity (mm/s); 0 = leave the device's current
+                // velocity. Clamped to the controller type's range as a safety net.
+                var velocity = MotionVelocityLimits.Clamp(
+                    ov.Velocity, _engine.Motion.GetDevice(step.Device)?.ControllerType);
+                if (velocity > 0)
+                {
+                    var setVel = await _engine.Motion.SetDeviceVelocityAsync(step.Device, velocity);
+                    if (!setVel.IsSuccess) return setVel;
+                }
+
+                // Start the move, then apply the camera exposure WHILE it travels, then
+                // wait for it to settle — the ~300 ms exposure overlaps the move.
+                var moveTask = _engine.Motion.MoveRelativeAsync(step.Device, Str(step, "axis", ctx), distance, ct);
+                await MoveExposure.ApplyAsync(_engine.Camera, ov.Camera, ov.ExposureUs, _log).ConfigureAwait(false);
+                return await moveTask.ConfigureAwait(false);
             }
 
             case "motion.stop":
@@ -682,6 +699,17 @@ internal sealed class StepDispatcher
     /// <summary>Power-supply channel (1-based) — defaults to channel 1 when omitted.</summary>
     private static int PsuChannel(WorkflowStep step, WorkflowContext ctx)
         => Has(step, "channel") ? (int)Num(step, "channel", ctx) : 1;
+
+    /// <summary>Reads the optional velocity / camera / exposure params of a move step.</summary>
+    private static MoveOverrides MoveOverridesOf(WorkflowStep step, WorkflowContext ctx)
+    {
+        var camera = Str(step, "camera", ctx);
+        var exposure = Num(step, "exposure", ctx);
+        return new MoveOverrides(
+            Num(step, "velocity", ctx),
+            string.IsNullOrWhiteSpace(camera) ? null : camera,
+            exposure > 0 ? exposure : null);
+    }
 
     private static string Str(WorkflowStep step, string key, WorkflowContext ctx)
     {
