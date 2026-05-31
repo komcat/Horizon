@@ -64,8 +64,14 @@ internal sealed class StepDispatcher
             }
 
             case "motion.moverelative":
+            {
+                var distance = Num(step, "distance", ctx);
+                if (distance == 0)
+                    return Result.Fail(ErrorCode.InvalidParameter,
+                        "Move Relative distance must be non-zero.");
                 return await _engine.Motion.MoveRelativeAsync(
-                    step.Device, Str(step, "axis", ctx), Num(step, "distance", ctx), ct);
+                    step.Device, Str(step, "axis", ctx), distance, ct);
+            }
 
             case "motion.stop":
                 return await _engine.Motion.StopAsync(step.Device);

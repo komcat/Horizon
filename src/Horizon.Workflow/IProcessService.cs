@@ -90,8 +90,14 @@ public interface IProcessService
     /// <summary>Loads a process program by name.</summary>
     Result<WorkflowProgram> LoadProgram(string name);
 
-    /// <summary>Saves a process program into the active product.</summary>
+    /// <summary>
+    /// Saves a process program into the active product, recording an
+    /// operator-stamped revision in its history (see <see cref="GetProgramHistory"/>).
+    /// </summary>
     Result SaveProgram(WorkflowProgram program);
+
+    /// <summary>Revision history of a program (operator + timestamp + snapshot per save), or null.</summary>
+    ProgramHistory? GetProgramHistory(string name);
 
     /// <summary>
     /// Front-end-supplied operator-prompt handler — the bidirectional callback

@@ -18,6 +18,7 @@ public sealed class ProcessService : IProcessService
     private RecipeStore? _recipes;       // null when no product is active
     private DeckStore? _decks;           // null when no product is active
     private DutStore? _dut;              // null when no product is active
+    private ProgramHistoryStore? _history;   // null when no product is active
     private readonly DeviceLinkStore _deviceLinks = new();   // machine-global, not per-product
     private PauseController? _pause;     // non-null only while a program runs
     private OperatorContext? _operator;  // current operator, stamped onto DUT runs
@@ -36,6 +37,7 @@ public sealed class ProcessService : IProcessService
             _recipes = new RecipeStore(dir);
             _decks = new DeckStore(dir);
             _dut = new DutStore(dir, _products.ActiveProduct!);
+            _history = new ProgramHistoryStore(dir);
         }
     }
 
@@ -100,6 +102,7 @@ public sealed class ProcessService : IProcessService
             _recipes = null;
             _decks = null;
             _dut = null;
+            _history = null;
             ProductChanged?.Invoke(null);
         }
 
@@ -121,6 +124,7 @@ public sealed class ProcessService : IProcessService
         _recipes = new RecipeStore(dir);
         _decks = new DeckStore(dir);
         _dut = new DutStore(dir, name);
+        _history = new ProgramHistoryStore(dir);
         Log(LogLevel.Info, $"Product loaded: {name}");
         ProductChanged?.Invoke(name);
         return Result.Ok();
@@ -139,6 +143,7 @@ public sealed class ProcessService : IProcessService
         _recipes = null;
         _decks = null;
         _dut = null;
+        _history = null;
         Log(LogLevel.Info, "Product unloaded.");
         ProductChanged?.Invoke(null);
     }
@@ -293,8 +298,25 @@ public sealed class ProcessService : IProcessService
         _programs.Save(program);
         Log(LogLevel.Info, $"Program saved: {program.Name}");
         WarnMissingPositions(program);
+
+        // Record an operator-stamped revision for history / traceability.
+        try
+        {
+            var version = _history?.Append(program, _operator);
+            if (version != null)
+                Log(LogLevel.Info,
+                    $"History: {program.Name} v{version.Version}" +
+                    (string.IsNullOrEmpty(version.OperatorName) ? "" : $" by {version.OperatorName}"));
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Warning, $"Program history not recorded for '{program.Name}': {ex.Message}");
+        }
         return Result.Ok();
     }
+
+    public ProgramHistory? GetProgramHistory(string name)
+        => _history?.Load(name);
 
     /// <summary>
     /// Logs (non-fatally) any taught-position reference in the program that does not
