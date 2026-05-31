@@ -73,10 +73,29 @@ public static class OpCatalog
             new[] { new ParamSpec("message", "Message", ParamKind.Text) }),
         new("flow.comment", "Comment", "Flow", DeviceKind.None,
             new[] { new ParamSpec("text", "Note", ParamKind.Text) }),
+        new("flow.askYesNo", "Ask Yes/No", "Flow", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("var", "Result variable", ParamKind.Text),
+                new ParamSpec("title", "Dialog title", ParamKind.Text, "Confirm"),
+                new ParamSpec("message", "Question", ParamKind.Text),
+            }),
+        new("flow.askUser", "Ask (confirm / abort)", "Flow", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("title", "Dialog title", ParamKind.Text, "Confirm"),
+                new ParamSpec("message", "Question", ParamKind.Text),
+            }),
         new("flow.if", "If (condition)", "Flow", DeviceKind.None,
             new[] { new ParamSpec("condition", "Condition", ParamKind.Text) }),
         new("flow.else", "Else", "Flow", DeviceKind.None, System.Array.Empty<ParamSpec>()),
         new("flow.endif", "End If", "Flow", DeviceKind.None, System.Array.Empty<ParamSpec>()),
+        new("var.set", "Set Variable", "Flow", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("name", "Variable name", ParamKind.Text),
+                new ParamSpec("value", "Value", ParamKind.Text),
+            }),
     };
 
     private static readonly Dictionary<string, OpSpec> ByKey =

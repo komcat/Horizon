@@ -200,6 +200,18 @@ internal sealed class WorkflowRunner
                 continue;
             }
 
+            // Operator Yes/No that records the answer instead of aborting: stores
+            // "1"/"0" into the 'var' context variable, so a later flow.if can branch
+            // on it (No simply continues). Unlike flow.askUser, declining is not an
+            // abort. Only fails when no operator-prompt handler is registered.
+            if (op == "flow.askyesno")
+            {
+                var fail = await AskYesNoAsync(step, ctx, index, steps.Count, desc, ct).ConfigureAwait(false);
+                if (fail != null) return fail.Value;
+                index++;
+                continue;
+            }
+
             _onStep(new WorkflowStepEvent(index, steps.Count, desc, Completed: false, Success: false, Message: ""));
             _log(LogLevel.Info, $"Step {index + 1}/{steps.Count}: {desc}");
 
@@ -270,6 +282,40 @@ internal sealed class WorkflowRunner
         var reason = $"operator declined at step {index + 1} '{desc}'";
         _log(LogLevel.Warning, $"Run stopped — {reason}.");
         return Result.Ok($"Run stopped — {reason}.");
+    }
+
+    /// <summary>
+    /// Handles a <c>flow.askYesNo</c> step: asks the operator Yes/No and stores the
+    /// answer ("1"/"0") in the <c>var</c> context variable, then ALWAYS continues
+    /// (No is not an abort). Returns <c>null</c> normally, or a failure
+    /// <see cref="Result"/> only when no operator-prompt handler is registered.
+    /// </summary>
+    private async Task<Result?> AskYesNoAsync(
+        WorkflowStep step, WorkflowContext ctx, int index, int total, string desc, CancellationToken ct)
+    {
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: false, Success: false, Message: ""));
+
+        if (_prompt == null)
+        {
+            const string err = "no operator-prompt handler registered";
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: false, Message: err));
+            _log(LogLevel.Error, $"Step {index + 1} '{desc}' failed: {err}");
+            return Result.Fail(ErrorCode.NotSupported, $"Step {index + 1} '{desc}': {err}");
+        }
+
+        var title = step.Parameters.GetValueOrDefault("title", "Confirm");
+        var message = step.Parameters.GetValueOrDefault("message", string.Empty);
+        var varName = step.Parameters.GetValueOrDefault("var", string.Empty);
+        var confirmed = await _prompt.ConfirmAsync(title, message, ct).ConfigureAwait(false);
+
+        if (!string.IsNullOrWhiteSpace(varName))
+            ctx.Set(varName, confirmed ? "1" : "0");
+
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: true,
+            Message: confirmed ? "yes" : "no"));
+        _log(LogLevel.Info, $"Step {index + 1}: askYesNo '{desc}' → {(confirmed ? "yes" : "no")}" +
+            (string.IsNullOrWhiteSpace(varName) ? "" : $" → {varName}"));
+        return null;   // never aborts — branching is the caller's job (flow.if)
     }
 
     private static int ParseCount(string? raw)
