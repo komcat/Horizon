@@ -32,6 +32,12 @@ public sealed class EngineHost : IAsyncDisposable
     /// <summary>Application settings (mm/pixel, MoveClick mapping) — load/save to app_settings.json.</summary>
     public AppSettingsStore Settings { get; }
 
+    /// <summary>Station operator directory (users.json) — drives the login picker.</summary>
+    public UserStore Users { get; }
+
+    /// <summary>The signed-in operator; pushes traceability identity down to Layer 2.</summary>
+    public Session Session { get; }
+
     /// <summary>The single product FAAM operates under (Layer 2 positions are product-scoped).</summary>
     public const string ProductName = "FAAM";
 
@@ -48,6 +54,14 @@ public sealed class EngineHost : IAsyncDisposable
         Log = new LogHub();
         Telemetry = new TelemetryStore();
         Settings = new AppSettingsStore();
+        Users = new UserStore();
+
+        // Station identity for DUT traceability: the configured id, or the Windows
+        // machine name when none is set. One machine = one station.
+        var stationId = string.IsNullOrWhiteSpace(Settings.Current.StationId)
+            ? Environment.MachineName
+            : Settings.Current.StationId;
+        Session = new Session(Process, stationId);
 
         // Capture both logging surfaces from construction so startup-time
         // (InitializeAsync) lines are not lost before the shell exists.

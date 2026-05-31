@@ -4,15 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run
 
-- **Solution**: `Horizon.sln` — 23 projects, all `net8.0`/`net8.0-windows`, x64 only. All projects live under `src/`.
-- **User compiles themselves** — do not run `dotnet build` or `msbuild`.
+- **Solution**: `Horizon.sln` — 24 projects, all `net8.0`/`net8.0-windows`, x64 only. All projects live under `src/`.
+- **User compiles themselves** — do not run `dotnet build` or `msbuild`. The user also compiles CMake themselves.
 - **User tests themselves** — no test projects exist; skip test commands.
 - No CI/CD pipelines configured.
 - **Runnable entry points** (`OutputType=Exe`/`WinExe`):
-  - `Horizon.UI` — the current operator application (Layer 3, WPF).
+  - `Horizon.UI` — the reference operator application (Layer 3, WPF).
+  - `FAAM.UI` — a second Layer 3 operator app (the FAU-attach "head"), on the *same* engine stack. Run `Horizon.UI` *or* `FAAM.UI` *or* `Horizon.App`, never two at once — a single process owns the hardware SDKs, and the two UIs share `%APPDATA%\Horizon\config\`. See "Layer 3" below and `docs/faam-ui.md`.
   - `Horizon.App` — the legacy AvalonDock application (see "Legacy stack" below).
   - `Horizon.Console`, `Horizon.Workflow.Console` — Spectre.Console test rigs for Layers 1 & 2.
   - `Horizon.ConfigTool` — Spectre.Console hardware-config authoring utility.
+- `src/Horizon.Shell/` is an orphaned directory (no `.csproj`, not in the solution) — ignore it.
 
 ## The 3-Layer Architecture
 
@@ -82,7 +84,13 @@ defines its own program/recipe/position formats.
   offsets between motion devices; written by `motion.registerDeviceLink`,
   replayed by `motion.compensateDeviceLink`.
 
-### Layer 3 — Horizon.UI (operator application)
+### Layer 3 — operator applications (Horizon.UI and FAAM.UI)
+
+There are **two** Layer 3 "heads", both WPF, both built on the *same* Layer 1/2
+engine stack (reference `Horizon.Workflow` + `Horizon.Engine` + `Horizon.Common`
+only). They are independent apps, not a fork — pick one per rig.
+
+#### Horizon.UI (reference operator app)
 
 A greenfield WPF app (`net8.0-windows10.0.19041`), **not** a port of
 `Horizon.App` — no AvalonDock, a fixed purpose-built operator layout. MVVM with a
@@ -97,6 +105,29 @@ hand-rolled `ObservableObject`/`RelayCommand` (`Mvvm/`).
   pipeline that feeds motion/measurement data to the UI.
 - Pages: Machine (hardware status + manual control, composed of `ViewModels/Sections/`),
   Program Editor, Deck (process sequence). Views in `Views/`, view-models in `ViewModels/`.
+
+#### FAAM.UI (FAU-attach operator app)
+
+A second Layer 3 head purpose-built for the FAU-attach process — mirrors
+Horizon.UI's `EngineHost`/`ShellWindow`/`Telemetry`/`Mvvm` shape with its own
+fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.md`.
+
+- `ShellWindow` — fixed chrome (Home/jog rail/header) around a swappable page host:
+  **Home**, **Machine** (ported wholesale from Horizon.UI), **Run** (the production
+  page: camera feed + crosshair/Zoom2× inset, **MoveClick** click-to-jog, process
+  steps panel with Teach/Run toggle, log). A SiPhOG TCP client + Skia chart live
+  under `Siphog/`; `MoveClick.cs` holds the shared `mm/pixel` jog maths.
+- **Global jog rail** — connected motion devices, X/Y/Z/U/V/W jog pad, velocity +
+  step-size presets; jog clicks are in the **global** frame, converted to
+  device-local via per-device matrices in `jog_transforms.json` (`JogTransforms.cs`).
+- **Process steps are Phase 1 / hardcoded** in `Process/ProcessStepsPanel`
+  (`RunStepAsync`) — not yet promoted to a Layer 2 `WorkflowDeck`/`PositionStore`.
+- FAAM-owned config in `%APPDATA%\Horizon\config\`: `jog_transforms.json` (jog
+  matrices), `faam_teach_points.json` (taught step positions); plus shared
+  `app_settings.json` (`AppSettings`/`AppSettingsStore` in `Horizon.Common`:
+  `mm/pixel`, MoveClick mapping, jog velocity presets) and the engine device configs.
+- **Theme rule (both heads)**: use the Windows `SystemColors` palette via the
+  `App.xaml` brushes (`Bg/Panel/Text/Subtle/Edge/Accent`), not hardcoded dark hex.
 
 ### Legacy stack — Horizon.App / Horizon.Core / Horizon.Process
 
@@ -181,3 +212,5 @@ nonexistent IO pin). Authoring-side only — not part of the runtime stack.
   `docs/multi-device-trainer-design.md`.
 - Hexapod beam-alignment scan: `docs/hexapod-scanning.md`.
 - Bobcat → Horizon recipe migration: `docs/recipe-migration.md`.
+- FAAM.UI (second Layer 3 head): `docs/faam-ui.md`, `docs/faam-handoff.md`.
+- SMU streaming: `docs/smu-streaming-design.md`.

@@ -3,14 +3,46 @@ using System.Text.Json;
 namespace Horizon.Workflow;
 
 /// <summary>
+/// Identity / metadata for a product, persisted as <c>product.json</c> in the
+/// product directory. The product's canonical name is its <b>directory name</b>
+/// (<see cref="Name"/>); the rest is descriptive. A product whose folder predates
+/// this file reads back with defaults and an empty <see cref="DisplayName"/>.
+/// </summary>
+public sealed record ProductInfo
+{
+    /// <summary>Canonical name = the product directory name. Authoritative.</summary>
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>Operator-facing name; falls back to <see cref="Name"/> when empty.</summary>
+    public string DisplayName { get; init; } = string.Empty;
+
+    /// <summary>Part / device number this product builds. Free-form.</summary>
+    public string PartNumber { get; init; } = string.Empty;
+
+    /// <summary>Free-form description.</summary>
+    public string Description { get; init; } = string.Empty;
+
+    /// <summary>On-disk schema version, for future migrations.</summary>
+    public int SchemaVersion { get; init; } = 1;
+
+    public DateTime CreatedUtc { get; init; }
+    public DateTime ModifiedUtc { get; init; }
+
+    /// <summary>The name to show — <see cref="DisplayName"/> if set, else <see cref="Name"/>.</summary>
+    public string Label => string.IsNullOrWhiteSpace(DisplayName) ? Name : DisplayName;
+}
+
+/// <summary>
 /// Product directories under <c>%APPDATA%\Horizon\products\</c> — the shared
 /// product root (same as the legacy app). A product is a directory holding
-/// <c>processes\</c>, <c>recipes\</c>, and <c>decks\</c>; the active product is
-/// recorded in <c>active.json</c>. The layout is compatible with the legacy
-/// app — only one app should run at a time.
+/// <c>processes\</c>, <c>recipes\</c>, and <c>decks\</c> plus a <c>product.json</c>
+/// metadata file; the active product is recorded in <c>active.json</c>. The layout
+/// is compatible with the legacy app — only one app should run at a time.
 /// </summary>
 internal sealed class ProductStore
 {
+    private const string InfoFile = "product.json";
+
     // camelCase + case-insensitive: active.json is shared with the legacy app,
     // which writes camelCase — read it leniently, write it the same way.
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -73,6 +105,45 @@ internal sealed class ProductStore
         Directory.CreateDirectory(Path.Combine(dir, "processes"));
         Directory.CreateDirectory(Path.Combine(dir, "recipes"));
         Directory.CreateDirectory(Path.Combine(dir, "decks"));
+
+        var now = DateTime.UtcNow;
+        WriteInfo(new ProductInfo { Name = name, DisplayName = name, CreatedUtc = now, ModifiedUtc = now });
+    }
+
+    /// <summary>
+    /// Reads a product's <c>product.json</c>. Returns a defaulted record (with the
+    /// directory name) when the file is absent or unreadable — so products created
+    /// before metadata existed still resolve. Returns null only if the product
+    /// directory itself does not exist.
+    /// </summary>
+    public ProductInfo? ReadInfo(string name)
+    {
+        if (!Exists(name)) return null;
+
+        var path = Path.Combine(_root, name, InfoFile);
+        if (File.Exists(path))
+        {
+            try
+            {
+                var info = JsonSerializer.Deserialize<ProductInfo>(File.ReadAllText(path), JsonOptions);
+                if (info != null)
+                    return info with { Name = name };   // directory name is authoritative
+            }
+            catch
+            {
+                // Unreadable — fall through to a defaulted record.
+            }
+        }
+        return new ProductInfo { Name = name, DisplayName = name };
+    }
+
+    /// <summary>Writes <c>product.json</c> for a product, refreshing <c>ModifiedUtc</c>.</summary>
+    public void WriteInfo(ProductInfo info)
+    {
+        var dir = Path.Combine(_root, info.Name);
+        Directory.CreateDirectory(dir);
+        var stamped = info with { ModifiedUtc = DateTime.UtcNow };
+        File.WriteAllText(Path.Combine(dir, InfoFile), JsonSerializer.Serialize(stamped, JsonOptions));
     }
 
     public void Delete(string name)

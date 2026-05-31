@@ -19,13 +19,29 @@ public interface IProcessService
     /// <summary>The currently loaded product, or null if none.</summary>
     string? ActiveProduct { get; }
 
+    /// <summary>Identity / metadata of the active product, or null if none is loaded.</summary>
+    ProductInfo? ActiveProductInfo { get; }
+
+    /// <summary>Reads a product's identity / metadata without loading it; null if it does not exist.</summary>
+    ProductInfo? GetProductInfo(string name);
+
+    /// <summary>
+    /// Raised after the active product changes (load / create-and-load / unload /
+    /// delete-active). The argument is the new active product name, or null.
+    /// </summary>
+    event Action<string?>? ProductChanged;
+
     /// <summary>Creates a new, empty product.</summary>
     Result CreateProduct(string name);
 
     /// <summary>Deletes a product and all its data.</summary>
     Result DeleteProduct(string name);
 
-    /// <summary>Loads (activates) a product.</summary>
+    /// <summary>
+    /// Loads (activates) a product, re-scoping all process data (programs, positions,
+    /// decks, DUT records) to it. Refused while a program run or interactive DUT run
+    /// is in progress — switching mid-run would split a unit's data across products.
+    /// </summary>
     Result LoadProduct(string name);
 
     /// <summary>Clears the active product.</summary>
@@ -131,10 +147,47 @@ public interface IProcessService
     /// <summary>Raised before and after each deck entry while a deck runs.</summary>
     event Action<DeckProgress>? DeckStepEvent;
 
+    // --- Operator identity (traceability) ---
+
+    /// <summary>The operator currently at the station, or null if none is set.</summary>
+    OperatorContext? Operator { get; }
+
+    /// <summary>
+    /// Sets (or clears) the operator stamped onto subsequent DUT runs. The front-end
+    /// calls this after login and on logout. Does not affect an already-finalised run.
+    /// </summary>
+    void SetOperator(OperatorContext? op);
+
     // --- DUT test records (operate on the active product) ---
 
     /// <summary>Serial numbers that have a DUT test record in the active product.</summary>
     IReadOnlyList<string> ListDutRecords();
+
+    /// <summary>Loads the full DUT record for a serial in the active product, or null if none.</summary>
+    DutRecord? GetDutRecord(string serial);
+
+    // --- Interactive DUT runs (operator-driven processes, not WorkflowProgram execution) ---
+
+    /// <summary>True while an interactive DUT run opened by <see cref="BeginDutRun"/> is in progress.</summary>
+    bool HasActiveDutRun { get; }
+
+    /// <summary>
+    /// Opens an interactive DUT run for a unit identified by <paramref name="serial"/>
+    /// — used by operator-driven processes (e.g. FAAM's hand-clicked step sequence)
+    /// that do not execute a <see cref="WorkflowProgram"/>. Record values with
+    /// <see cref="RecordDutValue"/>, then finalise with <see cref="EndDutRun"/>.
+    /// Fails if a run is already open or no product is active.
+    /// </summary>
+    Result BeginDutRun(string serial, string source);
+
+    /// <summary>Appends a value to the open interactive DUT run (no-op if none is open).</summary>
+    void RecordDutValue(string key, string value, DutValueType type = DutValueType.String);
+
+    /// <summary>
+    /// Finalises the open interactive DUT run with a verdict, stamps the current
+    /// operator + station, and persists it. Fails if no run is open.
+    /// </summary>
+    Result EndDutRun(DutVerdict verdict);
 
     // --- Interactive execution (pause / step) ---
 

@@ -7,11 +7,38 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <!-- Identity strip: current product + signed-in operator + log in/out.
+             Always visible (home launcher and pages). -->
+        <Border Grid.Row="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                BorderThickness="0,0,0,1" Padding="10,5">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="HORIZON" Foreground="{StaticResource Subtle}"
+                           FontWeight="SemiBold" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock VerticalAlignment="Center">
+                        <Run Text="Product: " Foreground="{StaticResource Subtle}" />
+                        <Run Text="{Binding ProductLabel, Mode=OneWay}" Foreground="{StaticResource Text}" FontWeight="SemiBold" />
+                    </TextBlock>
+                    <TextBlock VerticalAlignment="Center" Margin="16,0,0,0">
+                        <Run Text="Operator: " Foreground="{StaticResource Subtle}" />
+                        <Run Text="{Binding OperatorLabel, Mode=OneWay}" Foreground="{StaticResource Text}" FontWeight="SemiBold" />
+                    </TextBlock>
+                    <Button Content="{Binding LoginButtonText}" Click="OnLoginLogout"
+                            Width="82" Height="26" Margin="16,0,0,0" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
         <!-- Shell chrome: Back + page title, hidden on the home launcher. -->
-        <Border Grid.Row="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="0,0,0,1"
+        <Border Grid.Row="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="0,0,0,1"
                 Padding="10,7"
                 Visibility="{Binding ShowPageHeader, Converter={StaticResource BoolToVis}}">
             <StackPanel Orientation="Horizontal">
@@ -24,6 +51,6 @@
             </StackPanel>
         </Border>
 
-        <ContentControl Grid.Row="1" Content="{Binding CurrentView}" />
+        <ContentControl Grid.Row="2" Content="{Binding CurrentView}" />
     </Grid>
 </Window>

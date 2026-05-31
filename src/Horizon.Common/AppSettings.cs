@@ -11,6 +11,12 @@ public sealed record AppSettings
     /// <summary>Camera scale: real-world millimetres per image pixel.</summary>
     public double MmPerPixel { get; init; } = 0.0025;
 
+    /// <summary>
+    /// Station identity stamped onto DUT runs for traceability. Empty falls back to
+    /// the Windows machine name at login. Machine-global (one machine = one station).
+    /// </summary>
+    public string StationId { get; init; } = string.Empty;
+
     // --- MoveClick (FAAM Run page): click the live image to jog the stage by the
     //     real-world offset from the crosshair centre to the click point. ---
 

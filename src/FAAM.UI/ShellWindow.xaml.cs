@@ -50,6 +50,9 @@ public partial class ShellWindow : Window
         // The global jog panel (left rail) drives the connected motion devices.
         JogPanelControl.Attach(host);
 
+        // The Home product bar loads / creates the active product.
+        _home.Attach(host);
+
         // Register the operator-prompt handler — a workflow flow.askUser step
         // blocks on this until the operator answers a modal dialog.
         host.Process.OperatorPrompt = new OperatorPrompt();
@@ -57,6 +60,11 @@ public partial class ShellWindow : Window
         _home.MachineRequested += ShowMachine;
         _home.RunRequested += ShowRun;
         _home.EngineerRequested += ShowEngineer;
+
+        // Identity chip — refresh on login/logout and on product switch.
+        _host.Session.Changed += UpdateIdentity;
+        _host.Process.ProductChanged += OnProductChanged;
+        UpdateIdentity();
 
         ShowHome();
 
@@ -260,6 +268,36 @@ public partial class ShellWindow : Window
 
     private void OnHomeClick(object sender, RoutedEventArgs e) => ShowHome();
 
+    private void OnProductChanged(string? _) => UpdateIdentity();
+
+    /// <summary>Refreshes the product + operator chip and the login/logout button label.</summary>
+    private void UpdateIdentity()
+    {
+        if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(UpdateIdentity); return; }
+
+        ProductRun.Text = _host.Process.ActiveProductInfo?.Label ?? "—";
+        var op = _host.Session.Operator;
+        OperatorRun.Text = op?.DisplayName ?? "Not logged in";
+        OperatorRun.Foreground = (System.Windows.Media.Brush)FindResource(op != null ? "Text" : "Danger");
+        LogoutButton.Content = _host.Session.IsLoggedIn ? "Logout" : "Login";
+    }
+
+    /// <summary>
+    /// Logs the current operator out (if any) and prompts for the next login. The
+    /// engine stays up throughout — this only changes who is attributed. Cancelling
+    /// the dialog leaves the station logged out; the Run page gates DUT actions on
+    /// a signed-in operator.
+    /// </summary>
+    private void OnLogout(object sender, RoutedEventArgs e)
+    {
+        if (_host.Session.IsLoggedIn)
+            _host.Session.LogOut();
+
+        var login = new LoginWindow(_host) { Owner = this };
+        login.ShowDialog();
+        UpdateIdentity();
+    }
+
     private void OnClosing(object? sender, CancelEventArgs e)
     {
         if (_exiting)
@@ -282,6 +320,8 @@ public partial class ShellWindow : Window
         SaveWindowLayout();
 
         _exiting = true;
+        _host.Session.Changed -= UpdateIdentity;
+        _host.Process.ProductChanged -= OnProductChanged;
         _run.Deactivate();         // stop frame routing before the engine tears down
         _machineVm.Dispose();      // stop the status sampler + detach UI hooks
         JogPanelControl.Stop();    // stop the jog-panel position poll

@@ -42,6 +42,15 @@ public sealed class DutRun
     /// <summary>The run's disposition — set when the run ends.</summary>
     public DutVerdict Verdict { get; set; }
 
+    /// <summary>Operator id that ran the unit (traceability); null if no operator was set.</summary>
+    public string? OperatorId { get; set; }
+
+    /// <summary>Operator display name at run time; null if no operator was set.</summary>
+    public string? OperatorName { get; set; }
+
+    /// <summary>Station / machine the run executed on; null if unknown.</summary>
+    public string? StationId { get; set; }
+
     /// <summary>Values recorded by <c>dut.*</c> steps, in execution order.</summary>
     public List<DutEntry> Entries { get; init; } = new();
 }

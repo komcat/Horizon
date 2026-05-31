@@ -41,6 +41,15 @@ public partial class StartupWindow : Window
 
     private void HandOffToShell()
     {
+        // Hardware is up; require an operator login before the shell so every DUT
+        // run is attributable. Cancelling the first login exits the app.
+        var login = new LoginWindow(_host) { Owner = this };
+        if (login.ShowDialog() != true)
+        {
+            Application.Current.Shutdown();
+            return;
+        }
+
         var shell = new ShellWindow(_host);
         Application.Current.MainWindow = shell;
         shell.Show();

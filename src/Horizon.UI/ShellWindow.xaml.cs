@@ -34,6 +34,20 @@ public partial class ShellWindow : Window
         Closed += (_, _) => _viewModel.Dispose();
     }
 
+    /// <summary>
+    /// Logs the current operator out (if any) and prompts for the next login. The
+    /// engine stays up throughout — this only changes who is attributed. Cancelling
+    /// the dialog leaves the station logged out. The chip refreshes via the session
+    /// event the shell view-model subscribes to.
+    /// </summary>
+    private void OnLoginLogout(object sender, RoutedEventArgs e)
+    {
+        if (_host.Session.IsLoggedIn)
+            _host.Session.LogOut();
+
+        new LoginWindow(_host) { Owner = this }.ShowDialog();
+    }
+
     private void OnClosing(object? sender, CancelEventArgs e)
     {
         if (_exiting)

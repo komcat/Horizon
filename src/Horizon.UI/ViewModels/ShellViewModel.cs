@@ -11,13 +11,19 @@ namespace Horizon.UI.ViewModels;
 /// </summary>
 public sealed class ShellViewModel : ObservableObject, IShellNavigator, IDisposable
 {
+    private readonly EngineHost _host;
     private readonly HomeViewModel _home;
     private readonly MachinePageViewModel _machine;
     private object _currentView;
 
     public ShellViewModel(EngineHost host)
     {
+        _host = host;
         _machine = new MachinePageViewModel(host);
+
+        // Identity chip — refresh on login/logout and on product switch.
+        _host.Session.Changed += OnIdentityChanged;
+        _host.Process.ProductChanged += OnProductChanged;
 
         var run = new PlaceholderPageViewModel(
             "Run", "Program run UI arrives in Phase 5.");
@@ -68,6 +74,29 @@ public sealed class ShellViewModel : ObservableObject, IShellNavigator, IDisposa
     /// <summary>Back button — returns to the home launcher.</summary>
     public RelayCommand GoHomeCommand { get; }
 
+    // --- Identity chip (always-visible shell strip) ---
+
+    /// <summary>The active product's display label, or "—" when none is loaded.</summary>
+    public string ProductLabel => _host.Process.ActiveProductInfo?.Label ?? "—";
+
+    /// <summary>The signed-in operator's name, or "Not logged in".</summary>
+    public string OperatorLabel => _host.Session.Operator?.DisplayName ?? "Not logged in";
+
+    /// <summary>True while an operator is signed in.</summary>
+    public bool IsLoggedIn => _host.Session.IsLoggedIn;
+
+    /// <summary>Login/logout button caption, tracking the session state.</summary>
+    public string LoginButtonText => IsLoggedIn ? "Logout" : "Login";
+
+    private void OnIdentityChanged()
+    {
+        OnPropertyChanged(nameof(OperatorLabel));
+        OnPropertyChanged(nameof(IsLoggedIn));
+        OnPropertyChanged(nameof(LoginButtonText));
+    }
+
+    private void OnProductChanged(string? _) => OnPropertyChanged(nameof(ProductLabel));
+
     public void NavigateTo(object page)
     {
         (_currentView as PageViewModel)?.OnDeactivated();
@@ -77,5 +106,10 @@ public sealed class ShellViewModel : ObservableObject, IShellNavigator, IDisposa
 
     public void GoHome() => NavigateTo(_home);
 
-    public void Dispose() => _machine.Dispose();
+    public void Dispose()
+    {
+        _host.Session.Changed -= OnIdentityChanged;
+        _host.Process.ProductChanged -= OnProductChanged;
+        _machine.Dispose();
+    }
 }

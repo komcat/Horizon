@@ -82,6 +82,39 @@
                        Foreground="{StaticResource Accent}" FontSize="15" FontWeight="Bold"
                        HorizontalAlignment="Center" Margin="0,2,0,8" />
 
+            <!-- DUT serial + run lifecycle — brackets a traceable, operator-stamped run. -->
+            <Border DockPanel.Dock="Top" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,8">
+                <StackPanel>
+                    <TextBlock Text="DUT Serial" Foreground="{StaticResource Subtle}" FontSize="11" Margin="0,0,0,3" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="SerialBox" Grid.Column="0" Height="28" FontSize="13"
+                                 VerticalContentAlignment="Center" />
+                        <Button x:Name="StartDutButton" Grid.Column="1" Content="Start" Width="64" Height="28"
+                                Margin="6,0,0,0" Click="OnStartDut" />
+                    </Grid>
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="PassButton" Grid.Column="0" Content="PASS" Height="30" Margin="0,0,4,0"
+                                Click="OnPass" Background="{StaticResource Ok}" Foreground="White"
+                                BorderThickness="0" FontWeight="Bold" IsEnabled="False" />
+                        <Button x:Name="FailButton" Grid.Column="1" Content="FAIL" Height="30" Margin="4,0,4,0"
+                                Click="OnFail" Background="{StaticResource Danger}" Foreground="White"
+                                BorderThickness="0" FontWeight="Bold" IsEnabled="False" />
+                        <Button x:Name="ResultsButton" Grid.Column="2" Content="Results" Height="30" Width="72"
+                                Click="OnResults" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <!-- Process timer — fixed green-on-black device readout. -->
             <Border DockPanel.Dock="Top" Background="Black" CornerRadius="3" Padding="0,6" Margin="0,0,0,8">
                 <TextBlock x:Name="TimerText" Text="Process: 00:00:00" Foreground="#33FF33"

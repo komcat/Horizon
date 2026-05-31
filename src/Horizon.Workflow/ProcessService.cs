@@ -20,6 +20,8 @@ public sealed class ProcessService : IProcessService
     private DutStore? _dut;              // null when no product is active
     private readonly DeviceLinkStore _deviceLinks = new();   // machine-global, not per-product
     private PauseController? _pause;     // non-null only while a program runs
+    private OperatorContext? _operator;  // current operator, stamped onto DUT runs
+    private (DutRecord Record, DutRun Run)? _interactiveDut;   // open operator-driven DUT run
 
     public ProcessService(IHorizonEngine engine)
     {
@@ -41,10 +43,22 @@ public sealed class ProcessService : IProcessService
 
     public string? ActiveProduct => _products.ActiveProduct;
 
+    public ProductInfo? ActiveProductInfo
+    {
+        get
+        {
+            var active = _products.ActiveProduct;
+            return active == null ? null : _products.ReadInfo(active);
+        }
+    }
+
+    public ProductInfo? GetProductInfo(string name) => _products.ReadInfo(name);
+
     public event Action<WorkflowStepEvent>? StepEvent;
     public event Action<DeckProgress>? DeckStepEvent;
     public event Action<LogEntry>? LogEmitted;
     public event Action<bool>? PausedChanged;
+    public event Action<string?>? ProductChanged;
 
     public IOperatorPrompt? OperatorPrompt { get; set; }
 
@@ -74,6 +88,9 @@ public sealed class ProcessService : IProcessService
             return Result.Fail(ErrorCode.FileNotFound, $"Product '{name}' not found.");
 
         var wasActive = string.Equals(_products.ActiveProduct, name, StringComparison.OrdinalIgnoreCase);
+        if (wasActive && !CanSwitchProduct(out var why))
+            return Result.Fail(ErrorCode.OperationFailed, $"Cannot delete the active product: {why}");
+
         _products.Delete(name);
         if (wasActive)
         {
@@ -83,6 +100,7 @@ public sealed class ProcessService : IProcessService
             _recipes = null;
             _decks = null;
             _dut = null;
+            ProductChanged?.Invoke(null);
         }
 
         Log(LogLevel.Info, $"Product deleted: {name}");
@@ -93,6 +111,8 @@ public sealed class ProcessService : IProcessService
     {
         if (!_products.Exists(name))
             return Result.Fail(ErrorCode.FileNotFound, $"Product '{name}' not found.");
+        if (!CanSwitchProduct(out var why))
+            return Result.Fail(ErrorCode.OperationFailed, $"Cannot switch product: {why}");
 
         _products.SetActive(name);
         var dir = _products.ProductDir(name);
@@ -102,11 +122,17 @@ public sealed class ProcessService : IProcessService
         _decks = new DeckStore(dir);
         _dut = new DutStore(dir, name);
         Log(LogLevel.Info, $"Product loaded: {name}");
+        ProductChanged?.Invoke(name);
         return Result.Ok();
     }
 
     public void UnloadProduct()
     {
+        if (!CanSwitchProduct(out var why))
+        {
+            Log(LogLevel.Warning, $"Product not unloaded: {why}");
+            return;
+        }
         _products.SetActive(null);
         _positions = null;
         _programs = null;
@@ -114,6 +140,20 @@ public sealed class ProcessService : IProcessService
         _decks = null;
         _dut = null;
         Log(LogLevel.Info, "Product unloaded.");
+        ProductChanged?.Invoke(null);
+    }
+
+    /// <summary>
+    /// Guards a product switch: refused while a program / recipe / deck is running
+    /// or an interactive DUT run is open, since either would split a unit's data
+    /// across two products.
+    /// </summary>
+    private bool CanSwitchProduct(out string reason)
+    {
+        if (_pause != null) { reason = "a process is running."; return false; }
+        if (_interactiveDut != null) { reason = "a DUT run is open."; return false; }
+        reason = string.Empty;
+        return true;
     }
 
     // --- Teach points / named positions ---
@@ -252,7 +292,45 @@ public sealed class ProcessService : IProcessService
 
         _programs.Save(program);
         Log(LogLevel.Info, $"Program saved: {program.Name}");
+        WarnMissingPositions(program);
         return Result.Ok();
+    }
+
+    /// <summary>
+    /// Logs (non-fatally) any taught-position reference in the program that does not
+    /// resolve in the active product. A program is the product's process and is
+    /// inseparable from the positions it moves to — they live in the same product
+    /// and travel together on switch, so a dangling reference is worth surfacing.
+    /// Mirrors ConfigTool's cross-reference checks. Expression-valued names
+    /// (containing <c>{</c>) are skipped — they resolve at run time.
+    /// </summary>
+    private void WarnMissingPositions(WorkflowProgram program)
+    {
+        if (_positions == null) return;
+
+        void Check(string device, string name)
+        {
+            if (string.IsNullOrWhiteSpace(name) || name.Contains('{')) return;
+            if (_positions!.Get(device, name) == null)
+                Log(LogLevel.Warning,
+                    $"Program '{program.Name}' references position '{name}' on '{device}' " +
+                    $"not taught in product '{ActiveProduct}'.");
+        }
+
+        foreach (var step in program.Steps)
+        {
+            if (!step.Enabled) continue;
+            switch (step.Op.ToLowerInvariant())
+            {
+                case "motion.movetoposition":
+                    Check(step.Device, step.Parameters.GetValueOrDefault("position", string.Empty));
+                    break;
+                case "motion.parallelmove":
+                    for (int i = 1; step.Parameters.TryGetValue($"device{i}", out var dev); i++)
+                        Check(dev, step.Parameters.GetValueOrDefault($"position{i}", string.Empty));
+                    break;
+            }
+        }
     }
 
     public async Task<Result> RunAsync(
@@ -321,6 +399,87 @@ public sealed class ProcessService : IProcessService
 
     public IReadOnlyList<string> ListDutRecords() => _dut?.List() ?? Array.Empty<string>();
 
+    public DutRecord? GetDutRecord(string serial)
+    {
+        if (_dut == null || string.IsNullOrWhiteSpace(serial)) return null;
+        // Only return a record that actually exists on disk — never materialise a
+        // phantom for a serial that was never run.
+        return _dut.List().Contains(serial.Trim(), StringComparer.OrdinalIgnoreCase)
+            ? _dut.LoadOrCreate(serial.Trim())
+            : null;
+    }
+
+    // --- Operator identity (traceability) ---
+
+    public OperatorContext? Operator => _operator;
+
+    public void SetOperator(OperatorContext? op)
+    {
+        _operator = op;
+        Log(LogLevel.Info, op == null
+            ? "Operator cleared."
+            : $"Operator set: {op.DisplayName} ({op.UserId}) @ station {op.StationId}.");
+    }
+
+    // --- Interactive DUT runs (operator-driven, no WorkflowProgram) ---
+
+    public bool HasActiveDutRun => _interactiveDut != null;
+
+    public Result BeginDutRun(string serial, string source)
+    {
+        if (_dut == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (_interactiveDut != null)
+            return Result.Fail(ErrorCode.OperationFailed,
+                $"A DUT run is already open for '{_interactiveDut.Value.Record.Serial}'.");
+        if (string.IsNullOrWhiteSpace(serial))
+            return Result.Fail(ErrorCode.InvalidParameter, "Serial number is required.");
+
+        var record = _dut.LoadOrCreate(serial.Trim());
+        var run = new DutRun { StartedUtc = DateTime.UtcNow, Source = source };
+        StampOperator(run);
+        _interactiveDut = (record, run);
+        Log(LogLevel.Info, $"DUT run started: {record.Serial} [{source}]" +
+            (_operator != null ? $" by {_operator.DisplayName}" : ""));
+        return Result.Ok();
+    }
+
+    public void RecordDutValue(string key, string value, DutValueType type = DutValueType.String)
+    {
+        if (_interactiveDut == null || string.IsNullOrWhiteSpace(key)) return;
+        _interactiveDut.Value.Run.Entries.Add(new DutEntry(DateTime.UtcNow, key, value, type));
+    }
+
+    public Result EndDutRun(DutVerdict verdict)
+    {
+        if (_interactiveDut == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No DUT run is open.");
+
+        var (record, run) = _interactiveDut.Value;
+        run.EndedUtc = DateTime.UtcNow;
+        run.Verdict = verdict;
+        record.Runs.Add(run);
+        _interactiveDut = null;
+
+        if (_dut == null)
+        {
+            Log(LogLevel.Warning, $"DUT record for {record.Serial} not saved — product unloaded mid-run.");
+            return Result.Fail(ErrorCode.OperationFailed, "Product unloaded mid-run.");
+        }
+        try
+        {
+            _dut.Save(record);
+            Log(LogLevel.Info,
+                $"DUT record saved: {record.Serial} — run {verdict}, {run.Entries.Count} entry(ies).");
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"DUT record save failed for {record.Serial}: {ex.Message}");
+            return Result.Fail(ErrorCode.OperationFailed, ex.Message);
+        }
+    }
+
     /// <summary>
     /// Opens (or creates) the DUT record for a run and attaches a fresh
     /// <see cref="DutRun"/> to <paramref name="ctx"/>. Returns null when no
@@ -333,8 +492,18 @@ public sealed class ProcessService : IProcessService
 
         var record = _dut.LoadOrCreate(serial.Trim());
         var run = new DutRun { StartedUtc = DateTime.UtcNow, Source = source };
+        StampOperator(run);
         ctx.Dut = run;
         return (record, run);
+    }
+
+    /// <summary>Copies the current operator + station onto a DUT run for traceability.</summary>
+    private void StampOperator(DutRun run)
+    {
+        if (_operator == null) return;
+        run.OperatorId = _operator.UserId;
+        run.OperatorName = _operator.DisplayName;
+        run.StationId = _operator.StationId;
     }
 
     /// <summary>Finalises a DUT run with its verdict and persists the record.</summary>

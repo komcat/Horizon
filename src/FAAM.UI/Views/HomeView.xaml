@@ -34,22 +34,45 @@
     </UserControl.Resources>
 
     <Grid Margin="6">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Button Grid.Row="0" Grid.Column="0" Content="RUN"
-                Style="{StaticResource Tile}" Click="OnRunClick" />
-        <Button Grid.Row="0" Grid.Column="1" Content="Engineer"
-                Style="{StaticResource Tile}" Click="OnEngineerClick" />
-        <Button Grid.Row="1" Grid.Column="0" Content="Machine"
-                Style="{StaticResource Tile}" Click="OnMachineClick" />
-        <Button Grid.Row="1" Grid.Column="1" Content="reserve"
-                Style="{StaticResource ReserveTile}" />
+        <!-- Product bar — pick/create the active product. Programs and positions are
+             product-scoped and switch together. -->
+        <Border Grid.Row="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                BorderThickness="1" CornerRadius="4" Padding="12,8" Margin="10,10,10,6">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="Product" Foreground="{StaticResource Subtle}" FontSize="13"
+                           VerticalAlignment="Center" Margin="0,0,10,0" />
+                <ComboBox x:Name="ProductCombo" Width="240" Height="30" FontSize="14"
+                          IsEditable="True" VerticalContentAlignment="Center" />
+                <Button x:Name="OpenButton" Content="Open / Create" Width="130" Height="30"
+                        Margin="10,0,0,0" Click="OnOpenProduct" />
+                <TextBlock x:Name="ActiveProductText" Foreground="{StaticResource Text}" FontSize="13"
+                           VerticalAlignment="Center" Margin="16,0,0,0" />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Button Grid.Row="0" Grid.Column="0" Content="RUN"
+                    Style="{StaticResource Tile}" Click="OnRunClick" />
+            <Button Grid.Row="0" Grid.Column="1" Content="Engineer"
+                    Style="{StaticResource Tile}" Click="OnEngineerClick" />
+            <Button Grid.Row="1" Grid.Column="0" Content="Machine"
+                    Style="{StaticResource Tile}" Click="OnMachineClick" />
+            <Button Grid.Row="1" Grid.Column="1" Content="reserve"
+                    Style="{StaticResource ReserveTile}" />
+        </Grid>
     </Grid>
 </UserControl>

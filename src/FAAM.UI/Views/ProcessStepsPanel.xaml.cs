@@ -85,8 +85,64 @@ public partial class ProcessStepsPanel : UserControl
 
         if (!_running)
             StartTimer();
+
+        // Record the step into the open DUT run for traceability (no-op if none open).
+        _host?.Process.RecordDutValue($"step{step.Index}", step.Label);
+
         Log(LogLevel.Info, $"Run — step: {step.Label}");
         _ = RunStepAsync(step);
+    }
+
+    // --- DUT run lifecycle (serial-bracketed, operator-stamped via Layer 2) ---
+
+    private void OnStartDut(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _host.Process.HasActiveDutRun)
+            return;
+
+        var serial = SerialBox.Text?.Trim() ?? string.Empty;
+        var r = _host.Process.BeginDutRun(serial, "FAU attach");
+        if (!r.IsSuccess)
+        {
+            Log(LogLevel.Warning, $"Start DUT failed: {r.Message}");
+            return;
+        }
+
+        SerialBox.IsEnabled = false;
+        StartDutButton.IsEnabled = false;
+        PassButton.IsEnabled = true;
+        FailButton.IsEnabled = true;
+        if (!_running)
+            StartTimer();
+    }
+
+    private void OnPass(object sender, RoutedEventArgs e) => EndDut(DutVerdict.Pass);
+
+    private void OnFail(object sender, RoutedEventArgs e) => EndDut(DutVerdict.Fail);
+
+    private void EndDut(DutVerdict verdict)
+    {
+        if (_host == null || !_host.Process.HasActiveDutRun)
+            return;
+
+        var r = _host.Process.EndDutRun(verdict);
+        Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
+            r.IsSuccess ? $"DUT '{SerialBox.Text.Trim()}' → {verdict}." : $"End DUT failed: {r.Message}");
+
+        StopTimer();
+        SerialBox.IsEnabled = true;
+        StartDutButton.IsEnabled = true;
+        PassButton.IsEnabled = false;
+        FailButton.IsEnabled = false;
+        SerialBox.SelectAll();
+        SerialBox.Focus();
+    }
+
+    private void OnResults(object sender, RoutedEventArgs e)
+    {
+        if (_host == null)
+            return;
+        new DutResultsWindow(_host) { Owner = Window.GetWindow(this) }.Show();
     }
 
     /// <summary>

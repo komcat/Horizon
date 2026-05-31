@@ -20,11 +20,12 @@
         <Button Grid.Row="0" Grid.Column="0" Content="Home" Click="OnHomeClick"
                 Width="290" Height="56" Margin="2,2,8,8" FontSize="14" />
 
-        <!-- Top: Header1 (page title) + Header2. -->
+        <!-- Top: Header1 (page title) + engine status + identity chip. -->
         <Grid Grid.Row="0" Grid.Column="1" Margin="0,2,2,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <Border Grid.Column="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
                     BorderThickness="1" CornerRadius="3" Margin="0,0,6,0">
@@ -52,6 +53,24 @@
                     <Button Grid.Column="2" Content="Reconnect" Width="100" Height="26"
                             VerticalAlignment="Center" Command="{Binding ReconnectCommand}" />
                 </Grid>
+            </Border>
+
+            <!-- Identity chip — current product + signed-in operator + log in/out.
+                 Always visible; populated in code from the product/session state. -->
+            <Border x:Name="IdentityHeader" Grid.Column="2" Background="{StaticResource Panel}"
+                    BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3" Margin="6,0,0,0">
+                <StackPanel Orientation="Horizontal" Margin="12,0" VerticalAlignment="Center">
+                    <TextBlock VerticalAlignment="Center">
+                        <Run Text="Product: " Foreground="{StaticResource Subtle}" />
+                        <Run x:Name="ProductRun" Foreground="{StaticResource Text}" FontWeight="SemiBold" />
+                    </TextBlock>
+                    <TextBlock VerticalAlignment="Center" Margin="16,0,0,0">
+                        <Run Text="Operator: " Foreground="{StaticResource Subtle}" />
+                        <Run x:Name="OperatorRun" Foreground="{StaticResource Text}" FontWeight="SemiBold" />
+                    </TextBlock>
+                    <Button x:Name="LogoutButton" Content="Logout" Width="82" Height="26"
+                            Margin="16,0,0,0" Click="OnLogout" />
+                </StackPanel>
             </Border>
         </Grid>
 
