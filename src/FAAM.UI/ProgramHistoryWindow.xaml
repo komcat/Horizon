@@ -1,0 +1,84 @@
+<Window x:Class="FAAM.UI.ProgramHistoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Program History"
+        Height="560" Width="940"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource Bg}">
+    <Window.Resources>
+        <!-- Change-kind chip colour. -->
+        <Style x:Key="KindChip" TargetType="Border">
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="6,1" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Background" Value="{StaticResource Warn}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Kind}" Value="Added">
+                    <Setter Property="Background" Value="{StaticResource Ok}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="Removed">
+                    <Setter Property="Background" Value="{StaticResource Danger}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="280" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <TextBlock x:Name="HeaderText" Grid.Row="0" Grid.ColumnSpan="2" Foreground="{StaticResource Accent}"
+                   FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10" />
+
+        <!-- Revisions (newest first) -->
+        <Border Grid.Row="1" Grid.Column="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                BorderThickness="1" CornerRadius="3" Margin="0,0,8,0">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Revisions" Foreground="{StaticResource Subtle}"
+                           FontSize="12" Margin="10,8,10,4" />
+                <ListBox x:Name="VersionList" Background="Transparent" BorderThickness="0"
+                         Foreground="{StaticResource Text}" Margin="4" SelectionChanged="OnVersionSelected"
+                         DisplayMemberPath="Header" />
+            </DockPanel>
+        </Border>
+
+        <!-- Diff of the selected revision vs its predecessor -->
+        <Border Grid.Row="1" Grid.Column="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                BorderThickness="1" CornerRadius="3">
+            <DockPanel Margin="8">
+                <TextBlock x:Name="DiffHeader" DockPanel.Dock="Top" Foreground="{StaticResource Text}"
+                           FontSize="13" FontWeight="SemiBold" Margin="2,2,2,8" Text="Select a revision." />
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="DiffList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
+                                        BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,6">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border Style="{StaticResource KindChip}">
+                                                <TextBlock Text="{Binding Kind}" Foreground="White" FontSize="10" FontWeight="SemiBold" />
+                                            </Border>
+                                            <TextBlock Text="{Binding Label}" Foreground="{StaticResource Text}"
+                                                       FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Uid}" Foreground="{StaticResource Subtle}"
+                                                       FontFamily="Consolas" FontSize="10" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Detail}" Foreground="{StaticResource Subtle}"
+                                                   FontFamily="Consolas" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

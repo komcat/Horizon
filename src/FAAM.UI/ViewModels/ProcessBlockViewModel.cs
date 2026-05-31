@@ -37,6 +37,15 @@ public sealed class ProcessBlockViewModel : ObservableObject
         foreach (var p in spec.Params)
             Params.Add(new BlockParamViewModel(p));
 
+        // The tile caption reflects live parameter edits, so a misconfigured no-op
+        // (e.g. a Move Relative with distance 0) is visible on the block itself.
+        foreach (var bp in Params)
+            bp.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(BlockParamViewModel.StringValue))
+                    OnPropertyChanged(nameof(ParamSummary));
+            };
+
         EditPositionCommand = new RelayCommand(EditPosition, () => CanEditPosition());
 
         // The Move block's recall preview tracks the chosen position name.
@@ -75,7 +84,12 @@ public sealed class ProcessBlockViewModel : ObservableObject
         return vm;
     }
 
-    public static string NewId() => "s" + Guid.NewGuid().ToString("N")[..8];
+    /// <summary>
+    /// A fresh, globally-unique block id. Assigned once at creation and preserved
+    /// across save/load (see <see cref="FromStep"/>), so a block stays trackable
+    /// through parameter edits — the basis for program history / traceability.
+    /// </summary>
+    public static string NewId() => "blk-" + Guid.NewGuid().ToString("N");
 
     public string Id { get; }
     public OpSpec Spec { get; }
@@ -90,6 +104,34 @@ public sealed class ProcessBlockViewModel : ObservableObject
 
     /// <summary>Caption shown in the flow box.</summary>
     public string Summary => string.IsNullOrWhiteSpace(_name) ? Display : $"{_name} · {Display}";
+
+    /// <summary>
+    /// A live, parameter-derived caption for the timeline tile — shows what the block
+    /// actually does (e.g. "X 0 mm") so a no-op / misconfigured block is obvious.
+    /// </summary>
+    public string ParamSummary
+    {
+        get
+        {
+            string P(string key) => Params
+                .FirstOrDefault(p => string.Equals(p.Key, key, StringComparison.OrdinalIgnoreCase))?.StringValue ?? string.Empty;
+            static string Or(string v, string fallback) => string.IsNullOrWhiteSpace(v) ? fallback : v;
+            static bool Truthy(string v) => v.Trim().ToLowerInvariant() is "true" or "1" or "on" or "yes";
+
+            return Spec.OpKey.ToLowerInvariant() switch
+            {
+                "motion.moverelative" => $"{Or(P("axis"), "?")} {Or(P("distance"), "?")} mm",
+                "motion.movetoposition" => Or(P("position"), "(no position)"),
+                "motion.setvelocity" => $"{Or(P("speed"), "?")} mm/s",
+                "io.setoutputbyname" => $"{Or(P("pin"), "(pin?)")} → {(Truthy(P("state")) ? "ON" : "OFF")}",
+                "flow.wait" => $"wait {Or(P("ms"), "?")} ms",
+                "flow.log" => Or(P("message"), "(message)"),
+                "pneumatic.extend" => "extend",
+                "pneumatic.retract" => "retract",
+                _ => Display,
+            };
+        }
+    }
 
     public bool ShowDevice => Spec.DeviceKind != DeviceKind.None;
 
@@ -127,6 +169,10 @@ public sealed class ProcessBlockViewModel : ObservableObject
 
     /// <summary>Live run state: — / Running / Passed / Failed.</summary>
     public string RunStatus { get => _runStatus; set => SetField(ref _runStatus, value); }
+
+    private bool _isSelected;
+    /// <summary>Selection highlight in the timeline grid (managed by the editor view-model).</summary>
+    public bool IsSelected { get => _isSelected; set => SetField(ref _isSelected, value); }
 
     // --- Move-to-Position recall settings (live on the NamedPosition, not the step) ---
 
