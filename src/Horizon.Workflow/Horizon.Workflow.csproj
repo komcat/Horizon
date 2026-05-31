@@ -8,6 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Program revision history / audit store (machine-global history.db).
+         Full package bundles the native engine for the referencing executables. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Horizon.Common\Horizon.Common.csproj" />
     <ProjectReference Include="..\Horizon.Engine\Horizon.Engine.csproj" />
   </ItemGroup>
