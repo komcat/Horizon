@@ -59,6 +59,9 @@ public partial class RunView : UserControl
 
         StepsPanel.Attach(host);   // process panel logs + STOP via the engine host
         StepsPanel.InspectMotionRequested += OnInspectMotionRequested;
+
+        // The SiPhOG chart shares the panel's client/connection.
+        SiphogChartControl.Attach(SiphogPanelControl.Client);
     }
 
     /// <summary>Shows the motion-inspector grid (over the camera column) with the supplied position rows.</summary>

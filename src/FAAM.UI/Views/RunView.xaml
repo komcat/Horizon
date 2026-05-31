@@ -57,9 +57,26 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <!-- Left column — process steps panel. -->
-            <v:ProcessStepsPanel Grid.Column="0" x:Name="StepsPanel" Margin="0,0,8,0"
-                                 HorizontalAlignment="Left" Width="240" />
+            <!-- Left column — process steps panel + SiPhOG client panel. -->
+            <Grid Grid.Column="0" Margin="0,0,8,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <v:ProcessStepsPanel Grid.Column="0" x:Name="StepsPanel"
+                                     HorizontalAlignment="Left" Width="240" />
+
+                <!-- SiPhOG info panel on top, live chart below. -->
+                <Grid Grid.Column="1" Margin="12,0,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <v:SiphogPanel Grid.Row="0" x:Name="SiphogPanelControl"
+                                   HorizontalAlignment="Left" Width="360" />
+                    <v:SiphogChart Grid.Row="1" x:Name="SiphogChartControl" Margin="0,8,0,0" />
+                </Grid>
+            </Grid>
 
             <!-- Camera column. -->
             <Grid Grid.Column="1">

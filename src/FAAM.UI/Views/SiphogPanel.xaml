@@ -1,0 +1,90 @@
+<UserControl x:Class="FAAM.UI.Views.SiphogPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+            BorderThickness="1" CornerRadius="4" Padding="12">
+        <StackPanel>
+            <TextBlock Text="SiPhOG" Foreground="{StaticResource Accent}" FontSize="15" FontWeight="SemiBold"
+                       Margin="0,0,0,8" />
+
+            <!-- Connect / disconnect + live data rate -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <Button Content="{Binding ConnectLabel}" Command="{Binding ConnectCommand}"
+                        Width="120" Height="32" />
+                <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding DataRate}" Foreground="{StaticResource Text}"
+                               FontFamily="Consolas" FontSize="16" FontWeight="SemiBold" />
+                    <TextBlock Text="data rate" Foreground="{StaticResource Subtle}" FontSize="11" />
+                </StackPanel>
+
+                <!-- SAG / target percentage with traffic-light background. -->
+                <Border Margin="16,0,0,0" CornerRadius="4" Padding="12,4" VerticalAlignment="Center" MinWidth="80">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{StaticResource Bg}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SagLevel}" Value="ok">
+                                    <Setter Property="Background" Value="{StaticResource Ok}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding SagLevel}" Value="warn">
+                                    <Setter Property="Background" Value="{StaticResource Warn}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding SagLevel}" Value="danger">
+                                    <Setter Property="Background" Value="{StaticResource Danger}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel>
+                        <TextBlock Text="{Binding SagPercent}" Foreground="Black" FontSize="16"
+                                   FontWeight="SemiBold" HorizontalAlignment="Center" />
+                        <TextBlock Text="SAG / target" Foreground="Black" FontSize="10"
+                                   HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Field / value table -->
+            <Border BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3"
+                    Background="{StaticResource Bg}" Padding="0" Margin="0,0,0,8">
+                <ItemsControl ItemsSource="{Binding Fields}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="120" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Name}" Foreground="{StaticResource Subtle}"
+                                           Padding="10,5" />
+                                <TextBlock Grid.Column="1" Text="{Binding Value}" Foreground="{StaticResource Text}"
+                                           FontFamily="Consolas" HorizontalAlignment="Right" Padding="10,5" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+
+            <!-- SET_CURRENT presets -->
+            <TextBlock Text="Set SLED current" Foreground="{StaticResource Subtle}" FontSize="11" Margin="0,0,0,4" />
+            <ItemsControl ItemsSource="{Binding Presets}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Content="{Binding Label}" Command="{Binding ApplyCommand}"
+                                MinWidth="64" Height="30" Margin="0,0,6,6"
+                                IsEnabled="{Binding DataContext.IsConnected, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Last reply / status -->
+            <TextBlock Text="{Binding Status}" Foreground="{StaticResource Subtle}" FontStyle="Italic"
+                       TextWrapping="Wrap" Margin="0,4,0,0" />
+        </StackPanel>
+    </Border>
+</UserControl>
