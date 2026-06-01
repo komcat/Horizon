@@ -34,6 +34,12 @@ public partial class JogPanel : UserControl
     private readonly List<ToggleButton> _stepButtons = new();
     private readonly DispatcherTimer _poll;
 
+    /// <summary>The four Camera exposure-preset buttons + their µs values (0 = unset).</summary>
+    private readonly Button[] _expPresetButtons = new Button[4];
+    private readonly double[] _expPresetValues = new double[4];
+    /// <summary>Last-known camera exposure — gain / frame-rate preserved across edits.</summary>
+    private CameraExposure _camExposure = new(0, 0, false, false, 0);
+
     private double _stepMm = StepSizes[DefaultStepIndex].Mm;
     private EngineHost? _host;
     private string? _device;
@@ -59,6 +65,7 @@ public partial class JogPanel : UserControl
         InitializeComponent();
         _velButtons = new[] { Vel0, Vel1, Vel2, Vel3, Vel4, Vel5 };
         BuildSteps();
+        BuildExposurePresets();
         _poll = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _poll.Tick += (_, _) => UpdatePosition();
         Loaded += OnLoaded;
@@ -170,10 +177,16 @@ public partial class JogPanel : UserControl
     {
         _host = host;
         BuildDevices();
+        LoadCameraExposure();
+        LoadExposurePresets();
         _poll.Start();   // live position readout (~4 Hz, reads the engine's cached state)
 
-        // Reflect velocity-preset edits made in the Settings section.
-        host.Settings.Changed += _ => { if (_device != null) LoadPresets(_device); };
+        // Reflect velocity / exposure-preset edits made elsewhere.
+        host.Settings.Changed += _ =>
+        {
+            if (_device != null) LoadPresets(_device);
+            LoadExposurePresets();
+        };
     }
 
     /// <summary>Stops the live-position poll — called by the shell before engine teardown.</summary>
@@ -438,4 +451,150 @@ public partial class JogPanel : UserControl
         JogStatus.Text = text;
         _host?.Log.Add(new LogEntry(LogLevel.Info, DateTimeOffset.Now, "Jog", text));
     }
+
+    // ---------------------------------------------------------------- Camera
+
+    /// <summary>The camera the exposure controls drive — <c>main_camera</c> if present, else the first.</summary>
+    private string? CameraId
+    {
+        get
+        {
+            var ids = _host?.Engine.Camera.CameraIds;
+            if (ids == null || ids.Count == 0) return null;
+            return ids.Contains("main_camera") ? "main_camera" : ids[0];
+        }
+    }
+
+    private void BuildExposurePresets()
+    {
+        for (int i = 0; i < _expPresetButtons.Length; i++)
+        {
+            var btn = new Button
+            {
+                Content = "—",
+                Tag = i,
+                Height = 28,
+                Margin = new Thickness(2),
+                Cursor = Cursors.Hand,
+                ToolTip = "Left-click: apply.   Right-click: set + save this preset.",
+            };
+            btn.Click += OnExposurePresetClick;
+            btn.MouseRightButtonUp += OnExposurePresetRightClick;
+            _expPresetButtons[i] = btn;
+            ExposurePresetList.Children.Add(btn);
+        }
+    }
+
+    /// <summary>Pre-fills the exposure box + auto toggle from the camera's current settings.</summary>
+    private void LoadCameraExposure()
+    {
+        var cam = CameraId;
+        if (_host == null || cam == null)
+        {
+            ExposureBox.IsEnabled = ExposureApply.IsEnabled = AutoExposureToggle.IsEnabled = false;
+            SetCamStatus("No camera configured.");
+            return;
+        }
+        _camExposure = _host.Engine.Camera.GetState(cam).Exposure;
+        if (_camExposure.ExposureUs > 0) ExposureBox.Text = _camExposure.ExposureUs.ToString("g");
+        UpdateAutoToggle(_camExposure.AutoExposure);
+    }
+
+    private void LoadExposurePresets()
+    {
+        var presets = _host?.Settings.Current.ExposurePresets ?? Array.Empty<double>();
+        for (int i = 0; i < _expPresetButtons.Length; i++)
+        {
+            double v = i < presets.Length ? presets[i] : 0;
+            _expPresetValues[i] = v;
+            _expPresetButtons[i].Content = v > 0 ? v.ToString("g") : "—";
+        }
+    }
+
+    private void UpdateAutoToggle(bool on)
+    {
+        AutoExposureToggle.IsChecked = on;
+        AutoExposureToggle.Content = on ? "Auto-exposure: ON" : "Auto-exposure: OFF";
+    }
+
+    private void OnExposureKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { OnApplyExposure(sender, e); e.Handled = true; }
+    }
+
+    private void OnApplyExposure(object sender, RoutedEventArgs e)
+    {
+        if (!double.TryParse(ExposureBox.Text, out double us) || us <= 0)
+        {
+            SetCamStatus("Enter a positive exposure (µs).");
+            return;
+        }
+        _ = ApplyExposureValueAsync(us);
+    }
+
+    private void OnExposurePresetClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button b || b.Tag is not int i) return;
+        double v = _expPresetValues[i];
+        if (v <= 0) { SetCamStatus("Preset empty — right-click to set a value."); return; }
+        ExposureBox.Text = v.ToString("g");
+        _ = ApplyExposureValueAsync(v);
+    }
+
+    /// <summary>Right-click a preset → type a µs value, store it in AppSettings and persist.</summary>
+    private void OnExposurePresetRightClick(object sender, MouseButtonEventArgs e)
+    {
+        if (_host == null || sender is not Button b || b.Tag is not int i) return;
+        e.Handled = true;
+
+        double cur = _expPresetValues[i];
+        var dlg = new SerialEntryWindow("Exposure preset", $"Exposure µs for preset {i + 1}:",
+                                        cur > 0 ? cur.ToString("g") : string.Empty)
+        {
+            Owner = Window.GetWindow(this),
+        };
+        if (dlg.ShowDialog() != true) return;
+        if (!double.TryParse(dlg.Serial, out double us) || us <= 0)
+        {
+            SetCamStatus("Preset unchanged — enter a positive number.");
+            return;
+        }
+
+        // Persist into AppSettings (clone the array so the record stays immutable).
+        var settings = _host.Settings.Current;
+        var arr = (double[])(settings.ExposurePresets?.Clone() ?? new double[_expPresetButtons.Length]);
+        if (arr.Length < _expPresetButtons.Length) Array.Resize(ref arr, _expPresetButtons.Length);
+        arr[i] = us;
+        _host.Settings.Update(settings with { ExposurePresets = arr });
+        _host.Settings.Save();   // Changed fires → LoadExposurePresets refreshes the buttons
+        SetCamStatus($"Preset {i + 1} set to {us:g} µs.");
+    }
+
+    private async void OnToggleAutoExposure(object sender, RoutedEventArgs e)
+    {
+        bool on = AutoExposureToggle.IsChecked == true;
+        UpdateAutoToggle(on);
+        var cam = CameraId;
+        if (_host == null || cam == null) return;
+
+        _camExposure = _camExposure with { AutoExposure = on };
+        var r = await _host.Engine.Camera.ApplyExposureAsync(cam, _camExposure);
+        SetCamStatus(r.IsSuccess
+            ? (on ? "Auto-exposure ON." : "Auto-exposure OFF.")
+            : $"Auto-exposure failed: {r.Message}");
+    }
+
+    /// <summary>Applies a manual exposure (µs) — turns auto-exposure off, preserves gain / frame-rate.</summary>
+    private async Task ApplyExposureValueAsync(double us)
+    {
+        var cam = CameraId;
+        if (_host == null || cam == null) return;
+
+        _camExposure = _camExposure with { ExposureUs = us, AutoExposure = false };
+        UpdateAutoToggle(false);
+        var r = await _host.Engine.Camera.ApplyExposureAsync(cam, _camExposure);
+        SetCamStatus(r.IsSuccess ? $"Exposure {us:g} µs applied." : $"Exposure failed: {r.Message}");
+    }
+
+    private void SetCamStatus(string text) => CamStatus.Text = text;
 }

@@ -190,6 +190,52 @@
 
             <TextBlock x:Name="JogStatus" Foreground="{StaticResource Subtle}" FontSize="11"
                        TextWrapping="Wrap" Margin="2,8,0,0" />
+
+            <!-- ============================ CAMERA ============================ -->
+            <Border Margin="0,12,0,0" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="4" Padding="8">
+                <StackPanel>
+                    <TextBlock Text="CAMERA" Foreground="{StaticResource Subtle}" FontWeight="Bold"
+                               FontSize="12" Margin="0,0,0,6" />
+
+                    <!-- Manual exposure entry + apply. -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Exposure µs" Foreground="{StaticResource Subtle}"
+                                   FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBox x:Name="ExposureBox" Grid.Column="1" Height="26" VerticalContentAlignment="Center"
+                                 KeyDown="OnExposureKeyDown" />
+                        <Button x:Name="ExposureApply" Grid.Column="2" Content="Apply" Width="56" Height="26"
+                                Margin="6,0,0,0" Cursor="Hand" Click="OnApplyExposure" />
+                    </Grid>
+
+                    <!-- Auto-exposure on/off. -->
+                    <ToggleButton x:Name="AutoExposureToggle" Style="{StaticResource VelBtn}"
+                                  Margin="0,6,0,0" Content="Auto-exposure: —" Click="OnToggleAutoExposure" />
+
+                    <!-- Presets: left-click to apply, right-click to set + save. -->
+                    <TextBlock Text="Presets  (right-click to set)" Foreground="{StaticResource Subtle}"
+                               FontSize="11" Margin="0,8,0,4" />
+                    <UniformGrid x:Name="ExposurePresetList" Columns="2" />
+
+                    <TextBlock x:Name="CamStatus" Foreground="{StaticResource Subtle}" FontSize="11"
+                               TextWrapping="Wrap" Margin="0,6,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- =========================== LIGHTING =========================== -->
+            <Border Margin="0,8,0,0" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="4" Padding="8">
+                <StackPanel>
+                    <TextBlock Text="LIGHTING" Foreground="{StaticResource Subtle}" FontWeight="Bold"
+                               FontSize="12" Margin="0,0,0,6" />
+                    <TextBlock Text="—" Foreground="{StaticResource Subtle}" FontSize="11" />
+                </StackPanel>
+            </Border>
         </StackPanel>
     </Border>
 </UserControl>

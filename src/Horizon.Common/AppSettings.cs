@@ -68,6 +68,13 @@ public sealed record AppSettings
     /// </summary>
     public bool ShowMainCameraOnStartup { get; init; } = true;
 
+    /// <summary>
+    /// Exposure presets (µs) for the jog-panel Camera section's preset buttons.
+    /// A zero entry is an unset (blank) button — the operator right-clicks it to
+    /// type and save a value. Four entries back the four preset buttons.
+    /// </summary>
+    public double[] ExposurePresets { get; init; } = { 0, 0, 0, 0 };
+
     // --- Window persistence (restored on next launch) ---
 
     /// <summary>Main shell window placement, or null if never saved.</summary>
