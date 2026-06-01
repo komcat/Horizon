@@ -61,19 +61,43 @@ defines its own program/recipe/position formats.
 
 - `Execution/` — `WorkflowRunner`, `WorkflowProgram`, `StepDispatcher`,
   `WorkflowContext`, `ExpressionEvaluator`, `ConditionEvaluator`, `PauseController`.
+  Programs are flat `.hwf` JSON, but a **`flow.parallel`** step carries `Branches`
+  (per-lane sub-sequences) the runner runs **concurrently** via recursive sub-runs +
+  `Task.WhenAll`, fail-fast (a linked token cancels siblings on first failure) — the
+  executable form of the Gantt editor's parallel stages. Move ops
+  (`motion.moveToPosition` / `moveRelative`) take optional **`MoveOverrides`**
+  (velocity / camera / exposure applied at the *start* of the move, so the camera
+  settle overlaps travel; `MoveExposure` is the shared apply helper).
+  `MotionVelocityLimits` caps velocity by controller type (PI 0.01–10, ACS 0.1–50 mm/s).
 - `Execution/DeckRunner` + `DeckStore` — a **deck** is a chain of programs with
   transition conditions between them.
 - `Recipe/` — a recreated `.hrcp`-style scripting interpreter (lexer → parser →
   AST → interpreter, `RecipeMethodRegistry`).
-- `ProductStore`, `PositionStore`, `ProgramStore` — per-product data I/O.
+- `ProductStore`, `PositionStore`, `ProgramStore` — per-product data I/O. A product is
+  a directory `%APPDATA%\Horizon\products\{name}\` (`processes\*.hwf`, `positions.json`,
+  `decks\`, `recipes\`, `dut\`, `product.json` metadata via `ProductInfo`); the active
+  product is recorded in `products\active.json`. `IProcessService` exposes
+  `ActiveProductInfo` + a `ProductChanged` event and refuses to switch mid-run.
 - `IOperatorPrompt` — abstraction for asking the operator a question; the UI
   supplies a WPF implementation, consoles a stdin one.
 - `Scanning/` — hexapod beam-alignment scan (coarse-to-fine hill-climb, ported
   from `bobcat_engine`). `HexapodScanEngine` orchestrates; `CoarseToFineStrategy`
   is the algorithm; `IScanFeedbackSource` bridges SMU/measurement/power-supply
   facet events to the algorithm. See `docs/hexapod-scanning.md`.
-- `Dut/` — `DutStore` + `DutResultStore` for per-DUT (device-under-test)
-  results, keyed by serial; consumed by the bobcat-style step ops.
+- `Dut/` — `DutStore` for per-DUT (device-under-test) results, keyed by serial. A
+  `DutRun` is stamped with the operator + station (`OperatorContext`, set via
+  `IProcessService.SetOperator`). Beyond the program-driven path, an **interactive DUT
+  session** (`BeginDutRun`/`RecordDutValue`/`EndDutRun`) brackets operator-driven
+  processes that don't execute a `WorkflowProgram` (FAAM's hand-clicked Run page).
+- **Program history (SQLite)** — `ProgramHistoryDb` writes a *machine-global*
+  `%APPDATA%\Horizon\history.db` (`Microsoft.Data.Sqlite`): one operator-stamped
+  snapshot per `SaveProgram`, plus normalized `block_revision` / `block_param` tables
+  keyed by the block UID. `ProgramDiff` diffs two revisions; `IProcessService.QueryHistory`
+  queries saved params by UID / key / device / operator. Programs themselves stay
+  `.hwf` files. See `docs/program-history-sqlite-design.md`.
+- Operator identity / login lives in Layer 3; Layer 2 only *receives* an
+  `OperatorContext`. `users.json` (operator directory) + `AppSettings.StationId` are
+  machine-global (`Horizon.Common`). See `docs/product-and-traceability-design.md`.
 - `Migration/` — `BobcatRecipeConverter` translates legacy `bobcat_engine`
   recipe JSON into `WorkflowProgram` JSON; `BobcatMigration` is the entry
   point. See `docs/recipe-migration.md` for the Rosetta-stone mapping
@@ -105,6 +129,9 @@ hand-rolled `ObservableObject`/`RelayCommand` (`Mvvm/`).
   pipeline that feeds motion/measurement data to the UI.
 - Pages: Machine (hardware status + manual control, composed of `ViewModels/Sections/`),
   Program Editor, Deck (process sequence). Views in `Views/`, view-models in `ViewModels/`.
+- Also has the operator login gate + identity chip (`LoginWindow`/`Session`), so its
+  program/deck runs are operator-stamped; it does not yet have the Gantt editor or DUT
+  Run page (those are FAAM.UI-only so far).
 
 #### FAAM.UI (FAU-attach operator app)
 
@@ -112,20 +139,38 @@ A second Layer 3 head purpose-built for the FAU-attach process — mirrors
 Horizon.UI's `EngineHost`/`ShellWindow`/`Telemetry`/`Mvvm` shape with its own
 fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.md`.
 
+- **Startup flow**: `StartupWindow` (connect hardware) → **`LoginWindow`** (pick
+  operator + PIN, `Session` pushes an `OperatorContext` to Layer 2 for traceability) →
+  `ShellWindow`. The shell header has an always-visible product + operator identity
+  chip and a Logout button.
 - `ShellWindow` — fixed chrome (Home/jog rail/header) around a swappable page host:
-  **Home**, **Machine** (ported wholesale from Horizon.UI), **Run** (the production
-  page: camera feed + crosshair/Zoom2× inset, **MoveClick** click-to-jog, process
-  steps panel with Teach/Run toggle, log). A SiPhOG TCP client + Skia chart live
-  under `Siphog/`; `MoveClick.cs` holds the shared `mm/pixel` jog maths.
+  **Home** (launcher + product selector), **Machine** (ported wholesale from
+  Horizon.UI), **Run** (the production page: camera feed + crosshair/Zoom2× inset,
+  **MoveClick** click-to-jog, process steps panel with Teach/Run toggle, serial-
+  bracketed DUT run with PASS/FAIL + a DUT results viewer, log), and **Engineer**
+  (the Gantt editor below). A SiPhOG TCP client + Skia chart live under `Siphog/`;
+  `MoveClick.cs` holds the shared `mm/pixel` jog maths.
+- **Engineer = the Gantt timeline editor** (`Views/TimelineEditorView`,
+  `ViewModels/Timeline/`): device **lanes** down the left (from the engine facets),
+  ordered **stages** across the top; same-stage-different-lane = parallel. It compiles
+  to a `WorkflowProgram` (multi-lane stage → `flow.parallel`) and round-trips back,
+  reusing `OpCatalog`/`ProcessBlockViewModel` param editing. Each block has a stable
+  UID; a dirty marker + a **History** window (revisions/diff + a UID query tab) sit on
+  the SQLite history store. *This replaced the old flat `EngineerView` /
+  `ProcessEditorViewModel`, which are now unreferenced dead code (pending deletion).*
+  See `docs/timeline-sequence-editor-design.md`.
 - **Global jog rail** — connected motion devices, X/Y/Z/U/V/W jog pad, velocity +
   step-size presets; jog clicks are in the **global** frame, converted to
   device-local via per-device matrices in `jog_transforms.json` (`JogTransforms.cs`).
-- **Process steps are Phase 1 / hardcoded** in `Process/ProcessStepsPanel`
+- **Run-page process steps are Phase 1 / hardcoded** in `Views/ProcessStepsPanel`
   (`RunStepAsync`) — not yet promoted to a Layer 2 `WorkflowDeck`/`PositionStore`.
+- `EngineHost` forces camera **auto-exposure ON** on each camera-connect edge.
 - FAAM-owned config in `%APPDATA%\Horizon\config\`: `jog_transforms.json` (jog
-  matrices), `faam_teach_points.json` (taught step positions); plus shared
-  `app_settings.json` (`AppSettings`/`AppSettingsStore` in `Horizon.Common`:
-  `mm/pixel`, MoveClick mapping, jog velocity presets) and the engine device configs.
+  matrices), `faam_teach_points.json` (legacy taught points, migrated into the product);
+  plus shared `app_settings.json` (`AppSettings`/`AppSettingsStore` in `Horizon.Common`:
+  `mm/pixel`, MoveClick mapping, jog velocity presets, `StationId`) and the engine
+  device configs. Operator directory `users.json` and the program-history
+  `history.db` live in `%APPDATA%\Horizon\` (machine-global, both heads share them).
 - **Theme rule (both heads)**: use the Windows `SystemColors` palette via the
   `App.xaml` brushes (`Bg/Panel/Text/Subtle/Edge/Accent`), not hardcoded dark hex.
 
@@ -198,9 +243,11 @@ nonexistent IO pin). Authoring-side only — not part of the runtime stack.
 - VISA instruments share a `Native/VisaNative.cs` P/Invoke pattern.
 - Logging: `ILogSink` / `Logging.cs` interfaces; Serilog 4.2.0 in host projects.
 - NuGet: AvalonDock 4.72.1 (legacy App only), SkiaSharp.Views.WPF 3.116.1,
-  Spectre.Console 0.49.1 (console hosts), MVTec HALCON 24.05 — `MVTec.HalconDotNet`
-  managed wrapper in library projects, `MVTec.HalconDotNet-Windows`
-  native-bundling package in executable projects. HALCON 24.05 is x64-only.
+  Spectre.Console 0.49.1 (console hosts), `Microsoft.Data.Sqlite` 8.0.10 (Layer 2
+  program-history store; full package bundles the native engine for the executables),
+  MVTec HALCON 24.05 — `MVTec.HalconDotNet` managed wrapper in library projects,
+  `MVTec.HalconDotNet-Windows` native-bundling package in executable projects.
+  HALCON 24.05 is x64-only.
 
 ## Documentation
 
@@ -214,3 +261,6 @@ nonexistent IO pin). Authoring-side only — not part of the runtime stack.
 - Bobcat → Horizon recipe migration: `docs/recipe-migration.md`.
 - FAAM.UI (second Layer 3 head): `docs/faam-ui.md`, `docs/faam-handoff.md`.
 - SMU streaming: `docs/smu-streaming-design.md`.
+- Product encapsulation + operator login + DUT traceability: `docs/product-and-traceability-design.md`.
+- Gantt timeline editor + `flow.parallel`: `docs/timeline-sequence-editor-design.md`.
+- Program history → SQLite: `docs/program-history-sqlite-design.md`.
