@@ -24,6 +24,8 @@ public sealed record UCorrectionOptions(
     double MaxMoveDistanceMm = 20.0,
     // Sign of the applied U rotation; flip to -1 if the hexapod U convention is reversed.
     double Sign = +1.0,
+    // Hard guard (deg): refuse to apply a U rotation larger than this — a bigger value signals a bad capture set.
+    double MaxUvwDeg = 2.0,
     // Camera to re-expose at each stop while travelling; null leaves each position's own camera/exposure in effect.
     string? Camera = null,
     // Exposure (µs) for the PIC points when Camera is set.
@@ -140,6 +142,11 @@ public sealed class UCorrectionRoutine
             captured[0], captured[1], captured[2], captured[3]);
         double correction = o.Sign * angle;
         _log(LogLevel.Info, $"Angle PIC→FAU = {angle:F4}° → U correction {(correction >= 0 ? "+" : "")}{correction:F4}°");
+
+        // 4b) Hexapod UVW safety guard — a correction beyond ±MaxUvwDeg means a bad
+        //     capture set; refuse rather than command a large unintended rotation.
+        if (Math.Abs(correction) > o.MaxUvwDeg)
+            return Fail($"U correction {correction:F4}° exceeds the ±{o.MaxUvwDeg:0.##}° hexapod guard — re-check the captured points.");
 
         // 5) Confirm the apply.
         bool apply = await _prompt.ConfirmAsync(

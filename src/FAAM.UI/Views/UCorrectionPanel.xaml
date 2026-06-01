@@ -1,0 +1,118 @@
+<UserControl x:Class="FAAM.UI.Views.UCorrectionPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- A compact reference-point button (Move to / Save to grids). -->
+        <Style x:Key="PointButton" TargetType="Button">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="Background" Value="{StaticResource Bg}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- "Save to" variant — accent border to set it apart from "Move to". -->
+        <Style x:Key="SaveButton" TargetType="Button" BasedOn="{StaticResource PointButton}">
+            <Setter Property="Foreground" Value="{StaticResource Accent}" />
+        </Style>
+
+        <!-- Small state indicator dot. -->
+        <Style x:Key="Dot" TargetType="Ellipse">
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="16" />
+            <Setter Property="Margin" Value="3" />
+            <Setter Property="Fill" Value="{StaticResource Edge}" />
+            <Setter Property="Stroke" Value="{StaticResource Subtle}" />
+            <Setter Property="StrokeThickness" Value="1" />
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}" BorderThickness="2"
+            CornerRadius="4" Width="280" VerticalAlignment="Top">
+        <StackPanel Margin="10">
+            <TextBlock Text="U CORRECTION" Foreground="{StaticResource Accent}" FontSize="15" FontWeight="Bold"
+                       HorizontalAlignment="Center" Margin="0,2,0,8" />
+
+            <!-- Reference points: Move to + Save to (P1/F1 over P2/F2, matching the draft). -->
+            <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                    CornerRadius="3" Padding="8" Margin="0,0,0,8">
+                <StackPanel>
+                    <Grid Margin="0,0,0,4">
+                        <TextBlock Text="Move to" Foreground="{StaticResource Subtle}" FontSize="11" />
+                        <CheckBox x:Name="LockBox" Content="Lock" Foreground="{StaticResource Subtle}" FontSize="11"
+                                  HorizontalAlignment="Right" Checked="OnLockChanged" Unchecked="OnLockChanged"
+                                  ToolTip="Lock the Move/Save buttons to prevent accidental clicks" />
+                    </Grid>
+                    <UniformGrid Columns="2" Rows="2">
+                        <Button x:Name="MoveP1" Style="{StaticResource PointButton}" Content="P1" Tag="P1" Margin="0,0,2,4" Click="OnMove" />
+                        <Button x:Name="MoveF1" Style="{StaticResource PointButton}" Content="F1" Tag="F1" Margin="2,0,0,4" Click="OnMove" />
+                        <Button x:Name="MoveP2" Style="{StaticResource PointButton}" Content="P2" Tag="P2" Margin="0,0,2,0" Click="OnMove" />
+                        <Button x:Name="MoveF2" Style="{StaticResource PointButton}" Content="F2" Tag="F2" Margin="2,0,0,0" Click="OnMove" />
+                    </UniformGrid>
+
+                    <TextBlock Text="Save to (teach current pose)" Foreground="{StaticResource Subtle}" FontSize="11" Margin="0,8,0,4" />
+                    <UniformGrid Columns="2" Rows="2">
+                        <Button x:Name="SaveP1" Style="{StaticResource SaveButton}" Content="P1" Tag="P1" Margin="0,0,2,4" Click="OnSave" />
+                        <Button x:Name="SaveF1" Style="{StaticResource SaveButton}" Content="F1" Tag="F1" Margin="2,0,0,4" Click="OnSave" />
+                        <Button x:Name="SaveP2" Style="{StaticResource SaveButton}" Content="P2" Tag="P2" Margin="0,0,2,0" Click="OnSave" />
+                        <Button x:Name="SaveF2" Style="{StaticResource SaveButton}" Content="F2" Tag="F2" Margin="2,0,0,0" Click="OnSave" />
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Correction run. -->
+            <Button x:Name="StartButton" Content="Start correction" Height="38" Margin="0,0,0,6"
+                    Background="{StaticResource Accent}" Foreground="White" BorderThickness="0"
+                    FontSize="14" FontWeight="Bold" Cursor="Hand" Click="OnStart" />
+
+            <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                    CornerRadius="3" Padding="8,5" Margin="0,0,0,6">
+                <TextBlock x:Name="StatusText" Text="Idle" Foreground="{StaticResource Text}"
+                           TextWrapping="Wrap" FontSize="12.5" />
+            </Border>
+
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="CaptureButton" Grid.Column="0" Content="Capture Point" Height="48"
+                        Background="#E08A1E" Foreground="White" BorderThickness="0" FontSize="14" FontWeight="Bold"
+                        Cursor="Hand" IsEnabled="False" Click="OnCapture" />
+                <!-- P1 / F1 over P2 / F2 capture indicators. -->
+                <UniformGrid Grid.Column="1" Columns="2" Rows="2" Margin="8,0,0,0" VerticalAlignment="Center">
+                    <Ellipse x:Name="DotP1" Style="{StaticResource Dot}" />
+                    <Ellipse x:Name="DotF1" Style="{StaticResource Dot}" />
+                    <Ellipse x:Name="DotP2" Style="{StaticResource Dot}" />
+                    <Ellipse x:Name="DotF2" Style="{StaticResource Dot}" />
+                </UniformGrid>
+            </Grid>
+
+            <Button x:Name="ClearButton" Content="Clear" Height="32" Margin="0,0,0,6"
+                    Style="{StaticResource PointButton}" Click="OnClear" />
+
+            <Button x:Name="ApplyButton" Content="Apply U" Height="44"
+                    Background="{StaticResource Ok}" Foreground="White" BorderThickness="0"
+                    FontSize="15" FontWeight="Bold" Cursor="Hand" IsEnabled="False" Click="OnApplyU" />
+        </StackPanel>
+    </Border>
+</UserControl>

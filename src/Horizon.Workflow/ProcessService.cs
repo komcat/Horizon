@@ -1,5 +1,6 @@
 using Horizon.Common;
 using Horizon.Engine;
+using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.Recipe;
 using Horizon.Workflow.UCorrection;
 
@@ -616,23 +617,61 @@ public sealed class ProcessService : IProcessService
 
     // --- U correction ---
 
-    public async Task<Result<UCorrectionResult>> RunUCorrectionAsync(
+    public Task<Result<UCorrectionResult>> RunUCorrectionAsync(
         UCorrectionOptions options, CancellationToken ct = default)
+        => RunUCorrectionCoreAsync(options, OperatorPrompt, ct);
+
+    public Task<Result<UCorrectionResult>> RunUCorrectionAsync(
+        UCorrectionOptions options, IOperatorPrompt prompt, CancellationToken ct = default)
+        => RunUCorrectionCoreAsync(options, prompt, ct);
+
+    private async Task<Result<UCorrectionResult>> RunUCorrectionCoreAsync(
+        UCorrectionOptions options, IOperatorPrompt? prompt, CancellationToken ct)
     {
         if (_positions == null)
             return Result<UCorrectionResult>.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
 
         // Mirror WorkflowRunner's wiring: the routine owns no stores — it gets the
-        // recall-move + position read/save delegates from the service.
+        // recall-move + position read/save delegates from the service. The prompt is
+        // injectable so a non-modal front-end (the Run page's inline Capture/Apply
+        // panel) can drive the per-point refine without a blocking modal dialog.
         var routine = new UCorrectionRoutine(
             _engine,
             MoveToNamedPositionCoreAsync,
             (device, name) => _positions?.Get(device, name),
             SaveNamedPosition,
-            OperatorPrompt,
+            prompt,
             Log);
 
         Log(LogLevel.Info, $"U correction started: gantry '{options.GantryDevice}', hexapod '{options.HexapodDevice}'.");
+        return await routine.RunAsync(options, ct).ConfigureAwait(false);
+    }
+
+    // --- FAU pre-align ---
+
+    public Task<Result<FauPreAlignResult>> RunFauPreAlignAsync(
+        FauPreAlignOptions options, CancellationToken ct = default)
+        => RunFauPreAlignCoreAsync(options, OperatorPrompt, ct);
+
+    public Task<Result<FauPreAlignResult>> RunFauPreAlignAsync(
+        FauPreAlignOptions options, IOperatorPrompt prompt, CancellationToken ct = default)
+        => RunFauPreAlignCoreAsync(options, prompt, ct);
+
+    private async Task<Result<FauPreAlignResult>> RunFauPreAlignCoreAsync(
+        FauPreAlignOptions options, IOperatorPrompt? prompt, CancellationToken ct)
+    {
+        if (_positions == null)
+            return Result<FauPreAlignResult>.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        var routine = new FauPreAlignRoutine(
+            _engine,
+            MoveToNamedPositionCoreAsync,
+            (device, name) => _positions?.Get(device, name),
+            SaveNamedPosition,
+            prompt,
+            Log);
+
+        Log(LogLevel.Info, $"FAU pre-align started: gantry '{options.GantryDevice}', hexapod '{options.HexapodDevice}'.");
         return await routine.RunAsync(options, ct).ConfigureAwait(false);
     }
 

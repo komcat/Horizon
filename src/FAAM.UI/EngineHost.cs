@@ -39,6 +39,13 @@ public sealed class EngineHost : IAsyncDisposable
     /// <summary>The signed-in operator; pushes traceability identity down to Layer 2.</summary>
     public Session Session { get; }
 
+    /// <summary>
+    /// Process-wide busy signal. The alignment panels (Hill Climber, U-correction,
+    /// FAU pre-align) all drive the shared hexapod, so they bracket their runs here;
+    /// the process panel blocks its step / DUT-start buttons while it is busy.
+    /// </summary>
+    public ActivityGate Activity { get; } = new();
+
     /// <summary>The single product FAAM operates under (Layer 2 positions are product-scoped).</summary>
     public const string ProductName = "FAAM";
 

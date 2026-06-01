@@ -57,18 +57,34 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <!-- Left column — process steps panel + SiPhOG client panel. -->
+            <!-- Left column — process steps panel + U-correction panel + SiPhOG client panel. -->
             <Grid Grid.Column="0" Margin="0,0,8,0">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <v:ProcessStepsPanel Grid.Column="0" x:Name="StepsPanel"
                                      HorizontalAlignment="Left" Width="240" />
 
+                <!-- Alignment protocols — tabbed (used one at a time); each drives a Layer 2 routine.
+                     The Hill Climber panel sits below them (also a Layer 2 engine). -->
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Top">
+                    <TabControl Background="Transparent" BorderThickness="0">
+                        <TabItem Header="U correction">
+                            <v:UCorrectionPanel x:Name="UCorrPanel" Margin="0,6,0,0" VerticalAlignment="Top" />
+                        </TabItem>
+                        <TabItem Header="FAU pre-align">
+                            <v:FauPreAlignPanel x:Name="FauPrePanel" Margin="0,6,0,0" VerticalAlignment="Top" />
+                        </TabItem>
+                    </TabControl>
+
+                    <v:HillClimbPanel x:Name="HillClimbPanelControl" Margin="0,10,0,0" HorizontalAlignment="Left" />
+                </StackPanel>
+
                 <!-- Widget slot: a show/hide toggle over the SiPhOG panel (top) + chart
                      (bottom). Collapsing frees the area for another widget. -->
-                <Grid Grid.Column="1" Margin="12,0,0,0">
+                <Grid Grid.Column="2" Margin="12,0,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
@@ -79,13 +95,8 @@
                               Checked="OnSiphogToggle" Unchecked="OnSiphogToggle" />
 
                     <Grid Grid.Row="1" x:Name="SiphogSlot">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <v:SiphogPanel Grid.Row="0" x:Name="SiphogPanelControl"
-                                       HorizontalAlignment="Left" Width="360" />
-                        <v:SiphogChart Grid.Row="1" x:Name="SiphogChartControl" Margin="0,8,0,0" />
+                        <v:SiphogPanel x:Name="SiphogPanelControl"
+                                       HorizontalAlignment="Left" VerticalAlignment="Top" Width="360" />
                     </Grid>
                 </Grid>
             </Grid>
@@ -152,11 +163,16 @@
                     </Grid>
                 </Border>
 
-                <!-- Zoom2x inset + thumbnail strip. -->
-                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
-                    <Border Width="200" Height="200"
+                <!-- Zoom2x inset + SAG/target chart + thumbnail strip. -->
+                <Grid Grid.Row="1" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Width="200" Height="200"
                             Background="{StaticResource VideoBg}" BorderBrush="{StaticResource Accent}" BorderThickness="1"
-                            CornerRadius="3" Margin="0,0,8,0" MouseLeftButtonDown="OnZoomClick"
+                            CornerRadius="3" MouseLeftButtonDown="OnZoomClick"
                             MouseMove="OnZoomMouseMove" MouseLeave="OnZoomMouseLeave">
                         <Grid>
                             <Image x:Name="ZoomImage" Stretch="Uniform" Margin="2" />
@@ -182,10 +198,14 @@
                         </Grid>
                     </Border>
 
-                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <!-- SAG / target chart — moved here to sit beside the Zoom2x inset. -->
+                    <v:SiphogChart Grid.Column="1" x:Name="SiphogChartControl" Height="200" Margin="8,0,0,0" />
+
+                    <ScrollViewer Grid.Column="2" Margin="8,0,0,0"
+                                  HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                         <StackPanel x:Name="ThumbStrip" Orientation="Horizontal" />
                     </ScrollViewer>
-                </StackPanel>
+                </Grid>
 
                 <!-- Motion inspector — fills the camera column when a step's
                      "Inspect Motion" is chosen; Close returns to the live feed. -->

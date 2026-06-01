@@ -51,6 +51,14 @@ public sealed record AppSettings
     /// <summary>UV step 2 / final cure time (seconds) — drives the 4.3 "UV step2" dwell after the UV_PLC2 pulse.</summary>
     public double UvCuringSeconds { get; init; } = 30;
 
+    // --- FAU pre-align (Run-page protocol) target "master" offset ---
+
+    /// <summary>Desired fiber→output offset distance (µm) the FAU pre-align corrects toward.</summary>
+    public double FauPreAlignTargetUm { get; init; } = 100;
+
+    /// <summary>Angle (degrees) of the FAU pre-align target offset vector.</summary>
+    public double FauPreAlignTargetAngleDeg { get; init; } = 0;
+
     // --- Camera ---
 
     /// <summary>

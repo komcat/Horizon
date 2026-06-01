@@ -59,9 +59,14 @@ public partial class RunView : UserControl
 
         StepsPanel.Attach(host);   // process panel logs + STOP via the engine host
         StepsPanel.InspectMotionRequested += OnInspectMotionRequested;
+        UCorrPanel.Attach(host);   // U-correction protocol panel → Layer 2 routine
+        FauPrePanel.Attach(host);  // FAU pre-align protocol panel → Layer 2 routine
 
         // The SiPhOG chart shares the panel's client/connection.
         SiphogChartControl.Attach(SiphogPanelControl.Client);
+
+        // Hill Climber drives the Layer 2 engine, fed by the same SiPhOG client (SAG PWR V).
+        HillClimbPanelControl.Attach(host, SiphogPanelControl.Client);
     }
 
     /// <summary>

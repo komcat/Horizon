@@ -1,5 +1,6 @@
 using Horizon.Common;
 using Horizon.Engine;
+using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.Recipe;
 using Horizon.Workflow.UCorrection;
 
@@ -137,6 +138,30 @@ public interface IProcessService
     /// camera. Fails if no product is active or no operator prompt is registered.
     /// </summary>
     Task<Result<UCorrectionResult>> RunUCorrectionAsync(UCorrectionOptions options, CancellationToken ct = default);
+
+    /// <summary>
+    /// As <see cref="RunUCorrectionAsync(UCorrectionOptions,CancellationToken)"/> but drives the
+    /// per-point refine + apply confirmations through the supplied <paramref name="prompt"/>
+    /// instead of the globally-registered <see cref="OperatorPrompt"/>. A front-end uses this to
+    /// supply a <b>non-modal</b> prompt (e.g. the Run page's inline Capture/Apply buttons) so the
+    /// operator can keep jogging via the live camera while a point is being refined.
+    /// </summary>
+    Task<Result<UCorrectionResult>> RunUCorrectionAsync(UCorrectionOptions options, IOperatorPrompt prompt, CancellationToken ct = default);
+
+    /// <summary>
+    /// Runs the FAU pre-align teach + apply against the active product: drives the gantry through the
+    /// four reference points (Out1·Out2·Fiber1·Fiber2), asks the operator to refine each, computes the
+    /// gantry-XY correction toward the target offset, and applies it as a slow relative Y/Z move on the
+    /// hexapod. Headless — needs no camera. Fails if no product is active or no operator prompt is registered.
+    /// </summary>
+    Task<Result<FauPreAlignResult>> RunFauPreAlignAsync(FauPreAlignOptions options, CancellationToken ct = default);
+
+    /// <summary>
+    /// As <see cref="RunFauPreAlignAsync(FauPreAlignOptions,CancellationToken)"/> but drives the per-point
+    /// refine + apply confirmations through the supplied non-modal <paramref name="prompt"/> (e.g. the Run
+    /// page's inline Capture/Move-FAU buttons) instead of the globally-registered <see cref="OperatorPrompt"/>.
+    /// </summary>
+    Task<Result<FauPreAlignResult>> RunFauPreAlignAsync(FauPreAlignOptions options, IOperatorPrompt prompt, CancellationToken ct = default);
 
     // --- Recipes (.hrec scripts, operate on the active product) ---
 

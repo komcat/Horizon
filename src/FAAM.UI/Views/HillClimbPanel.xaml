@@ -1,0 +1,95 @@
+<UserControl x:Class="FAAM.UI.Views.HillClimbPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- Compact "label : value" readout row helpers. -->
+        <Style x:Key="HcLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="HcValue" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}" BorderThickness="2"
+            CornerRadius="4" Width="280" VerticalAlignment="Top">
+        <StackPanel Margin="10">
+            <TextBlock Text="HILL CLIMBER" Foreground="{StaticResource Accent}" FontSize="15" FontWeight="Bold"
+                       HorizontalAlignment="Center" Margin="0,2,0,8" />
+
+            <!-- Live readouts (driven by HillClimbEngine events). -->
+            <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                    CornerRadius="3" Padding="8,6" Margin="0,0,0,8">
+                <StackPanel>
+                    <Grid Margin="0,0,0,4">
+                        <TextBlock Text="State" Style="{StaticResource HcLabel}" />
+                        <TextBlock x:Name="StateText" Text="Idle" HorizontalAlignment="Right"
+                                   FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource Subtle}" />
+                    </Grid>
+
+                    <!-- V start / cur / peak -->
+                    <Grid Margin="0,2,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="V start" Style="{StaticResource HcLabel}" />
+                            <TextBlock x:Name="VStartText" Text="—" Style="{StaticResource HcValue}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="V cur" Style="{StaticResource HcLabel}" />
+                            <TextBlock x:Name="VCurText" Text="—" Style="{StaticResource HcValue}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="V peak" Style="{StaticResource HcLabel}" />
+                            <TextBlock x:Name="VPeakText" Text="—" Style="{StaticResource HcValue}"
+                                       Foreground="{StaticResource Ok}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Margin="0,4,0,2">
+                        <TextBlock Text="Z cumulative (µm)" Style="{StaticResource HcLabel}" />
+                        <TextBlock x:Name="ZCumText" Text="—" Style="{StaticResource HcValue}" HorizontalAlignment="Right" />
+                    </Grid>
+                    <Grid Margin="0,2,0,2">
+                        <TextBlock Text="Step Z / XY (µm)" Style="{StaticResource HcLabel}" />
+                        <TextBlock x:Name="StepText" Text="—" Style="{StaticResource HcValue}" HorizontalAlignment="Right" />
+                    </Grid>
+                    <Grid Margin="0,2,0,0">
+                        <TextBlock Text="Eff threshold" Style="{StaticResource HcLabel}" />
+                        <TextBlock x:Name="ThresholdText" Text="—" Style="{StaticResource HcValue}" HorizontalAlignment="Right" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Distance (µm) — overrides ZBudget per run. -->
+            <Grid Margin="0,0,0,8">
+                <TextBlock Text="Distance (µm)" Style="{StaticResource HcLabel}" />
+                <TextBox x:Name="DistanceBox" Text="99.0" Width="80" HorizontalAlignment="Right"
+                         HorizontalContentAlignment="Right" Padding="4,2"
+                         Background="{StaticResource Panel}" Foreground="{StaticResource Text}"
+                         BorderBrush="{StaticResource Edge}" />
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="StartButton" Grid.Column="0" Content="Start Hill Climb" Height="40" Margin="0,0,3,0"
+                        Background="{StaticResource Accent}" Foreground="White" BorderThickness="0"
+                        FontSize="13" FontWeight="Bold" Cursor="Hand" Click="OnStart" />
+                <Button x:Name="StopButton" Grid.Column="1" Content="Stop" Height="40" Margin="3,0,0,0"
+                        Background="#D9534F" Foreground="White" BorderThickness="0"
+                        FontSize="13" FontWeight="Bold" Cursor="Hand" IsEnabled="False" Click="OnStop" />
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

@@ -246,9 +246,49 @@ public partial class JogPanel : UserControl
         _matrix = _transforms.Get(dev);
         LoadPresets(dev);
 
-        // Default to the lowest (safest) preset so a jog never runs at an unknown speed.
-        if (_velValues[0] > 0)
-            _ = ApplyVelocityAsync(0);
+        // Do NOT push a velocity to the controller on selection / startup — keep
+        // whatever velocity the controller already has. Instead read and show the
+        // controller's current velocity (read-only); the operator changes it by
+        // clicking a preset.
+        _ = ShowCurrentVelocityAsync(dev);
+    }
+
+    /// <summary>
+    /// Reads the controller's current velocity (without changing it) and shows it in
+    /// the status line — PI hexapods report a single system (path) velocity; ACS and
+    /// others are per-axis, so we read the first axis as representative. If the read
+    /// value matches a preset it highlights that preset (display-only — no apply).
+    /// </summary>
+    private async Task ShowCurrentVelocityAsync(string device)
+    {
+        if (_host == null) return;
+        try
+        {
+            var info = _host.Engine.Motion.GetDevice(device);
+            bool isPi = string.Equals(info?.ControllerType, "PI", StringComparison.OrdinalIgnoreCase);
+            var r = isPi
+                ? await _host.Engine.Motion.GetSystemVelocityAsync(device)
+                : await _host.Engine.Motion.GetVelocityAsync(device, info?.Axes.FirstOrDefault() ?? "X");
+
+            if (_device != device) return;   // selection changed while we were reading
+
+            if (r.IsSuccess)
+            {
+                SetStatus($"{device} · current velocity {r.Value:g} mm/s (unchanged)");
+                // Reflect the live velocity on the preset row if it matches one.
+                for (int i = 0; i < _velButtons.Length; i++)
+                    _velButtons[i].IsChecked = _velValues[i] > 0 && Math.Abs(_velValues[i] - r.Value) < 1e-6;
+            }
+            else
+            {
+                SetStatus($"{device} selected · controller velocity unchanged");
+            }
+        }
+        catch
+        {
+            // Engine read failed (e.g. torn down) — leave a neutral status.
+            if (_device == device) SetStatus($"{device} selected · controller velocity unchanged");
+        }
     }
 
     private void LoadPresets(string device)

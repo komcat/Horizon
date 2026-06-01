@@ -51,6 +51,7 @@ public partial class ProcessStepsPanel : UserControl
     private EngineHost? _host;
     private DateTime _startUtc;
     private bool _running;
+    private bool _alignmentBusy;                // an alignment/scan is driving the hexapod — process steps are blocked
     private CancellationTokenSource? _runCts;   // cancels the in-flight step sequence on STOP
     private string _fauState = "F0";   // legacy state tracker (F1..F4 / D1..D4), for traceability/logging
 
@@ -69,7 +70,32 @@ public partial class ProcessStepsPanel : UserControl
     }
 
     /// <summary>Supplies the engine host (for the step sequences, teach, STOP, logging).</summary>
-    public void Attach(EngineHost host) => _host = host;
+    public void Attach(EngineHost host)
+    {
+        _host = host;
+        // While an alignment/scan run holds the hexapod, block the step + DUT-start
+        // buttons until it finishes or is stopped (the alignment panels signal via the
+        // gate). The process steps themselves mark the gate's Process side so the
+        // alignment panels block their Start while a step sequence is executing.
+        host.Activity.Changed += OnActivityChanged;
+        SetAlignmentBusy(host.Activity.AlignmentBusy);
+    }
+
+    private void OnActivityChanged()
+    {
+        if (Dispatcher.CheckAccess()) SetAlignmentBusy(_host?.Activity.AlignmentBusy ?? false);
+        else Dispatcher.BeginInvoke(() => SetAlignmentBusy(_host?.Activity.AlignmentBusy ?? false));
+    }
+
+    /// <summary>Greys out the process step list + DUT Start while a scan/alignment is busy.</summary>
+    private void SetAlignmentBusy(bool busy)
+    {
+        _alignmentBusy = busy;
+        StepList.IsEnabled = !busy;
+        TeachButton.IsEnabled = !busy;
+        // Respect the DUT lifecycle: Start stays disabled while a run is open even when not busy.
+        StartDutButton.IsEnabled = !busy && !(_host?.Process.HasActiveDutRun ?? false);
+    }
 
     /// <summary>
     /// The FAU-attach step list. Each step's <c>Device</c> + <c>Position</c> name
@@ -95,6 +121,12 @@ public partial class ProcessStepsPanel : UserControl
         if (sender is not FrameworkElement fe || fe.Tag is not ProcessStep step)
             return;
 
+        if (_alignmentBusy)
+        {
+            Log(LogLevel.Warning, $"Step '{step.Label}' blocked — an alignment/scan is running. Stop it first.");
+            return;
+        }
+
         // Teach mode (toggle ON) records the position; Run mode (OFF) executes the step.
         if (TeachButton.IsChecked == true)
         {
@@ -115,7 +147,25 @@ public partial class ProcessStepsPanel : UserControl
         _runCts?.Cancel();
         _runCts?.Dispose();
         _runCts = new CancellationTokenSource();
-        _ = RunStepAsync(step, _runCts.Token);
+
+        // Mark the Process side of the gate for the step's duration so the manual
+        // alignment/scan panels block their Start while this sequence runs.
+        if (_host != null)
+        {
+            var token = _host.Activity.Begin(ActivityKind.Process, $"step {step.Index + 1}");
+            _ = RunStepWithGateAsync(step, _runCts.Token, token);
+        }
+        else
+        {
+            _ = RunStepAsync(step, _runCts.Token);
+        }
+    }
+
+    /// <summary>Runs a step, releasing the process-busy gate token when it finishes (or aborts).</summary>
+    private async Task RunStepWithGateAsync(ProcessStep step, CancellationToken ct, IDisposable token)
+    {
+        try { await RunStepAsync(step, ct); }
+        finally { token.Dispose(); }
     }
 
     // --- DUT run lifecycle (serial-bracketed, operator-stamped via Layer 2) ---
@@ -124,6 +174,11 @@ public partial class ProcessStepsPanel : UserControl
     {
         if (_host == null || _host.Process.HasActiveDutRun)
             return;
+        if (_alignmentBusy)
+        {
+            Log(LogLevel.Warning, "Start DUT blocked — an alignment/scan is running. Stop it first.");
+            return;
+        }
 
         var serial = SerialBox.Text?.Trim() ?? string.Empty;
         var r = _host.Process.BeginDutRun(serial, "FAU attach");
