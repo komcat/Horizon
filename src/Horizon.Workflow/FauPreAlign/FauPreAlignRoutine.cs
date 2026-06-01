@@ -26,10 +26,12 @@ public sealed record FauPreAlignOptions(
     double MaxMoveDistanceMm = 20.0,
     // Camera to re-expose at each stop while travelling; null leaves each position's own camera/exposure in effect.
     string? Camera = null,
-    // Exposure (µs) for the output points when Camera is set.
-    double? OutExposureUs = 400.0,
-    // Exposure (µs) for the fiber points when Camera is set.
-    double? FiberExposureUs = 1500.0,
+    // Per-point exposures (µs) applied while travelling to each point when Camera is set;
+    // null (or 0) leaves that position's own exposure in effect.
+    double? Out1ExposureUs = null,
+    double? Out2ExposureUs = null,
+    double? Fiber1ExposureUs = null,
+    double? Fiber2ExposureUs = null,
     // Write the operator-refined captures back over the four named positions, so they become the next run's targets.
     bool PersistRefinedPoints = true);
 
@@ -92,10 +94,10 @@ public sealed class FauPreAlignRoutine
 
         var points = new[]
         {
-            (Name: o.Out1, Exposure: o.OutExposureUs, Label: "Out1"),
-            (Name: o.Out2, Exposure: o.OutExposureUs, Label: "Out2"),
-            (Name: o.Fiber1, Exposure: o.FiberExposureUs, Label: "Fiber1"),
-            (Name: o.Fiber2, Exposure: o.FiberExposureUs, Label: "Fiber2"),
+            (Name: o.Out1, Exposure: o.Out1ExposureUs, Label: "Out1"),
+            (Name: o.Out2, Exposure: o.Out2ExposureUs, Label: "Out2"),
+            (Name: o.Fiber1, Exposure: o.Fiber1ExposureUs, Label: "Fiber1"),
+            (Name: o.Fiber2, Exposure: o.Fiber2ExposureUs, Label: "Fiber2"),
         };
 
         var missing = points.Where(p => _getPosition(o.GantryDevice, p.Name) == null)

@@ -28,10 +28,12 @@ public sealed record UCorrectionOptions(
     double MaxUvwDeg = 2.0,
     // Camera to re-expose at each stop while travelling; null leaves each position's own camera/exposure in effect.
     string? Camera = null,
-    // Exposure (µs) for the PIC points when Camera is set.
-    double? PicExposureUs = 400.0,
-    // Exposure (µs) for the FAU points when Camera is set.
-    double? FauExposureUs = 1500.0,
+    // Per-point exposures (µs) applied while travelling to each point when Camera is set;
+    // null (or 0) leaves that position's own exposure in effect.
+    double? P1ExposureUs = null,
+    double? P2ExposureUs = null,
+    double? F1ExposureUs = null,
+    double? F2ExposureUs = null,
     // Write the operator-refined captures back over the four named positions, so they become the next run's targets.
     bool PersistRefinedPoints = true);
 
@@ -94,10 +96,10 @@ public sealed class UCorrectionRoutine
         // The four points in capture order, each tagged with its exposure preset.
         var points = new[]
         {
-            (Name: o.PicPoint1, Exposure: o.PicExposureUs, Label: "PIC P1"),
-            (Name: o.PicPoint2, Exposure: o.PicExposureUs, Label: "PIC P2"),
-            (Name: o.FauPoint1, Exposure: o.FauExposureUs, Label: "FAU F1"),
-            (Name: o.FauPoint2, Exposure: o.FauExposureUs, Label: "FAU F2"),
+            (Name: o.PicPoint1, Exposure: o.P1ExposureUs, Label: "PIC P1"),
+            (Name: o.PicPoint2, Exposure: o.P2ExposureUs, Label: "PIC P2"),
+            (Name: o.FauPoint1, Exposure: o.F1ExposureUs, Label: "FAU F1"),
+            (Name: o.FauPoint2, Exposure: o.F2ExposureUs, Label: "FAU F2"),
         };
 
         // Up-front: all four must be taught, so we never strand the operator mid-run.

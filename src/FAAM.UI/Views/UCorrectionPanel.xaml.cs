@@ -98,10 +98,51 @@ public partial class UCorrectionPanel : UserControl, IOperatorPrompt
         if (_host == null || sender is not FrameworkElement { Tag: string point }) return;
 
         var name = PositionName(point);
+        await ApplyPointExposureAsync(name);   // set the point's exposure (if any) before moving
         var r = await _host.Process.MoveToNamedPositionAsync(GantryDevice, name);
         Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
             r.IsSuccess ? $"U correction: moved to {point}."
                         : $"U correction: move to {point} failed — {r.Message} (Save it first).");
+    }
+
+    // --- Per-point camera exposure ---
+
+    /// <summary>Opens the per-point exposure editor (P1/P2/F1/F2).</summary>
+    private void OnEditExposures(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+        var points = Order.Select(p => (Label: p, Key: PositionName(p))).ToList();
+        new ExposureEditorWindow("U correction — exposure per point", points, _host.Settings)
+        {
+            Owner = Window.GetWindow(this),
+        }.ShowDialog();
+    }
+
+    /// <summary>The camera the exposure is applied to — <c>main_camera</c> if present, else the first.</summary>
+    private string? MainCamera()
+    {
+        var ids = _host?.Engine.Camera.CameraIds;
+        if (ids == null || ids.Count == 0) return null;
+        return ids.Contains("main_camera") ? "main_camera" : ids[0];
+    }
+
+    /// <summary>Configured exposure (µs) for a position, or 0 when none is set.</summary>
+    private double PointExposureUs(string positionName)
+        => _host != null && _host.Settings.Current.PointExposureUs.TryGetValue(positionName, out var us) ? us : 0;
+
+    /// <summary>Applies the point's saved exposure (auto-exposure off) before a move; no-op when unset.</summary>
+    private async Task ApplyPointExposureAsync(string positionName)
+    {
+        double us = PointExposureUs(positionName);
+        if (_host == null || us <= 0) return;
+        var cam = MainCamera();
+        if (cam == null) return;
+
+        var current = _host.Engine.Camera.GetState(cam).Exposure;
+        var r = await _host.Engine.Camera.ApplyExposureAsync(cam, current with { ExposureUs = us, AutoExposure = false });
+        Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
+            r.IsSuccess ? $"U correction: exposure {us:0} µs on {cam}."
+                        : $"U correction: exposure {us:0} µs failed — {r.Message}");
     }
 
     private void OnLockChanged(object sender, RoutedEventArgs e) => RefreshReferenceButtons();
@@ -136,9 +177,18 @@ public partial class UCorrectionPanel : UserControl, IOperatorPrompt
         _cts = new CancellationTokenSource();
         _activity = _host.Activity.Begin(ActivityKind.Alignment, "U correction");   // block process buttons during the run
 
+        // Per-point exposures (0 = leave unchanged). Only pin the camera when at least
+        // one point has an exposure set, so the default run is unchanged.
+        double e1 = PointExposureUs(PositionName("P1")), e2 = PointExposureUs(PositionName("P2"));
+        double e3 = PointExposureUs(PositionName("F1")), e4 = PointExposureUs(PositionName("F2"));
+        string? camera = (e1 > 0 || e2 > 0 || e3 > 0 || e4 > 0) ? MainCamera() : null;
+
         var options = new UCorrectionOptions(
             GantryDevice, HexDevice,
-            PositionName("P1"), PositionName("P2"), PositionName("F1"), PositionName("F2"));
+            PositionName("P1"), PositionName("P2"), PositionName("F1"), PositionName("F2"),
+            Camera: camera,
+            P1ExposureUs: e1 > 0 ? e1 : null, P2ExposureUs: e2 > 0 ? e2 : null,
+            F1ExposureUs: e3 > 0 ? e3 : null, F2ExposureUs: e4 > 0 ? e4 : null);
 
         try
         {

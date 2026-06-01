@@ -75,6 +75,15 @@ public sealed record AppSettings
     /// </summary>
     public double[] ExposurePresets { get; init; } = { 0, 0, 0, 0 };
 
+    /// <summary>
+    /// Per-point camera exposure (µs) applied before moving to a named reference
+    /// point, keyed by the full position name (e.g. <c>FauPre_Out1</c>,
+    /// <c>UCorr_P1</c>). Used by the U-correction and FAU pre-align panels' Move-to
+    /// buttons and their Start-correction runs. 0 / absent = leave the exposure
+    /// untouched (no setting applied before the move).
+    /// </summary>
+    public Dictionary<string, double> PointExposureUs { get; init; } = new();
+
     // --- Window persistence (restored on next launch) ---
 
     /// <summary>Main shell window placement, or null if never saved.</summary>

@@ -151,10 +151,51 @@ public partial class FauPreAlignPanel : UserControl, IOperatorPrompt
         if (_host == null || sender is not FrameworkElement { Tag: string point }) return;
 
         var name = PositionName(point);
+        await ApplyPointExposureAsync(name);   // set the point's exposure (if any) before moving
         var r = await _host.Process.MoveToNamedPositionAsync(GantryDevice, name);
         Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
             r.IsSuccess ? $"FAU pre-align: moved to {point}."
                         : $"FAU pre-align: move to {point} failed — {r.Message} (Save it first).");
+    }
+
+    // --- Per-point camera exposure ---
+
+    /// <summary>Opens the per-point exposure editor (Out1/Out2/Fiber1/Fiber2).</summary>
+    private void OnEditExposures(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+        var points = Order.Select(p => (Label: p, Key: PositionName(p))).ToList();
+        new ExposureEditorWindow("FAU pre-align — exposure per point", points, _host.Settings)
+        {
+            Owner = Window.GetWindow(this),
+        }.ShowDialog();
+    }
+
+    /// <summary>The camera the exposure is applied to — <c>main_camera</c> if present, else the first.</summary>
+    private string? MainCamera()
+    {
+        var ids = _host?.Engine.Camera.CameraIds;
+        if (ids == null || ids.Count == 0) return null;
+        return ids.Contains("main_camera") ? "main_camera" : ids[0];
+    }
+
+    /// <summary>Configured exposure (µs) for a position, or 0 when none is set.</summary>
+    private double PointExposureUs(string positionName)
+        => _host != null && _host.Settings.Current.PointExposureUs.TryGetValue(positionName, out var us) ? us : 0;
+
+    /// <summary>Applies the point's saved exposure (auto-exposure off) before a move; no-op when unset.</summary>
+    private async Task ApplyPointExposureAsync(string positionName)
+    {
+        double us = PointExposureUs(positionName);
+        if (_host == null || us <= 0) return;
+        var cam = MainCamera();
+        if (cam == null) return;
+
+        var current = _host.Engine.Camera.GetState(cam).Exposure;
+        var r = await _host.Engine.Camera.ApplyExposureAsync(cam, current with { ExposureUs = us, AutoExposure = false });
+        Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
+            r.IsSuccess ? $"FAU pre-align: exposure {us:0} µs on {cam}."
+                        : $"FAU pre-align: exposure {us:0} µs failed — {r.Message}");
     }
 
     private void OnLockChanged(object sender, RoutedEventArgs e) => RefreshReferenceButtons();
@@ -188,10 +229,19 @@ public partial class FauPreAlignPanel : UserControl, IOperatorPrompt
         _cts = new CancellationTokenSource();
         _activity = _host.Activity.Begin(ActivityKind.Alignment, "FAU pre-align");   // block process buttons during the run
 
+        // Per-point exposures (0 = leave unchanged). Only pin the camera when at least
+        // one point has an exposure set, so the default run is unchanged.
+        double e1 = PointExposureUs(PositionName("Out1")), e2 = PointExposureUs(PositionName("Out2"));
+        double e3 = PointExposureUs(PositionName("Fiber1")), e4 = PointExposureUs(PositionName("Fiber2"));
+        string? camera = (e1 > 0 || e2 > 0 || e3 > 0 || e4 > 0) ? MainCamera() : null;
+
         var options = new FauPreAlignOptions(
             GantryDevice, HexDevice,
             PositionName("Out1"), PositionName("Out2"), PositionName("Fiber1"), PositionName("Fiber2"),
-            TargetDistanceUm: _targetUm, TargetAngleDeg: _targetAngleDeg);
+            TargetDistanceUm: _targetUm, TargetAngleDeg: _targetAngleDeg,
+            Camera: camera,
+            Out1ExposureUs: e1 > 0 ? e1 : null, Out2ExposureUs: e2 > 0 ? e2 : null,
+            Fiber1ExposureUs: e3 > 0 ? e3 : null, Fiber2ExposureUs: e4 > 0 ? e4 : null);
 
         try
         {
