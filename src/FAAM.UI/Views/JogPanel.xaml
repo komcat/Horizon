@@ -88,10 +88,16 @@
         </Style>
     </UserControl.Resources>
 
-    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="4">
+    <Border x:Name="RootBorder" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="4">
         <StackPanel Margin="8">
-            <TextBlock Text="JOG" Foreground="{StaticResource Subtle}" FontWeight="Bold" FontSize="12"
-                       Margin="2,0,0,6" />
+            <!-- Header: title + keyboard-jog enable toggle (hotkey: ` grave accent). -->
+            <Grid Margin="2,0,0,6">
+                <TextBlock Text="JOG" Foreground="{StaticResource Subtle}" FontWeight="Bold" FontSize="12"
+                           VerticalAlignment="Center" />
+                <ToggleButton x:Name="KeysToggle" Content="⌨ Keys (`)" Click="OnToggleKeys"
+                              HorizontalAlignment="Right" FontSize="11" Padding="6,2" Cursor="Hand"
+                              ToolTip="Toggle keyboard jog (hotkey: ` ).&#x0a;A/D = X-/X+   W/S = Y-/Y+   R/F = Z-/Z+&#x0a;Q/E = step finer/coarser   Tab = next device" />
+            </Grid>
 
             <!-- STOP — halts all motion. -->
             <Button Content="STOP" Click="OnStop" Height="36" Margin="0,0,0,8"
@@ -136,7 +142,7 @@
             </Border>
 
             <!-- Step-size presets — each jog click moves by the selected step. -->
-            <TextBlock Text="Step" Foreground="{StaticResource Subtle}" FontSize="11" Margin="2,8,0,2" />
+            <TextBlock Text="Step  (Q finer · E coarser)" Foreground="{StaticResource Subtle}" FontSize="11" Margin="2,8,0,2" />
             <WrapPanel x:Name="StepList" />
 
             <!-- X / Y / Z jog pad. -->
@@ -148,12 +154,12 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Button Grid.Row="0" Grid.Column="1" Content="Y-" Tag="Y-" Style="{StaticResource JogBtn}" />
-                <Button Grid.Row="0" Grid.Column="4" Content="Z-" Tag="Z-" Style="{StaticResource JogBtn}" />
-                <Button Grid.Row="1" Grid.Column="0" Content="X-" Tag="X-" Style="{StaticResource JogBtn}" />
-                <Button Grid.Row="1" Grid.Column="1" Content="Y+" Tag="Y+" Style="{StaticResource JogBtn}" />
-                <Button Grid.Row="1" Grid.Column="2" Content="X+" Tag="X+" Style="{StaticResource JogBtn}" />
-                <Button Grid.Row="1" Grid.Column="4" Content="Z+" Tag="Z+" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="0" Grid.Column="1" Content="Y- (W)" Tag="Y-" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="0" Grid.Column="4" Content="Z- (F)" Tag="Z-" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="1" Grid.Column="0" Content="X- (A)" Tag="X-" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="1" Grid.Column="1" Content="Y+ (S)" Tag="Y+" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="1" Grid.Column="2" Content="X+ (D)" Tag="X+" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="1" Grid.Column="4" Content="Z+ (R)" Tag="Z+" Style="{StaticResource JogBtn}" />
             </Grid>
 
             <!-- Velocity presets (left) + U / V / W jog (right). -->

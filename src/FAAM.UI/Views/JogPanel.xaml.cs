@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Horizon.Engine;
 
@@ -38,6 +39,21 @@ public partial class JogPanel : UserControl
     private string? _device;
     private JogMatrix _matrix = JogMatrix.Identity;
 
+    /// <summary>Pale-green panel tint shown while keyboard jog is armed.</summary>
+    private static readonly Brush ArmedBg = Freeze(new SolidColorBrush(Color.FromRgb(0xE3, 0xF2, 0xE3)));
+    private bool _keysEnabled;
+
+    // Latest-wins jog: a new press records itself as the pending jog and cancels the
+    // in-flight move (the engine halts it within ~one 50 ms poll, then its await
+    // returns). The pump loop then runs whatever the latest pending request is, so
+    // spamming a direction abandons the current short move and restarts from the
+    // current position. All these fields are touched only on the UI thread.
+    private string? _pendingJog;
+    private CancellationTokenSource? _jogCts;
+    private bool _jogPumpRunning;
+
+    private static Brush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
+
     public JogPanel()
     {
         InitializeComponent();
@@ -45,6 +61,87 @@ public partial class JogPanel : UserControl
         BuildSteps();
         _poll = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _poll.Tick += (_, _) => UpdatePosition();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    // Keyboard jog is captured at the window level so it works from any page while
+    // the rail is visible — but only when armed (the "Keys" toggle / ` hotkey).
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (Window.GetWindow(this) is { } w) w.PreviewKeyDown += OnWindowPreviewKeyDown;
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (Window.GetWindow(this) is { } w) w.PreviewKeyDown -= OnWindowPreviewKeyDown;
+    }
+
+    private void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // Never hijack typing — bail if focus is in a text field.
+        if (Keyboard.FocusedElement is TextBox or PasswordBox) return;
+
+        // The enable/disable hotkey (` grave accent) works whether or not jog is armed.
+        if (e.Key == Key.OemTilde) { ToggleKeys(); e.Handled = true; return; }
+
+        if (!_keysEnabled) return;
+
+        string? jog = e.Key switch
+        {
+            Key.A => "X-", Key.D => "X+",
+            Key.W => "Y-", Key.S => "Y+",
+            Key.R => "Z+", Key.F => "Z-",
+            _ => null,
+        };
+        if (jog != null) { RequestJog(jog); e.Handled = true; return; }
+
+        switch (e.Key)
+        {
+            case Key.Q: StepBy(-1); e.Handled = true; break;   // finer
+            case Key.E: StepBy(+1); e.Handled = true; break;   // coarser
+            case Key.Tab: CycleDevice(); e.Handled = true; break;
+        }
+    }
+
+    private void OnToggleKeys(object sender, RoutedEventArgs e) => SetKeysEnabled(KeysToggle.IsChecked == true);
+
+    private void ToggleKeys()
+    {
+        KeysToggle.IsChecked = !_keysEnabled;
+        SetKeysEnabled(KeysToggle.IsChecked == true);
+    }
+
+    private void SetKeysEnabled(bool on)
+    {
+        _keysEnabled = on;
+        KeysToggle.IsChecked = on;
+        RootBorder.Background = on ? ArmedBg : (Brush)FindResource("Panel");
+        SetStatus(on
+            ? "Keyboard jog ARMED — A/D=X  W/S=Y  R/F=Z  Q/E=step  Tab=device"
+            : "Keyboard jog off.");
+    }
+
+    /// <summary>Selects the step preset <paramref name="delta"/> positions away (−1 finer, +1 coarser).</summary>
+    private void StepBy(int delta)
+    {
+        int cur = _stepButtons.FindIndex(b => b.IsChecked == true);
+        if (cur < 0) cur = DefaultStepIndex;
+        int next = Math.Clamp(cur + delta, 0, _stepButtons.Count - 1);
+        if (next == cur) return;
+        foreach (var b in _stepButtons) b.IsChecked = false;
+        _stepButtons[next].IsChecked = true;
+        _stepMm = (double)_stepButtons[next].Tag!;
+        SetStatus($"Step {_stepButtons[next].Content}");
+    }
+
+    /// <summary>Selects the next connected motion device (wraps around).</summary>
+    private void CycleDevice()
+    {
+        var buttons = DeviceList.Children.OfType<ToggleButton>().ToList();
+        if (buttons.Count == 0) return;
+        int cur = buttons.FindIndex(b => b.IsChecked == true);
+        buttons[(cur + 1) % buttons.Count].IsChecked = true;   // fires OnDeviceChecked (single-select)
     }
 
     private void BuildSteps()
@@ -199,12 +296,15 @@ public partial class JogPanel : UserControl
     private void OnJog(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement fe && fe.Tag is string tag)
-            _ = JogAsync(tag);
+            RequestJog(tag);
     }
 
     private async void OnStop(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
+        // Drop any queued/in-flight jog so the pump does not re-issue a move after the halt.
+        _pendingJog = null;
+        _jogCts?.Cancel();
         // KILL every motion device. Report any device whose stop did not take so a
         // failed halt is never hidden behind a blanket "motion halted" message.
         var failed = new List<string>();
@@ -222,7 +322,37 @@ public partial class JogPanel : UserControl
             : $"STOP — FAILED for {string.Join("; ", failed)}");
     }
 
-    private async Task JogAsync(string tag)
+    /// <summary>
+    /// Records <paramref name="tag"/> as the latest jog and kicks the pump. If a move is
+    /// already running, cancels it so the pump abandons it and picks up this newest request.
+    /// </summary>
+    private async void RequestJog(string tag)
+    {
+        if (_host == null || _device == null) return;
+
+        _pendingJog = tag;       // latest wins — overwrites any earlier pending request
+        _jogCts?.Cancel();       // abandon the in-flight move; its await returns shortly
+
+        if (_jogPumpRunning) return;
+        _jogPumpRunning = true;
+        try
+        {
+            while (_pendingJog is { } next)
+            {
+                _pendingJog = null;
+                using var cts = new CancellationTokenSource();
+                _jogCts = cts;
+                await JogOnceAsync(next, cts.Token);
+            }
+        }
+        finally
+        {
+            _jogPumpRunning = false;
+            _jogCts = null;
+        }
+    }
+
+    private async Task JogOnceAsync(string tag, CancellationToken ct)
     {
         if (_host == null || _device == null) return;
 
@@ -252,8 +382,9 @@ public partial class JogPanel : UserControl
 
         try
         {
-            var r = await _host.Engine.Motion.MoveRelativeAsync(_device, localAxis, dir * _stepMm);
-            if (!r.IsSuccess)
+            var r = await _host.Engine.Motion.MoveRelativeAsync(_device, localAxis, dir * _stepMm, ct);
+            // A cancelled move (superseded by a newer press) is expected — not a failure.
+            if (!r.IsSuccess && !ct.IsCancellationRequested)
                 SetStatus($"Jog {tag} → {localAxis}{(dir > 0 ? "+" : "-")} failed: {r.Message}");
         }
         catch (Exception ex)
