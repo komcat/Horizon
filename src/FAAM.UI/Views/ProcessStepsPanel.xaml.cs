@@ -79,6 +79,29 @@ public partial class ProcessStepsPanel : UserControl
         // alignment panels block their Start while a step sequence is executing.
         host.Activity.Changed += OnActivityChanged;
         SetAlignmentBusy(host.Activity.AlignmentBusy);
+
+        // On a safety trip, kill the in-flight step sequence so the runner can't issue
+        // the next move once the engine halts the current one (mirrors the STOP button).
+        host.SafetyAbort += OnSafetyAbort;
+    }
+
+    /// <summary>
+    /// Safety-watchdog trip: cancel the running step sequence and stop the process
+    /// timer. The physical motion halt is handled by the engine enforcement + the
+    /// EngineHost backstop; here we only tear down the Layer 3 sequence so it stops
+    /// advancing. Marshalled to the UI thread (the watchdog fires on a worker thread).
+    /// </summary>
+    private void OnSafetyAbort(SafetyTrip trip)
+    {
+        if (Dispatcher.CheckAccess()) AbortForSafety(trip);
+        else Dispatcher.BeginInvoke(() => AbortForSafety(trip));
+    }
+
+    private void AbortForSafety(SafetyTrip trip)
+    {
+        _runCts?.Cancel();
+        StopTimer();
+        Log(LogLevel.Warning, $"SAFETY: {trip.Title} — step sequence aborted.");
     }
 
     private void OnActivityChanged()
@@ -98,22 +121,24 @@ public partial class ProcessStepsPanel : UserControl
     }
 
     /// <summary>
-    /// The FAU-attach step list. Each step's <c>Device</c> + <c>Position</c> name
-    /// its primary teach target — the destination pose Teach mode captures and the
-    /// step's main move recalls (the full per-step sequence in <see cref="RunStepAsync"/>
-    /// may traverse several positions across both the gantry and the hexapod). A
-    /// null <c>Position</c> means the step has no teachable pose (the UV dwell steps).
+    /// The FAU-attach step list. Each step's <c>Program</c> names the authored
+    /// <c>.hwf</c> process in the active product's <c>processes\</c> folder that the
+    /// button runs (clicking runs <c>processes\{Program}.hwf</c> via Layer 2; see
+    /// <see cref="RunStepAsync"/> — the built-in sequence is only a fallback when the
+    /// program is missing). <c>Device</c> + <c>Position</c> name the step's primary
+    /// teach target — the destination pose Teach mode captures. A null <c>Position</c>
+    /// means the step has no teachable pose (the UV dwell steps).
     /// </summary>
     private static List<ProcessStep> DefaultSteps() => new()
     {
-        new(0, "(1) Gripper open and Move Home", GantryDevice, "Home"),
-        new(1, "(2) Move to grip FAU and close Gripper", HexDevice, "FauHover"),
-        new(2, "(3) FAU is gripped and move to SiPhog", GantryDevice, "PIC"),
-        new(3, "4.0 Move gantry to dispense", GantryDevice, "PreDispense"),
-        new(4, "4.1. Dispense and Move to UV", GantryDevice, "UV"),
-        new(5, "4.2 — UV step1", GantryDevice),
-        new(6, "4.3 — UV step2", GantryDevice),
-        new(7, "(5) Complete UV and unload", HexDevice, "ClearLoad"),
+        new(0, "(1) Gripper open and Move Home", GantryDevice, "Home", "GripperOpenHome"),
+        new(1, "(2) Move to grip FAU and close Gripper", HexDevice, "FauHover", "MoveGripFAU"),
+        new(2, "(3) FAU is gripped and move to SiPhog", GantryDevice, "PIC", "MoveFAUtoSiPhog"),
+        new(3, "4.0 Move gantry to dispense", GantryDevice, "PreDispense", "MoveToDispense"),
+        new(4, "4.1. Dispense and Move to UV", GantryDevice, "UV", "DispenseAndMoveToUV"),
+        new(5, "4.2 — UV step1", GantryDevice, null, "UVStep1"),
+        new(6, "4.3 — UV step2", GantryDevice, null, "UVStep2"),
+        new(7, "(5) Complete UV and unload", HexDevice, "ClearLoad", "CompleteUVUnload"),
     };
 
     private void OnStepClick(object sender, RoutedEventArgs e)
@@ -124,6 +149,15 @@ public partial class ProcessStepsPanel : UserControl
         if (_alignmentBusy)
         {
             Log(LogLevel.Warning, $"Step '{step.Label}' blocked — an alignment/scan is running. Stop it first.");
+            return;
+        }
+
+        // Block starting a step while a safety flag is raised (e.g. E-Stop pressed and
+        // not yet acknowledged) — otherwise the operator could drive straight back into
+        // the hazard. Teach (pose capture, no motion) is still allowed.
+        if (TeachButton.IsChecked != true && (_host?.Engine.Safety.GetState().FlagRaised ?? false))
+        {
+            Log(LogLevel.Warning, $"Step '{step.Label}' blocked — safety flag raised. Acknowledge first.");
             return;
         }
 
@@ -226,14 +260,14 @@ public partial class ProcessStepsPanel : UserControl
     }
 
     /// <summary>
-    /// Runs a step's full FAU-attach sequence on the engine facets — a faithful
-    /// migration of the acs_solution_saa process handlers (see PROCESS_BUTTONS.md).
-    /// Drives the gantry + hexapod (named-position recalls and relative jogs), the
-    /// gripper / base-vacuum / dispenser-shot / UV-PLC IO pins, and the dispenser /
-    /// UV pneumatic heads, gated by the same Yes/No operator confirmations as the
-    /// legacy. Legacy modal countdowns become non-blocking awaits (FAAM never blocks
-    /// the UI thread); the DUT serial is owned by the panel's Start/Pass/Fail
-    /// lifecycle, so the legacy per-step serial-input form is not reproduced.
+    /// Runs a step by clicking its button. Prefers the step's authored
+    /// <see cref="ProcessStep.Program"/> — loaded from the active product's
+    /// <c>processes\{Program}.hwf</c> and executed through Layer 2 — so the
+    /// operator-edited Gantt/timeline program is the source of truth. The serial is
+    /// owned by the panel's Start/Pass/Fail interactive DUT run, so the program runs
+    /// with no serial (it creates no DUT record of its own). Falls back to the
+    /// built-in <see cref="RunBuiltInStepAsync"/> sequence only when the step has no
+    /// program or it fails to load.
     /// </summary>
     private async Task RunStepAsync(ProcessStep step, CancellationToken ct)
     {
@@ -242,17 +276,20 @@ public partial class ProcessStepsPanel : UserControl
 
         try
         {
-            switch (step.Index)
+            if (!string.IsNullOrEmpty(step.Program))
             {
-                case 0: await Step1OpenHomeAsync(ct); break;
-                case 1: await Step2GripFauAsync(ct); break;
-                case 2: await Step3MoveToSiphogAsync(ct); break;
-                case 3: await Step40MoveToDispenseAsync(ct); break;
-                case 4: await Step41DispenseAndUvAsync(ct); break;
-                case 5: await Step42UvStep1Async(ct); break;
-                case 6: await Step43UvStep2Async(ct); break;
-                case 7: await Step5CompleteUnloadAsync(ct); break;
+                var loaded = _host.Process.LoadProgram(step.Program);
+                if (loaded.IsSuccess)
+                {
+                    Log(LogLevel.Info, $"Running program '{step.Program}' for step '{step.Label}'.");
+                    await _host.Process.RunAsync(loaded.Value, serial: null, ct);
+                    return;
+                }
+                Log(LogLevel.Warning,
+                    $"Program '{step.Program}' not found ({loaded.Message}) — using built-in sequence.");
             }
+
+            await RunBuiltInStepAsync(step, ct);
         }
         catch (OperationCanceledException)
         {
@@ -261,6 +298,32 @@ public partial class ProcessStepsPanel : UserControl
         catch (Exception ex)
         {
             Log(LogLevel.Error, $"Step '{step.Label}' error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The built-in (Phase 1) FAU-attach sequence for a step — a faithful migration
+    /// of the acs_solution_saa process handlers (see PROCESS_BUTTONS.md), kept as a
+    /// fallback for when a step's authored <c>.hwf</c> program is missing. Drives the
+    /// gantry + hexapod (named-position recalls and relative jogs), the gripper /
+    /// base-vacuum / dispenser-shot / UV-PLC IO pins, and the dispenser / UV pneumatic
+    /// heads, gated by the same Yes/No operator confirmations as the legacy. Legacy
+    /// modal countdowns become non-blocking awaits (FAAM never blocks the UI thread);
+    /// the DUT serial is owned by the panel's Start/Pass/Fail lifecycle, so the legacy
+    /// per-step serial-input form is not reproduced.
+    /// </summary>
+    private async Task RunBuiltInStepAsync(ProcessStep step, CancellationToken ct)
+    {
+        switch (step.Index)
+        {
+            case 0: await Step1OpenHomeAsync(ct); break;
+            case 1: await Step2GripFauAsync(ct); break;
+            case 2: await Step3MoveToSiphogAsync(ct); break;
+            case 3: await Step40MoveToDispenseAsync(ct); break;
+            case 4: await Step41DispenseAndUvAsync(ct); break;
+            case 5: await Step42UvStep1Async(ct); break;
+            case 6: await Step43UvStep2Async(ct); break;
+            case 7: await Step5CompleteUnloadAsync(ct); break;
         }
     }
 
@@ -724,13 +787,14 @@ public partial class ProcessStepsPanel : UserControl
 }
 
 /// <summary>
-/// One process step — its fixed index (drives the hardcoded sequence in
+/// One process step — its fixed index (drives the built-in fallback sequence in
 /// <see cref="ProcessStepsPanel.RunStepAsync"/>), display label, the motion
-/// <c>Device</c> its teach target lives on, and an optional teach-target
-/// position name (<c>Position</c>). Null <c>Position</c> = no teachable pose
-/// (e.g. the UV dwell steps).
+/// <c>Device</c> its teach target lives on, an optional teach-target position name
+/// (<c>Position</c>, null = no teachable pose, e.g. the UV dwell steps), and the
+/// name of the authored <c>.hwf</c> process the button runs (<c>Program</c>,
+/// resolved as <c>processes\{Program}.hwf</c> in the active product).
 /// </summary>
-public sealed record ProcessStep(int Index, string Label, string Device, string? Position = null);
+public sealed record ProcessStep(int Index, string Label, string Device, string? Position = null, string? Program = null);
 
 /// <summary>One row of the motion inspector — a process position and its recall settings (values pre-formatted for display).</summary>
 public sealed record MotionInspectRow(
