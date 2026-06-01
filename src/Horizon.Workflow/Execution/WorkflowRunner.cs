@@ -19,6 +19,7 @@ internal sealed class WorkflowRunner
     private readonly StepDispatcher _dispatcher;
     private readonly Func<string, WorkflowProgram?> _loadProgram;
     private readonly IOperatorPrompt? _prompt;
+    private readonly Func<string, WorkflowContext, Result>? _setDutSerial;
     private readonly PauseController _pause;
     private readonly Action<WorkflowStepEvent> _onStep;
     private readonly Action<LogLevel, string> _log;
@@ -31,6 +32,7 @@ internal sealed class WorkflowRunner
         Func<string, string, MotionPosition, double, Result> savePosition,
         DeviceLinkStore deviceLinks,
         IOperatorPrompt? prompt,
+        Func<string, WorkflowContext, Result>? setDutSerial,
         PauseController pause,
         Action<WorkflowStepEvent> onStep,
         Action<LogLevel, string> log)
@@ -38,6 +40,7 @@ internal sealed class WorkflowRunner
         _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, deviceLinks, log);
         _loadProgram = loadProgram;
         _prompt = prompt;
+        _setDutSerial = setDutSerial;
         _pause = pause;
         _onStep = onStep;
         _log = log;
@@ -224,6 +227,26 @@ internal sealed class WorkflowRunner
             if (op == "flow.askyesno")
             {
                 var fail = await AskYesNoAsync(step, ctx, index, steps.Count, desc, lane, ct).ConfigureAwait(false);
+                if (fail != null) return fail.Value;
+                index++;
+                continue;
+            }
+
+            // Real-time countdown the operator watches in a popup. Completing the
+            // countdown continues the run; the operator pressing Cancel fails it.
+            if (op == "flow.waitpopup")
+            {
+                var fail = await WaitPopupAsync(step, index, steps.Count, desc, lane, ct).ConfigureAwait(false);
+                if (fail != null) return fail.Value;
+                index++;
+                continue;
+            }
+
+            // Prompts the operator for a serial number and opens the DUT record for
+            // this run, so later dut.* steps record into it. Cancelling fails the run.
+            if (op == "dut.promptserial")
+            {
+                var fail = await PromptSerialAsync(step, ctx, index, steps.Count, desc, lane, ct).ConfigureAwait(false);
                 if (fail != null) return fail.Value;
                 index++;
                 continue;
@@ -417,6 +440,104 @@ internal sealed class WorkflowRunner
             (string.IsNullOrWhiteSpace(varName) ? "" : $" → {varName}"));
         return null;   // never aborts — branching is the caller's job (flow.if)
     }
+
+    /// <summary>
+    /// Handles a <c>flow.waitPopup</c> step: shows the operator a real-time
+    /// countdown via the front-end and blocks until it elapses or the operator
+    /// cancels. Returns <c>null</c> when the countdown completes (the run
+    /// continues); a failure <see cref="Result"/> when the operator cancels or no
+    /// operator-prompt handler is registered.
+    /// </summary>
+    private async Task<Result?> WaitPopupAsync(
+        WorkflowStep step, int index, int total, string desc, string? lane, CancellationToken ct)
+    {
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: false, Success: false, Message: "", Lane: lane));
+
+        if (_prompt == null)
+        {
+            const string err = "no operator-prompt handler registered";
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: false, Message: err, Lane: lane));
+            _log(LogLevel.Error, $"Step {index + 1} '{desc}' failed: {err}");
+            return Result.Fail(ErrorCode.NotSupported, $"Step {index + 1} '{desc}': {err}");
+        }
+
+        var ms = ParseMs(step.Parameters.GetValueOrDefault("ms"));
+        var title = step.Parameters.GetValueOrDefault("title", "Please wait");
+        var message = step.Parameters.GetValueOrDefault("message", string.Empty);
+
+        var completed = await _prompt.CountdownAsync(title, message, ms, ct).ConfigureAwait(false);
+
+        if (completed)
+        {
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: true, Message: "elapsed", Lane: lane));
+            return null;
+        }
+
+        const string cancelled = "wait cancelled by operator";
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: false, Message: cancelled, Lane: lane));
+        _log(LogLevel.Warning, $"Step {index + 1} '{desc}' — {cancelled}.");
+        return Result.Fail(ErrorCode.OperationFailed, $"Step {index + 1} '{desc}': {cancelled}");
+    }
+
+    /// <summary>
+    /// Handles a <c>dut.promptSerial</c> step: asks the operator for a serial number
+    /// and opens the DUT record for this run (so later <c>dut.*</c> steps record into
+    /// it), optionally stashing the serial in the <c>var</c> context variable. Returns
+    /// <c>null</c> on success; a failure <see cref="Result"/> when the operator cancels,
+    /// no handler is registered, or the serial cannot be set.
+    /// </summary>
+    private async Task<Result?> PromptSerialAsync(
+        WorkflowStep step, WorkflowContext ctx, int index, int total, string desc, string? lane, CancellationToken ct)
+    {
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: false, Success: false, Message: "", Lane: lane));
+
+        if (_prompt == null)
+        {
+            const string err = "no operator-prompt handler registered";
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: false, Message: err, Lane: lane));
+            _log(LogLevel.Error, $"Step {index + 1} '{desc}' failed: {err}");
+            return Result.Fail(ErrorCode.NotSupported, $"Step {index + 1} '{desc}': {err}");
+        }
+
+        var title = step.Parameters.GetValueOrDefault("title", "DUT Serial");
+        var message = step.Parameters.GetValueOrDefault("message", "Enter or scan the unit serial number:");
+        var defaultValue = step.Parameters.GetValueOrDefault("default", string.Empty);
+
+        var serial = await _prompt.InputTextAsync(title, message, defaultValue, ct).ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(serial))
+        {
+            const string cancelled = "serial entry cancelled by operator";
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: false, Message: cancelled, Lane: lane));
+            _log(LogLevel.Warning, $"Step {index + 1} '{desc}' — {cancelled}.");
+            return Result.Fail(ErrorCode.OperationFailed, $"Step {index + 1} '{desc}': {cancelled}");
+        }
+
+        serial = serial.Trim();
+        if (_setDutSerial != null)
+        {
+            var set = _setDutSerial(serial, ctx);
+            if (!set.IsSuccess)
+            {
+                _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: false, Message: set.Message, Lane: lane));
+                _log(LogLevel.Error, $"Step {index + 1} '{desc}' failed: {set.Message}");
+                return Result.Fail(set.Error, $"Step {index + 1} '{desc}': {set.Message}");
+            }
+        }
+
+        var varName = step.Parameters.GetValueOrDefault("var", string.Empty);
+        if (!string.IsNullOrWhiteSpace(varName))
+            ctx.Set(varName, serial);
+
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: true, Message: serial, Lane: lane));
+        _log(LogLevel.Info, $"Step {index + 1}: DUT serial set → {serial}" +
+            (string.IsNullOrWhiteSpace(varName) ? "" : $" → {varName}"));
+        return null;
+    }
+
+    private static int ParseMs(string? raw)
+        => double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && v > 0
+            ? (int)v : 0;
 
     private static int ParseCount(string? raw)
         => double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && v > 0

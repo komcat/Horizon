@@ -1,6 +1,7 @@
 using Horizon.Common;
 using Horizon.Engine;
 using Horizon.Workflow.Recipe;
+using Horizon.Workflow.UCorrection;
 
 namespace Horizon.Workflow;
 
@@ -128,6 +129,15 @@ public interface IProcessService
     /// </summary>
     Task<Result> RunAsync(WorkflowProgram program, string? serial = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// Runs the FAU↔PIC U-correction teach + apply against the active product:
+    /// drives the gantry through the four reference points, asks the operator (via
+    /// <see cref="OperatorPrompt"/>) to refine each, computes the PIC→FAU angle, and
+    /// applies it as a slow relative U move on the hexapod. Headless — needs no
+    /// camera. Fails if no product is active or no operator prompt is registered.
+    /// </summary>
+    Task<Result<UCorrectionResult>> RunUCorrectionAsync(UCorrectionOptions options, CancellationToken ct = default);
+
     // --- Recipes (.hrec scripts, operate on the active product) ---
 
     /// <summary>Recipe names in the active product.</summary>
@@ -185,6 +195,23 @@ public interface IProcessService
 
     /// <summary>Loads the full DUT record for a serial in the active product, or null if none.</summary>
     DutRecord? GetDutRecord(string serial);
+
+    /// <summary>
+    /// The current (or most recent) DUT serial for the active product — set when a
+    /// program/deck run, a mid-run <c>dut.promptSerial</c> step, or an interactive
+    /// run supplies one, and kept after the run ends so the front-end can keep
+    /// showing "the unit we last ran". Cleared (→ null) only on a product switch /
+    /// unload. Distinct from <see cref="HasActiveDutRun"/>, which tells you whether a
+    /// run is actually in progress.
+    /// </summary>
+    string? ActiveSerial { get; }
+
+    /// <summary>
+    /// Raised when <see cref="ActiveSerial"/> changes — a new unit starting (serial)
+    /// or a product switch clearing it (null). Fired for program/deck runs (including
+    /// a mid-run <c>dut.promptSerial</c> step) and interactive runs.
+    /// </summary>
+    event Action<string?>? ActiveSerialChanged;
 
     // --- Interactive DUT runs (operator-driven processes, not WorkflowProgram execution) ---
 

@@ -64,7 +64,9 @@ public partial class ShellWindow : Window
         // Identity chip — refresh on login/logout and on product switch.
         _host.Session.Changed += UpdateIdentity;
         _host.Process.ProductChanged += OnProductChanged;
+        _host.Process.ActiveSerialChanged += OnActiveSerialChanged;
         UpdateIdentity();
+        OnActiveSerialChanged(_host.Process.ActiveSerial);
 
         ShowHome();
 
@@ -270,6 +272,16 @@ public partial class ShellWindow : Window
 
     private void OnProductChanged(string? _) => UpdateIdentity();
 
+    /// <summary>Shows the active DUT serial in the header chip while a unit run is in progress.</summary>
+    private void OnActiveSerialChanged(string? serial)
+    {
+        if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(() => OnActiveSerialChanged(serial)); return; }
+
+        var has = !string.IsNullOrWhiteSpace(serial);
+        SerialRun.Text = serial ?? string.Empty;
+        SerialChip.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     /// <summary>Refreshes the product + operator chip and the login/logout button label.</summary>
     private void UpdateIdentity()
     {
@@ -322,6 +334,7 @@ public partial class ShellWindow : Window
         _exiting = true;
         _host.Session.Changed -= UpdateIdentity;
         _host.Process.ProductChanged -= OnProductChanged;
+        _host.Process.ActiveSerialChanged -= OnActiveSerialChanged;
         _run.Deactivate();         // stop frame routing before the engine tears down
         _machineVm.Dispose();      // stop the status sampler + detach UI hooks
         JogPanelControl.Stop();    // stop the jog-panel position poll

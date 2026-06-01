@@ -1,6 +1,7 @@
 using Horizon.Common;
 using Horizon.Engine;
 using Horizon.Workflow.Recipe;
+using Horizon.Workflow.UCorrection;
 
 namespace Horizon.Workflow;
 
@@ -23,6 +24,7 @@ public sealed class ProcessService : IProcessService
     private PauseController? _pause;     // non-null only while a program runs
     private OperatorContext? _operator;  // current operator, stamped onto DUT runs
     private (DutRecord Record, DutRun Run)? _interactiveDut;   // open operator-driven DUT run
+    private (DutRecord Record, DutRun Run)? _runDut;   // the running program/deck's DUT (up-front serial, or set mid-run by dut.promptSerial)
 
     public ProcessService(IHorizonEngine engine)
     {
@@ -60,6 +62,17 @@ public sealed class ProcessService : IProcessService
     public event Action<LogEntry>? LogEmitted;
     public event Action<bool>? PausedChanged;
     public event Action<string?>? ProductChanged;
+    public event Action<string?>? ActiveSerialChanged;
+
+    public string? ActiveSerial { get; private set; }
+
+    /// <summary>Updates <see cref="ActiveSerial"/> and notifies the front-end (no-op if unchanged).</summary>
+    private void SetActiveSerial(string? serial)
+    {
+        if (string.Equals(ActiveSerial, serial, StringComparison.Ordinal)) return;
+        ActiveSerial = serial;
+        ActiveSerialChanged?.Invoke(serial);
+    }
 
     public IOperatorPrompt? OperatorPrompt { get; set; }
 
@@ -101,6 +114,7 @@ public sealed class ProcessService : IProcessService
             _recipes = null;
             _decks = null;
             _dut = null;
+            SetActiveSerial(null);
             ProductChanged?.Invoke(null);
         }
 
@@ -122,6 +136,7 @@ public sealed class ProcessService : IProcessService
         _recipes = new RecipeStore(dir);
         _decks = new DeckStore(dir);
         _dut = new DutStore(dir, name);
+        SetActiveSerial(null);   // a serial belongs to a product — drop it on switch
         Log(LogLevel.Info, $"Product loaded: {name}");
         ProductChanged?.Invoke(name);
         return Result.Ok();
@@ -140,6 +155,7 @@ public sealed class ProcessService : IProcessService
         _recipes = null;
         _decks = null;
         _dut = null;
+        SetActiveSerial(null);
         Log(LogLevel.Info, "Product unloaded.");
         ProductChanged?.Invoke(null);
     }
@@ -375,6 +391,8 @@ public sealed class ProcessService : IProcessService
         pause.PausedChanged += OnPausedChanged;
         _pause = pause;
 
+        var ctx = new WorkflowContext();
+
         var runner = new WorkflowRunner(
             _engine,
             MoveToNamedPositionCoreAsync,
@@ -383,14 +401,16 @@ public sealed class ProcessService : IProcessService
             SaveNamedPosition,
             _deviceLinks,
             OperatorPrompt,
+            // dut.promptSerial opens the DUT record mid-run into _runDut, which the
+            // finally block persists with the run's verdict.
+            (s, c) => SetRunDutSerial(s, program.Name, c),
             pause,
             e => StepEvent?.Invoke(e),
             Log);
 
-        var ctx = new WorkflowContext();
-        var dut = BeginDut(serial, program.Name, ctx);
+        _runDut = BeginDut(serial, program.Name, ctx);
 
-        Log(LogLevel.Info, $"Program started: {program.Name}" + (dut != null ? $" [DUT {dut.Value.Record.Serial}]" : ""));
+        Log(LogLevel.Info, $"Program started: {program.Name}" + (_runDut != null ? $" [DUT {_runDut.Value.Record.Serial}]" : ""));
         var verdict = DutVerdict.Fail;
         try
         {
@@ -412,8 +432,32 @@ public sealed class ProcessService : IProcessService
         {
             pause.PausedChanged -= OnPausedChanged;
             _pause = null;
-            EndDut(dut, verdict);
+            EndDut(_runDut, verdict);
+            _runDut = null;
         }
+    }
+
+    /// <summary>
+    /// Back-end for the <c>dut.promptSerial</c> step: opens the DUT record for a
+    /// serial entered mid-run and attaches it to both the run context and
+    /// <see cref="_runDut"/> (so the run's verdict is persisted against it).
+    /// Refused if no product is active, the serial is blank, or a serial is
+    /// already set for this run.
+    /// </summary>
+    private Result SetRunDutSerial(string serial, string source, WorkflowContext ctx)
+    {
+        if (_dut == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — cannot set DUT serial.");
+        if (string.IsNullOrWhiteSpace(serial))
+            return Result.Fail(ErrorCode.InvalidParameter, "Serial number is required.");
+        if (ctx.Dut != null)
+            return Result.Fail(ErrorCode.OperationFailed, "A DUT serial is already set for this run.");
+
+        var begun = BeginDut(serial, source, ctx);   // creates the run, sets ctx.Dut
+        if (begun == null)
+            return Result.Fail(ErrorCode.OperationFailed, "Could not open the DUT record.");
+        _runDut = begun;
+        return Result.Ok();
     }
 
     private void OnPausedChanged(bool paused) => PausedChanged?.Invoke(paused);
@@ -474,6 +518,7 @@ public sealed class ProcessService : IProcessService
         var run = new DutRun { StartedUtc = DateTime.UtcNow, Source = source };
         StampOperator(run);
         _interactiveDut = (record, run);
+        SetActiveSerial(record.Serial);
         Log(LogLevel.Info, $"DUT run started: {record.Serial} [{source}]" +
             (_operator != null ? $" by {_operator.DisplayName}" : ""));
         return Result.Ok();
@@ -529,6 +574,7 @@ public sealed class ProcessService : IProcessService
         var run = new DutRun { StartedUtc = DateTime.UtcNow, Source = source };
         StampOperator(run);
         ctx.Dut = run;
+        SetActiveSerial(record.Serial);
         return (record, run);
     }
 
@@ -566,6 +612,28 @@ public sealed class ProcessService : IProcessService
         {
             Log(LogLevel.Error, $"DUT record save failed for {record.Serial}: {ex.Message}");
         }
+    }
+
+    // --- U correction ---
+
+    public async Task<Result<UCorrectionResult>> RunUCorrectionAsync(
+        UCorrectionOptions options, CancellationToken ct = default)
+    {
+        if (_positions == null)
+            return Result<UCorrectionResult>.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        // Mirror WorkflowRunner's wiring: the routine owns no stores — it gets the
+        // recall-move + position read/save delegates from the service.
+        var routine = new UCorrectionRoutine(
+            _engine,
+            MoveToNamedPositionCoreAsync,
+            (device, name) => _positions?.Get(device, name),
+            SaveNamedPosition,
+            OperatorPrompt,
+            Log);
+
+        Log(LogLevel.Info, $"U correction started: gantry '{options.GantryDevice}', hexapod '{options.HexapodDevice}'.");
+        return await routine.RunAsync(options, ct).ConfigureAwait(false);
     }
 
     // --- Recipes ---
@@ -686,6 +754,10 @@ public sealed class ProcessService : IProcessService
         pause.PausedChanged += OnPausedChanged;
         _pause = pause;
 
+        // One context for the whole deck — also carries the DUT run, so every
+        // program in the deck records into the same per-unit run.
+        var ctx = new WorkflowContext();
+
         // One runner for the whole deck — every program runs through it, so
         // pause / step works across the deck just as it does within a program.
         var runner = new WorkflowRunner(
@@ -696,6 +768,7 @@ public sealed class ProcessService : IProcessService
             SaveNamedPosition,
             _deviceLinks,
             OperatorPrompt,
+            (s, c) => SetRunDutSerial(s, deck.Name, c),
             pause,
             e => StepEvent?.Invoke(e),
             Log);
@@ -706,12 +779,9 @@ public sealed class ProcessService : IProcessService
             onProgress: p => DeckStepEvent?.Invoke(p),
             log: Log);
 
-        // One context for the whole deck — also carries the DUT run, so every
-        // program in the deck records into the same per-unit run.
-        var ctx = new WorkflowContext();
-        var dut = BeginDut(serial, deck.Name, ctx);
+        _runDut = BeginDut(serial, deck.Name, ctx);
 
-        Log(LogLevel.Info, $"Deck started: {deck.Name}" + (dut != null ? $" [DUT {dut.Value.Record.Serial}]" : ""));
+        Log(LogLevel.Info, $"Deck started: {deck.Name}" + (_runDut != null ? $" [DUT {_runDut.Value.Record.Serial}]" : ""));
         var verdict = DutVerdict.Fail;
         try
         {
@@ -733,7 +803,8 @@ public sealed class ProcessService : IProcessService
         {
             pause.PausedChanged -= OnPausedChanged;
             _pause = null;
-            EndDut(dut, verdict);
+            EndDut(_runDut, verdict);
+            _runDut = null;
         }
     }
 

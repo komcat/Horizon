@@ -394,6 +394,45 @@ public sealed class TimelineEditorViewModel : ObservableObject
                 }
     }
 
+    /// <summary>
+    /// A Wait Popup shorter than this renders for less than a frame or two — the
+    /// window is shown and closed before WPF paints it, so the operator sees nothing.
+    /// Below this floor we bump the duration up so the countdown is actually visible.
+    /// </summary>
+    private const int MinWaitPopupMs = 1000;
+
+    /// <summary>
+    /// Bumps every Wait Popup whose duration is a positive sub-second value up to
+    /// <see cref="MinWaitPopupMs"/> (writing the value back so the operator sees it),
+    /// so a too-short popup can't flash past invisibly. 0 / blank / expression values
+    /// pass through (0 is a no-op popup; an expression resolves at run time). Returns
+    /// the number of blocks bumped. Called before save and run, alongside
+    /// <see cref="ClampVelocities"/>.
+    /// </summary>
+    private int ClampWaitPopups()
+    {
+        int bumped = 0;
+        foreach (var lane in Lanes)
+            foreach (var cell in lane.Cells)
+                foreach (var block in cell.Blocks)
+                {
+                    if (!block.OpKey.Equals("flow.waitPopup", StringComparison.OrdinalIgnoreCase)) continue;
+                    var mp = block.Params.FirstOrDefault(p => string.Equals(p.Key, "ms", StringComparison.OrdinalIgnoreCase));
+                    if (mp == null || string.IsNullOrWhiteSpace(mp.StringValue) || mp.StringValue.Contains('{')) continue;
+                    if (!double.TryParse(mp.StringValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var ms)) continue;
+                    if (ms > 0 && ms < MinWaitPopupMs)
+                    {
+                        mp.StringValue = MinWaitPopupMs.ToString(CultureInfo.InvariantCulture);
+                        bumped++;
+                    }
+                }
+        return bumped;
+    }
+
+    /// <summary>A short status suffix noting how many Wait Popups were bumped, or empty.</summary>
+    private static string WaitPopupBumpNote(int bumped)
+        => bumped > 0 ? $" ({bumped} short Wait Popup(s) bumped to {MinWaitPopupMs} ms)" : string.Empty;
+
     private ProcessBlockViewModel? FirstInvalidBlock(out string reason)
     {
         foreach (var lane in Lanes)
@@ -420,12 +459,15 @@ public sealed class TimelineEditorViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(ProgramName)) { Status = "Program name is required."; return; }
 
         ClampVelocities();
+        var bumped = ClampWaitPopups();
         var invalid = FirstInvalidBlock(out var why);
         if (invalid != null) { SelectedBlock = invalid; Status = $"Can't save — {why}"; return; }
 
         var program = BuildProgram();
         var result = _host.Process.SaveProgram(program);
-        Status = result.IsSuccess ? $"Saved '{program.Name}'." : result.Message;
+        Status = result.IsSuccess
+            ? $"Saved '{program.Name}'." + WaitPopupBumpNote(bumped)
+            : result.Message;
         if (!result.IsSuccess) return;
 
         RefreshPrograms();
@@ -487,12 +529,17 @@ public sealed class TimelineEditorViewModel : ObservableObject
         if (IsRunning) return;
 
         ClampVelocities();
+        var bumped = ClampWaitPopups();
         var invalid = FirstInvalidBlock(out var why);
         if (invalid != null) { SelectedBlock = invalid; Status = $"Can't run — {why}"; return; }
 
         ResetRunStatus();
         Log.Clear();
         _runningStage = -1;
+
+        // Note any sub-second Wait Popups we bumped (after the clear, so it survives).
+        if (bumped > 0)
+            Log.Add($"{DateTimeOffset.Now:HH:mm:ss}  {bumped} Wait Popup(s) under {MinWaitPopupMs} ms bumped to {MinWaitPopupMs} ms so the countdown is visible.");
 
         var program = BuildProgram();
         if (program.Steps.Count == 0) { Status = "Nothing to run — add a block first."; return; }

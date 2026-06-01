@@ -81,6 +81,15 @@ public static class OpCatalog
         // ---- Flow ----
         new("flow.wait", "Wait", "Flow", DeviceKind.None,
             new[] { new ParamSpec("ms", "Milliseconds", ParamKind.Number, "1000") }),
+        // Real-time countdown shown in an always-on-top popup; the operator can
+        // Cancel, which fails the program. Handled by WorkflowRunner (flow.waitPopup).
+        new("flow.waitPopup", "Wait Popup", "Flow", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("ms", "Duration (ms)", ParamKind.Number, "5000"),
+                new ParamSpec("title", "Popup title", ParamKind.Text, "Please wait"),
+                new ParamSpec("message", "Message", ParamKind.Text),
+            }),
         new("flow.log", "Log Message", "Flow", DeviceKind.None,
             new[] { new ParamSpec("message", "Message", ParamKind.Text) }),
         new("flow.comment", "Comment", "Flow", DeviceKind.None,
@@ -107,6 +116,18 @@ public static class OpCatalog
             {
                 new ParamSpec("name", "Variable name", ParamKind.Text),
                 new ParamSpec("value", "Value", ParamKind.Text),
+            }),
+
+        // ---- DUT ----
+        // Prompts the operator (modal) for a serial number and opens the DUT record
+        // for this run, so later dut.* steps record into it. Cancel fails the program.
+        // Handled by WorkflowRunner (dut.promptSerial).
+        new("dut.promptSerial", "DUT Entry", "DUT", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("title", "Dialog title", ParamKind.Text, "DUT Serial"),
+                new ParamSpec("message", "Prompt", ParamKind.Text, "Enter or scan the unit serial number:"),
+                new ParamSpec("var", "Store serial in variable (optional)", ParamKind.Text),
             }),
     };
 

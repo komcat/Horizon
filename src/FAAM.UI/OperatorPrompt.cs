@@ -36,4 +36,76 @@ public sealed class OperatorPrompt : IOperatorPrompt
         ct.ThrowIfCancellationRequested();   // surfaces a Stop as a cancellation
         return confirmed == true;
     }
+
+    /// <summary>
+    /// Modal free-text entry — the <c>dut.promptSerial</c> step blocks here until the
+    /// operator enters a serial (returned) or cancels (null → the step fails the run).
+    /// </summary>
+    public Task<string?> InputTextAsync(string title, string message, string? defaultValue, CancellationToken ct)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null)
+            return Task.FromResult<string?>(null);
+
+        return dispatcher.InvokeAsync(() => ShowInput(title, message, defaultValue, ct)).Task;
+    }
+
+    private static string? ShowInput(string title, string message, string? defaultValue, CancellationToken ct)
+    {
+        var window = new SerialEntryWindow(title, message, defaultValue)
+        {
+            Owner = Application.Current.MainWindow,
+        };
+
+        using var registration = ct.Register(() =>
+            window.Dispatcher.BeginInvoke(() => { if (window.IsLoaded) window.Close(); }));
+
+        var ok = window.ShowDialog();
+        ct.ThrowIfCancellationRequested();   // surfaces a Stop as a cancellation
+        return ok == true ? window.Serial : null;
+    }
+
+    /// <summary>
+    /// Non-modal, always-on-top countdown — the <c>flow.waitPopup</c> step blocks on
+    /// the returned task until the timer elapses (true) or the operator presses Cancel
+    /// (false → the step fails the run). A run Stop closes the window and surfaces as
+    /// a cancellation.
+    /// </summary>
+    public Task<bool> CountdownAsync(string title, string message, int durationMs, CancellationToken ct)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null)
+            return Task.FromResult(true);
+
+        // InvokeAsync(...).Task is Task<Task<bool>> — unwrap the inner countdown task.
+        return dispatcher.InvokeAsync(() => ShowCountdown(title, message, durationMs, ct)).Task.Unwrap();
+    }
+
+    private static Task<bool> ShowCountdown(string title, string message, int durationMs, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var window = new CountdownWindow(title, message, durationMs)
+        {
+            Owner = Application.Current.MainWindow,
+        };
+
+        // A run Stop closes the window and surfaces as a cancellation to the runner.
+        var registration = ct.Register(() =>
+            window.Dispatcher.BeginInvoke(() =>
+            {
+                tcs.TrySetCanceled(ct);
+                if (window.IsLoaded) window.Close();
+            }));
+
+        // Finished(true) = elapsed, Finished(false) = operator cancelled or closed.
+        window.Finished += completed =>
+        {
+            registration.Dispose();
+            tcs.TrySetResult(completed);
+            if (window.IsLoaded) window.Close();
+        };
+
+        window.Show();
+        return tcs.Task;
+    }
 }

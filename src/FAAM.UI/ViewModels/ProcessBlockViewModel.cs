@@ -125,6 +125,8 @@ public sealed class ProcessBlockViewModel : ObservableObject
                 "motion.setvelocity" => $"{Or(P("speed"), "?")} mm/s",
                 "io.setoutputbyname" => $"{Or(P("pin"), "(pin?)")} → {(Truthy(P("state")) ? "ON" : "OFF")}",
                 "flow.wait" => $"wait {Or(P("ms"), "?")} ms",
+                "flow.waitpopup" => $"countdown {Or(P("ms"), "?")} ms",
+                "dut.promptserial" => "ask DUT serial",
                 "flow.log" => Or(P("message"), "(message)"),
                 "pneumatic.extend" => "extend",
                 "pneumatic.retract" => "retract",
