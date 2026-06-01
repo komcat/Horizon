@@ -4,10 +4,11 @@ namespace FAAM.UI.ViewModels.Sections;
 
 /// <summary>
 /// One named position in the Machine-page Motion section. <b>Move</b> recalls it
-/// through Layer 2 (<c>MoveToNamedPositionAsync</c>: per-position velocity → move →
-/// camera exposure). <b>Save</b> re-teaches it — captures the device's current
-/// pose under this name (preserving its stored velocity / camera) and refreshes
-/// the displayed coordinates.
+/// through Layer 2 (<c>MoveToNamedPositionAsync</c>: move → camera exposure) at the
+/// operator's chosen section velocity (the Apply box) rather than the position's
+/// taught process velocity. <b>Save</b> re-teaches it — captures the device's
+/// current pose under this name (preserving its stored velocity / camera) and
+/// refreshes the displayed coordinates.
 /// </summary>
 public sealed class NamedPositionViewModel : ObservableObject
 {
@@ -16,14 +17,16 @@ public sealed class NamedPositionViewModel : ObservableObject
     private readonly IReadOnlyList<string> _axes;
     private string _coordinates;
 
-    public NamedPositionViewModel(EngineHost host, string device, string name, IReadOnlyList<string> axes)
+    public NamedPositionViewModel(EngineHost host, string device, string name, IReadOnlyList<string> axes, Func<double> velocity)
     {
         _host = host;
         _device = device;
         _axes = axes;
         Name = name;
         _coordinates = Summarize();
-        MoveCommand = new AsyncRelayCommand(() => host.Process.MoveToNamedPositionAsync(device, name));
+        // Use the Machine page's current velocity (operator's Apply box) so a manual
+        // recall isn't forced to the position's slow taught process velocity.
+        MoveCommand = new AsyncRelayCommand(() => host.Process.MoveToNamedPositionAsync(device, name, velocity()));
         SaveCommand = new AsyncRelayCommand(SaveAsync);
     }
 

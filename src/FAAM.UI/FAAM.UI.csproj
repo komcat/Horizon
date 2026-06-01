@@ -21,6 +21,10 @@
     <PackageReference Include="MVTec.HalconDotNet-Windows" Version="24050.0.0" />
     <!-- Required by the ported SMU / Measurement chart views (SKElement). -->
     <PackageReference Include="SkiaSharp.Views.WPF" Version="3.116.1" />
+    <!-- File logging: persist the UI log + engine/adapter Serilog diagnostics to
+         %APPDATA%\Horizon\logs\faam-.log (mirrors Horizon.App's versions). -->
+    <PackageReference Include="Serilog" Version="4.2.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
   </ItemGroup>
 
   <!-- A second Layer 3 head: references the Layer 1 engine + Layer 2 workflow

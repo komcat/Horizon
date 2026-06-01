@@ -297,7 +297,8 @@
                                     Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
                                     BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,2,0,10">
                                 <StackPanel>
-                                    <TextBlock Text="Position recall settings" Foreground="{StaticResource Subtle}" FontSize="11" />
+                                    <TextBlock Text="Position stored default (used when an override above is 0 / blank)"
+                                               Foreground="{StaticResource Subtle}" FontSize="11" TextWrapping="Wrap" />
                                     <TextBlock Text="{Binding PositionPreview}" Foreground="{StaticResource Text}"
                                                FontFamily="Consolas" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap" />
                                     <Button Content="Edit position…" Width="110" Height="26" HorizontalAlignment="Left"

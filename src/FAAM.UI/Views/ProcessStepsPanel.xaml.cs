@@ -20,20 +20,39 @@ namespace FAAM.UI.Views;
 /// </summary>
 public partial class ProcessStepsPanel : UserControl
 {
-    // --- Device / pin mapping (edit to match the rig) ---
-    private const string TeachDevice = "gantry-main";       // motion device taught + replayed
-    private const string IoDevice = "IOBottom";             // IO module carrying the outputs
-    private const string GripperPin = "R_Gripper";          // on = close, off = open
-    private const string DispensePin = "Dispenser_Shot";    // dispense-trigger output (blank = no pulse, dwell only)
-    private const string DispenserSlide = "Dispenser_Head"; // pneumatic: extend = dispense, retract = idle
-    private const string UvSlide = "UV_Head";               // pneumatic: extend = UV, retract = idle
-    private const int DispenseMs = 800;                     // dispense pulse / dwell
-    private const int UvDwellMs = 3000;                     // UV cure dwell per step
+    // --- Device / pin mapping (FAAM rig; mirrors acs_solution_saa PROCESS_BUTTONS.md) ---
+    private const string GantryDevice = "gantry-main";       // ACS gantry (X/Y/Z)
+    private const string HexDevice = "hex-right";            // PI hexapod (X/Y/Z/U/V/W)
+    private const string IoDevice = "IOBottom";              // EziIO module carrying the process outputs
+    private const string GripperPin = "R_Gripper";           // set = close, clear = open
+    private const string VacuumBasePin = "Vacuum_Base";      // set = base vacuum on, clear = off
+    private const string DispenseShotPin = "Dispenser_Shot"; // pulsed during the epoxy shot
+    private const string UvPlc1Pin = "UV_PLC1";              // pulsed to trigger UV PLC step 1
+    private const string UvPlc2Pin = "UV_PLC2";              // pulsed to trigger UV PLC step 2
+    private const string DispenserSlide = "Dispenser_Head";  // pneumatic: extend = head down, retract = up
+    private const string UvSlide = "UV_Head";                // pneumatic: extend = head down, retract = up
+
+    // Built-in actuation dwells, mirroring the legacy PneumaticController delays.
+    private const int GripperMs = 1000;                      // gripper open/close settle
+    private const int VacuumMs = 300;                        // base-vacuum settle
+    private const int PulseGapMs = 50;                       // UV-PLC pulse clear→set→clear gap
+
+    // Named positions the process traverses, in process order, across both devices —
+    // drives the Inspect-Motion table (each row is editable via the position editor).
+    private static readonly (string Device, string Position)[] ProcessPositions =
+    {
+        (HexDevice, "ClearGrip"), (HexDevice, "FauGrip"), (HexDevice, "FauHover"),
+        (HexDevice, "ClearLoad"), (HexDevice, "FauLoad"), (HexDevice, "Home"),
+        (GantryDevice, "ClearToDown"), (GantryDevice, "PreDispense"),
+        (GantryDevice, "PIC"), (GantryDevice, "UV"), (GantryDevice, "Home"),
+    };
 
     private readonly DispatcherTimer _timer;
     private EngineHost? _host;
     private DateTime _startUtc;
     private bool _running;
+    private CancellationTokenSource? _runCts;   // cancels the in-flight step sequence on STOP
+    private string _fauState = "F0";   // legacy state tracker (F1..F4 / D1..D4), for traceability/logging
 
     public ProcessStepsPanel()
     {
@@ -53,22 +72,22 @@ public partial class ProcessStepsPanel : UserControl
     public void Attach(EngineHost host) => _host = host;
 
     /// <summary>
-    /// The FAU-attach step list — edit here to retarget the process. The third
-    /// field is the reusable teach-point name (the key in faam_teach_points.json),
-    /// modelled on the acs_solution_saa position names (Home, FAU, PIC, UV…). A
-    /// null name means the step does not move (e.g. UV dwell steps); names may be
-    /// shared across steps to reuse a taught pose.
+    /// The FAU-attach step list. Each step's <c>Device</c> + <c>Position</c> name
+    /// its primary teach target — the destination pose Teach mode captures and the
+    /// step's main move recalls (the full per-step sequence in <see cref="RunStepAsync"/>
+    /// may traverse several positions across both the gantry and the hexapod). A
+    /// null <c>Position</c> means the step has no teachable pose (the UV dwell steps).
     /// </summary>
     private static List<ProcessStep> DefaultSteps() => new()
     {
-        new(0, "(1) Gripper open and Move Home", "Home"),
-        new(1, "(2) Move to grip FAU and close Gripper", "FAU"),
-        new(2, "(3) FAU is gripped and move to SiPhog", "PIC"),
-        new(3, "4.0 Move gantry to dispense", "Dispense"),
-        new(4, "4.1. Dispense and Move to UV", "UV"),
-        new(5, "4.2 — UV step1"),
-        new(6, "4.3 — UV step2"),
-        new(7, "(5) Complete UV and unload", "Unload"),
+        new(0, "(1) Gripper open and Move Home", GantryDevice, "Home"),
+        new(1, "(2) Move to grip FAU and close Gripper", HexDevice, "FauHover"),
+        new(2, "(3) FAU is gripped and move to SiPhog", GantryDevice, "PIC"),
+        new(3, "4.0 Move gantry to dispense", GantryDevice, "PreDispense"),
+        new(4, "4.1. Dispense and Move to UV", GantryDevice, "UV"),
+        new(5, "4.2 — UV step1", GantryDevice),
+        new(6, "4.3 — UV step2", GantryDevice),
+        new(7, "(5) Complete UV and unload", HexDevice, "ClearLoad"),
     };
 
     private void OnStepClick(object sender, RoutedEventArgs e)
@@ -90,7 +109,13 @@ public partial class ProcessStepsPanel : UserControl
         _host?.Process.RecordDutValue($"step{step.Index}", step.Label);
 
         Log(LogLevel.Info, $"Run — step: {step.Label}");
-        _ = RunStepAsync(step);
+
+        // Fresh cancellation scope per step click — STOP cancels it (and a new
+        // click supersedes any still-running step).
+        _runCts?.Cancel();
+        _runCts?.Dispose();
+        _runCts = new CancellationTokenSource();
+        _ = RunStepAsync(step, _runCts.Token);
     }
 
     // --- DUT run lifecycle (serial-bracketed, operator-stamped via Layer 2) ---
@@ -146,55 +171,253 @@ public partial class ProcessStepsPanel : UserControl
     }
 
     /// <summary>
-    /// Phase 1 — runs a step's hardcoded sequence on the engine facets. Moves
-    /// replay the step's taught pose; gripper is a raw IO output; the dispenser /
-    /// UV heads are pneumatic slides; dispense is an optional IO pulse.
+    /// Runs a step's full FAU-attach sequence on the engine facets — a faithful
+    /// migration of the acs_solution_saa process handlers (see PROCESS_BUTTONS.md).
+    /// Drives the gantry + hexapod (named-position recalls and relative jogs), the
+    /// gripper / base-vacuum / dispenser-shot / UV-PLC IO pins, and the dispenser /
+    /// UV pneumatic heads, gated by the same Yes/No operator confirmations as the
+    /// legacy. Legacy modal countdowns become non-blocking awaits (FAAM never blocks
+    /// the UI thread); the DUT serial is owned by the panel's Start/Pass/Fail
+    /// lifecycle, so the legacy per-step serial-input form is not reproduced.
     /// </summary>
-    private async Task RunStepAsync(ProcessStep step)
+    private async Task RunStepAsync(ProcessStep step, CancellationToken ct)
     {
         if (_host == null)
             return;
 
-        var pneu = _host.Engine.Pneumatic;
         try
         {
             switch (step.Index)
             {
-                case 0:                                   // Gripper open + Move Home
-                    await GripperAsync(close: false);
-                    await MoveToTaughtAsync(step);
-                    break;
-                case 1:                                   // Move to grip + close gripper
-                    await MoveToTaughtAsync(step);
-                    await GripperAsync(close: true);
-                    break;
-                case 2:                                   // Move to SiPhog
-                case 3:                                   // Move to dispense
-                    await MoveToTaughtAsync(step);
-                    break;
-                case 4:                                   // Dispense + move to UV
-                    await PneuAsync(pneu.ExtendAsync(DispenserSlide), $"{DispenserSlide} extend");
-                    await DispensePulseAsync();
-                    await PneuAsync(pneu.RetractAsync(DispenserSlide), $"{DispenserSlide} retract");
-                    await MoveToTaughtAsync(step);
-                    break;
-                case 5:                                   // UV step 1 — head over part, cure
-                    await PneuAsync(pneu.ExtendAsync(UvSlide), $"{UvSlide} extend");
-                    await DwellAsync(UvDwellMs, "UV step1 cure");
-                    break;
-                case 6:                                   // UV step 2 — continue cure
-                    await DwellAsync(UvDwellMs, "UV step2 cure");
-                    break;
-                case 7:                                   // Complete UV + unload
-                    await PneuAsync(pneu.RetractAsync(UvSlide), $"{UvSlide} retract");
-                    await MoveToTaughtAsync(step);
-                    await GripperAsync(close: false);     // release
-                    break;
+                case 0: await Step1OpenHomeAsync(ct); break;
+                case 1: await Step2GripFauAsync(ct); break;
+                case 2: await Step3MoveToSiphogAsync(ct); break;
+                case 3: await Step40MoveToDispenseAsync(ct); break;
+                case 4: await Step41DispenseAndUvAsync(ct); break;
+                case 5: await Step42UvStep1Async(ct); break;
+                case 6: await Step43UvStep2Async(ct); break;
+                case 7: await Step5CompleteUnloadAsync(ct); break;
             }
+        }
+        catch (OperationCanceledException)
+        {
+            Log(LogLevel.Warning, $"Step '{step.Label}' aborted (STOP).");
         }
         catch (Exception ex)
         {
             Log(LogLevel.Error, $"Step '{step.Label}' error: {ex.Message}");
+        }
+    }
+
+    // --- (1) Gripper open & home — no confirmation dialog ---
+    private async Task Step1OpenHomeAsync(CancellationToken ct)
+    {
+        Log(LogLevel.Info, "Step 1 — gripper open & home (InProgress).");
+
+        // Ensure both heads are up before any motion.
+        await PneuAsync(_host!.Engine.Pneumatic.RetractAsync(DispenserSlide, ct), $"{DispenserSlide} up");
+        await PneuAsync(_host.Engine.Pneumatic.RetractAsync(UvSlide, ct), $"{UvSlide} up");
+
+        // Conditional back-off: if the hexapod is sitting at FauGrip, retract X +1.5 mm first.
+        if (await HexAtAsync("FauGrip"))
+            await RelAsync(HexDevice, "X", 1.5, "FauGrip back-off", ct);
+
+        await GripperAsync(close: false, ct);     // open
+        await VacuumBaseAsync(on: true, ct);
+
+        if (!await MoveNamedAsync(HexDevice, "ClearGrip", ct)) return;
+        if (!await MoveNamedAsync(HexDevice, "Home", ct)) return;
+        _fauState = "F1";
+
+        if (!await MoveNamedAsync(GantryDevice, "ClearToDown", ct)) return;
+        if (!await MoveNamedAsync(GantryDevice, "Home", ct)) return;
+
+        Log(LogLevel.Info, "Step 1 — Completed.");
+    }
+
+    // --- (2) Move to grip FAU & close gripper ---
+    private async Task Step2GripFauAsync(CancellationToken ct)
+    {
+        Log(LogLevel.Info, "Step 2 — move to grip FAU (InProgress).");
+
+        if (Confirm("Do you want to move to grip FAU?"))
+        {
+            if (!await MoveNamedAsync(HexDevice, "ClearGrip", ct)) return;
+            if (!await MoveNamedAsync(HexDevice, "FauGrip", ct)) return;
+        }
+        else
+        {
+            Info("Move to grip FAU cancelled.");
+        }
+
+        if (Confirm("Do you want to Grip the FAU?"))
+        {
+            await GripperAsync(close: true, ct);
+            await DwellAsync(5000, "grip settle", ct);
+            await VacuumBaseAsync(on: false, ct);
+            if (!await MoveNamedAsync(HexDevice, "FauHover", ct)) return;
+            _fauState = "F2";
+            _host!.Process.RecordDutValue("step1_grip", "FAU gripped");
+            Log(LogLevel.Info, "Step 2 — Completed.");
+        }
+        else
+        {
+            Info("Grip FAU cancelled.");
+            Log(LogLevel.Info, "Step 2 — Idle (grip cancelled).");
+        }
+    }
+
+    // --- (3) FAU gripped → move to SiPhog ---
+    private async Task Step3MoveToSiphogAsync(CancellationToken ct)
+    {
+        Log(LogLevel.Info, "Step 3 — move FAU to SiPhog (InProgress).");
+
+        await IoAsync(VacuumBasePin, false, "Base vacuum off", ct);   // release base vacuum (direct)
+
+        if (Confirm("Do you want to move FAU to Siphog?"))
+        {
+            // Hexapod sub-moves warn but do not abort on a missing point (legacy gotcha);
+            // only the gantry PIC move aborts the step.
+            await MoveNamedAsync(HexDevice, "ClearGrip", ct);
+            await MoveNamedAsync(HexDevice, "ClearLoad", ct);
+            await MoveNamedAsync(HexDevice, "FauLoad", ct);
+            if (!await MoveNamedAsync(GantryDevice, "PIC", ct)) return;
+            _fauState = "F3";
+            _host!.Process.RecordDutValue("step3_siphog", "at SiPhog");
+            Log(LogLevel.Info, "Step 3 — Completed.");
+        }
+        else
+        {
+            Info("Move FAU to Siphog cancelled.");
+            Log(LogLevel.Info, "Step 3 — Idle.");
+        }
+    }
+
+    // --- 4.0 Move gantry to dispense ---
+    private async Task Step40MoveToDispenseAsync(CancellationToken ct)
+    {
+        Log(LogLevel.Info, "Step 4.0 — move gantry to dispense (InProgress).");
+
+        if (!await MoveNamedAsync(GantryDevice, "ClearToDown", ct)) return;
+        if (!await MoveNamedAsync(GantryDevice, "PreDispense", ct)) return;
+
+        if (Confirm($"Do you want to set the output pin '{DispenserSlide}'? (lower dispenser head)"))
+        {
+            await PneuAsync(_host!.Engine.Pneumatic.ExtendAsync(DispenserSlide, ct), $"{DispenserSlide} down");
+            await DwellAsync(3000, "dispenser head settle", ct);
+        }
+        else
+        {
+            Info("Dispenser head lower cancelled.");
+        }
+
+        _fauState = "D1";
+        _host!.Process.RecordDutValue("step40_dispense", "at dispense");
+        Log(LogLevel.Info, "Step 4.0 — Completed.");
+    }
+
+    // --- 4.1 Dispense epoxy & move to UV ---
+    private async Task Step41DispenseAndUvAsync(CancellationToken ct)
+    {
+        const double gantryTravel = 0.38;       // 0.3 + 0.08
+        const double gripperMoveBack = 0.08;
+        Log(LogLevel.Info, "Step 4.1 — dispense & move to UV (InProgress).");
+
+        await RelAsync(GantryDevice, "X", gantryTravel, "gantry forward", ct);
+        await RelAsync(HexDevice, "Z", -gripperMoveBack, "gripper back off", ct);
+
+        if (Confirm("Do you want to dispense epoxy now?"))
+        {
+            await IoAsync(DispenseShotPin, true, "Dispense shot on", ct);
+            await DwellAsync(1800, "dispense shot", ct);
+            await IoAsync(DispenseShotPin, false, "Dispense shot off", ct);
+            await DwellAsync(300, "shot settle", ct);
+        }
+        else
+        {
+            Info("Dispense cancelled.");
+        }
+
+        await DwellAsync(1500, "epoxy flow", ct);
+        await RelAsync(GantryDevice, "X", -gantryTravel, "gantry return", ct);
+        await PneuAsync(_host!.Engine.Pneumatic.RetractAsync(DispenserSlide, ct), $"{DispenserSlide} up");
+        await DwellAsync(1000, "head lift settle", ct);
+        await RelAsync(HexDevice, "Z", gripperMoveBack, "gripper return", ct);
+        await DwellAsync(1000, "gripper settle", ct);
+
+        if (!await MoveNamedAsync(GantryDevice, "UV", ct)) return;
+        await PneuAsync(_host.Engine.Pneumatic.ExtendAsync(UvSlide, ct), $"{UvSlide} down");
+        await DwellAsync(1500, "UV head settle", ct);
+
+        _fauState = "D2";
+        _host.Process.RecordDutValue("step41_uv", "epoxy dispensed, at UV");
+        Log(LogLevel.Info, "Step 4.1 — Completed.");
+    }
+
+    // --- 4.2 UV step 1 (cure) ---
+    private async Task Step42UvStep1Async(CancellationToken ct)
+    {
+        var seconds = _host!.Settings.Current.UvStep1CuringSeconds;
+        Log(LogLevel.Info, "Step 4.2 — UV step1 (InProgress).");
+
+        if (Confirm($"Do you want to start toggling UV PLC1?  UV Step1 Time: {seconds:0.#} seconds"))
+        {
+            await UvPlcPulseAsync(UvPlc1Pin, ct);
+            await DwellAsync((int)(seconds * 1000), "UV step1 cure", ct);
+            Info("UV step1 cure complete.");
+            _fauState = "D3";
+            _host.Process.RecordDutValue("step42_uv1", $"cured {seconds:0.#}s");
+            Log(LogLevel.Info, "Step 4.2 — Completed.");
+        }
+        else
+        {
+            Log(LogLevel.Info, "Step 4.2 — Idle.");
+        }
+    }
+
+    // --- 4.3 UV step 2 (final cure) ---
+    private async Task Step43UvStep2Async(CancellationToken ct)
+    {
+        var seconds = _host!.Settings.Current.UvCuringSeconds;
+        Log(LogLevel.Info, "Step 4.3 — UV step2 (InProgress).");
+
+        if (Confirm($"Do you want to start toggling UV PLC2?  UV Curing Time: {seconds:0.#} seconds"))
+        {
+            await UvPlcPulseAsync(UvPlc2Pin, ct);
+            await DwellAsync((int)(seconds * 1000), "UV step2 cure", ct);
+            Info("UV cure complete — then press (5) to complete and unload.");
+            await PneuAsync(_host.Engine.Pneumatic.RetractAsync(UvSlide, ct), $"{UvSlide} up");
+            _fauState = "D4";
+            _host.Process.RecordDutValue("step43_uv2", $"cured {seconds:0.#}s");
+            Log(LogLevel.Info, "Step 4.3 — Completed.");
+        }
+        else
+        {
+            Log(LogLevel.Info, "Step 4.3 — Idle.");
+        }
+    }
+
+    // --- (5) Complete UV & unload ---
+    private async Task Step5CompleteUnloadAsync(CancellationToken ct)
+    {
+        Log(LogLevel.Info, "Step 5 — complete UV & unload (InProgress).");
+
+        if (Confirm("Do you want to unload gripper after UV cure?\nUngrip then move to ClearLoad."))
+        {
+            await PneuAsync(_host!.Engine.Pneumatic.RetractAsync(UvSlide, ct), $"{UvSlide} up");
+            await GripperAsync(close: false, ct);     // open / release
+            await DwellAsync(2000, "ungrip settle", ct);
+            await MoveNamedAsync(HexDevice, "ClearLoad", ct);
+            await MoveNamedAsync(HexDevice, "Home", ct);
+            _fauState = "F4";
+            _host.Process.RecordDutValue("step5_unload", "unloaded");
+            StopTimer();
+            Log(LogLevel.Info, "Step 5 — Completed.");
+        }
+        else
+        {
+            Info("Unload cancelled.");
+            Log(LogLevel.Info, "Step 5 — Idle.");
         }
     }
 
@@ -212,11 +435,12 @@ public partial class ProcessStepsPanel : UserControl
     public event EventHandler<IReadOnlyList<MotionInspectRow>>? InspectMotionRequested;
 
     /// <summary>
-    /// Builds the motion-inspection table for every distinct position used by the
-    /// process (in step order) from the Layer 2 product: name, device, the
-    /// position's stored velocity, its taught X/Y/Z/U/V/W ("—" when not taught),
-    /// and its camera / exposure. Each row carries an <see cref="MotionInspectRow.Edit"/>
-    /// action that opens the per-position editor.
+    /// Builds the motion-inspection table for every named position the process
+    /// traverses (<see cref="ProcessPositions"/>, across both the gantry and the
+    /// hexapod) from the Layer 2 product: name, device, the position's stored
+    /// velocity, its taught X/Y/Z/U/V/W ("—" when not taught), and its camera /
+    /// exposure. Each row carries an <see cref="MotionInspectRow.Edit"/> action
+    /// that opens the per-position editor.
     /// </summary>
     private void OnInspectMotion(object sender, RoutedEventArgs e)
     {
@@ -224,22 +448,16 @@ public partial class ProcessStepsPanel : UserControl
             return;
 
         var rows = new List<MotionInspectRow>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var step in StepList.ItemsSource?.OfType<ProcessStep>() ?? Enumerable.Empty<ProcessStep>())
+        foreach (var (device, position) in ProcessPositions)
         {
-            if (string.IsNullOrEmpty(step.Position) || !seen.Add(step.Position))
-                continue;   // skip dwell-only steps and positions already listed
-
-            var position = step.Position;
-            var np = _host.Process.GetPosition(TeachDevice, position);
+            var np = _host.Process.GetPosition(device, position);
             var c = np?.Coordinates;
             rows.Add(new MotionInspectRow(
-                position, TeachDevice, Fmt(np?.Velocity),
+                position, device, Fmt(np?.Velocity),
                 Fmt(c?.X), Fmt(c?.Y), Fmt(c?.Z), Fmt(c?.U), Fmt(c?.V), Fmt(c?.W),
                 np?.Camera ?? "—", Fmt(np?.ExposureUs))
             {
-                Edit = () => OpenPositionEditor(position, np),
+                Edit = () => OpenPositionEditor(device, position, np),
             });
         }
 
@@ -247,12 +465,12 @@ public partial class ProcessStepsPanel : UserControl
     }
 
     /// <summary>Opens the non-modal per-position editor; on Apply the position is saved to the product via Layer 2.</summary>
-    private void OpenPositionEditor(string position, NamedPosition? np)
+    private void OpenPositionEditor(string device, string position, NamedPosition? np)
     {
         if (_host == null)
             return;
 
-        var info = _host.Engine.Motion.GetDevice(TeachDevice);
+        var info = _host.Engine.Motion.GetDevice(device);
         if (info == null)
             return;
 
@@ -291,7 +509,7 @@ public partial class ProcessStepsPanel : UserControl
 
     private static string Fmt(double? v) => v.HasValue ? v.Value.ToString("0.###") : "—";
 
-    /// <summary>Captures the current gantry pose under the step's reusable position name (Teach mode) and persists it.</summary>
+    /// <summary>Captures the device's current pose under the step's teach-target position name (Teach mode) and persists it.</summary>
     private async Task TeachStepAsync(ProcessStep step)
     {
         if (_host == null)
@@ -306,46 +524,87 @@ public partial class ProcessStepsPanel : UserControl
         // Teach through Layer 2 — captures the device's current pose under the
         // position name in the active product, preserving its existing velocity
         // and camera / exposure settings.
-        var velocity = _host.Process.GetPosition(TeachDevice, step.Position)?.Velocity ?? 0;
-        var r = await _host.Process.TeachPositionAsync(TeachDevice, step.Position, velocity);
+        var velocity = _host.Process.GetPosition(step.Device, step.Position)?.Velocity ?? 0;
+        var r = await _host.Process.TeachPositionAsync(step.Device, step.Position, velocity);
         Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
             r.IsSuccess
-                ? $"Taught '{step.Position}' @ {TeachDevice}."
+                ? $"Taught '{step.Position}' @ {step.Device}."
                 : $"Teach '{step.Position}' failed: {r.Message}");
     }
 
-    private async Task GripperAsync(bool close)
+    // --- Step-sequence primitives (shared by the RunStepAsync per-step methods) ---
+
+    /// <summary>Operator Yes/No gate — faithful to the legacy confirmation dialogs.</summary>
+    private static bool Confirm(string question)
+        => MessageBox.Show(question, "FAU Attach", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+
+    /// <summary>Operator acknowledgement popup — faithful to the legacy success / cancel messages.</summary>
+    private static void Info(string message)
+        => MessageBox.Show(message, "FAU Attach", MessageBoxButton.OK, MessageBoxImage.Information);
+
+    /// <summary>Recalls a named position via Layer 2; returns false (and logs) when the point is untaught / the move fails.</summary>
+    private async Task<bool> MoveNamedAsync(string device, string position, CancellationToken ct)
     {
-        var r = await _host!.Engine.IO.SetOutputByNameAsync(IoDevice, GripperPin, close);
+        var r = await _host!.Process.MoveToNamedPositionAsync(device, position, ct);
         Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
-            $"Gripper {(close ? "close" : "open")} ({GripperPin}): {(r.IsSuccess ? "ok" : r.Message)}");
+            r.IsSuccess ? $"Move {device} → {position}."
+                        : $"Move {device} → {position} failed: {r.Message} (teach it via Teach mode or Inspect Motion).");
+        return r.IsSuccess;
     }
 
-    private async Task MoveToTaughtAsync(ProcessStep step)
+    /// <summary>Relative single-axis jog on a motion device.</summary>
+    private async Task RelAsync(string device, string axis, double distance, string what, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(step.Position))
-            return;                                       // step has no move
-
-        // Layer 2 runs the recall routine: set velocity → start move → set camera
-        // exposure (while moving) → settle. Returns Fail for an untaught position.
-        var r = await _host!.Process.MoveToNamedPositionAsync(TeachDevice, step.Position);
-        if (!r.IsSuccess)
-            Log(LogLevel.Warning,
-                $"Move → '{step.Position}' ('{step.Label}') failed: {r.Message}. " +
-                "If untaught: arm Teach, jog to the spot, then click the step.");
+        var r = await _host!.Engine.Motion.MoveRelativeAsync(device, axis, distance, ct);
+        Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
+            $"{what} ({device} {axis} {distance:+0.###;-0.###} mm): {(r.IsSuccess ? "ok" : r.Message)}");
     }
 
-    private async Task DispensePulseAsync()
+    /// <summary>Drives a named output pin on the process IO module.</summary>
+    private async Task IoAsync(string pin, bool state, string what, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(DispensePin))
-        {
-            await DwellAsync(DispenseMs, "dispense dwell (no trigger pin set)");
-            return;
-        }
-        await _host!.Engine.IO.SetOutputByNameAsync(IoDevice, DispensePin, true);
-        await Task.Delay(DispenseMs);
-        await _host!.Engine.IO.SetOutputByNameAsync(IoDevice, DispensePin, false);
-        Log(LogLevel.Info, $"Dispense pulse ({DispensePin}, {DispenseMs} ms)");
+        var r = await _host!.Engine.IO.SetOutputByNameAsync(IoDevice, pin, state, ct);
+        Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
+            $"{what} ({pin}={(state ? "on" : "off")}): {(r.IsSuccess ? "ok" : r.Message)}");
+    }
+
+    /// <summary>Gripper open/close with the legacy 1 s settle dwell.</summary>
+    private async Task GripperAsync(bool close, CancellationToken ct)
+    {
+        await IoAsync(GripperPin, close, $"Gripper {(close ? "close" : "open")}", ct);
+        await Task.Delay(GripperMs, ct);
+    }
+
+    /// <summary>Base vacuum on/off with the legacy 0.3 s settle dwell.</summary>
+    private async Task VacuumBaseAsync(bool on, CancellationToken ct)
+    {
+        await IoAsync(VacuumBasePin, on, $"Base vacuum {(on ? "on" : "off")}", ct);
+        await Task.Delay(VacuumMs, ct);
+    }
+
+    /// <summary>UV-PLC trigger pulse — clear → 50 ms → set → 50 ms → clear (legacy UvPlcPulse).</summary>
+    private async Task UvPlcPulseAsync(string pin, CancellationToken ct)
+    {
+        await IoAsync(pin, false, $"UV pulse {pin}", ct);
+        await Task.Delay(PulseGapMs, ct);
+        await IoAsync(pin, true, $"UV pulse {pin}", ct);
+        await Task.Delay(PulseGapMs, ct);
+        await IoAsync(pin, false, $"UV pulse {pin}", ct);
+    }
+
+    /// <summary>True when the hexapod's live X/Y/Z is within <paramref name="tol"/> mm of the named taught pose.</summary>
+    private async Task<bool> HexAtAsync(string position, double tol = 0.5)
+    {
+        var target = _host!.Process.GetPosition(HexDevice, position)?.Coordinates;
+        if (target == null)
+            return false;
+        var live = await _host.Engine.Motion.GetPositionAsync(HexDevice);
+        if (!live.IsSuccess)
+            return false;
+        var p = live.Value;
+        return Math.Abs(p.X - target.X) <= tol
+            && Math.Abs(p.Y - target.Y) <= tol
+            && Math.Abs(p.Z - target.Z) <= tol;
     }
 
     private async Task PneuAsync(Task<Result> op, string what)
@@ -354,10 +613,10 @@ public partial class ProcessStepsPanel : UserControl
         Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning, $"{what}: {(r.IsSuccess ? "ok" : r.Message)}");
     }
 
-    private async Task DwellAsync(int ms, string what)
+    private async Task DwellAsync(int ms, string what, CancellationToken ct)
     {
         Log(LogLevel.Info, $"{what} ({ms} ms)…");
-        await Task.Delay(ms);
+        await Task.Delay(ms, ct);
     }
 
     private async void OnStop(object sender, RoutedEventArgs e)
@@ -365,11 +624,21 @@ public partial class ProcessStepsPanel : UserControl
         StopTimer();
         Log(LogLevel.Warning, "STOP pressed — halting motion.");
 
+        // Cancel the in-flight step sequence FIRST so it cannot issue the next move
+        // once the current one is halted below (otherwise the stop is immediately
+        // overridden by the step's next MoveNamed/jog).
+        _runCts?.Cancel();
+
         if (_host != null)
         {
             foreach (var device in _host.Engine.Motion.DeviceNames)
             {
-                try { await _host.Engine.Motion.StopAsync(device); }
+                try
+                {
+                    var r = await _host.Engine.Motion.StopAsync(device);
+                    Log(r.IsSuccess ? LogLevel.Info : LogLevel.Error,
+                        r.IsSuccess ? $"STOP {device} — halted." : $"STOP {device} FAILED: {r.Message}");
+                }
                 catch (Exception ex) { Log(LogLevel.Error, $"Stop {device} failed: {ex.Message}"); }
             }
         }
@@ -400,11 +669,13 @@ public partial class ProcessStepsPanel : UserControl
 }
 
 /// <summary>
-/// One process step — its fixed index (drives the hardcoded sequence), display
-/// label, and an optional reusable teach-point name (<c>Position</c>) used as the
-/// key in faam_teach_points.json. Null <c>Position</c> = the step does not move.
+/// One process step — its fixed index (drives the hardcoded sequence in
+/// <see cref="ProcessStepsPanel.RunStepAsync"/>), display label, the motion
+/// <c>Device</c> its teach target lives on, and an optional teach-target
+/// position name (<c>Position</c>). Null <c>Position</c> = no teachable pose
+/// (e.g. the UV dwell steps).
 /// </summary>
-public sealed record ProcessStep(int Index, string Label, string? Position = null);
+public sealed record ProcessStep(int Index, string Label, string Device, string? Position = null);
 
 /// <summary>One row of the motion inspector — a process position and its recall settings (values pre-formatted for display).</summary>
 public sealed record MotionInspectRow(

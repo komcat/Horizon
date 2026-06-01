@@ -43,6 +43,14 @@ public sealed record AppSettings
     /// <summary>Jog velocity presets for ACS / gantry-family devices (everything else).</summary>
     public double[] GantryVelocityPresets { get; init; } = { 1, 5, 10, 20, 40, 75 };
 
+    // --- FAU-attach process (Run-page UV cure dwells, seconds) ---
+
+    /// <summary>UV step 1 cure time (seconds) — drives the 4.2 "UV step1" dwell after the UV_PLC1 pulse.</summary>
+    public double UvStep1CuringSeconds { get; init; } = 5;
+
+    /// <summary>UV step 2 / final cure time (seconds) — drives the 4.3 "UV step2" dwell after the UV_PLC2 pulse.</summary>
+    public double UvCuringSeconds { get; init; } = 30;
+
     // --- Camera ---
 
     /// <summary>

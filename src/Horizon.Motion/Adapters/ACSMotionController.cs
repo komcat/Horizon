@@ -136,18 +136,38 @@ public sealed class ACSMotionController : IMotionController
         return false; // Requires ACSPL+ buffer program
     }
 
+    // STOP uses KILL, not HALT: HALT only decelerates the *currently executing*
+    // motion and leaves the ACS motion queue intact, so the next queued ToPoint
+    // (e.g. from rapid jog clicks) starts the instant the current one stops. KILL
+    // terminates the current motion AND flushes the queued motions — a real stop.
     public bool StopAxis(string axis)
     {
         if (!_connected || !_axisMap.TryGetValue(axis, out var acsAxis)) return false;
-        try { _api.Halt(acsAxis); return true; }
+        try { _api.Kill(acsAxis); return true; }
         catch { return false; }
     }
 
+    // Kill each axis individually rather than _api.KillM(Axis[]): the SPiiPlus
+    // multi-axis array commands expect an ACSC_NONE(-1)-terminated array, and
+    // passing a plain axis array throws in the native marshalling — which is why
+    // STOP silently failed (the exception was swallowed below). Single-axis Kill
+    // has no terminator requirement. Best-effort: kill every axis we can, and
+    // report failure only if a Kill actually threw.
     public bool StopAll()
     {
         if (!_connected) return false;
-        try { _api.HaltM(AxisNames.Select(a => _axisMap[a]).ToArray()); return true; }
-        catch { return false; }
+        bool all = true;
+        foreach (var name in AxisNames)
+        {
+            if (!_axisMap.TryGetValue(name, out var acsAxis)) continue;
+            try { _api.Kill(acsAxis); }
+            catch (Exception ex)
+            {
+                all = false;
+                Serilog.Log.Error(ex, "[Motion] ACS '{Device}' Kill axis {Axis} threw", DeviceName, name);
+            }
+        }
+        return all;
     }
 
     public bool SetVelocity(string axis, double speed)

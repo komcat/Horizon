@@ -205,13 +205,21 @@ public partial class JogPanel : UserControl
     private async void OnStop(object sender, RoutedEventArgs e)
     {
         if (_host == null) return;
-        // Halt every motion device (StopAsync bypasses the per-device lock).
+        // KILL every motion device. Report any device whose stop did not take so a
+        // failed halt is never hidden behind a blanket "motion halted" message.
+        var failed = new List<string>();
         foreach (var device in _host.Engine.Motion.DeviceNames)
         {
-            try { await _host.Engine.Motion.StopAsync(device); }
-            catch (Exception ex) { SetStatus($"Stop {device} failed: {ex.Message}"); }
+            try
+            {
+                var r = await _host.Engine.Motion.StopAsync(device);
+                if (!r.IsSuccess) failed.Add($"{device}: {r.Message}");
+            }
+            catch (Exception ex) { failed.Add($"{device}: {ex.Message}"); }
         }
-        SetStatus("STOP — motion halted.");
+        SetStatus(failed.Count == 0
+            ? "STOP — motion halted."
+            : $"STOP — FAILED for {string.Join("; ", failed)}");
     }
 
     private async Task JogAsync(string tag)

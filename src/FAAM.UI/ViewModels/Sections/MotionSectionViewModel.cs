@@ -108,7 +108,7 @@ public sealed class MotionSectionViewModel : ObservableObject
 
         var axes = _host.Engine.Motion.GetDevice(device)?.Axes ?? Array.Empty<string>();
         foreach (var name in _host.Process.GetPositionNames(device))
-            Positions.Add(new NamedPositionViewModel(_host, device, name, axes));
+            Positions.Add(new NamedPositionViewModel(_host, device, name, axes, () => _velocity));
     }
 
     /// <summary>Refreshes connection / motion state and every axis position — called each sampler tick.</summary>

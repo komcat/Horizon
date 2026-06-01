@@ -79,8 +79,16 @@ public interface IProcessService
     /// </summary>
     Task<Result> TeachPositionAsync(string device, string name, double velocity);
 
-    /// <summary>Resolves a named position and moves the device to it.</summary>
+    /// <summary>Resolves a named position and moves the device to it (using the position's stored velocity).</summary>
     Task<Result> MoveToNamedPositionAsync(string device, string name, CancellationToken ct = default);
+
+    /// <summary>
+    /// As <see cref="MoveToNamedPositionAsync(string,string,CancellationToken)"/> but overrides the
+    /// position's stored velocity with <paramref name="velocityOverride"/> (controller units) when it
+    /// is &gt; 0 — used by the Machine page so a manual recall honours the operator's chosen velocity
+    /// rather than the position's taught process velocity. 0 falls back to the stored velocity.
+    /// </summary>
+    Task<Result> MoveToNamedPositionAsync(string device, string name, double velocityOverride, CancellationToken ct = default);
 
     // --- Process programs (operate on the active product) ---
 

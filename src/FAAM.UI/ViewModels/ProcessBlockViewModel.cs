@@ -173,7 +173,12 @@ public sealed class ProcessBlockViewModel : ObservableObject
             var type = _host.Engine.Motion.GetDevice(_selectedDevice!)?.ControllerType;
             var (min, max) = MotionVelocityLimits.For(type);
             var family = string.Equals(type, "PI", StringComparison.OrdinalIgnoreCase) ? "PI" : "ACS";
-            return $"Allowed {min:0.##}–{max:0.##} mm/s ({family}); 0 = current velocity.";
+            // Move-to-Position falls back to the position's stored velocity at 0; a
+            // relative move has no stored position, so 0 = the device's current velocity.
+            var zeroMeans = Spec.OpKey.Equals("motion.moveToPosition", StringComparison.OrdinalIgnoreCase)
+                ? "0 = use the position's stored velocity"
+                : "0 = current velocity";
+            return $"Allowed {min:0.##}–{max:0.##} mm/s ({family}); {zeroMeans}.";
         }
     }
 

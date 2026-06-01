@@ -32,11 +32,12 @@ public sealed record OpSpec(
 /// <c>Horizon.Workflow.StepDispatcher</c> exactly — that switch is the source of
 /// truth, this is just the operator-facing description of it.
 ///
-/// NOTE on Move-to-Position: the only persisted parameter is <c>position</c>.
-/// Velocity, camera and exposure are NOT step parameters — they live on the named
-/// position (<c>NamedPosition</c>) and are applied on recall. The editor surfaces
-/// them as a read-only preview with an "Edit position…" button; do not add fake
-/// velocity / camera params to this op.
+/// NOTE on Move-to-Position: <c>velocity</c> / <c>camera</c> / <c>exposure</c> are
+/// optional PER-MOVE OVERRIDES persisted on the step — 0 / blank means "fall back to
+/// the named position's stored value". The position's own stored velocity / camera /
+/// exposure remain the default (edited via the "Edit position…" button, with a
+/// read-only preview). Both are intentional and complementary: the block field
+/// overrides for this one move; the position supplies the shared default.
 /// </summary>
 public static class OpCatalog
 {
@@ -49,9 +50,9 @@ public static class OpCatalog
             new[]
             {
                 new ParamSpec("position", "Position", ParamKind.PositionName),
-                new ParamSpec("velocity", "Velocity (mm/s, 0=current)", ParamKind.Number, "0"),
-                new ParamSpec("camera", "Camera (optional)", ParamKind.CameraName),
-                new ParamSpec("exposure", "Exposure (µs, 0=skip)", ParamKind.Number, "0"),
+                new ParamSpec("velocity", "Velocity override (mm/s, 0 = use position)", ParamKind.Number, "0"),
+                new ParamSpec("camera", "Camera override (blank = use position)", ParamKind.CameraName),
+                new ParamSpec("exposure", "Exposure override (µs, 0 = use position)", ParamKind.Number, "0"),
             }),
         new("motion.moveRelative", "Move Relative", "Motion", DeviceKind.Motion,
             new[]

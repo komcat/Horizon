@@ -9,9 +9,10 @@ namespace Horizon.Engine;
 /// <summary>
 /// Motion facet — wraps the kept <see cref="UnifiedMotionManager"/> behind
 /// engine-owned types. PI/ACS controllers are not thread-safe, so every
-/// controller call (facet ops and poll reads) is serialized through a
-/// per-device <see cref="SemaphoreSlim"/>. <see cref="StopAsync"/> is the only
-/// exception — it must never queue behind a move.
+/// controller call (facet ops, poll reads, and <see cref="StopAsync"/>) is
+/// serialized through a per-device <see cref="SemaphoreSlim"/>. Moves are issued
+/// non-blocking, so the lock is only ever held for the brief command/read — STOP
+/// never has to wait for a move to finish, only for the in-flight read to return.
 /// </summary>
 internal sealed class MotionFacet : IMotionFacet, IAsyncDisposable
 {
@@ -98,10 +99,22 @@ internal sealed class MotionFacet : IMotionFacet, IAsyncDisposable
             () => _manager.MoveToAbs6(device, ToPositionStruct(target), blocking: false),
             $"MoveToPosition {device}");
 
-    public Task<Result> StopAsync(string device)
-        => Task.Run(() => _manager.StopAll(device)
-            ? Result.Ok()
-            : Result.Fail(ErrorCode.MotionStopFailed, $"Stop failed for '{device}'."));
+    public async Task<Result> StopAsync(string device)
+    {
+        if (!_devices.ContainsKey(device))
+            return Result.Fail(ErrorCode.MotionDeviceNotFound, $"Motion device '{device}' not found.");
+
+        // STOP must run serialized with the poll reads: the PI/ACS Api is NOT
+        // thread-safe, so firing the stop command on the shared socket while the
+        // poll loop is mid-read corrupts/drops it (caught as a silent failure) and
+        // motion never halts. Moves are non-blocking, so the lock is only ever held
+        // for a single quick read — STOP waits at most ~one poll interval for it.
+        return await WithLock(device, CancellationToken.None, () =>
+            _manager.StopAll(device)
+                ? Result.Ok()
+                : Result.Fail(ErrorCode.MotionStopFailed, $"Stop failed for '{device}'."))
+            .ConfigureAwait(false);
+    }
 
     public async Task<Result<MotionPosition>> GetPositionAsync(string device)
     {

@@ -222,6 +222,9 @@ public sealed class ProcessService : IProcessService
     public Task<Result> MoveToNamedPositionAsync(string device, string name, CancellationToken ct = default)
         => MoveToNamedPositionCoreAsync(device, name, new MoveOverrides(), ct);
 
+    public Task<Result> MoveToNamedPositionAsync(string device, string name, double velocityOverride, CancellationToken ct = default)
+        => MoveToNamedPositionCoreAsync(device, name, new MoveOverrides(velocityOverride), ct);
+
     /// <summary>
     /// Recalls a named position, applying the step's <see cref="MoveOverrides"/> at the
     /// start of the move: a velocity / camera / exposure given on the step takes
