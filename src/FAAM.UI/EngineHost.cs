@@ -46,6 +46,16 @@ public sealed class EngineHost : IAsyncDisposable
     /// </summary>
     public ActivityGate Activity { get; } = new();
 
+    /// <summary>
+    /// Raised when the safety watchdog trips (E-Stop / watched input). Layer 3 run
+    /// surfaces (the Run-page process panel, alignment panels) subscribe to cancel
+    /// their in-flight run tokens so the operator sequence cannot issue the next move
+    /// after the engine halts the current one. The physical motion stop is enforced
+    /// by the engine (safety_watch.json <c>emergencyActions.stopMotion</c>) and
+    /// re-issued here as a backstop in <see cref="OnSafetyTripped"/>.
+    /// </summary>
+    public event Action<SafetyTrip>? SafetyAbort;
+
     /// <summary>The single product FAAM operates under (Layer 2 positions are product-scoped).</summary>
     public const string ProductName = "FAAM";
 
@@ -55,6 +65,7 @@ public sealed class EngineHost : IAsyncDisposable
     private bool _smuWired;
     private bool _measurementWired;
     private bool _cameraWired;
+    private bool _safetyWired;
     // Last-seen connected state per camera — drives the connect edge that forces
     // auto-exposure on (so it fires on first connect AND on Reconnect, once each).
     private readonly ConcurrentDictionary<string, bool> _cameraConnected = new(StringComparer.OrdinalIgnoreCase);
@@ -168,6 +179,53 @@ public sealed class EngineHost : IAsyncDisposable
     }
 
     /// <summary>
+    /// Safety-watchdog trip handler. Two responsibilities, in order:
+    /// (1) raise <see cref="SafetyAbort"/> so Layer 3 run surfaces cancel their in-flight
+    /// run tokens — this is the missing link that lets a tripped E-Stop actually halt the
+    /// running step <em>sequence</em> (not just the current move); and
+    /// (2) re-issue a physical stop on every motion device as a backstop, so motion still
+    /// stops even if the engine's own enforcement config is ever cleared.
+    /// </summary>
+    private void OnSafetyTripped(SafetyTrip trip)
+    {
+        Log.Add(new LogEntry(LogLevel.Warning, DateTimeOffset.Now, "Safety",
+            $"Safety trip: {trip.Title} — {trip.Message} Cancelling running sequences + stopping motion."));
+
+        // (1) Cancel running operator sequences first, so they cannot issue the next move.
+        try { SafetyAbort?.Invoke(trip); }
+        catch (Exception ex)
+        {
+            Log.Add(new LogEntry(LogLevel.Error, DateTimeOffset.Now, "Safety",
+                $"Safety abort notify failed — {ex.Message}"));
+        }
+
+        // (2) Physical backstop (fire-and-forget; never block the watchdog thread).
+        _ = StopAllMotionBackstopAsync();
+    }
+
+    /// <summary>Stops every motion device — the Layer 3 backstop for a safety trip.</summary>
+    private async Task StopAllMotionBackstopAsync()
+    {
+        try
+        {
+            foreach (var device in Engine.Motion.DeviceNames)
+            {
+                try { await Engine.Motion.StopAsync(device).ConfigureAwait(false); }
+                catch (Exception ex)
+                {
+                    Log.Add(new LogEntry(LogLevel.Error, DateTimeOffset.Now, "Safety",
+                        $"E-Stop: stopping {device} failed — {ex.Message}"));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Add(new LogEntry(LogLevel.Error, DateTimeOffset.Now, "Safety",
+                $"E-Stop motion backstop errored — {ex.Message}"));
+        }
+    }
+
+    /// <summary>
     /// Brings the engine up: config load + device build, then connect-all.
     /// <see cref="HorizonEngine.InitializeAsync"/> does synchronous config file
     /// I/O, so it is pushed to a background thread — the UI thread never blocks.
@@ -190,6 +248,12 @@ public sealed class EngineHost : IAsyncDisposable
         // ConnectAllAsync so the connect edges raised during bring-up are caught.
         Engine.Camera.StateChanged += OnCameraStateChanged;
         _cameraWired = true;
+
+        // Safety: on a watchdog trip, cancel running operator sequences (via SafetyAbort)
+        // and re-issue a physical motion stop. Subscribed before ConnectAllAsync so a trip
+        // during hardware bring-up is caught.
+        Engine.Safety.SafetyTripped += OnSafetyTripped;
+        _safetyWired = true;
 
         await Engine.ConnectAllAsync(progress, ct).ConfigureAwait(true);
 
@@ -222,6 +286,8 @@ public sealed class EngineHost : IAsyncDisposable
             Engine.Measurement.StateChanged -= OnMeasurementChanged;
         if (_cameraWired)
             Engine.Camera.StateChanged -= OnCameraStateChanged;
+        if (_safetyWired)
+            Engine.Safety.SafetyTripped -= OnSafetyTripped;
         await Engine.ShutdownAsync(progress).ConfigureAwait(false);
     }
 
