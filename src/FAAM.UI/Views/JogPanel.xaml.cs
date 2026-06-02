@@ -177,7 +177,7 @@ public partial class JogPanel : UserControl
     {
         _host = host;
         BuildDevices();
-        LoadCameraExposure();
+        BuildCameras();          // populates the picker → fires OnCameraChanged → LoadCameraExposure
         LoadExposurePresets();
         _poll.Start();   // live position readout (~4 Hz, reads the engine's cached state)
 
@@ -454,16 +454,8 @@ public partial class JogPanel : UserControl
 
     // ---------------------------------------------------------------- Camera
 
-    /// <summary>The camera the exposure controls drive — <c>main_camera</c> if present, else the first.</summary>
-    private string? CameraId
-    {
-        get
-        {
-            var ids = _host?.Engine.Camera.CameraIds;
-            if (ids == null || ids.Count == 0) return null;
-            return ids.Contains("main_camera") ? "main_camera" : ids[0];
-        }
-    }
+    /// <summary>The camera the exposure controls drive — the dropdown selection.</summary>
+    private string? CameraId => CameraSelect.SelectedItem as string;
 
     private void BuildExposurePresets()
     {
@@ -485,7 +477,29 @@ public partial class JogPanel : UserControl
         }
     }
 
-    /// <summary>Pre-fills the exposure box + auto toggle from the camera's current settings.</summary>
+    /// <summary>
+    /// Fills the camera picker from the connected cameras and selects a default
+    /// (<c>main_camera</c> if present, else the first). Setting the selection fires
+    /// <see cref="OnCameraChanged"/>, which loads that camera's exposure.
+    /// </summary>
+    private void BuildCameras()
+    {
+        CameraSelect.Items.Clear();
+        var ids = _host?.Engine.Camera.CameraIds;
+        if (ids != null)
+            foreach (var id in ids) CameraSelect.Items.Add(id);
+
+        bool hasCameras = CameraSelect.Items.Count > 0;
+        CameraSelect.IsEnabled = hasCameras;
+        if (hasCameras)
+            CameraSelect.SelectedItem = ids!.Contains("main_camera") ? "main_camera" : ids[0];
+        else
+            LoadCameraExposure();   // no selection-change will fire — disable controls now
+    }
+
+    private void OnCameraChanged(object sender, SelectionChangedEventArgs e) => LoadCameraExposure();
+
+    /// <summary>Pre-fills the exposure box + auto toggle from the selected camera's current settings.</summary>
     private void LoadCameraExposure()
     {
         var cam = CameraId;
@@ -495,8 +509,9 @@ public partial class JogPanel : UserControl
             SetCamStatus("No camera configured.");
             return;
         }
+        ExposureBox.IsEnabled = ExposureApply.IsEnabled = AutoExposureToggle.IsEnabled = true;
         _camExposure = _host.Engine.Camera.GetState(cam).Exposure;
-        if (_camExposure.ExposureUs > 0) ExposureBox.Text = _camExposure.ExposureUs.ToString("g");
+        ExposureBox.Text = _camExposure.ExposureUs > 0 ? _camExposure.ExposureUs.ToString("g") : string.Empty;
         UpdateAutoToggle(_camExposure.AutoExposure);
     }
 

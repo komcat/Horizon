@@ -198,6 +198,10 @@
                     <TextBlock Text="CAMERA" Foreground="{StaticResource Subtle}" FontWeight="Bold"
                                FontSize="12" Margin="0,0,0,6" />
 
+                    <!-- Camera selector: exposure controls drive the chosen camera. -->
+                    <ComboBox x:Name="CameraSelect" Height="26" VerticalContentAlignment="Center"
+                              Margin="0,0,0,6" SelectionChanged="OnCameraChanged" />
+
                     <!-- Manual exposure entry + apply. -->
                     <Grid>
                         <Grid.ColumnDefinitions>
