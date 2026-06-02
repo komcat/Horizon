@@ -281,6 +281,19 @@ internal sealed class WorkflowRunner
 
             if (!result.IsSuccess)
             {
+                // A motion move the controller rejected (e.g. an unreachable target
+                // because the axis is already near a travel limit) need not kill the
+                // whole program — let the operator skip the move and carry on. Only
+                // offered when a prompt handler is registered and the run is not being
+                // cancelled; headless / console runs (no prompt) still abort.
+                if (IsRecoverableMoveOp(op) && _prompt != null && !ct.IsCancellationRequested
+                    && await PromptMoveFailureAsync(step, index, steps.Count, desc, result, lane, ct)
+                        .ConfigureAwait(false))
+                {
+                    index++;
+                    continue;
+                }
+
                 _log(LogLevel.Error, $"Step {index + 1} '{desc}' failed: {result.Message}");
                 return Result.Fail(result.Error, $"Step {index + 1} '{desc}': {result.Message}");
             }
@@ -533,6 +546,41 @@ internal sealed class WorkflowRunner
         _log(LogLevel.Info, $"Step {index + 1}: DUT serial set → {serial}" +
             (string.IsNullOrWhiteSpace(varName) ? "" : $" → {varName}"));
         return null;
+    }
+
+    /// <summary>
+    /// Motion ops whose failure is worth offering the operator a "skip and continue"
+    /// choice — a rejected target (near a limit, unreachable) is a recoverable nuisance
+    /// rather than a hard fault. Non-move ops always abort on failure.
+    /// </summary>
+    private static bool IsRecoverableMoveOp(string op) => op is
+        "motion.moverelative" or "motion.movetoposition" or
+        "motion.parallelmove" or "motion.compensatedevicelink";
+
+    /// <summary>
+    /// A motion move failed (e.g. the controller rejected an unreachable target).
+    /// Asks the operator whether to skip the move and continue the run. Returns
+    /// <c>true</c> to continue (logs a warning, re-marks the step as continued),
+    /// <c>false</c> to abort. A run Stop arrives via <paramref name="ct"/>.
+    /// </summary>
+    private async Task<bool> PromptMoveFailureAsync(
+        WorkflowStep step, int index, int total, string desc, Result failure, string? lane, CancellationToken ct)
+    {
+        var message =
+            $"Step {index + 1} '{desc}' could not move:\n\n{failure.Message}\n\n" +
+            "This can happen when the target is unreachable — e.g. the axis is already near a travel limit.\n\n" +
+            "Skip this move and continue the program?";
+
+        var carryOn = await _prompt!.ConfirmAsync("Move failed", message, ct).ConfigureAwait(false);
+
+        if (carryOn)
+        {
+            _log(LogLevel.Warning,
+                $"Step {index + 1} '{desc}' move failed ({failure.Message}) — operator chose to continue.");
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: true,
+                Message: $"move failed — operator continued: {failure.Message}", Lane: lane));
+        }
+        return carryOn;
     }
 
     private static int ParseMs(string? raw)
