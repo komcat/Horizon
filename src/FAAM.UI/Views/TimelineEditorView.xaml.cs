@@ -74,28 +74,88 @@ public partial class TimelineEditorView : UserControl
         var spec = _paletteDragItem.Spec;
         _paletteDragItem = null;
         DragDrop.DoDragDrop((DependencyObject)sender, spec, DragDropEffects.Copy);
+        ClearDropTarget();   // drag finished (dropped or cancelled) — drop the highlight
     }
 
-    // --- cell drag-drop ---
+    // --- block drag: move an already-placed block to another cell ---
+
+    private Point _blockDragStart;
+    private ProcessBlockViewModel? _blockDragItem;
+
+    private void OnBlockMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_blockDragItem == null || e.LeftButton != MouseButtonState.Pressed)
+            return;
+
+        var p = e.GetPosition(null);
+        if (System.Math.Abs(p.X - _blockDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            System.Math.Abs(p.Y - _blockDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+
+        var block = _blockDragItem;
+        _blockDragItem = null;
+        DragDrop.DoDragDrop((DependencyObject)sender, block, DragDropEffects.Move);
+        ClearDropTarget();   // drag finished (dropped or cancelled) — drop the highlight
+    }
+
+    // --- cell drag-drop: palette op = copy (OpSpec); placed block = move (ProcessBlockViewModel) ---
+
+    /// <summary>The cell currently lit as the drop target, so we can clear it when the drag moves on.</summary>
+    private CellViewModel? _dropTargetCell;
+
+    private void SetDropTarget(CellViewModel? cell)
+    {
+        if (ReferenceEquals(_dropTargetCell, cell)) return;
+        if (_dropTargetCell != null) _dropTargetCell.IsDropTarget = false;
+        _dropTargetCell = cell;
+        if (cell != null) cell.IsDropTarget = true;
+    }
+
+    private void ClearDropTarget() => SetDropTarget(null);
 
     private void OnCellDragOver(object sender, DragEventArgs e)
     {
-        e.Effects =
-            sender is FrameworkElement { DataContext: CellViewModel cell } &&
-            e.Data.GetData(typeof(OpSpec)) is OpSpec spec && cell.Lane.Accepts(spec.DeviceKind)
-                ? DragDropEffects.Copy
-                : DragDropEffects.None;
+        var effects = DragDropEffects.None;
+        CellViewModel? target = null;
+        if (sender is FrameworkElement { DataContext: CellViewModel cell })
+        {
+            if (e.Data.GetData(typeof(OpSpec)) is OpSpec spec && cell.Lane.Accepts(spec.DeviceKind))
+            {
+                effects = DragDropEffects.Copy;
+                target = cell;
+            }
+            else if (e.Data.GetData(typeof(ProcessBlockViewModel)) is ProcessBlockViewModel block
+                     && cell.Lane.Accepts(block.Spec.DeviceKind))
+            {
+                effects = DragDropEffects.Move;
+                target = cell;
+            }
+        }
+        e.Effects = effects;
+        SetDropTarget(target);   // highlight only the cell a compatible block can drop into
         e.Handled = true;
+    }
+
+    private void OnCellDragLeave(object sender, DragEventArgs e)
+    {
+        // Clear the highlight when the drag leaves the lit cell (e.g. into the gap
+        // between cells); moving onto another cell re-lights it via OnCellDragOver.
+        if (sender is FrameworkElement { DataContext: CellViewModel cell } && ReferenceEquals(cell, _dropTargetCell))
+            ClearDropTarget();
     }
 
     private void OnCellDrop(object sender, DragEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: CellViewModel cell } &&
-            e.Data.GetData(typeof(OpSpec)) is OpSpec spec)
-        {
+        ClearDropTarget();
+        if (sender is not FrameworkElement { DataContext: CellViewModel cell }) return;
+
+        if (e.Data.GetData(typeof(OpSpec)) is OpSpec spec)
             _vm.DropOp(spec, cell.Lane, cell.Lane.Cells.IndexOf(cell));
-            e.Handled = true;
-        }
+        else if (e.Data.GetData(typeof(ProcessBlockViewModel)) is ProcessBlockViewModel block)
+            _vm.MoveBlock(block, cell.Lane, cell.Lane.Cells.IndexOf(cell));
+        else
+            return;
+        e.Handled = true;
     }
 
     // --- selection ---
@@ -111,6 +171,8 @@ public partial class TimelineEditorView : UserControl
         if (sender is FrameworkElement { DataContext: ProcessBlockViewModel block })
         {
             _vm.SelectedBlock = block;
+            _blockDragStart = e.GetPosition(null);
+            _blockDragItem = block;   // armed; a drag past the threshold moves it to another cell
             e.Handled = true;   // don't also trigger the cell click
         }
     }

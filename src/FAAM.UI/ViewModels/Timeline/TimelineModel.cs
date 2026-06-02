@@ -72,6 +72,11 @@ public sealed class CellViewModel : ObservableObject
     public ObservableCollection<ProcessBlockViewModel> Blocks { get; } = new();
 
     public bool IsEmpty => Blocks.Count == 0;
+
+    private bool _isDropTarget;
+
+    /// <summary>True while a drag hovers this cell and the lane accepts it — drives the drop highlight.</summary>
+    public bool IsDropTarget { get => _isDropTarget; set => SetField(ref _isDropTarget, value); }
 }
 
 /// <summary>A timeline column — a parallel group ended by a barrier. Purely ordering.</summary>

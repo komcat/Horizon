@@ -73,10 +73,22 @@ public static class OpCatalog
                 new ParamSpec("pin", "Output pin", ParamKind.OutputPin),
                 new ParamSpec("state", "State", ParamKind.SetClear, "true"),
             }),
+        // Full pulse cycle: start state → dwell → toggle → dwell → back to start → dwell.
+        // 'startState' is the resting state the pin ends in; 'dwellMs' is held after each step.
+        new("io.toggleOutput", "Toggle Output", "IO", DeviceKind.Io,
+            new[]
+            {
+                new ParamSpec("pin", "Output pin", ParamKind.OutputPin),
+                new ParamSpec("startState", "Start state ON (off = unchecked)", ParamKind.SetClear, "false"),
+                new ParamSpec("dwellMs", "Dwell after each step (ms)", ParamKind.Number, "150"),
+            }),
 
         // ---- Pneumatic ----
         new("pneumatic.extend", "Extend Slide", "Pneumatic", DeviceKind.Pneumatic, System.Array.Empty<ParamSpec>()),
         new("pneumatic.retract", "Retract Slide", "Pneumatic", DeviceKind.Pneumatic, System.Array.Empty<ParamSpec>()),
+        // Retracts every configured slide and waits until all reach the retracted
+        // sensor. Device-less (iterates all slides) — the lane device is ignored.
+        new("pneumatic.retractAll", "Retract All Slides", "Pneumatic", DeviceKind.Pneumatic, System.Array.Empty<ParamSpec>()),
 
         // ---- Flow ----
         new("flow.wait", "Wait", "Flow", DeviceKind.None,

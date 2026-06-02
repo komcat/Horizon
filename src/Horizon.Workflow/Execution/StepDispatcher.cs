@@ -294,16 +294,20 @@ internal sealed class StepDispatcher
 
             case "io.toggleoutput":
             {
-                // Pulse a named output: drive it to the opposite of its resting
-                // state, hold for 'dwellMs', then restore. Ported from bobcat's
-                // "Toggle Output"; 'startState' is the resting (restored) state.
+                // Full toggle cycle on a named output, holding 'dwellMs' (default 150)
+                // after EACH transition: start state → dwell → opposite → dwell → back
+                // to start → dwell. 'startState' is the resting state the pin ends in.
+                // Ported/extended from bobcat's "Toggle Output".
                 var pin = Str(step, "pin", ctx);
-                var rest = Bool(step, "startState", ctx);
-                var dwellMs = (int)Num(step, "dwellMs", ctx);
-                var pulse = await _engine.IO.SetOutputByNameAsync(step.Device, pin, !rest, ct);
-                if (!pulse.IsSuccess) return pulse;
-                if (dwellMs > 0) await Task.Delay(dwellMs, ct).ConfigureAwait(false);
-                return await _engine.IO.SetOutputByNameAsync(step.Device, pin, rest, ct);
+                var start = Bool(step, "startState", ctx);
+                var dwellMs = Has(step, "dwellMs") ? (int)Num(step, "dwellMs", ctx) : 150;
+                foreach (var state in new[] { start, !start, start })
+                {
+                    var r = await _engine.IO.SetOutputByNameAsync(step.Device, pin, state, ct);
+                    if (!r.IsSuccess) return r;
+                    if (dwellMs > 0) await Task.Delay(dwellMs, ct).ConfigureAwait(false);
+                }
+                return Result.Ok();
             }
 
             case "pneumatic.retract":
@@ -314,12 +318,14 @@ internal sealed class StepDispatcher
 
             case "pneumatic.retractall":
             {
-                foreach (var slide in _engine.Pneumatic.SlideNames)
-                {
-                    var r = await _engine.Pneumatic.RetractAsync(slide, ct);
-                    if (!r.IsSuccess) return r;
-                }
-                return Result.Ok();
+                // Retract every configured slide at once and block until each one
+                // confirms its retracted sensor (or times out). There is no extend-all.
+                var tasks = _engine.Pneumatic.SlideNames
+                    .Select(slide => _engine.Pneumatic.RetractAndWaitAsync(slide, ct))
+                    .ToList();
+                if (tasks.Count == 0) return Result.Ok();
+                var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+                return results.All(r => r.IsSuccess) ? Result.Ok() : results.First(r => !r.IsSuccess);
             }
 
             case "measurement.connect":

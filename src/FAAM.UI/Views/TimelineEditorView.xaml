@@ -4,6 +4,21 @@
              xmlns:vm="clr-namespace:FAAM.UI.ViewModels">
     <UserControl.Resources>
         <SolidColorBrush x:Key="SelectedBlock" Color="#00C8FF" />
+        <!-- Translucent tint shown on the lane cell a dragged block would drop into. -->
+        <SolidColorBrush x:Key="DropHighlight" Color="#3300C8FF" />
+
+        <!-- A lane × stage cell — highlights while a compatible block is dragged over it. -->
+        <Style x:Key="DropCell" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Bg}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+            <Setter Property="BorderThickness" Value="1,0,0,1" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource DropHighlight}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
 
         <!-- Palette command tile — drag onto a lane cell, or double-click to add to the selected cell. -->
         <Style x:Key="PaletteItem" TargetType="Border">
@@ -222,15 +237,16 @@
                                                 </ItemsControl.ItemsPanel>
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
-                                                        <Border Width="150" Background="{StaticResource Bg}"
-                                                                BorderBrush="{StaticResource Edge}" BorderThickness="1,0,0,1"
+                                                        <Border Width="150" Style="{StaticResource DropCell}"
                                                                 AllowDrop="True" DragOver="OnCellDragOver" Drop="OnCellDrop"
+                                                                DragLeave="OnCellDragLeave"
                                                                 MouseLeftButtonDown="OnCellClick">
                                                             <ItemsControl ItemsSource="{Binding Blocks}" VerticalAlignment="Center">
                                                                 <ItemsControl.ItemTemplate>
                                                                     <DataTemplate>
                                                                         <Border Style="{StaticResource BlockBox}"
-                                                                                MouseLeftButtonDown="OnBlockClick" Tag="{Binding}"
+                                                                                MouseLeftButtonDown="OnBlockClick"
+                                                                                PreviewMouseMove="OnBlockMouseMove" Tag="{Binding}"
                                                                                 ToolTip="{Binding Summary}">
                                                                             <StackPanel>
                                                                                 <TextBlock Text="{Binding Display}" Foreground="{StaticResource Subtle}"

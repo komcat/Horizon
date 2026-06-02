@@ -264,6 +264,36 @@ public sealed class TimelineEditorViewModel : ObservableObject
         Status = $"Added '{spec.Display}' to {lane.Display}, stage {stageIndex + 1}.";
     }
 
+    /// <summary>
+    /// Moves an already-placed block to another lane's cell in the given stage (drag
+    /// within the grid). Rejected if the target lane can't run the block's op. A move
+    /// onto a different device lane re-pins the block to that lane's device, mirroring
+    /// <see cref="DropOp"/>. A drop back onto the block's own cell is a no-op.
+    /// </summary>
+    public void MoveBlock(ProcessBlockViewModel block, LaneViewModel lane, int stageIndex)
+    {
+        if (!lane.Accepts(block.Spec.DeviceKind))
+        {
+            Status = $"'{block.Display}' can't run on the {lane.DomainLabel} lane.";
+            return;
+        }
+        if (stageIndex < 0 || stageIndex >= Stages.Count) return;
+
+        var target = lane.Cells[stageIndex];
+        var source = FindCell(block);
+        if (source == null || ReferenceEquals(source, target)) return;   // not placed, or same cell
+
+        source.Blocks.Remove(block);
+        target.Blocks.Add(block);
+        if (lane.Domain != LaneDomain.Control)
+            block.SelectedDevice = lane.Id;   // pin to the destination lane's device
+
+        MarkDirty();
+        SelectedCell = target;
+        SelectedBlock = block;
+        Status = $"Moved '{block.Display}' to {lane.Display}, stage {stageIndex + 1}.";
+    }
+
     private void RemoveSelectedBlock()
     {
         if (_selectedBlock == null) return;
