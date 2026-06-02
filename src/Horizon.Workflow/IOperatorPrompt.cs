@@ -3,6 +3,20 @@ using Horizon.Engine;
 namespace Horizon.Workflow;
 
 /// <summary>
+/// Configuration for a <c>flow.jogPopup</c> manual-jog window: which motion devices /
+/// axes the operator may nudge, the initial step size, and the count-up timeout. An
+/// empty <see cref="Devices"/> list means "every connected motion device"; the
+/// front-end resolves that. <see cref="Axes"/> is the subset of <c>XYZUVW</c> to show.
+/// </summary>
+public sealed record JogPopupRequest(
+    string Title,
+    string Message,
+    IReadOnlyList<string> Devices,
+    string Axes,
+    double DefaultStepMm,
+    int MaxSeconds);
+
+/// <summary>
 /// Layer 3 → Layer 2 callback contract. The runner suspends on these calls and
 /// resumes when the front-end answers — the bidirectional half of the process
 /// module: a front-end is an active participant the runner can block on, not a
@@ -51,6 +65,16 @@ public interface IOperatorPrompt
         if (durationMs > 0) await Task.Delay(durationMs, ct).ConfigureAwait(false);
         return true;
     }
+
+    /// <summary>
+    /// A non-modal, always-on-top manual-jog popup with a count-up timer — the back-end
+    /// for the <c>flow.jogPopup</c> step. The operator jogs the configured devices/axes,
+    /// then presses Continue (<c>true</c> → the run resumes) or Cancel (<c>false</c> →
+    /// the step fails the run); reaching <see cref="JogPopupRequest.MaxSeconds"/> resolves
+    /// as Cancel. A run Stop arrives via <paramref name="ct"/>. The default implementation
+    /// has no jog UI and immediately continues (<c>true</c>); a Layer 3 head overrides it.
+    /// </summary>
+    Task<bool> JogPopupAsync(JogPopupRequest request, CancellationToken ct) => Task.FromResult(true);
 
     // Room to grow without touching IProcessService — add when a step op needs it:
     // Task<int?> ChooseAsync(string title, IReadOnlyList<string> options, CancellationToken ct);

@@ -242,6 +242,17 @@ internal sealed class WorkflowRunner
                 continue;
             }
 
+            // Non-modal always-on-top manual-jog window with a count-up timer. The
+            // operator nudges the configured devices/axes then Continues (run resumes)
+            // or Cancels (fails the run); the timeout resolves as Cancel.
+            if (op == "flow.jogpopup")
+            {
+                var fail = await JogPopupAsync(step, index, steps.Count, desc, lane, ct).ConfigureAwait(false);
+                if (fail != null) return fail.Value;
+                index++;
+                continue;
+            }
+
             // Prompts the operator for a serial number and opens the DUT record for
             // this run, so later dut.* steps record into it. Cancelling fails the run.
             if (op == "dut.promptserial")
@@ -582,6 +593,52 @@ internal sealed class WorkflowRunner
         }
         return carryOn;
     }
+
+    /// <summary>
+    /// Handles a <c>flow.jogPopup</c> step: opens an always-on-top manual-jog window
+    /// (via the front-end) and blocks until the operator Continues or Cancels (or the
+    /// count-up timeout elapses). Returns <c>null</c> on Continue (the run proceeds); a
+    /// failure <see cref="Result"/> on Cancel / timeout, or when no prompt handler is set.
+    /// </summary>
+    private async Task<Result?> JogPopupAsync(
+        WorkflowStep step, int index, int total, string desc, string? lane, CancellationToken ct)
+    {
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: false, Success: false, Message: "", Lane: lane));
+
+        if (_prompt == null)
+        {
+            const string err = "no operator-prompt handler registered";
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: false, Message: err, Lane: lane));
+            _log(LogLevel.Error, $"Step {index + 1} '{desc}' failed: {err}");
+            return Result.Fail(ErrorCode.NotSupported, $"Step {index + 1} '{desc}': {err}");
+        }
+
+        var devices = (step.Parameters.GetValueOrDefault("devices") ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var request = new JogPopupRequest(
+            Title: step.Parameters.GetValueOrDefault("title", "Manual jog"),
+            Message: step.Parameters.GetValueOrDefault("message", string.Empty),
+            Devices: devices,
+            Axes: step.Parameters.GetValueOrDefault("axes", "XYZUVW"),
+            DefaultStepMm: ParseDouble(step.Parameters.GetValueOrDefault("step"), 0.01),
+            MaxSeconds: Math.Clamp((int)ParseDouble(step.Parameters.GetValueOrDefault("timeoutSec"), 3600), 1, 3600));
+
+        var carryOn = await _prompt.JogPopupAsync(request, ct).ConfigureAwait(false);
+
+        if (carryOn)
+        {
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: true, Message: "continued", Lane: lane));
+            return null;
+        }
+
+        const string cancelled = "manual jog cancelled by operator";
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: false, Message: cancelled, Lane: lane));
+        _log(LogLevel.Warning, $"Step {index + 1} '{desc}' — {cancelled}.");
+        return Result.Fail(ErrorCode.OperationFailed, $"Step {index + 1} '{desc}': {cancelled}");
+    }
+
+    private static double ParseDouble(string? raw, double fallback)
+        => double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : fallback;
 
     private static int ParseMs(string? raw)
         => double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && v > 0

@@ -7,6 +7,20 @@
         <!-- Translucent tint shown on the lane cell a dragged block would drop into. -->
         <SolidColorBrush x:Key="DropHighlight" Color="#3300C8FF" />
 
+        <!-- Stage column header — click to pick it as the "run only this stage" selection. -->
+        <Style x:Key="StageHeader" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+            <Setter Property="BorderThickness" Value="1,0,0,1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource DropHighlight}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <!-- A lane × stage cell — highlights while a compatible block is dragged over it. -->
         <Style x:Key="DropCell" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource Bg}" />
@@ -120,6 +134,8 @@
                 <Button Content="History" Width="62" Height="28" Margin="0,0,16,0" Click="OnHistory" />
                 <Button Content="+ Stage" Width="70" Height="28" Margin="0,0,16,0" Command="{Binding AddStageCommand}" />
                 <Button Content="Run" Width="66" Height="28" Margin="0,0,6,0" FontWeight="SemiBold" Command="{Binding RunCommand}" />
+                <Button Content="Run Stage" Width="84" Height="28" Margin="0,0,6,0" Command="{Binding RunStageCommand}"
+                        ToolTip="Run only the highlighted stage — click a stage header to select it" />
                 <Button Content="Stop" Width="66" Height="28" Command="{Binding StopCommand}" />
                 <TextBlock Text="●  unsaved changes" Foreground="{StaticResource Warn}" FontSize="11" FontWeight="SemiBold"
                            VerticalAlignment="Center" Margin="20,0,0,0"
@@ -212,8 +228,9 @@
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <Border Width="150" Background="{StaticResource Panel}"
-                                                    BorderBrush="{StaticResource Edge}" BorderThickness="1,0,0,1">
+                                            <Border Width="150" Style="{StaticResource StageHeader}"
+                                                    MouseLeftButtonDown="OnStageHeaderClick"
+                                                    ToolTip="Click to select this stage (then 'Run Stage' runs only it); click again to clear">
                                                 <Grid Margin="6,0">
                                                     <TextBlock Text="{Binding Title}" Foreground="{StaticResource Subtle}"
                                                                FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />

@@ -102,6 +102,20 @@ public static class OpCatalog
                 new ParamSpec("title", "Popup title", ParamKind.Text, "Please wait"),
                 new ParamSpec("message", "Message", ParamKind.Text),
             }),
+        // Non-modal always-on-top manual-jog window with a count-up timer; the operator
+        // nudges the configured devices/axes then Continues (run resumes) or Cancels
+        // (fails the run). Timeout (max 3600 s) resolves as Cancel. Handled by
+        // WorkflowRunner (flow.jogPopup) via IOperatorPrompt.JogPopupAsync.
+        new("flow.jogPopup", "Jog Popup", "Flow", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("title", "Popup title", ParamKind.Text, "Manual jog"),
+                new ParamSpec("message", "Message", ParamKind.Text),
+                new ParamSpec("devices", "Devices (CSV, blank = all motion)", ParamKind.Text),
+                new ParamSpec("axes", "Axes to show (e.g. XYZUVW)", ParamKind.Text, "XYZUVW"),
+                new ParamSpec("step", "Default step (mm)", ParamKind.Number, "0.01"),
+                new ParamSpec("timeoutSec", "Timeout (s, max 3600)", ParamKind.Number, "3600"),
+            }),
         new("flow.log", "Log Message", "Flow", DeviceKind.None,
             new[] { new ParamSpec("message", "Message", ParamKind.Text) }),
         new("flow.comment", "Comment", "Flow", DeviceKind.None,

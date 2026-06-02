@@ -55,7 +55,7 @@ public partial class ShellWindow : Window
 
         // Register the operator-prompt handler — a workflow flow.askUser step
         // blocks on this until the operator answers a modal dialog.
-        host.Process.OperatorPrompt = new OperatorPrompt();
+        host.Process.OperatorPrompt = new OperatorPrompt(host);
 
         _home.MachineRequested += ShowMachine;
         _home.RunRequested += ShowRun;

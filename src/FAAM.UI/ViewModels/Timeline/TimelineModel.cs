@@ -92,6 +92,11 @@ public sealed class StageViewModel : ObservableObject
     public string Uid { get; set; } = "stg-" + Guid.NewGuid().ToString("N");
 
     public string Title { get => _title; set => SetField(ref _title, value); }
+
+    private bool _isSelected;
+
+    /// <summary>True when this stage is picked as the "run only this stage" selection — its header highlights.</summary>
+    public bool IsSelected { get => _isSelected; set => SetField(ref _isSelected, value); }
 }
 
 /// <summary>Builds the fixed lane set from the engine facets, grouped by domain.</summary>

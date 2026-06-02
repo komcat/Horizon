@@ -183,6 +183,12 @@ public partial class TimelineEditorView : UserControl
             _vm.RemoveStage(stage);
     }
 
+    private void OnStageHeaderClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: StageViewModel stage })
+            _vm.SelectStage(stage);
+    }
+
     private void OnHistory(object sender, RoutedEventArgs e)
         => new ProgramHistoryWindow(_host, _vm.ProgramName) { Owner = Window.GetWindow(this) }.Show();
 

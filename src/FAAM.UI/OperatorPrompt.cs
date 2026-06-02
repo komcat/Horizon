@@ -11,6 +11,11 @@ namespace FAAM.UI;
 /// </summary>
 public sealed class OperatorPrompt : IOperatorPrompt
 {
+    private readonly EngineHost _host;
+
+    /// <summary>The <paramref name="host"/> backs the manual-jog popup (<c>flow.jogPopup</c>).</summary>
+    public OperatorPrompt(EngineHost host) => _host = host;
+
     public Task<bool> ConfirmAsync(string title, string message, CancellationToken ct)
     {
         var dispatcher = Application.Current?.Dispatcher;
@@ -102,6 +107,50 @@ public sealed class OperatorPrompt : IOperatorPrompt
         {
             registration.Dispose();
             tcs.TrySetResult(completed);
+            if (window.IsLoaded) window.Close();
+        };
+
+        window.Show();
+        return tcs.Task;
+    }
+
+    /// <summary>
+    /// Non-modal, always-on-top manual-jog popup — the <c>flow.jogPopup</c> step blocks
+    /// on the returned task until the operator presses Continue (true) or Cancel/timeout
+    /// (false → the step fails the run). A run Stop closes the window and surfaces as a
+    /// cancellation.
+    /// </summary>
+    public Task<bool> JogPopupAsync(JogPopupRequest request, CancellationToken ct)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null)
+            return Task.FromResult(true);
+
+        // InvokeAsync(...).Task is Task<Task<bool>> — unwrap the inner jog task.
+        return dispatcher.InvokeAsync(() => ShowJogPopup(request, ct)).Task.Unwrap();
+    }
+
+    private Task<bool> ShowJogPopup(JogPopupRequest request, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var window = new JogPopupWindow(request, _host)
+        {
+            Owner = Application.Current.MainWindow,
+        };
+
+        // A run Stop closes the window and surfaces as a cancellation to the runner.
+        var registration = ct.Register(() =>
+            window.Dispatcher.BeginInvoke(() =>
+            {
+                tcs.TrySetCanceled(ct);
+                if (window.IsLoaded) window.Close();
+            }));
+
+        // Finished(true) = Continue, Finished(false) = Cancel / timeout / closed.
+        window.Finished += carryOn =>
+        {
+            registration.Dispose();
+            tcs.TrySetResult(carryOn);
             if (window.IsLoaded) window.Close();
         };
 

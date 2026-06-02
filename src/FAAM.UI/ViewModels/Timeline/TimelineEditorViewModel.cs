@@ -27,6 +27,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     private string? _selectedProgram;
     private ProcessBlockViewModel? _selectedBlock;
     private CellViewModel? _selectedCell;
+    private StageViewModel? _selectedStage;
     private bool _isRunning;
     private string _status = "—";
     private bool _isDirty;
@@ -53,7 +54,8 @@ public sealed class TimelineEditorViewModel : ObservableObject
         SaveProgramCommand = new RelayCommand(SaveProgram);
         AddStageCommand = new RelayCommand(() => { AddStage(); MarkDirty(); });
         RemoveBlockCommand = new RelayCommand(RemoveSelectedBlock, () => _selectedBlock != null);
-        RunCommand = new AsyncRelayCommand(RunAsync, () => !_isRunning);
+        RunCommand = new AsyncRelayCommand(() => RunAsync(null), () => !_isRunning);
+        RunStageCommand = new AsyncRelayCommand(RunSelectedStageAsync, () => !_isRunning && _selectedStage != null);
         StopCommand = new RelayCommand(() => _runCts?.Cancel(), () => _isRunning);
 
         AddStage();   // start with one empty stage to author into
@@ -145,6 +147,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         {
             if (!SetField(ref _isRunning, value)) return;
             RunCommand.RaiseCanExecuteChanged();
+            RunStageCommand.RaiseCanExecuteChanged();
             StopCommand.RaiseCanExecuteChanged();
         }
     }
@@ -156,7 +159,29 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public RelayCommand AddStageCommand { get; }
     public RelayCommand RemoveBlockCommand { get; }
     public AsyncRelayCommand RunCommand { get; }
+    public AsyncRelayCommand RunStageCommand { get; }
     public RelayCommand StopCommand { get; }
+
+    /// <summary>The stage picked to run on its own (header highlight), or null for the whole program.</summary>
+    public StageViewModel? SelectedStage
+    {
+        get => _selectedStage;
+        private set
+        {
+            var old = _selectedStage;
+            if (!SetField(ref _selectedStage, value)) return;
+            if (old != null) old.IsSelected = false;
+            if (value != null) value.IsSelected = true;
+            RunStageCommand.RaiseCanExecuteChanged();
+            OnPropertyChanged(nameof(HasSelectedStage));
+        }
+    }
+
+    public bool HasSelectedStage => _selectedStage != null;
+
+    /// <summary>Toggles a stage as the run-only selection — clicking the selected one clears it.</summary>
+    public void SelectStage(StageViewModel stage)
+        => SelectedStage = ReferenceEquals(_selectedStage, stage) ? null : stage;
 
     // --- page lifecycle ---
 
@@ -227,6 +252,8 @@ public sealed class TimelineEditorViewModel : ObservableObject
         MarkDirty();
         if (_selectedBlock != null && !BlockIsPlaced(_selectedBlock))
             SelectedBlock = null;
+        if (_selectedStage != null && !Stages.Contains(_selectedStage))
+            SelectedStage = null;
     }
 
     private void RenumberStages()
@@ -237,6 +264,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
 
     private void ClearAllStages()
     {
+        SelectedStage = null;
         Stages.Clear();
         foreach (var lane in Lanes)
             lane.Cells.Clear();
@@ -512,7 +540,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     /// lanes emits one <c>flow.parallel</c> step, one branch per lane. Also rebuilds
     /// the run-highlight routing tables.
     /// </summary>
-    private WorkflowProgram BuildProgram()
+    private WorkflowProgram BuildProgram(int? onlyStage = null)
     {
         _topLevelStage.Clear();
         _inlineBlock.Clear();
@@ -520,6 +548,8 @@ public sealed class TimelineEditorViewModel : ObservableObject
         var steps = new List<WorkflowStep>();
         for (int s = 0; s < Stages.Count; s++)
         {
+            if (onlyStage.HasValue && s != onlyStage.Value) continue;   // run-only-this-stage filter
+
             var active = Lanes.Where(l => s < l.Cells.Count && l.Cells[s].Blocks.Count > 0).ToList();
             if (active.Count == 0) continue;
 
@@ -554,7 +584,15 @@ public sealed class TimelineEditorViewModel : ObservableObject
 
     // --- run ---
 
-    private async Task RunAsync()
+    /// <summary>Runs only the highlighted stage, or no-ops when none is selected.</summary>
+    private async Task RunSelectedStageAsync()
+    {
+        if (_selectedStage == null) return;
+        await RunAsync(Stages.IndexOf(_selectedStage));
+    }
+
+    /// <summary>Runs the program, or only stage <paramref name="onlyStage"/> when set.</summary>
+    private async Task RunAsync(int? onlyStage)
     {
         if (IsRunning) return;
 
@@ -571,18 +609,23 @@ public sealed class TimelineEditorViewModel : ObservableObject
         if (bumped > 0)
             Log.Add($"{DateTimeOffset.Now:HH:mm:ss}  {bumped} Wait Popup(s) under {MinWaitPopupMs} ms bumped to {MinWaitPopupMs} ms so the countdown is visible.");
 
-        var program = BuildProgram();
-        if (program.Steps.Count == 0) { Status = "Nothing to run — add a block first."; return; }
+        var label = onlyStage.HasValue ? $"stage {onlyStage.Value + 1}" : $"'{ProgramName.Trim()}'";
+        var program = BuildProgram(onlyStage);
+        if (program.Steps.Count == 0)
+        {
+            Status = onlyStage.HasValue ? "Selected stage has no blocks to run." : "Nothing to run — add a block first.";
+            return;
+        }
 
         _runCts = new CancellationTokenSource();
         IsRunning = true;
-        Status = $"Running '{program.Name}'…";
+        Status = $"Running {label}…";
         try
         {
             var result = await _host.Process.RunAsync(program, ct: _runCts.Token).ConfigureAwait(true);
             Status = _runCts.IsCancellationRequested
-                ? $"Stopped: {program.Name}"
-                : result.IsSuccess ? $"Completed: {program.Name}" : $"Failed — {result.Message}";
+                ? $"Stopped: {label}"
+                : result.IsSuccess ? $"Completed: {label}" : $"Failed — {result.Message}";
         }
         catch (Exception ex)
         {
