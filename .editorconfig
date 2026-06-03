@@ -65,6 +65,7 @@ dotnet_diagnostic.CA1001.severity = suggestion
 dotnet_diagnostic.S125.severity  = suggestion  # commented-out code
 dotnet_diagnostic.S1244.severity = suggestion  # float equality (review case-by-case)
 dotnet_diagnostic.S6966.severity = suggestion  # await CancelAsync
+dotnet_diagnostic.S1135.severity = suggestion  # TODO comments are legitimate work markers, not build warnings
 dotnet_style_qualification_for_field = false:suggestion
 csharp_prefer_braces = true:suggestion
 

@@ -114,11 +114,11 @@ public sealed class DeckEditorViewModel : ObservableObject
         }
     }
 
-    // Set-only: callers read the backing field (_isAwaiting) directly; only the setter
-    // (which refreshes ActivateNext's CanExecute) is needed.
-    private bool IsAwaiting
+    // Setter-only helper (callers read the backing field _isAwaiting directly): updates
+    // the flag and refreshes ActivateNext's CanExecute. A method, not a write-only property.
+    private void SetAwaiting(bool value)
     {
-        set { if (SetField(ref _isAwaiting, value)) ActivateNextCommand.RaiseCanExecuteChanged(); }
+        if (SetField(ref _isAwaiting, value)) ActivateNextCommand.RaiseCanExecuteChanged();
     }
 
     public RelayCommand NewCommand { get; }
@@ -347,7 +347,7 @@ public sealed class DeckEditorViewModel : ObservableObject
 
         foreach (var r in Entries) r.RunState = "";
         Log.Clear();
-        IsAwaiting = false;
+        SetAwaiting(false);
         row.RunState = "running";
 
         _runCts = new CancellationTokenSource();
@@ -385,7 +385,7 @@ public sealed class DeckEditorViewModel : ObservableObject
 
         foreach (var r in Entries) r.RunState = "";
         Log.Clear();
-        IsAwaiting = false;
+        SetAwaiting(false);
 
         var deck = BuildDeck();
         _runCts = new CancellationTokenSource();
@@ -405,7 +405,7 @@ public sealed class DeckEditorViewModel : ObservableObject
         finally
         {
             IsRunning = false;
-            IsAwaiting = false;
+            SetAwaiting(false);
             _runCts?.Dispose();
             _runCts = null;
         }
@@ -414,7 +414,7 @@ public sealed class DeckEditorViewModel : ObservableObject
     private void ActivateNext()
     {
         _host.Process.ActivateNextDeckProgram();
-        IsAwaiting = false;
+        SetAwaiting(false);
     }
 
     // --- engine events (background threads → marshal to UI) ---
@@ -434,7 +434,7 @@ public sealed class DeckEditorViewModel : ObservableObject
                 if (!e.Completed)
                 {
                     row.RunState = awaiting ? "awaiting" : "running";
-                    if (!awaiting) IsAwaiting = false;
+                    if (!awaiting) SetAwaiting(false);
                 }
                 else
                 {
@@ -454,7 +454,7 @@ public sealed class DeckEditorViewModel : ObservableObject
 
         void Apply(DeckProgress e)
         {
-            IsAwaiting = true;
+            SetAwaiting(true);
             if (e.Index >= 0 && e.Index < Entries.Count)
                 Entries[e.Index].RunState = "awaiting";
             Status = $"Awaiting activation: {e.Program} — press Activate Next.";
