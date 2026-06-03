@@ -40,8 +40,12 @@ dotnet_diagnostic.S4487.severity  = warning    # unread private field
 # Resource safety — an actually-undisposed instance (real leak; e.g. SiphogClient was one).
 dotnet_diagnostic.S2930.severity  = warning
 # Error handling — swallowed / overly-broad exception handling (mild safety value).
-dotnet_diagnostic.CA1031.severity = warning    # catch of general Exception
-dotnet_diagnostic.S2486.severity  = warning    # exception ignored without explanation
+# CA1031 (broad catch of Exception) is intentional at our UI / async / hardware
+# boundaries — e.g. the E-Stop motion backstop must swallow anything so one device's
+# failure can't stop the others. These catches already log, so the rule is noise here.
+# The real "don't silently swallow" signal is kept via S2486/S108 (still warning).
+dotnet_diagnostic.CA1031.severity = suggestion # catch of general Exception (logged at boundaries)
+dotnet_diagnostic.S2486.severity  = warning    # exception ignored WITHOUT explanation
 dotnet_diagnostic.S108.severity   = warning    # empty code block
 
 # ============================================================================
