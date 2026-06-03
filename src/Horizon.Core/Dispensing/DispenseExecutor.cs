@@ -167,7 +167,7 @@ public sealed class DispenseExecutor
             // Step 4.1: Extend dispenser pneumatic
             if (!string.IsNullOrEmpty(profile.PneumaticSlide))
             {
-                _pneumatic.ExtendAndWait(profile.PneumaticSlide);
+                _pneumatic.ExtendAndWait(profile.PneumaticSlide, ct: ct);
                 Log.Information("[Dispense] Dispenser extended: {Slide}", profile.PneumaticSlide);
             }
 
@@ -234,7 +234,7 @@ public sealed class DispenseExecutor
             // ── Step 8: Retract pneumatic ──
             if (!string.IsNullOrEmpty(profile.PneumaticSlide))
             {
-                _pneumatic.RetractAndWait(profile.PneumaticSlide);
+                _pneumatic.RetractAndWait(profile.PneumaticSlide, ct: ct);
                 Log.Information("[Dispense] Dispenser retracted: {Slide}", profile.PneumaticSlide);
             }
 

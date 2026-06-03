@@ -80,7 +80,9 @@ public sealed class SiphogClient : IDisposable
         lock (_gate) { _hasFrame = false; _rxBuffer = string.Empty; }
 
         IsConnected = true;
-        _ = Task.Run(() => ReceiveLoopAsync(_stream, _cts.Token));
+        // The receive loop lives for the whole connection, governed by _cts.Token —
+        // intentionally NOT the connect-scoped 'ct', so pass None to Task.Run.
+        _ = Task.Run(() => ReceiveLoopAsync(_stream, _cts.Token), CancellationToken.None);
         ConnectionChanged?.Invoke(true);
     }
 

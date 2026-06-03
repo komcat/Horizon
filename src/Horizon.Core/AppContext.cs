@@ -633,10 +633,10 @@ public sealed class AppContext : IAppContext, IDisposable
                     Task.FromResult(_pneumaticManager.Retract(dev).ToString() == "Success"));
 
                 reg.Register(dev, "extendandwait", (args, ctx, ct) =>
-                    Task.FromResult(_pneumaticManager.ExtendAndWait(dev).ToString() == "Success"));
+                    Task.FromResult(_pneumaticManager.ExtendAndWait(dev, ct: ct).ToString() == "Success"));
 
                 reg.Register(dev, "retractandwait", (args, ctx, ct) =>
-                    Task.FromResult(_pneumaticManager.RetractAndWait(dev).ToString() == "Success"));
+                    Task.FromResult(_pneumaticManager.RetractAndWait(dev, ct: ct).ToString() == "Success"));
             }
         }
 

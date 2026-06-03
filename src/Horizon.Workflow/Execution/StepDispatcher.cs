@@ -286,7 +286,7 @@ internal sealed class StepDispatcher
             }
 
             case "io.setoutput":
-                return await _engine.IO.SetOutputAsync(step.Device, (int)Num(step, "pin", ctx), Bool(step, "state", ctx));
+                return await _engine.IO.SetOutputAsync(step.Device, (int)Num(step, "pin", ctx), Bool(step, "state", ctx), ct);
 
             case "io.setoutputbyname":
                 return await _engine.IO.SetOutputByNameAsync(
