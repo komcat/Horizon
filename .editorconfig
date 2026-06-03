@@ -1,0 +1,48 @@
+# NASA/JPL "Power of 10" coding standard — C# enforcement, solution-wide.
+# Rationale and ratchet plan: docs/coding-standards-power-of-10.md
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+charset = utf-8-bom
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+# ============================================================================
+#  ERROR — the mission-critical rules. These break the build by design; a hit
+#  is either a real defect or an intentional construct that must be justified
+#  with an inline  #pragma warning disable <ID> // why...  before it.
+# ============================================================================
+
+# Rule 2 — all loops must have a fixed upper bound (no statically-infinite loop).
+dotnet_diagnostic.S2189.severity = error
+# Rule 1 — simple control flow: no unbounded recursion.
+dotnet_diagnostic.S2190.severity = error
+# Rule 2 (temporal) — forward a CancellationToken so every async I/O is time-bounded.
+dotnet_diagnostic.CA2016.severity = error
+# Rule 7 — pass the right token; don't silently drop a passed-in one.
+dotnet_diagnostic.CA2247.severity = error
+
+# ============================================================================
+#  WARNING — high-value rules that legacy (Horizon.App/Core/Process) still
+#  violates broadly. Visible everywhere; promote to `error` as code is cleaned.
+# ============================================================================
+
+# Rule 7 — do not ignore a method's return value (e.g. an unchecked Result).
+dotnet_diagnostic.CA1806.severity = warning
+dotnet_diagnostic.S2201.severity = warning
+# Rule 4 — keep functions short / simple.
+dotnet_diagnostic.S138.severity  = warning   # method too long
+dotnet_diagnostic.S1541.severity = warning   # cyclomatic complexity
+dotnet_diagnostic.S3776.severity = warning   # cognitive complexity
+# Rule 6 — declare data at the smallest scope.
+dotnet_diagnostic.IDE0059.severity = warning # unnecessary value assignment
+dotnet_diagnostic.CA1031.severity  = warning # do not catch general Exception (steer to specific)
+
+# ============================================================================
+#  SUGGESTION — style nudges, never block the build.
+# ============================================================================
+dotnet_diagnostic.S125.severity = suggestion  # commented-out code
+dotnet_style_qualification_for_field = false:suggestion
+csharp_prefer_braces = true:suggestion

@@ -281,7 +281,7 @@ public sealed class HillClimbEngine
         for (int i = 0; i < n; i++)
         {
             ct.ThrowIfCancellationRequested();
-            double v = _feedback.Read();
+            double v = ReadFeedbackChecked();
             sum += v;
             sumSq += v * v;
             if (i < n - 1) await Task.Delay(_config.BaselineSampleDelayMs, ct).ConfigureAwait(false);
@@ -345,9 +345,12 @@ public sealed class HillClimbEngine
                 continue;
             }
 
-            // First step worked — keep stepping until first non-improvement
+            // First step worked — keep stepping until first non-improvement. Bounded by
+            // MaxLateralStepsPerDirection (Power of 10 Rule 2: a fixed, statically-provable
+            // upper bound, so a noisy signal can't drive an unbounded walk).
             double vPrev = vAfter;
-            while (true)
+            bool declined = false;
+            for (int extra = 0; extra < _config.MaxLateralStepsPerDirection; extra++)
             {
                 ct.ThrowIfCancellationRequested();
                 double vBefore = vPrev;
@@ -370,9 +373,15 @@ public sealed class HillClimbEngine
                     await MoveAxisAsync(axisIndex, -dir * stepMm, ct).ConfigureAwait(false);
                     await SettleAsync(ct).ConfigureAwait(false);
                     _lastV = vPrev;
+                    declined = true;
                     break;
                 }
             }
+
+            if (!declined)
+                _log(LogLevel.Warning,
+                    $"HillClimb: lateral {phase} reached step cap ({_config.MaxLateralStepsPerDirection}) " +
+                    "while still improving — stopping this direction (signal not yet peaked).");
 
             return improvedGlobalAny; // Done with this axis
         }
@@ -404,7 +413,7 @@ public sealed class HillClimbEngine
         for (int i = 0; i < n; i++)
         {
             ct.ThrowIfCancellationRequested();
-            sum += _feedback.Read();
+            sum += ReadFeedbackChecked();
             if (i < n - 1) await Task.Delay(_config.SampleDelayMs, ct).ConfigureAwait(false);
         }
         double mean = sum / n;
@@ -412,18 +421,37 @@ public sealed class HillClimbEngine
         return mean;
     }
 
+    /// <summary>
+    /// Reads the feedback and validates it is finite (Power of 10 Rule 7 — validate
+    /// inputs at the boundary). A NaN/∞ from the sensor would poison the peak
+    /// comparisons (∞ would falsely win and park the stage there), so we fail fast;
+    /// the run's top-level handler returns the stage to the last known peak.
+    /// </summary>
+    private double ReadFeedbackChecked()
+    {
+        double v = _feedback.Read();
+        if (!double.IsFinite(v))
+            throw new InvalidOperationException(
+                $"Feedback '{_feedback.Description}' returned a non-finite value ({v}).");
+        return v;
+    }
+
     private async Task MoveAxisAsync(int axisIndex, double deltaMm, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         string axis = _axes[axisIndex];
-        var move = await _engine.Motion.MoveRelativeAsync(_device, axis, deltaMm, ct).ConfigureAwait(false);
+        string what = $"Move {axis} {deltaMm * 1000.0:+0.0;-0.0} µm";
+        var move = await WithTimeoutAsync(
+            token => _engine.Motion.MoveRelativeAsync(_device, axis, deltaMm, token), what, ct).ConfigureAwait(false);
         if (!move.IsSuccess)
-            throw new InvalidOperationException($"Move {axis} {deltaMm * 1000.0:+0.0;-0.0} µm failed: {move.Message}");
+            throw new InvalidOperationException($"{what} failed: {move.Message}");
     }
 
     private async Task MoveToAbsoluteAsync(double[] pos, CancellationToken ct)
     {
-        var move = await _engine.Motion.MoveToPositionAsync(_device, ToPosition(pos), ct).ConfigureAwait(false);
+        var move = await WithTimeoutAsync(
+            token => _engine.Motion.MoveToPositionAsync(_device, ToPosition(pos), token), "Move to peak", ct)
+            .ConfigureAwait(false);
         if (!move.IsSuccess)
             throw new InvalidOperationException($"Move to peak failed: {move.Message}");
     }
@@ -431,11 +459,39 @@ public sealed class HillClimbEngine
     private async Task<double[]> ReadPositionAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        var pos = await _engine.Motion.GetPositionAsync(_device).ConfigureAwait(false);
+        // GetPositionAsync has no token, so race it against the timeout explicitly.
+        var pos = await WithTimeoutAsync(_ => _engine.Motion.GetPositionAsync(_device), "Read position", ct)
+            .ConfigureAwait(false);
         if (!pos.IsSuccess)
             throw new InvalidOperationException($"Read position failed: {pos.Message}");
         var c = pos.Value.Components;
         return new[] { c[0], c[1], c[2], c[3], c[4], c[5] };
+    }
+
+    /// <summary>
+    /// Runs a hardware operation under a per-op time bound (<see cref="HillClimbConfig.IoTimeoutMs"/>).
+    /// Power of 10 Rule 2 in the time domain: every I/O completes within a fixed bound, so a
+    /// hung controller or feedback link can't stall the climb forever. A timeout surfaces as
+    /// <see cref="TimeoutException"/> (caught by the run's handler → returns to the last peak);
+    /// a caller-requested cancel still propagates as <see cref="OperationCanceledException"/>.
+    /// </summary>
+    private async Task<T> WithTimeoutAsync<T>(Func<CancellationToken, Task<T>> op, string what, CancellationToken ct)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var task = op(linked.Token);
+        // Race against a delay so the bound holds even for ops that ignore the token
+        // (e.g. GetPositionAsync, which takes none).
+        var timeout = Task.Delay(_config.IoTimeoutMs, linked.Token);
+        var winner = await Task.WhenAny(task, timeout).ConfigureAwait(false);
+        if (winner == task)
+        {
+            linked.Cancel();                            // stop the timeout delay
+            return await task.ConfigureAwait(false);    // observe the result / rethrow faults
+        }
+
+        ct.ThrowIfCancellationRequested();              // caller cancel → OperationCanceledException
+        linked.Cancel();                                // best-effort: cancel the (token-aware) op
+        throw new TimeoutException($"{what} did not complete within {_config.IoTimeoutMs} ms.");
     }
 
     private static MotionPosition ToPosition(double[] p)

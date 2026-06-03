@@ -31,6 +31,21 @@ public sealed class HillClimbConfig
     /// <summary>Consecutive non-improving Z+ steps before falling out to lateral correction.</summary>
     public int ZStallLimit { get; set; } = 3;
 
+    /// <summary>
+    /// Hard cap on the number of steps a single lateral (X/Y) hill-climb may take in one
+    /// direction (Power of 10 Rule 2 — every loop has a fixed upper bound, so the lateral
+    /// scan cannot step indefinitely on a noisy signal). A travel of
+    /// <c>cap × XYStepInitial_um</c> bounds the worst case.
+    /// </summary>
+    public int MaxLateralStepsPerDirection { get; set; } = 50;
+
+    /// <summary>
+    /// Per-operation timeout (ms) on every hardware await — move and position read
+    /// (Power of 10 Rule 2, temporal: bound the time of each I/O so a hung controller
+    /// or feedback socket can't stall the climb forever despite the iteration caps).
+    /// </summary>
+    public int IoTimeoutMs { get; set; } = 15000;
+
     /// <summary>Wait (ms) after a move settles before sampling.</summary>
     public int SettleMs { get; set; } = 200;
     /// <summary>Reads averaged per per-step measurement.</summary>
@@ -64,6 +79,8 @@ public sealed class HillClimbConfig
         FineRemainingThreshold_um = FineRemainingThreshold_um,
         ZBudget_um = ZBudget_um,
         ZStallLimit = ZStallLimit,
+        MaxLateralStepsPerDirection = MaxLateralStepsPerDirection,
+        IoTimeoutMs = IoTimeoutMs,
         SettleMs = SettleMs,
         SamplesPerStep = SamplesPerStep,
         SampleDelayMs = SampleDelayMs,
@@ -85,6 +102,10 @@ public sealed class HillClimbConfig
             throw new ArgumentException("ZBudget_um must be positive.");
         if (ZStallLimit < 1)
             throw new ArgumentException("ZStallLimit must be at least 1.");
+        if (MaxLateralStepsPerDirection < 1)
+            throw new ArgumentException("MaxLateralStepsPerDirection must be at least 1.");
+        if (IoTimeoutMs < 1)
+            throw new ArgumentException("IoTimeoutMs must be positive.");
         if (SettleMs < 0 || SampleDelayMs < 0 || BaselineSampleDelayMs < 0)
             throw new ArgumentException("Timing parameters must be non-negative.");
         if (SamplesPerStep < 1 || BaselineSamples < 1)

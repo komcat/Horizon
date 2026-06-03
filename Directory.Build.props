@@ -1,0 +1,32 @@
+<Project>
+
+  <!--
+    Solution-wide NASA/JPL "Power of 10" enforcement (adapted to C#).
+    Applies to every project under the repo root. See docs/coding-standards-power-of-10.md
+    for the rule-by-rule mapping and the ratchet plan.
+
+    NOTE: the user compiles themselves. After pulling this in, run a restore so the
+    SonarAnalyzer package lands; if that exact version is unavailable on the feed,
+    bump the Version below to the newest 9.x. The analyzer findings (especially the
+    error-level rules in .editorconfig) are the intended output — triage or justify-
+    suppress them; they will not be silently ignored.
+  -->
+  <PropertyGroup>
+    <!-- Rule 10: run the static analyzers at the latest, most pedantic level. -->
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Rule 7 (spirit): treat reference types as non-null unless declared otherwise. -->
+    <Nullable>enable</Nullable>
+    <!-- Don't blanket TreatWarningsAsErrors on this brownfield solution — the
+         specific Power-of-10 rules are elevated to error in .editorconfig instead,
+         so the build still compiles while the critical rules are hard-enforced. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- SonarAnalyzer provides the rules the built-in .NET analyzers lack, notably
+         S2189 (infinite loops → Rule 2) and S2190 (unbounded recursion → Rule 1). -->
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="9.32.0.97167" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>
