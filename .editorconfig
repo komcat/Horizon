@@ -37,8 +37,7 @@ dotnet_diagnostic.IDE0059.severity = warning   # unnecessary value assignment
 dotnet_diagnostic.S1481.severity  = warning    # unused local variable
 dotnet_diagnostic.S1144.severity  = warning    # unused private member
 dotnet_diagnostic.S4487.severity  = warning    # unread private field
-# Resource safety — undisposed IDisposable (real CancellationTokenSource / Skia leaks).
-dotnet_diagnostic.CA1001.severity = warning
+# Resource safety — an actually-undisposed instance (real leak; e.g. SiphogClient was one).
 dotnet_diagnostic.S2930.severity  = warning
 # Error handling — swallowed / overly-broad exception handling (mild safety value).
 dotnet_diagnostic.CA1031.severity = warning    # catch of general Exception
@@ -54,6 +53,11 @@ dotnet_diagnostic.S138.severity  = suggestion  # method too long
 dotnet_diagnostic.S1541.severity = suggestion  # cyclomatic complexity
 dotnet_diagnostic.S3776.severity = suggestion  # cognitive complexity
 dotnet_diagnostic.S3358.severity = suggestion  # nested ternary
+# Type owns an IDisposable field — in this codebase that's usually a transient
+# per-run CancellationTokenSource disposed in finally, so it's not a leak; making
+# the type IDisposable would just relocate the warning to its owner. Real leaks are
+# caught by S2930 instead. (See the CancellationTokenSource discussion in git log.)
+dotnet_diagnostic.CA1001.severity = suggestion
 dotnet_diagnostic.S125.severity  = suggestion  # commented-out code
 dotnet_diagnostic.S1244.severity = suggestion  # float equality (review case-by-case)
 dotnet_diagnostic.S6966.severity = suggestion  # await CancelAsync
