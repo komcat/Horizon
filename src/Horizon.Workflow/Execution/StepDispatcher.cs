@@ -51,8 +51,11 @@ internal sealed class StepDispatcher
 
             case "motion.parallelmove":
             {
+                // Bound the device1/device2/... probe with a fixed upper limit (Power of 10
+                // Rule 2) — no rig has this many motion devices in one parallel move.
+                const int maxParallelDevices = 64;
                 var tasks = new List<Task<Result>>();
-                for (int i = 1; ; i++)
+                for (int i = 1; i <= maxParallelDevices; i++)
                 {
                     if (!step.Parameters.TryGetValue($"device{i}", out var dev) || string.IsNullOrWhiteSpace(dev))
                         break;

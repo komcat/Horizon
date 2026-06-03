@@ -491,8 +491,8 @@ public partial class JogPanel : UserControl
 
         bool hasCameras = CameraSelect.Items.Count > 0;
         CameraSelect.IsEnabled = hasCameras;
-        if (hasCameras)
-            CameraSelect.SelectedItem = ids!.Contains("main_camera") ? "main_camera" : ids[0];
+        if (hasCameras && ids != null)
+            CameraSelect.SelectedItem = ids.Contains("main_camera") ? "main_camera" : ids[0];
         else
             LoadCameraExposure();   // no selection-change will fire — disable controls now
     }

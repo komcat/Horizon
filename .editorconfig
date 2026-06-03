@@ -25,24 +25,61 @@ dotnet_diagnostic.CA2016.severity = error
 dotnet_diagnostic.CA2247.severity = error
 
 # ============================================================================
-#  WARNING — high-value rules that legacy (Horizon.App/Core/Process) still
-#  violates broadly. Visible everywhere; promote to `error` as code is cleaned.
+#  WARNING — high-value rules worth seeing. Kept short and meaningful on purpose
+#  (the noise buckets below are demoted so these don't get buried).
 # ============================================================================
 
 # Rule 7 — do not ignore a method's return value (e.g. an unchecked Result).
 dotnet_diagnostic.CA1806.severity = warning
 dotnet_diagnostic.S2201.severity = warning
-# Rule 4 — keep functions short / simple.
-dotnet_diagnostic.S138.severity  = warning   # method too long
-dotnet_diagnostic.S1541.severity = warning   # cyclomatic complexity
-dotnet_diagnostic.S3776.severity = warning   # cognitive complexity
-# Rule 6 — declare data at the smallest scope.
-dotnet_diagnostic.IDE0059.severity = warning # unnecessary value assignment
-dotnet_diagnostic.CA1031.severity  = warning # do not catch general Exception (steer to specific)
+# Rule 6 — declare data at the smallest scope / no dead state.
+dotnet_diagnostic.IDE0059.severity = warning   # unnecessary value assignment
+dotnet_diagnostic.S1481.severity  = warning    # unused local variable
+dotnet_diagnostic.S1144.severity  = warning    # unused private member
+dotnet_diagnostic.S4487.severity  = warning    # unread private field
+# Resource safety — undisposed IDisposable (real CancellationTokenSource / Skia leaks).
+dotnet_diagnostic.CA1001.severity = warning
+dotnet_diagnostic.S2930.severity  = warning
+# Error handling — swallowed / overly-broad exception handling (mild safety value).
+dotnet_diagnostic.CA1031.severity = warning    # catch of general Exception
+dotnet_diagnostic.S2486.severity  = warning    # exception ignored without explanation
+dotnet_diagnostic.S108.severity   = warning    # empty code block
 
 # ============================================================================
-#  SUGGESTION — style nudges, never block the build.
+#  SUGGESTION — visible in the IDE, never spams the build log.
+#  Rule 4 complexity debt lives here for now; ratchet to `warning`/`error` per
+#  assembly as it's cleaned (active-alignment code first). See the docs.
 # ============================================================================
-dotnet_diagnostic.S125.severity = suggestion  # commented-out code
+dotnet_diagnostic.S138.severity  = suggestion  # method too long
+dotnet_diagnostic.S1541.severity = suggestion  # cyclomatic complexity
+dotnet_diagnostic.S3776.severity = suggestion  # cognitive complexity
+dotnet_diagnostic.S3358.severity = suggestion  # nested ternary
+dotnet_diagnostic.S125.severity  = suggestion  # commented-out code
+dotnet_diagnostic.S1244.severity = suggestion  # float equality (review case-by-case)
+dotnet_diagnostic.S6966.severity = suggestion  # await CancelAsync
 dotnet_style_qualification_for_field = false:suggestion
 csharp_prefer_braces = true:suggestion
+
+# ============================================================================
+#  NONE — noise for this codebase. A single-locale industrial app on a fixed
+#  rig; globalization + micro-perf/collection lints add no value here.
+# ============================================================================
+# Globalization (machine runs one locale; culture-specific parsing is intentional).
+dotnet_diagnostic.CA1304.severity = none
+dotnet_diagnostic.CA1305.severity = none
+dotnet_diagnostic.CA1310.severity = none
+dotnet_diagnostic.CA1311.severity = none
+# Micro-perf / collection-method preferences (no measurable impact in this UI/host).
+dotnet_diagnostic.CA1859.severity = none
+dotnet_diagnostic.CA1861.severity = none
+dotnet_diagnostic.CA1865.severity = none
+dotnet_diagnostic.CA1866.severity = none
+dotnet_diagnostic.CA1869.severity = none
+dotnet_diagnostic.S6602.severity  = none
+dotnet_diagnostic.S6603.severity  = none
+dotnet_diagnostic.S6605.severity  = none
+dotnet_diagnostic.S6610.severity  = none
+dotnet_diagnostic.S3267.severity  = none       # "use LINQ Where" loop rewrites
+# Can-be-static / naming nits.
+dotnet_diagnostic.CA1822.severity = none
+dotnet_diagnostic.S2325.severity  = none
