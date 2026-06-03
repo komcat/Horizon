@@ -26,7 +26,7 @@ public partial class ShellWindow : Window
     private readonly MachinePageViewModel _machineVm;
     private readonly MachinePageView _machine;
     private readonly RunView _run;
-    private readonly TimelineEditorView _engineer;
+    private readonly EngineerPageView _engineer;
 
     /// <summary>Camera pop-out windows this shell owns (auto-opened + restored).</summary>
     private readonly List<DisplayWindow> _cameraWindows = new();
@@ -38,7 +38,7 @@ public partial class ShellWindow : Window
         _machineVm = new MachinePageViewModel(host);
         _machine = new MachinePageView { DataContext = _machineVm };
         _run = new RunView(host);
-        _engineer = new TimelineEditorView(host);
+        _engineer = new EngineerPageView(host);
         InitializeComponent();
 
         RestoreMainWindowPlacement();

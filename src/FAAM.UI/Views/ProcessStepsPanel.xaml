@@ -143,6 +143,14 @@
                 </Button>
             </Grid>
 
+            <!-- Deck selector — its "Run page" programs become the step buttons below. -->
+            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                <TextBlock Text="Deck" Foreground="{StaticResource Subtle}" FontSize="11" Margin="0,0,0,3" />
+                <ComboBox x:Name="DeckSelector" Height="28" VerticalContentAlignment="Center"
+                          SelectionChanged="OnDeckSelected"
+                          ToolTip="Pick a deck — its programs flagged 'Run page' appear as buttons below" />
+            </StackPanel>
+
             <!-- Step buttons. -->
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <ItemsControl x:Name="StepList">

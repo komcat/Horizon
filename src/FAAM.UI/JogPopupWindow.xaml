@@ -9,8 +9,8 @@
         WindowStyle="None"
         ShowInTaskbar="False"
         Topmost="True"
-        Background="{StaticResource Bg}">
-    <Border BorderBrush="{StaticResource Edge}" BorderThickness="1">
+        Background="{StaticResource Panel}">
+    <Border BorderBrush="{StaticResource Accent}" BorderThickness="1">
         <StackPanel Margin="16,14">
             <TextBlock x:Name="PromptTitle" Foreground="{StaticResource Accent}" FontSize="15" FontWeight="SemiBold"
                        TextWrapping="Wrap" Margin="0,0,0,6" />

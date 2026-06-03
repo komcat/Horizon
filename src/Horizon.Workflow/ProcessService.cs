@@ -19,6 +19,7 @@ public sealed class ProcessService : IProcessService
     private ProgramStore? _programs;     // null when no product is active
     private RecipeStore? _recipes;       // null when no product is active
     private DeckStore? _decks;           // null when no product is active
+    private TaskCompletionSource<bool>? _deckGate;   // set while a deck waits for operator activation
     private DutStore? _dut;              // null when no product is active
     private readonly ProgramHistoryDb _history = new();   // machine-global audit store (history.db)
     private readonly DeviceLinkStore _deviceLinks = new();   // machine-global, not per-product
@@ -60,6 +61,13 @@ public sealed class ProcessService : IProcessService
 
     public event Action<WorkflowStepEvent>? StepEvent;
     public event Action<DeckProgress>? DeckStepEvent;
+
+    /// <summary>
+    /// Raised when a deck pauses on a manual (auto-off) transition and is waiting
+    /// for the operator to activate the next program. Resume with
+    /// <see cref="ActivateNextDeckProgram"/>.
+    /// </summary>
+    public event Action<DeckProgress>? DeckAwaitingActivation;
     public event Action<LogEntry>? LogEmitted;
     public event Action<bool>? PausedChanged;
     public event Action<string?>? ProductChanged;
@@ -770,6 +778,9 @@ public sealed class ProcessService : IProcessService
         return Result<WorkflowDeck>.Ok(deck);
     }
 
+    /// <summary>Maximum number of decks a product may hold.</summary>
+    public const int MaxDecks = 100;
+
     public Result SaveDeck(WorkflowDeck deck)
     {
         if (_decks == null)
@@ -777,11 +788,65 @@ public sealed class ProcessService : IProcessService
         if (string.IsNullOrWhiteSpace(deck.Name))
             return Result.Fail(ErrorCode.InvalidParameter, "Deck name is required.");
 
+        // Only count toward the limit when this is a new deck name.
+        var existing = _decks.List();
+        bool isNew = !existing.Contains(deck.Name, StringComparer.OrdinalIgnoreCase);
+        if (isNew && existing.Count >= MaxDecks)
+            return Result.Fail(ErrorCode.OperationFailed, $"Deck limit ({MaxDecks}) reached — delete one first.");
+
         _decks.Save(deck);
         _decks.SetActive(deck.Name);
         Log(LogLevel.Info, $"Deck saved: {deck.Name}");
+
+        // Record an operator-stamped revision for history / traceability (UID-keyed).
+        try
+        {
+            var product = _products.ActiveProduct;
+            if (product != null && !string.IsNullOrEmpty(deck.Uid))
+            {
+                var version = _history.AppendDeck(product, deck, _operator);
+                Log(LogLevel.Info,
+                    $"Deck history: {deck.Name} v{version.Version}" +
+                    (string.IsNullOrEmpty(version.OperatorName) ? "" : $" by {version.OperatorName}"));
+            }
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Warning, $"Deck history not recorded for '{deck.Name}': {ex.Message}");
+        }
         return Result.Ok();
     }
+
+    /// <summary>Revision history of a deck by UID (operator + timestamp + snapshot per save), or null.</summary>
+    public DeckHistory? GetDeckHistory(string deckUid)
+    {
+        var product = _products.ActiveProduct;
+        return product == null ? null : _history.LoadDeckHistory(product, deckUid);
+    }
+
+    /// <summary>
+    /// Cross-deck history query (machine-global) — filter saved deck entries by deck UID /
+    /// entry UID / program / operator / product for traceability. Newest first.
+    /// </summary>
+    public IReadOnlyList<DeckHistoryRow> QueryDeckHistory(DeckHistoryQuery query) => _history.QueryDecks(query);
+
+    public Result DeleteDeck(string name)
+    {
+        if (_decks == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (string.IsNullOrWhiteSpace(name))
+            return Result.Fail(ErrorCode.InvalidParameter, "Deck name is required.");
+
+        _decks.Delete(name);
+        Log(LogLevel.Info, $"Deck deleted: {name}");
+        return Result.Ok();
+    }
+
+    /// <summary>
+    /// Releases a deck that is paused on a manual (auto-off) transition, letting it
+    /// advance into the next program. No-op when no deck is waiting.
+    /// </summary>
+    public void ActivateNextDeckProgram() => _deckGate?.TrySetResult(true);
 
     public async Task<Result> RunDeck(
         WorkflowDeck deck, string? serial = null, CancellationToken ct = default)
@@ -816,6 +881,17 @@ public sealed class ProcessService : IProcessService
             loadProgram: name => _programs.Load(name),
             runProgram: (program, context, token) => runner.RunAsync(program, context, token),
             onProgress: p => DeckStepEvent?.Invoke(p),
+            awaitActivation: async (index, label, token) =>
+            {
+                // Block until the operator activates the next program (or the run is cancelled).
+                var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                _deckGate = gate;
+                DeckAwaitingActivation?.Invoke(
+                    new DeckProgress(index, deck.Entries.Count, label, false, false, "awaiting operator activation"));
+                using (token.Register(() => gate.TrySetCanceled(token)))
+                    await gate.Task.ConfigureAwait(false);
+                _deckGate = null;
+            },
             log: Log);
 
         _runDut = BeginDut(serial, deck.Name, ctx);
@@ -842,6 +918,7 @@ public sealed class ProcessService : IProcessService
         {
             pause.PausedChanged -= OnPausedChanged;
             _pause = null;
+            _deckGate = null;
             EndDut(_runDut, verdict);
             _runDut = null;
         }

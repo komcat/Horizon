@@ -188,19 +188,42 @@ public interface IProcessService
     /// <summary>Loads a deck by name.</summary>
     Result<WorkflowDeck> LoadDeck(string name);
 
-    /// <summary>Saves a deck into the active product.</summary>
+    /// <summary>Saves a deck into the active product (refused once the deck limit is reached).</summary>
     Result SaveDeck(WorkflowDeck deck);
 
+    /// <summary>Deletes a deck from the active product.</summary>
+    Result DeleteDeck(string name);
+
     /// <summary>
-    /// Runs a deck — its programs in order, sharing one context, stopping on the
-    /// first program failure or first false transition condition. When
-    /// <paramref name="serial"/> is supplied, the whole deck run is recorded into
-    /// that DUT's test record.
+    /// Runs a deck — its programs in order, sharing one context. The first program
+    /// runs immediately; each later entry advances per its transition (auto-off pauses
+    /// for the operator via <see cref="ActivateNextDeckProgram"/>; auto-on waits a
+    /// delay and an optional condition). Stops on the first program failure or first
+    /// false auto condition. When <paramref name="serial"/> is supplied, the whole
+    /// deck run is recorded into that DUT's test record.
     /// </summary>
     Task<Result> RunDeck(WorkflowDeck deck, string? serial = null, CancellationToken ct = default);
 
     /// <summary>Raised before and after each deck entry while a deck runs.</summary>
     event Action<DeckProgress>? DeckStepEvent;
+
+    /// <summary>
+    /// Raised when a deck pauses on a manual (auto-off) transition and is waiting for
+    /// the operator to activate the next program. Resume with <see cref="ActivateNextDeckProgram"/>.
+    /// </summary>
+    event Action<DeckProgress>? DeckAwaitingActivation;
+
+    /// <summary>Releases a deck paused on a manual transition so it advances. No-op when none is waiting.</summary>
+    void ActivateNextDeckProgram();
+
+    /// <summary>Revision history of a deck by UID (operator + timestamp + snapshot per save), or null.</summary>
+    DeckHistory? GetDeckHistory(string deckUid);
+
+    /// <summary>
+    /// Cross-deck history query (machine-global) — filter saved deck entries by deck UID /
+    /// entry UID / program / operator / product for traceability. Newest first.
+    /// </summary>
+    IReadOnlyList<DeckHistoryRow> QueryDeckHistory(DeckHistoryQuery query);
 
     // --- Operator identity (traceability) ---
 

@@ -80,6 +80,14 @@ internal sealed class DeckStore
         File.WriteAllText(path, JsonSerializer.Serialize(deck, JsonOptions));
     }
 
+    public void Delete(string name)
+    {
+        var path = Path.Combine(_dir, name + Extension);
+        if (File.Exists(path)) File.Delete(path);
+        if (string.Equals(ActiveDeck, name, StringComparison.OrdinalIgnoreCase))
+            SetActive(null);
+    }
+
     private sealed record ActiveDeckDoc
     {
         public string ActiveDeck { get; init; } = string.Empty;

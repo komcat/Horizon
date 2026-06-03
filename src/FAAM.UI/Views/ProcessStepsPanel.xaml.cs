@@ -83,6 +83,59 @@ public partial class ProcessStepsPanel : UserControl
         // On a safety trip, kill the in-flight step sequence so the runner can't issue
         // the next move once the engine halts the current one (mirrors the STOP button).
         host.SafetyAbort += OnSafetyAbort;
+
+        // Populate the deck picker; re-list each time it's opened so decks authored in
+        // the Engineer page show up without re-entering the Run page.
+        RefreshDecks();
+        DeckSelector.DropDownOpened += (_, _) => RefreshDecks();
+    }
+
+    /// <summary>
+    /// Refreshes the deck dropdown from the active product, preserving the current
+    /// selection (or selecting the product's active deck on first load). Selecting a
+    /// deck rebuilds the step buttons from its <c>Run page</c> programs via
+    /// <see cref="OnDeckSelected"/>.
+    /// </summary>
+    private void RefreshDecks()
+    {
+        if (_host == null) return;
+        var decks = _host.Process.ListDecks();
+        if (DeckSelector.ItemsSource is IEnumerable<string> existing && existing.SequenceEqual(decks))
+            return;   // unchanged — don't disturb the current selection
+
+        var current = DeckSelector.SelectedItem as string;
+        DeckSelector.ItemsSource = decks;
+        var target = current ?? _host.Process.ActiveDeck;
+        if (target != null && decks.Contains(target))
+            DeckSelector.SelectedItem = target;
+    }
+
+    /// <summary>Rebuilds the step buttons from the selected deck's <c>Run page</c> programs (in deck order).</summary>
+    private void OnDeckSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (_host == null) return;
+
+        if (DeckSelector.SelectedItem is not string name)
+        {
+            StepList.ItemsSource = DefaultSteps();
+            TitleText.Text = "FAU ATTACH STEPS";
+            return;
+        }
+
+        var loaded = _host.Process.LoadDeck(name);   // also makes it the active deck
+        if (!loaded.IsSuccess) { Log(LogLevel.Warning, loaded.Message); return; }
+
+        var steps = new List<ProcessStep>();
+        foreach (var entry in loaded.Value.Entries)
+        {
+            if (!entry.ShowInRun || string.IsNullOrWhiteSpace(entry.Program)) continue;
+            var n = steps.Count + 1;
+            steps.Add(new ProcessStep(n - 1, $"{n}. {entry.Program}", string.Empty, null, entry.Program));
+        }
+
+        StepList.ItemsSource = steps;
+        TitleText.Text = string.IsNullOrWhiteSpace(loaded.Value.Name)
+            ? "PROCESS DECK" : loaded.Value.Name.ToUpperInvariant();
     }
 
     /// <summary>
