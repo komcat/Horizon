@@ -92,6 +92,7 @@ public sealed class SiphogClient : IDisposable
         IsConnected = false;
 
         try { _cts?.Cancel(); } catch { /* ignore */ }
+        try { _cts?.Dispose(); } catch { /* ignore */ }   // dispose before reassign on reconnect (was leaking)
         try { _stream?.Dispose(); } catch { /* ignore */ }
         try { _tcp?.Close(); } catch { /* ignore */ }
         _stream = null;
