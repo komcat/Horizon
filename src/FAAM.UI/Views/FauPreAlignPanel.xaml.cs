@@ -31,11 +31,11 @@ public partial class FauPreAlignPanel : UserControl, IOperatorPrompt
     private static readonly string[] Order = { "Out1", "Out2", "Fiber1", "Fiber2" };
 
     private EngineHost? _host;
-    private Ellipse[] _dots = System.Array.Empty<Ellipse>();
+    private Ellipse[] _dots;
 
     // Target "master" offset — persisted in AppSettings (loaded on Attach).
     private double _targetUm = 100.0;
-    private double _targetAngleDeg = 0.0;
+    private double _targetAngleDeg;
 
     private CancellationTokenSource? _cts;
     private IDisposable? _activity;                 // process-busy token held for the run

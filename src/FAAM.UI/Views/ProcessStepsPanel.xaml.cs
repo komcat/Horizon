@@ -62,10 +62,13 @@ public partial class ProcessStepsPanel : UserControl
         _timer.Tick += (_, _) => UpdateTimer();
 
         // Load the button icons; fall back to text if an asset isn't present yet.
+        // pack:// URIs reference embedded app resources, not environment paths.
+#pragma warning disable S1075
         try { TeachIcon.Source = new BitmapImage(new Uri("pack://application:,,,/assets/teach.png")); }
         catch { TeachButton.Content = "Teach"; }
         try { PropertiesIcon.Source = new BitmapImage(new Uri("pack://application:,,,/assets/properties.png")); }
         catch { PropertiesButton.Content = "Props"; }
+#pragma warning restore S1075
     }
 
     /// <summary>Supplies the engine host (for the step sequences, teach, STOP, logging).</summary>
@@ -239,7 +242,7 @@ public partial class ProcessStepsPanel : UserControl
         if (_host != null)
         {
             var token = _host.Activity.Begin(ActivityKind.Process, $"step {step.Index + 1}");
-            _ = RunStepWithGateAsync(step, _runCts.Token, token);
+            _ = RunStepWithGateAsync(step, token, _runCts.Token);
         }
         else
         {
@@ -248,7 +251,7 @@ public partial class ProcessStepsPanel : UserControl
     }
 
     /// <summary>Runs a step, releasing the process-busy gate token when it finishes (or aborts).</summary>
-    private async Task RunStepWithGateAsync(ProcessStep step, CancellationToken ct, IDisposable token)
+    private async Task RunStepWithGateAsync(ProcessStep step, IDisposable token, CancellationToken ct)
     {
         try { await RunStepAsync(step, ct); }
         finally { token.Dispose(); }

@@ -173,6 +173,8 @@ public static class OpCatalog
         => new(opKey, opKey, "Other", DeviceKind.None, System.Array.Empty<ParamSpec>());
 
     /// <summary>Distinct categories in catalog order — drives the palette grouping.</summary>
-    public static IReadOnlyList<string> Categories =>
+    private static readonly IReadOnlyList<string> CategoryList =
         All.Select(s => s.Category).Distinct().ToList();
+
+    public static IReadOnlyList<string> Categories => CategoryList;
 }

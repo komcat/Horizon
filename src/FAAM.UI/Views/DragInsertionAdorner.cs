@@ -44,14 +44,14 @@ internal sealed class DragInsertionAdorner : Adorner
         InvalidateVisual();
     }
 
-    protected override void OnRender(DrawingContext dc)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         var w = AdornedElement.RenderSize.Width;
 
         // Insertion line with end caps.
-        dc.DrawLine(LinePen, new Point(12, _lineY), new Point(w - 12, _lineY));
-        dc.DrawEllipse(Accent, null, new Point(12, _lineY), 3, 3);
-        dc.DrawEllipse(Accent, null, new Point(w - 12, _lineY), 3, 3);
+        drawingContext.DrawLine(LinePen, new Point(12, _lineY), new Point(w - 12, _lineY));
+        drawingContext.DrawEllipse(Accent, null, new Point(12, _lineY), 3, 3);
+        drawingContext.DrawEllipse(Accent, null, new Point(w - 12, _lineY), 3, 3);
 
         // Ghost label near the cursor.
         if (string.IsNullOrEmpty(_label)) return;
@@ -60,7 +60,7 @@ internal sealed class DragInsertionAdorner : Adorner
             GhostTypeface, 12, Brushes.Black, 1.0);
         const double pad = 6;
         var box = new Rect(_cursor.X + 14, _cursor.Y + 6, text.Width + pad * 2, text.Height + pad);
-        dc.DrawRoundedRectangle(GhostFill, null, box, 3, 3);
-        dc.DrawText(text, new Point(box.X + pad, box.Y + pad / 2));
+        drawingContext.DrawRoundedRectangle(GhostFill, null, box, 3, 3);
+        drawingContext.DrawText(text, new Point(box.X + pad, box.Y + pad / 2));
     }
 }

@@ -31,7 +31,7 @@ public partial class UCorrectionPanel : UserControl, IOperatorPrompt
     private static readonly string[] Order = { "P1", "P2", "F1", "F2" };
 
     private EngineHost? _host;
-    private Ellipse[] _dots = System.Array.Empty<Ellipse>();
+    private Ellipse[] _dots;
 
     private CancellationTokenSource? _cts;
     private IDisposable? _activity;                 // process-busy token held for the run

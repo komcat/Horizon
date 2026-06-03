@@ -281,7 +281,7 @@ public partial class JogPanel : UserControl
             bool isPi = string.Equals(info?.ControllerType, "PI", StringComparison.OrdinalIgnoreCase);
             var r = isPi
                 ? await _host.Engine.Motion.GetSystemVelocityAsync(device)
-                : await _host.Engine.Motion.GetVelocityAsync(device, info?.Axes.FirstOrDefault() ?? "X");
+                : await _host.Engine.Motion.GetVelocityAsync(device, info is { Axes.Count: > 0 } ? info.Axes[0] : "X");
 
             if (_device != device) return;   // selection changed while we were reading
 
