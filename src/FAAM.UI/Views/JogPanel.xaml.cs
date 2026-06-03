@@ -101,7 +101,7 @@ public partial class JogPanel : UserControl
             Key.R => "Z+", Key.F => "Z-",
             _ => null,
         };
-        if (jog != null) { RequestJog(jog); e.Handled = true; return; }
+        if (jog != null) { _ = RequestJog(jog); e.Handled = true; return; }
 
         switch (e.Key)
         {
@@ -349,7 +349,7 @@ public partial class JogPanel : UserControl
     private void OnJog(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement fe && fe.Tag is string tag)
-            RequestJog(tag);
+            _ = RequestJog(tag);
     }
 
     private async void OnStop(object sender, RoutedEventArgs e)
@@ -379,7 +379,7 @@ public partial class JogPanel : UserControl
     /// Records <paramref name="tag"/> as the latest jog and kicks the pump. If a move is
     /// already running, cancels it so the pump abandons it and picks up this newest request.
     /// </summary>
-    private async void RequestJog(string tag)
+    private async Task RequestJog(string tag)
     {
         if (_host == null || _device == null) return;
 

@@ -32,7 +32,7 @@ public sealed class DeckEntryRowViewModel : ObservableObject
         MoveUpCommand = new RelayCommand(() => _owner.MoveUp(this));
         MoveDownCommand = new RelayCommand(() => _owner.MoveDown(this));
         RemoveCommand = new RelayCommand(() => _owner.Remove(this));
-        RunProgramCommand = new RelayCommand(() => _owner.RunProgram(this), () => _owner.CanRunRow(this));
+        RunProgramCommand = new AsyncRelayCommand(() => _owner.RunProgram(this), () => _owner.CanRunRow(this));
     }
 
     /// <summary>A fresh, globally-unique entry id, the basis for deck history / diff.</summary>
@@ -84,5 +84,5 @@ public sealed class DeckEntryRowViewModel : ObservableObject
     public RelayCommand RemoveCommand { get; }
 
     /// <summary>Runs just this row's program (not the whole deck).</summary>
-    public RelayCommand RunProgramCommand { get; }
+    public AsyncRelayCommand RunProgramCommand { get; }
 }

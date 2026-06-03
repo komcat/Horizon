@@ -114,9 +114,10 @@ public sealed class DeckEditorViewModel : ObservableObject
         }
     }
 
+    // Set-only: callers read the backing field (_isAwaiting) directly; only the setter
+    // (which refreshes ActivateNext's CanExecute) is needed.
     private bool IsAwaiting
     {
-        get => _isAwaiting;
         set { if (SetField(ref _isAwaiting, value)) ActivateNextCommand.RaiseCanExecuteChanged(); }
     }
 
@@ -336,7 +337,7 @@ public sealed class DeckEditorViewModel : ObservableObject
     internal bool CanRunRow(DeckEntryRowViewModel row) => !_isRunning && !string.IsNullOrWhiteSpace(row.Program);
 
     /// <summary>Runs just one row's referenced program (not the whole deck).</summary>
-    internal async void RunProgram(DeckEntryRowViewModel row)
+    internal async Task RunProgram(DeckEntryRowViewModel row)
     {
         if (IsRunning) return;
         if (string.IsNullOrWhiteSpace(row.Program)) { Status = "Pick a program for this row first."; return; }

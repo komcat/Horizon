@@ -27,9 +27,6 @@ public partial class UCorrectionPanel : UserControl, IOperatorPrompt
     private const string GantryDevice = "gantry-main";   // ACS gantry (X/Y/Z) — the four reference points live here
     private const string HexDevice = "hex-right";        // PI hexapod — the U axis is corrected here
 
-    // The routine titles its confirmations; the apply gate is the one we route to "Apply U".
-    private const string ApplyTitle = "Apply U correction";
-
     // Capture order P1 → P2 → F1 → F2 (PIC line then FAU line), matching UCorrectionOptions.
     private static readonly string[] Order = { "P1", "P2", "F1", "F2" };
 

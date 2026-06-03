@@ -53,7 +53,6 @@ public partial class ProcessStepsPanel : UserControl
     private bool _running;
     private bool _alignmentBusy;                // an alignment/scan is driving the hexapod — process steps are blocked
     private CancellationTokenSource? _runCts;   // cancels the in-flight step sequence on STOP
-    private string _fauState = "F0";   // legacy state tracker (F1..F4 / D1..D4), for traceability/logging
 
     public ProcessStepsPanel()
     {
@@ -398,7 +397,6 @@ public partial class ProcessStepsPanel : UserControl
 
         if (!await MoveNamedAsync(HexDevice, "ClearGrip", ct)) return;
         if (!await MoveNamedAsync(HexDevice, "Home", ct)) return;
-        _fauState = "F1";
 
         if (!await MoveNamedAsync(GantryDevice, "ClearToDown", ct)) return;
         if (!await MoveNamedAsync(GantryDevice, "Home", ct)) return;
@@ -427,7 +425,6 @@ public partial class ProcessStepsPanel : UserControl
             await DwellAsync(5000, "grip settle", ct);
             await VacuumBaseAsync(on: false, ct);
             if (!await MoveNamedAsync(HexDevice, "FauHover", ct)) return;
-            _fauState = "F2";
             _host!.Process.RecordDutValue("step1_grip", "FAU gripped");
             Log(LogLevel.Info, "Step 2 — Completed.");
         }
@@ -453,7 +450,6 @@ public partial class ProcessStepsPanel : UserControl
             await MoveNamedAsync(HexDevice, "ClearLoad", ct);
             await MoveNamedAsync(HexDevice, "FauLoad", ct);
             if (!await MoveNamedAsync(GantryDevice, "PIC", ct)) return;
-            _fauState = "F3";
             _host!.Process.RecordDutValue("step3_siphog", "at SiPhog");
             Log(LogLevel.Info, "Step 3 — Completed.");
         }
@@ -482,7 +478,6 @@ public partial class ProcessStepsPanel : UserControl
             Info("Dispenser head lower cancelled.");
         }
 
-        _fauState = "D1";
         _host!.Process.RecordDutValue("step40_dispense", "at dispense");
         Log(LogLevel.Info, "Step 4.0 — Completed.");
     }
@@ -520,7 +515,6 @@ public partial class ProcessStepsPanel : UserControl
         await PneuAsync(_host.Engine.Pneumatic.ExtendAsync(UvSlide, ct), $"{UvSlide} down");
         await DwellAsync(1500, "UV head settle", ct);
 
-        _fauState = "D2";
         _host.Process.RecordDutValue("step41_uv", "epoxy dispensed, at UV");
         Log(LogLevel.Info, "Step 4.1 — Completed.");
     }
@@ -536,7 +530,6 @@ public partial class ProcessStepsPanel : UserControl
             await UvPlcPulseAsync(UvPlc1Pin, ct);
             await DwellAsync((int)(seconds * 1000), "UV step1 cure", ct);
             Info("UV step1 cure complete.");
-            _fauState = "D3";
             _host.Process.RecordDutValue("step42_uv1", $"cured {seconds:0.#}s");
             Log(LogLevel.Info, "Step 4.2 — Completed.");
         }
@@ -558,7 +551,6 @@ public partial class ProcessStepsPanel : UserControl
             await DwellAsync((int)(seconds * 1000), "UV step2 cure", ct);
             Info("UV cure complete — then press (5) to complete and unload.");
             await PneuAsync(_host.Engine.Pneumatic.RetractAsync(UvSlide, ct), $"{UvSlide} up");
-            _fauState = "D4";
             _host.Process.RecordDutValue("step43_uv2", $"cured {seconds:0.#}s");
             Log(LogLevel.Info, "Step 4.3 — Completed.");
         }
@@ -580,7 +572,6 @@ public partial class ProcessStepsPanel : UserControl
             await DwellAsync(2000, "ungrip settle", ct);
             await MoveNamedAsync(HexDevice, "ClearLoad", ct);
             await MoveNamedAsync(HexDevice, "Home", ct);
-            _fauState = "F4";
             _host.Process.RecordDutValue("step5_unload", "unloaded");
             StopTimer();
             Log(LogLevel.Info, "Step 5 — Completed.");
