@@ -92,6 +92,46 @@ public interface IProcessService
     /// </summary>
     Task<Result> MoveToNamedPositionAsync(string device, string name, double velocityOverride, CancellationToken ct = default);
 
+    // --- Vision profiles (operate on the active product) ---
+
+    /// <summary>Vision profile names in the active product.</summary>
+    IReadOnlyList<string> ListVisionProfiles();
+
+    /// <summary>Name of the last-loaded vision profile for the active product, or null.</summary>
+    string? ActiveVisionProfile { get; }
+
+    /// <summary>Loads a vision profile by name (and records it as active), or null if not found.</summary>
+    VisionProfile? LoadVisionProfile(string name);
+
+    /// <summary>
+    /// Saves a vision profile into the active product (assigning a UID if it has none),
+    /// pruning a superseded template and recording an operator-stamped revision. Returns
+    /// the saved profile (with its assigned UID).
+    /// </summary>
+    Result<VisionProfile> SaveVisionProfile(VisionProfile profile);
+
+    /// <summary>Deletes a vision profile and its template binaries from the active product.</summary>
+    Result DeleteVisionProfile(string name);
+
+    /// <summary>Revision history of a vision profile (by UID), or null when no product is active.</summary>
+    VisionProfileHistory? GetVisionProfileHistory(string profileUid);
+
+    /// <summary>Absolute path of a template's saved image, or null if it does not exist.</summary>
+    string? GetTemplateImagePath(string templateUid);
+
+    /// <summary>
+    /// Captures a new NCC template from <paramref name="roi"/> on <paramref name="frame"/>
+    /// (a fresh template UID + persisted model/image). Returns the new template reference;
+    /// assign it to the profile and <see cref="SaveVisionProfile"/> to keep it.
+    /// </summary>
+    Task<Result<TemplateRef>> CaptureTemplateAsync(VisionProfile profile, CameraFrame frame, RoiSpec roi);
+
+    /// <summary>
+    /// Runs a profile's detection (NCC / circle / line) against <paramref name="frame"/>
+    /// and returns a unified key→value result plus a crop, or a failure.
+    /// </summary>
+    Task<Result<VisionDetectResult>> RunVisionProfileAsync(VisionProfile profile, CameraFrame frame);
+
     // --- Process programs (operate on the active product) ---
 
     /// <summary>Process program names in the active product.</summary>

@@ -30,6 +30,7 @@ internal sealed class WorkflowRunner
         Func<string, WorkflowProgram?> loadProgram,
         Func<string, string, NamedPosition?> getPosition,
         Func<string, string, MotionPosition, double, Result> savePosition,
+        Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
         DeviceLinkStore deviceLinks,
         IOperatorPrompt? prompt,
         Func<string, WorkflowContext, Result>? setDutSerial,
@@ -37,7 +38,7 @@ internal sealed class WorkflowRunner
         Action<WorkflowStepEvent> onStep,
         Action<LogLevel, string> log)
     {
-        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, deviceLinks, log);
+        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, deviceLinks, log);
         _loadProgram = loadProgram;
         _prompt = prompt;
         _setDutSerial = setDutSerial;

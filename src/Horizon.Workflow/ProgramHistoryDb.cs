@@ -333,6 +333,95 @@ public sealed class ProgramHistoryDb
         tx.Commit();
     }
 
+    // --- vision profiles ---
+
+    /// <summary>
+    /// Appends a new operator-stamped revision of <paramref name="snapshot"/> (keyed by
+    /// its <see cref="VisionProfile.Uid"/>) and returns it. Unavailable store → returned
+    /// but not persisted.
+    /// </summary>
+    public VisionProfileVersion AppendVisionProfile(string product, VisionProfile snapshot, OperatorContext? op)
+    {
+        if (!_available)
+            return new VisionProfileVersion
+            {
+                Version = 1, SavedUtc = DateTime.UtcNow,
+                OperatorId = op?.UserId, OperatorName = op?.DisplayName, StationId = op?.StationId,
+                Snapshot = snapshot,
+            };
+
+        using var conn = Open();
+        var version = new VisionProfileVersion
+        {
+            Version = NextVisionVersion(conn, product, snapshot.Uid),
+            SavedUtc = DateTime.UtcNow,
+            OperatorId = op?.UserId,
+            OperatorName = op?.DisplayName,
+            StationId = op?.StationId,
+            Snapshot = snapshot,
+        };
+
+        using var ins = conn.CreateCommand();
+        ins.CommandText =
+            @"INSERT OR IGNORE INTO vision_version
+              (product, profile_uid, profile_name, version, saved_utc, operator_id, operator_name, station_id, template_uid, snapshot_json)
+              VALUES ($product,$uid,$name,$version,$saved,$opid,$opname,$station,$tpl,$json)";
+        ins.Parameters.AddWithValue("$product", product);
+        ins.Parameters.AddWithValue("$uid", snapshot.Uid);
+        ins.Parameters.AddWithValue("$name", snapshot.Name);
+        ins.Parameters.AddWithValue("$version", version.Version);
+        ins.Parameters.AddWithValue("$saved", version.SavedUtc.ToString("o", CultureInfo.InvariantCulture));
+        ins.Parameters.AddWithValue("$opid", (object?)version.OperatorId ?? DBNull.Value);
+        ins.Parameters.AddWithValue("$opname", (object?)version.OperatorName ?? DBNull.Value);
+        ins.Parameters.AddWithValue("$station", (object?)version.StationId ?? DBNull.Value);
+        ins.Parameters.AddWithValue("$tpl", (object?)snapshot.Template?.Uid ?? DBNull.Value);
+        ins.Parameters.AddWithValue("$json", JsonSerializer.Serialize(snapshot, JsonOptions));
+        ins.ExecuteNonQuery();
+        return version;
+    }
+
+    /// <summary>Reads a vision profile's full revision history by UID (oldest version first).</summary>
+    public VisionProfileHistory LoadVisionHistory(string product, string profileUid)
+    {
+        var history = new VisionProfileHistory { ProfileUid = profileUid };
+        if (!_available || string.IsNullOrEmpty(profileUid)) return history;
+
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            @"SELECT version, saved_utc, operator_id, operator_name, station_id, snapshot_json, profile_name
+              FROM vision_version WHERE product=$p AND profile_uid=$u ORDER BY version";
+        cmd.Parameters.AddWithValue("$p", product);
+        cmd.Parameters.AddWithValue("$u", profileUid);
+
+        using var reader = cmd.ExecuteReader();
+        string name = string.Empty;
+        while (reader.Read())
+        {
+            var snapshot = JsonSerializer.Deserialize<VisionProfile>(reader.GetString(5), JsonOptions) ?? new VisionProfile();
+            name = reader.IsDBNull(6) ? name : reader.GetString(6);
+            history.Versions.Add(new VisionProfileVersion
+            {
+                Version = reader.GetInt32(0),
+                SavedUtc = DateTime.Parse(reader.GetString(1), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                OperatorId = reader.IsDBNull(2) ? null : reader.GetString(2),
+                OperatorName = reader.IsDBNull(3) ? null : reader.GetString(3),
+                StationId = reader.IsDBNull(4) ? null : reader.GetString(4),
+                Snapshot = snapshot,
+            });
+        }
+        return history with { ProfileName = name };
+    }
+
+    private static int NextVisionVersion(SqliteConnection conn, string product, string profileUid)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COALESCE(MAX(version),0)+1 FROM vision_version WHERE product=$p AND profile_uid=$u";
+        cmd.Parameters.AddWithValue("$p", product);
+        cmd.Parameters.AddWithValue("$u", profileUid);
+        return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
     // --- internals ---
 
     private SqliteConnection Open()
@@ -385,7 +474,18 @@ public sealed class ProgramHistoryDb
             CREATE INDEX IF NOT EXISTS ix_deck_ver ON deck_version(product, deck_uid);
             CREATE INDEX IF NOT EXISTS ix_deck_ver_operator ON deck_version(operator_id);
             CREATE INDEX IF NOT EXISTS ix_deck_entry_uid ON deck_entry_revision(entry_uid);
-            CREATE INDEX IF NOT EXISTS ix_deck_entry_program ON deck_entry_revision(program);";
+            CREATE INDEX IF NOT EXISTS ix_deck_entry_program ON deck_entry_revision(program);
+
+            CREATE TABLE IF NOT EXISTS vision_version (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product TEXT NOT NULL, profile_uid TEXT NOT NULL, profile_name TEXT NOT NULL, version INTEGER NOT NULL,
+                saved_utc TEXT NOT NULL,
+                operator_id TEXT, operator_name TEXT, station_id TEXT,
+                template_uid TEXT,
+                snapshot_json TEXT NOT NULL,
+                UNIQUE(product, profile_uid, version));
+            CREATE INDEX IF NOT EXISTS ix_vision_ver ON vision_version(product, profile_uid);
+            CREATE INDEX IF NOT EXISTS ix_vision_ver_operator ON vision_version(operator_id);";
         cmd.ExecuteNonQuery();
     }
 

@@ -144,6 +144,20 @@ public static class OpCatalog
                 new ParamSpec("value", "Value", ParamKind.Text),
             }),
 
+        // ---- Vision ----
+        // Runs a saved vision profile against its camera's latest frame. The match is
+        // captured into context vars '{captureAs}_found/_score/_x/_y/_anchorx/_anchory/
+        // _angle'; a no-match sets _found=0 (branch on it with flow.if) unless
+        // 'requireMatch' is on, which fails the step. Device-less — the profile carries
+        // its own camera.
+        new("vision.runProfile", "Run Vision Profile", "Vision", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("profile", "Vision profile name", ParamKind.Text),
+                new ParamSpec("captureAs", "Capture prefix", ParamKind.Text, "vision"),
+                new ParamSpec("requireMatch", "Fail step if no match", ParamKind.Bool, "false"),
+            }),
+
         // ---- DUT ----
         // Prompts the operator (modal) for a serial number and opens the DUT record
         // for this run, so later dut.* steps record into it. Cancel fails the program.

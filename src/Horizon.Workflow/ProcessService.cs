@@ -19,6 +19,7 @@ public sealed class ProcessService : IProcessService
     private ProgramStore? _programs;     // null when no product is active
     private RecipeStore? _recipes;       // null when no product is active
     private DeckStore? _decks;           // null when no product is active
+    private VisionProfileStore? _visionProfiles;   // null when no product is active
     private TaskCompletionSource<bool>? _deckGate;   // set while a deck waits for operator activation
     private DutStore? _dut;              // null when no product is active
     private readonly ProgramHistoryDb _history = new();   // machine-global audit store (history.db)
@@ -40,6 +41,7 @@ public sealed class ProcessService : IProcessService
             _programs = new ProgramStore(dir);
             _recipes = new RecipeStore(dir);
             _decks = new DeckStore(dir);
+            _visionProfiles = new VisionProfileStore(dir);
             _dut = new DutStore(dir, _products.ActiveProduct!);
         }
     }
@@ -144,6 +146,7 @@ public sealed class ProcessService : IProcessService
         _programs = new ProgramStore(dir);
         _recipes = new RecipeStore(dir);
         _decks = new DeckStore(dir);
+        _visionProfiles = new VisionProfileStore(dir);
         _dut = new DutStore(dir, name);
         SetActiveSerial(null);   // a serial belongs to a product — drop it on switch
         Log(LogLevel.Info, $"Product loaded: {name}");
@@ -163,6 +166,7 @@ public sealed class ProcessService : IProcessService
         _programs = null;
         _recipes = null;
         _decks = null;
+        _visionProfiles = null;
         _dut = null;
         SetActiveSerial(null);
         Log(LogLevel.Info, "Product unloaded.");
@@ -295,6 +299,209 @@ public sealed class ProcessService : IProcessService
         return await moveTask.ConfigureAwait(false);
     }
 
+    // --- Vision profiles ---
+
+    public IReadOnlyList<string> ListVisionProfiles()
+        => _visionProfiles?.List() ?? Array.Empty<string>();
+
+    public string? ActiveVisionProfile => _visionProfiles?.ActiveProfile;
+
+    public VisionProfile? LoadVisionProfile(string name)
+    {
+        var profile = _visionProfiles?.Load(name);
+        if (profile != null) _visionProfiles!.SetActive(name);
+        return profile;
+    }
+
+    /// <summary>
+    /// Saves a vision profile (assigning a UID if it has none), prunes a superseded
+    /// template's binaries, and records an operator-stamped revision for traceability.
+    /// </summary>
+    public Result<VisionProfile> SaveVisionProfile(VisionProfile profile)
+    {
+        if (_visionProfiles == null)
+            return Result<VisionProfile>.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (string.IsNullOrWhiteSpace(profile.Name))
+            return Result<VisionProfile>.Fail(ErrorCode.InvalidParameter, "Vision profile needs a name.");
+
+        if (string.IsNullOrEmpty(profile.Uid))
+            profile = profile with { Uid = "vp-" + Guid.NewGuid().ToString("N") };
+
+        // Drop the previously-saved template binaries if the template changed.
+        var previous = _visionProfiles.Load(profile.Name);
+        var oldTpl = previous?.Template?.Uid;
+        if (!string.IsNullOrEmpty(oldTpl) && !string.Equals(oldTpl, profile.Template?.Uid, StringComparison.Ordinal))
+            _visionProfiles.DeleteTemplate(oldTpl);
+
+        _visionProfiles.Save(profile);
+        _visionProfiles.SetActive(profile.Name);
+        Log(LogLevel.Info, $"Vision profile saved: {profile.Name}");
+
+        try
+        {
+            var product = _products.ActiveProduct;
+            if (product != null)
+            {
+                var version = _history.AppendVisionProfile(product, profile, _operator);
+                Log(LogLevel.Info,
+                    $"History: vision {profile.Name} v{version.Version}" +
+                    (string.IsNullOrEmpty(version.OperatorName) ? "" : $" by {version.OperatorName}"));
+            }
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Warning, $"Vision history not recorded for '{profile.Name}': {ex.Message}");
+        }
+        return Result<VisionProfile>.Ok(profile);
+    }
+
+    public Result DeleteVisionProfile(string name)
+    {
+        if (_visionProfiles == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        _visionProfiles.Delete(name);
+        Log(LogLevel.Info, $"Vision profile deleted: {name}");
+        return Result.Ok();
+    }
+
+    public VisionProfileHistory? GetVisionProfileHistory(string profileUid)
+    {
+        var product = _products.ActiveProduct;
+        return product == null ? null : _history.LoadVisionHistory(product, profileUid);
+    }
+
+    public string? GetTemplateImagePath(string templateUid)
+    {
+        if (_visionProfiles == null || string.IsNullOrEmpty(templateUid)) return null;
+        var path = _visionProfiles.ImagePath(templateUid);
+        return File.Exists(path) ? path : null;
+    }
+
+    /// <summary>
+    /// Captures a new NCC template from <paramref name="roi"/> on <paramref name="frame"/>,
+    /// minting a fresh template UID and writing the model + image under the product's
+    /// <c>vision\templates\</c>. Returns the new <see cref="TemplateRef"/> — assign it to
+    /// the profile and <see cref="SaveVisionProfile"/> to persist.
+    /// </summary>
+    public async Task<Result<TemplateRef>> CaptureTemplateAsync(VisionProfile profile, CameraFrame frame, RoiSpec roi)
+    {
+        if (_visionProfiles == null)
+            return Result<TemplateRef>.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        var uid = VisionProfileStore.NewTemplateUid();
+        _visionProfiles.EnsureTemplateDir(uid);
+        var modelPath = _visionProfiles.ModelPath(uid);
+        var imagePath = _visionProfiles.ImagePath(uid);
+
+        var r = await _engine.Vision
+            .CreateNccModelAsync(frame, roi, profile.Filters, modelPath, imagePath, profile.NccAngleRange)
+            .ConfigureAwait(false);
+        if (!r.IsSuccess)
+        {
+            _visionProfiles.DeleteTemplate(uid);   // no orphan dir if the model failed
+            return Result<TemplateRef>.Fail(r.Error, r.Message);
+        }
+
+        var info = r.Value;
+        var tref = new TemplateRef
+        {
+            Uid = uid, Roi = roi,
+            AnchorX = info.AnchorX, AnchorY = info.AnchorY,
+            Width = info.Width, Height = info.Height,
+        };
+        Log(LogLevel.Info, $"Vision template captured: {uid} ({info.Width}×{info.Height})");
+        return Result<TemplateRef>.Ok(tref);
+    }
+
+    /// <summary>
+    /// Runs a profile's detection against <paramref name="frame"/> using the profile's
+    /// method (NCC / circle / line), filter chain and search ROI. Returns a unified
+    /// key→value result (centre, score, method-specific fields) plus a crop.
+    /// </summary>
+    public Task<Result<VisionDetectResult>> RunVisionProfileAsync(VisionProfile profile, CameraFrame frame)
+        => RunDetectionAsync(profile, frame, cameraId: null);
+
+    /// <summary>
+    /// Loads a vision profile by name and runs its detection against the latest cached
+    /// frame from the profile's camera (the camera must be grabbing). Back-end for the
+    /// <c>vision.runProfile</c> workflow step; does not change the active profile.
+    /// </summary>
+    public Task<Result<VisionDetectResult>> RunVisionProfileByNameAsync(string profileName)
+    {
+        if (_visionProfiles == null)
+            return Task.FromResult(Result<VisionDetectResult>.Fail(ErrorCode.OperationFailed, "No active product — load one first."));
+        var profile = _visionProfiles.Load(profileName);
+        if (profile == null)
+            return Task.FromResult(Result<VisionDetectResult>.Fail(ErrorCode.FileNotFound, $"Vision profile '{profileName}' not found."));
+        return RunDetectionAsync(profile, frame: null, cameraId: profile.CameraId);
+    }
+
+    /// <summary>
+    /// Shared detection dispatch. Exactly one of <paramref name="frame"/> (UI, a specific
+    /// frame) or <paramref name="cameraId"/> (workflow, latest cached frame) is supplied.
+    /// </summary>
+    private async Task<Result<VisionDetectResult>> RunDetectionAsync(
+        VisionProfile profile, CameraFrame? frame, string? cameraId)
+    {
+        if (_visionProfiles == null)
+            return Result<VisionDetectResult>.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        var vision = _engine.Vision;
+        switch ((profile.DetectionMethod ?? "ncc").ToLowerInvariant())
+        {
+            case "circle":
+                return frame != null
+                    ? await vision.FindCircleAsync(frame, profile.Filters, profile.SearchRoi, profile.Circle).ConfigureAwait(false)
+                    : await vision.FindCircleAsync(cameraId!, profile.Filters, profile.SearchRoi, profile.Circle).ConfigureAwait(false);
+
+            case "line":
+                return frame != null
+                    ? await vision.FindLineAsync(frame, profile.Filters, profile.SearchRoi, profile.Line).ConfigureAwait(false)
+                    : await vision.FindLineAsync(cameraId!, profile.Filters, profile.SearchRoi, profile.Line).ConfigureAwait(false);
+
+            default: // ncc
+            {
+                if (profile.Template is not { } t || string.IsNullOrEmpty(t.Uid))
+                    return Result<VisionDetectResult>.Fail(ErrorCode.OperationFailed, "Profile has no template — teach one first.");
+                var modelPath = _visionProfiles.ModelPath(t.Uid);
+                int cropSize = Math.Max(t.Width, t.Height);
+                var r = frame != null
+                    ? await vision.FindNccModelAsync(frame, modelPath, profile.Filters, profile.MinScore, cropSize, profile.SearchRoi, profile.NccAngleRange).ConfigureAwait(false)
+                    : await vision.FindNccModelAsync(cameraId!, modelPath, profile.Filters, profile.MinScore, cropSize, profile.SearchRoi, profile.NccAngleRange).ConfigureAwait(false);
+                return r.IsSuccess
+                    ? Result<VisionDetectResult>.Ok(NccToResult(profile, r.Value))
+                    : Result<VisionDetectResult>.Fail(r.Error, r.Message);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Maps an NCC match to the unified key→value result, applying the taught anchor
+    /// offset (anchor − template-centre) so the reported anchor is in frame coordinates.
+    /// </summary>
+    private static VisionDetectResult NccToResult(VisionProfile profile, NccFindResult result)
+    {
+        var m = result.Match;
+        double offX = 0, offY = 0, rotation = 0;
+        if (profile.Template is { } t)
+        {
+            offX = t.AnchorX - t.Width / 2.0;
+            offY = t.AnchorY - t.Height / 2.0;
+            rotation = t.Rotation;
+        }
+        var values = new[]
+        {
+            new VisionResultValue("x", m.CenterX),
+            new VisionResultValue("y", m.CenterY),
+            new VisionResultValue("anchorX", m.CenterX + offX),
+            new VisionResultValue("anchorY", m.CenterY + offY),
+            // matched instance rotation + the taught anchor reference orientation
+            new VisionResultValue("angle", m.Angle + rotation),
+            new VisionResultValue("score", m.Score),
+        };
+        return new VisionDetectResult(true, values, result.Crop);
+    }
+
     // --- Process programs ---
 
     public IReadOnlyList<string> ListPrograms()
@@ -408,6 +615,7 @@ public sealed class ProcessService : IProcessService
             name => _programs?.Load(name),
             (device, name) => _positions?.Get(device, name),
             SaveNamedPosition,
+            RunVisionProfileByNameAsync,
             _deviceLinks,
             OperatorPrompt,
             // dut.promptSerial opens the DUT record mid-run into _runDut, which the
@@ -870,6 +1078,7 @@ public sealed class ProcessService : IProcessService
             name => _programs?.Load(name),
             (device, name) => _positions?.Get(device, name),
             SaveNamedPosition,
+            RunVisionProfileByNameAsync,
             _deviceLinks,
             OperatorPrompt,
             (s, c) => SetRunDutSerial(s, deck.Name, c),

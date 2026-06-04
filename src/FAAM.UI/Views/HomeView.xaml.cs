@@ -24,6 +24,9 @@ public partial class HomeView : UserControl
     /// <summary>Raised when the operator clicks Engineer.</summary>
     public event Action? EngineerRequested;
 
+    /// <summary>Raised when the operator clicks Vision Profile.</summary>
+    public event Action? VisionProfileRequested;
+
     public HomeView() => InitializeComponent();
 
     /// <summary>Supplies the engine host and populates the product bar.</summary>
@@ -87,4 +90,6 @@ public partial class HomeView : UserControl
     private void OnMachineClick(object sender, RoutedEventArgs e) => MachineRequested?.Invoke();
 
     private void OnEngineerClick(object sender, RoutedEventArgs e) => EngineerRequested?.Invoke();
+
+    private void OnVisionProfileClick(object sender, RoutedEventArgs e) => VisionProfileRequested?.Invoke();
 }

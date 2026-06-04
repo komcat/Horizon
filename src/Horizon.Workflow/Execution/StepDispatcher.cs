@@ -20,6 +20,7 @@ internal sealed class StepDispatcher
     private readonly Func<string, string, MoveOverrides, CancellationToken, Task<Result>> _moveToNamed;
     private readonly Func<string, string, NamedPosition?> _getPosition;
     private readonly Func<string, string, MotionPosition, double, Result> _savePosition;
+    private readonly Func<string, Task<Result<VisionDetectResult>>> _runVisionProfile;
     private readonly DeviceLinkStore _deviceLinks;
     private readonly Action<LogLevel, string> _log;
 
@@ -28,6 +29,7 @@ internal sealed class StepDispatcher
         Func<string, string, MoveOverrides, CancellationToken, Task<Result>> moveToNamed,
         Func<string, string, NamedPosition?> getPosition,
         Func<string, string, MotionPosition, double, Result> savePosition,
+        Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
         DeviceLinkStore deviceLinks,
         Action<LogLevel, string> log)
     {
@@ -35,6 +37,7 @@ internal sealed class StepDispatcher
         _moveToNamed = moveToNamed;
         _getPosition = getPosition;
         _savePosition = savePosition;
+        _runVisionProfile = runVisionProfile;
         _deviceLinks = deviceLinks;
         _log = log;
     }
@@ -286,6 +289,38 @@ internal sealed class StepDispatcher
                     ? applied
                     : Result.Fail(applied.Error,
                         $"{applied.Message} (camera connected — likely an out-of-range exposure/gain value).");
+            }
+
+            case "vision.runprofile":
+            {
+                // Runs a saved vision profile (NCC / circle / line) against its camera's
+                // latest frame and captures every returned value into context vars
+                // '{captureAs}_found' + '{captureAs}_{key}' (e.g. _x, _y, _score). Like
+                // scan.hexapod, a no-match is a branchable outcome (found=0), not a step
+                // failure — unless 'requireMatch' is set.
+                var profileName = Str(step, "profile", ctx);
+                if (string.IsNullOrWhiteSpace(profileName))
+                    return Result.Fail(ErrorCode.InvalidParameter, "vision.runProfile: no profile name.");
+                var captureAs = Has(step, "captureAs") ? Str(step, "captureAs", ctx) : "vision";
+
+                var r = await _runVisionProfile(profileName).ConfigureAwait(false);
+                if (r.IsSuccess && r.Value.Found)
+                {
+                    foreach (var v in r.Value.Values)
+                        ctx.Set($"{captureAs}_{v.Key.ToLowerInvariant()}", v.Value);
+                    ctx.Set($"{captureAs}_found", "1");
+                    _log(LogLevel.Info, $"vision '{profileName}': " +
+                        string.Join("  ", r.Value.Values.Select(v => $"{v.Key}={v.Value:F2}")) +
+                        $" -> {captureAs}_*");
+                    return Result.Ok();
+                }
+
+                ctx.Set($"{captureAs}_found", "0");
+                var why = r.IsSuccess ? "no detection" : r.Message;
+                _log(LogLevel.Warning, $"vision '{profileName}': {why}");
+                return Bool(step, "requireMatch", ctx)
+                    ? Result.Fail(r.Error, $"vision.runProfile '{profileName}': {why}")
+                    : Result.Ok();
             }
 
             case "io.setoutput":

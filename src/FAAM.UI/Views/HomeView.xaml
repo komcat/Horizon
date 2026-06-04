@@ -71,8 +71,8 @@
                     Style="{StaticResource Tile}" Click="OnEngineerClick" />
             <Button Grid.Row="1" Grid.Column="0" Content="Machine"
                     Style="{StaticResource Tile}" Click="OnMachineClick" />
-            <Button Grid.Row="1" Grid.Column="1" Content="reserve"
-                    Style="{StaticResource ReserveTile}" />
+            <Button Grid.Row="1" Grid.Column="1" Content="Vision Profile"
+                    Style="{StaticResource Tile}" Click="OnVisionProfileClick" />
         </Grid>
     </Grid>
 </UserControl>

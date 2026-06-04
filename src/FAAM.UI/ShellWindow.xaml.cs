@@ -27,6 +27,7 @@ public partial class ShellWindow : Window
     private readonly MachinePageView _machine;
     private readonly RunView _run;
     private readonly EngineerPageView _engineer;
+    private readonly VisionProfileView _visionProfile;
 
     /// <summary>Camera pop-out windows this shell owns (auto-opened + restored).</summary>
     private readonly List<DisplayWindow> _cameraWindows = new();
@@ -39,6 +40,7 @@ public partial class ShellWindow : Window
         _machine = new MachinePageView { DataContext = _machineVm };
         _run = new RunView(host);
         _engineer = new EngineerPageView(host);
+        _visionProfile = new VisionProfileView(host);
         InitializeComponent();
 
         RestoreMainWindowPlacement();
@@ -60,6 +62,7 @@ public partial class ShellWindow : Window
         _home.MachineRequested += ShowMachine;
         _home.RunRequested += ShowRun;
         _home.EngineerRequested += ShowEngineer;
+        _home.VisionProfileRequested += ShowVisionProfile;
 
         // Identity chip — refresh on login/logout and on product switch.
         _host.Session.Changed += UpdateIdentity;
@@ -104,6 +107,8 @@ public partial class ShellWindow : Window
             _machineVm.OnDeactivated();
         else if (ReferenceEquals(PageHost.Content, _engineer))
             _engineer.Deactivate();
+        else if (ReferenceEquals(PageHost.Content, _visionProfile))
+            _visionProfile.Deactivate();
     }
 
     private void ShowHome()
@@ -139,6 +144,15 @@ public partial class ShellWindow : Window
         EngineHeader.Visibility = Visibility.Collapsed;
         _engineer.Activate();
         PageHost.Content = _engineer;
+    }
+
+    private void ShowVisionProfile()
+    {
+        LeaveCurrent();
+        Header1Text.Text = "VISION PROFILE";
+        EngineHeader.Visibility = Visibility.Collapsed;
+        _visionProfile.Activate();
+        PageHost.Content = _visionProfile;
     }
 
     /// <summary>
