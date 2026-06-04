@@ -93,10 +93,26 @@ public sealed record CircleParams(
 /// <summary>Expected orientation of a detected line/edge.</summary>
 public enum LineDirection { Any, Horizontal, Vertical }
 
+/// <summary>
+/// Expected intensity transition across the edge, in a fixed frame: for a vertical edge
+/// <see cref="DarkToBright"/> means brighter on the right; for a horizontal edge, brighter
+/// below.
+/// </summary>
+public enum LinePolarity { Any, DarkToBright, BrightToDark }
+
+/// <summary>
+/// Which qualifying edge to keep when several match. <see cref="Forward"/> = first along
+/// the scan (left→right for a vertical edge, top→bottom for a horizontal one),
+/// <see cref="Backward"/> = last, <see cref="CenterOut"/> = closest to the ROI centre.
+/// </summary>
+public enum LineScanOrder { Forward, Backward, CenterOut }
+
 /// <summary>Parameters for the line detector (operates on the filtered foreground).</summary>
 public sealed record LineParams(
     double MinLength = 20,
-    LineDirection Direction = LineDirection.Any);
+    LineDirection Direction = LineDirection.Any,
+    LinePolarity Polarity = LinePolarity.Any,
+    LineScanOrder ScanOrder = LineScanOrder.Forward);
 
 /// <summary>Metadata returned when an NCC template/model is created from an ROI.</summary>
 public sealed record NccTemplateInfo(

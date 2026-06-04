@@ -264,24 +264,41 @@ internal sealed class VisionFacet : IVisionFacet, IDisposable
                     int n = rowBegin?.Length ?? 0;
                     if (n == 0) return Result<VisionDetectResult>.Ok(notFound);
 
-                    // Pick the longest fitted segment matching the expected direction.
+                    // Among edges matching direction + polarity, keep the one chosen by the
+                    // scan order (first / last along the scan, or closest to the ROI centre).
+                    var (rcx, rcy) = RoiCenter(searchRoi, f.Width, f.Height);
                     int best = -1;
-                    double bestLen = -1;
+                    double bestKey = double.MaxValue;
                     for (int i = 0; i < n; i++)
                     {
-                        double dx = colEnd[i].D - colBegin[i].D, dy = rowEnd[i].D - rowBegin[i].D;
+                        double ex1 = colBegin[i].D, ey1 = rowBegin[i].D, ex2 = colEnd[i].D, ey2 = rowEnd[i].D;
+                        double dx = ex2 - ex1, dy = ey2 - ey1;
                         double len = Math.Sqrt(dx * dx + dy * dy);
-                        if (len > bestLen && MatchesDirection(dx, dy, p.Direction))
+                        if (len < p.MinLength || !MatchesDirection(dx, dy, p.Direction)) continue;
+
+                        bool vertical = Math.Abs(dx) < Math.Abs(dy);   // perpendicular scan is horizontal
+                        double mx = (ex1 + ex2) / 2.0, my = (ey1 + ey2) / 2.0;
+
+                        if (p.Polarity != LinePolarity.Any &&
+                            SamplePolarity(gray, mx, my, vertical, f.Width, f.Height) != p.Polarity)
+                            continue;
+
+                        double pos = vertical ? mx : my;
+                        double centre = vertical ? rcx : rcy;
+                        double key = p.ScanOrder switch
                         {
-                            bestLen = len;
-                            best = i;
-                        }
+                            LineScanOrder.Forward => pos,             // smallest position wins
+                            LineScanOrder.Backward => -pos,           // largest position wins
+                            _ => Math.Abs(pos - centre),              // closest to centre wins
+                        };
+                        if (key < bestKey) { bestKey = key; best = i; }
                     }
-                    if (best < 0 || bestLen < p.MinLength) return Result<VisionDetectResult>.Ok(notFound);
+                    if (best < 0) return Result<VisionDetectResult>.Ok(notFound);
 
                     double x1 = colBegin[best].D, y1 = rowBegin[best].D;
                     double x2 = colEnd[best].D, y2 = rowEnd[best].D;
                     double cx = (x1 + x2) / 2.0, cy = (y1 + y2) / 2.0;
+                    double bestLen = Math.Sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
                     double angle = Math.Atan2(-(y2 - y1), x2 - x1) * 180.0 / Math.PI;
                     var values = new[]
                     {
@@ -453,6 +470,40 @@ internal sealed class VisionFacet : IVisionFacet, IDisposable
         if (dir == LineDirection.Any) return true;
         bool horizontal = Math.Abs(dx) >= Math.Abs(dy);   // closer to horizontal than vertical
         return dir == LineDirection.Horizontal ? horizontal : !horizontal;
+    }
+
+    /// <summary>
+    /// Classifies an edge's polarity by sampling the grayscale a few px to each side of its
+    /// midpoint (left/right for a vertical edge, top/bottom for a horizontal one).
+    /// </summary>
+    private static LinePolarity SamplePolarity(HImage gray, double mx, double my, bool vertical, int width, int height)
+    {
+        const int delta = 6;
+        double a, b;   // a = left/top side, b = right/bottom side
+        if (vertical)
+        {
+            a = Grayval(gray, my, mx - delta, width, height);
+            b = Grayval(gray, my, mx + delta, width, height);
+        }
+        else
+        {
+            a = Grayval(gray, my - delta, mx, width, height);
+            b = Grayval(gray, my + delta, mx, width, height);
+        }
+        return b >= a ? LinePolarity.DarkToBright : LinePolarity.BrightToDark;
+    }
+
+    /// <summary>Reads one grayscale value (clamped into the image), 0 on failure.</summary>
+    private static double Grayval(HImage gray, double row, double col, int width, int height)
+    {
+        int r = (int)Math.Clamp(Math.Round(row), 0, height - 1);
+        int c = (int)Math.Clamp(Math.Round(col), 0, width - 1);
+        try
+        {
+            HOperatorSet.GetGrayval(gray, r, c, out HTuple g);
+            return g.Length > 0 ? g.D : 0.0;
+        }
+        catch { return 0.0; }
     }
 
     /// <summary>Centre (x,y) of a search ROI, or the frame centre when unset.</summary>

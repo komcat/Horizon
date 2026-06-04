@@ -274,6 +274,24 @@
                                     <ComboBoxItem Content="Vertical" />
                                 </ComboBox>
                             </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Polarity" Style="{StaticResource Lbl}" Width="80" />
+                                <ComboBox x:Name="LinePolarityCombo" Width="130" Height="26"
+                                          VerticalContentAlignment="Center">
+                                    <ComboBoxItem Content="Any" IsSelected="True" />
+                                    <ComboBoxItem Content="Black → White" />
+                                    <ComboBoxItem Content="White → Black" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Scan" Style="{StaticResource Lbl}" Width="80" />
+                                <ComboBox x:Name="LineScanCombo" Width="130" Height="26"
+                                          VerticalContentAlignment="Center">
+                                    <ComboBoxItem Content="Left → Right" IsSelected="True" />
+                                    <ComboBoxItem Content="Right → Left" />
+                                    <ComboBoxItem Content="Center out" />
+                                </ComboBox>
+                            </StackPanel>
                         </StackPanel>
                     </Grid>
 

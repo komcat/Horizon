@@ -893,6 +893,18 @@ public partial class VisionProfileView : UserControl
             LineDirection.Vertical => 2,
             _ => 0,
         };
+        LinePolarityCombo.SelectedIndex = p.Line.Polarity switch
+        {
+            LinePolarity.DarkToBright => 1,
+            LinePolarity.BrightToDark => 2,
+            _ => 0,
+        };
+        LineScanCombo.SelectedIndex = p.Line.ScanOrder switch
+        {
+            LineScanOrder.Backward => 1,
+            LineScanOrder.CenterOut => 2,
+            _ => 0,
+        };
 
         MinScoreBox.Text = p.MinScore.ToString("0.00", CultureInfo.InvariantCulture);
         NccAngleRangeBox.Text = p.NccAngleRange.ToString("0.##", CultureInfo.InvariantCulture);
@@ -963,12 +975,26 @@ public partial class VisionProfileView : UserControl
         Circle = new CircleParams(
             ParseDouble(CircleMinRadiusBox, 5), ParseDouble(CircleMaxRadiusBox, 200),
             ParseDouble(CircleMinCircBox, 0.7)),
-        Line = new LineParams(ParseDouble(LineMinLengthBox, 20), LineDirectionCombo.SelectedIndex switch
-        {
-            1 => LineDirection.Horizontal,
-            2 => LineDirection.Vertical,
-            _ => LineDirection.Any,
-        }),
+        Line = new LineParams(
+            ParseDouble(LineMinLengthBox, 20),
+            LineDirectionCombo.SelectedIndex switch
+            {
+                1 => LineDirection.Horizontal,
+                2 => LineDirection.Vertical,
+                _ => LineDirection.Any,
+            },
+            LinePolarityCombo.SelectedIndex switch
+            {
+                1 => LinePolarity.DarkToBright,
+                2 => LinePolarity.BrightToDark,
+                _ => LinePolarity.Any,
+            },
+            LineScanCombo.SelectedIndex switch
+            {
+                1 => LineScanOrder.Backward,
+                2 => LineScanOrder.CenterOut,
+                _ => LineScanOrder.Forward,
+            }),
         Template = _template,
     };
 
