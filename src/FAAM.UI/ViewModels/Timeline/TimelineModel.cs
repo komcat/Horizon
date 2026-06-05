@@ -12,6 +12,13 @@ namespace FAAM.UI.ViewModels.Timeline;
 public enum LaneDomain { Motion, Io, Pneumatic, PowerSupply, Smu, Tec, Vision, Signal, Control }
 
 /// <summary>
+/// Which conditional branch a stage's cells fall in, for the timeline tint:
+/// <see cref="Then"/> (between an If and its Else/End If) shows light pink,
+/// <see cref="Else"/> (between Else and End If) light yellow, <see cref="None"/> untinted.
+/// </summary>
+public enum ConditionRegion { None, Then, Else }
+
+/// <summary>
 /// One device row in the timeline grid. A lane is fixed (built from the engine
 /// facets); its <see cref="Cells"/> hold the blocks scheduled on this device, one
 /// cell per stage (index-aligned with the editor's stage list).
@@ -88,6 +95,14 @@ public sealed class CellViewModel : ObservableObject
 
     /// <summary>True while a drag hovers this cell and the lane accepts it — drives the drop highlight.</summary>
     public bool IsDropTarget { get => _isDropTarget; set => SetField(ref _isDropTarget, value); }
+
+    private ConditionRegion _region;
+
+    /// <summary>
+    /// Which If/Else branch this cell's stage is in — set by the editor from the Control
+    /// lane's if/else/endif nesting. Drives the light pink / yellow stage tint.
+    /// </summary>
+    public ConditionRegion Region { get => _region; set => SetField(ref _region, value); }
 }
 
 /// <summary>A timeline column — a parallel group ended by a barrier. Purely ordering.</summary>
@@ -103,6 +118,15 @@ public sealed class StageViewModel : ObservableObject
     public string Uid { get; set; } = "stg-" + Guid.NewGuid().ToString("N");
 
     public string Title { get => _title; set => SetField(ref _title, value); }
+
+    /// <summary>
+    /// This stage's cells, one per lane, index-aligned with the editor's <c>Lanes</c> —
+    /// the SAME <see cref="CellViewModel"/> objects held in <c>LaneViewModel.Cells</c>,
+    /// exposed stage-major so the vertical timeline can render one row per stage. The
+    /// lane-major <c>LaneViewModel.Cells</c> stays the source of truth for drag/drop and
+    /// compile; this is just a second view of the same objects.
+    /// </summary>
+    public ObservableCollection<CellViewModel> Cells { get; } = new();
 
     private bool _isSelected;
 

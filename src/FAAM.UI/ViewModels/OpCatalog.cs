@@ -12,7 +12,7 @@ public enum DeviceKind { None, Motion, Io, Pneumatic, Camera }
 /// options are filled by the block (positions from the chosen device, the axis
 /// list, or Set/Clear); the rest are a text box / number box / check box.
 /// </summary>
-public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName, SignalName }
+public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName, SignalName, Operator, MotionDeviceName }
 
 /// <summary>One parameter of an op — its persisted key, a display label, the editor widget, and a default value.</summary>
 public sealed record ParamSpec(string Key, string Label, ParamKind Kind, string Default = "");
@@ -135,6 +135,24 @@ public static class OpCatalog
             }),
         new("flow.if", "If (condition)", "Flow", DeviceKind.None,
             new[] { new ParamSpec("condition", "Condition", ParamKind.Text) }),
+        // Guided If variants — pick a left-hand value, a comparison, and a number; no
+        // expression typing. They open a block closed by the same Else / End If, and
+        // read their left-hand value live at run time (no preceding read step needed).
+        new("flow.ifSignal", "If Signal", "Flow", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("signal", "Signal", ParamKind.SignalName),
+                new ParamSpec("op", "Comparison", ParamKind.Operator, ">"),
+                new ParamSpec("value", "Value", ParamKind.Number, "0"),
+            }),
+        new("flow.ifPosition", "If Position", "Flow", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("device", "Motion device", ParamKind.MotionDeviceName),
+                new ParamSpec("axis", "Axis", ParamKind.AxisName, "X"),
+                new ParamSpec("op", "Comparison", ParamKind.Operator, ">"),
+                new ParamSpec("value", "Value (mm)", ParamKind.Number, "0"),
+            }),
         new("flow.else", "Else", "Flow", DeviceKind.None, System.Array.Empty<ParamSpec>()),
         new("flow.endif", "End If", "Flow", DeviceKind.None, System.Array.Empty<ParamSpec>()),
         new("var.set", "Set Variable", "Flow", DeviceKind.None,

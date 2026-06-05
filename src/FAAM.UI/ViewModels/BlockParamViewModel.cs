@@ -25,6 +25,12 @@ public sealed class BlockParamViewModel : ObservableObject
         if (spec.Kind == ParamKind.AxisName)
             foreach (var a in new[] { "X", "Y", "Z", "U", "V", "W" })
                 Options.Add(a);
+
+        // Comparison operators for the guided If blocks — fixed list (matches the
+        // dispatcher's structured-condition parser).
+        if (spec.Kind == ParamKind.Operator)
+            foreach (var o in new[] { ">", ">=", "<", "<=", "==", "!=" })
+                Options.Add(o);
     }
 
     public string Key => _spec.Key;

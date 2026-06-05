@@ -61,7 +61,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
 
         NewProgramCommand = new RelayCommand(NewProgram);
         SaveProgramCommand = new RelayCommand(SaveProgram);
-        AddStageCommand = new RelayCommand(() => { AddStage(); MarkDirty(); });
+        AddStageCommand = new RelayCommand(() => { AddStage(); MarkDirty(); RecomputeConditionRegions(); });
         RemoveBlockCommand = new RelayCommand(RemoveSelectedBlock, () => _selectedBlock != null);
         CopyStagesCommand = new RelayCommand(CopySelectedStages, () => _selectedStages.Count > 0);
         PasteStagesCommand = new RelayCommand(PasteStages, () => _stageClipboard is { Count: > 0 });
@@ -283,7 +283,11 @@ public sealed class TimelineEditorViewModel : ObservableObject
         if (!string.IsNullOrEmpty(uid)) stage.Uid = uid;
         Stages.Add(stage);
         foreach (var lane in Lanes)
-            lane.Cells.Add(new CellViewModel(lane));
+        {
+            var cell = new CellViewModel(lane);
+            lane.Cells.Add(cell);
+            stage.Cells.Add(cell);   // same object, exposed stage-major for the vertical view
+        }
         return idx;
     }
 
@@ -296,6 +300,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
             if (index < lane.Cells.Count) lane.Cells.RemoveAt(index);
         RenumberStages();
         MarkDirty();
+        RecomputeConditionRegions();
         if (_selectedBlock != null && !BlockIsPlaced(_selectedBlock))
             SelectedBlock = null;
         if (_selectedStages.RemoveAll(s => !Stages.Contains(s)) > 0)
@@ -313,8 +318,13 @@ public sealed class TimelineEditorViewModel : ObservableObject
         if (!string.IsNullOrEmpty(uid)) stage.Uid = uid;
         Stages.Insert(index, stage);
         foreach (var lane in Lanes)
-            lane.Cells.Insert(index, new CellViewModel(lane));
+        {
+            var cell = new CellViewModel(lane);
+            lane.Cells.Insert(index, cell);
+            stage.Cells.Add(cell);   // new stage's own cells (same objects as the lanes')
+        }
         RenumberStages();
+        RecomputeConditionRegions();
     }
 
     /// <summary>Inserts an empty stage immediately to the left or right of <paramref name="stage"/>.</summary>
@@ -403,6 +413,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         _anchorStage = pasted.FirstOrDefault();
         StageSelectionChanged();
         MarkDirty();
+        RecomputeConditionRegions();
         Status = $"Pasted {pasted.Count} stage(s).";
     }
 
@@ -439,6 +450,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         lane.Cells[stageIndex].Blocks.Add(block);
         Track(block);
         MarkDirty();
+        RecomputeConditionRegions();
         SelectedCell = lane.Cells[stageIndex];
         SelectedBlock = block;
         Status = $"Added '{spec.Display}' to {lane.Display}, stage {stageIndex + 1}.";
@@ -469,6 +481,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
             block.SelectedDevice = lane.Id;   // pin to the destination lane's device (device ops only)
 
         MarkDirty();
+        RecomputeConditionRegions();
         SelectedCell = target;
         SelectedBlock = block;
         Status = $"Moved '{block.Display}' to {lane.Display}, stage {stageIndex + 1}.";
@@ -479,7 +492,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         if (_selectedBlock == null) return;
         foreach (var lane in Lanes)
             foreach (var cell in lane.Cells)
-                if (cell.Blocks.Remove(_selectedBlock)) { SelectedBlock = null; MarkDirty(); return; }
+                if (cell.Blocks.Remove(_selectedBlock)) { SelectedBlock = null; MarkDirty(); RecomputeConditionRegions(); return; }
     }
 
     private bool BlockIsPlaced(ProcessBlockViewModel block)
@@ -558,6 +571,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
             }
         }
         if (Stages.Count == 0) AddStage();
+        RecomputeConditionRegions();
     }
 
     private ProcessBlockViewModel MakeBlock(WorkflowStep step)
@@ -566,6 +580,44 @@ public sealed class TimelineEditorViewModel : ObservableObject
         var block = ProcessBlockViewModel.FromStep(_host, spec, step);
         Track(block);   // edits after load mark the program dirty (load itself is suppressed)
         return block;
+    }
+
+    /// <summary>
+    /// Re-tints every stage by walking the Control lane's if/else/endif markers and
+    /// tracking branch nesting: a content stage between If and Else is "Then" (pink),
+    /// between Else and End If is "Else" (yellow); marker stages and stages outside any
+    /// conditional are untinted. Called after any structural edit. Cheap, so it just
+    /// rewrites every cell's region. Nesting uses a stack; only the innermost branch tints.
+    /// </summary>
+    private void RecomputeConditionRegions()
+    {
+        if (!_laneById.TryGetValue(LaneBuilder.ControlLaneId, out var control)) return;
+
+        static bool IsOpener(string op)
+            => op is "flow.if" or "flow.ifsignal" or "flow.ifposition";
+
+        var stack = new Stack<ConditionRegion>();
+        for (int s = 0; s < Stages.Count; s++)
+        {
+            var ops = s < control.Cells.Count
+                ? control.Cells[s].Blocks.Select(b => b.OpKey.ToLowerInvariant()).ToList()
+                : new List<string>();
+
+            bool isBoundary = ops.Any(o => IsOpener(o) || o == "flow.else" || o == "flow.endif");
+            var region = isBoundary || stack.Count == 0 ? ConditionRegion.None : stack.Peek();
+
+            foreach (var lane in Lanes)
+                if (s < lane.Cells.Count)
+                    lane.Cells[s].Region = region;
+
+            // Apply this stage's marker transitions in order, for the stages that follow.
+            foreach (var o in ops)
+            {
+                if (IsOpener(o)) stack.Push(ConditionRegion.Then);
+                else if (o == "flow.else" && stack.Count > 0) { stack.Pop(); stack.Push(ConditionRegion.Else); }
+                else if (o == "flow.endif" && stack.Count > 0) stack.Pop();
+            }
+        }
     }
 
     private LaneViewModel FindLane(string id)

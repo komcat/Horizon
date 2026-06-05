@@ -57,10 +57,10 @@ public sealed class ProcessBlockViewModel : ObservableObject
                 EditPositionCommand.RaiseCanExecuteChanged();
             };
 
-        // Signal options are device-independent (the key carries its own device), so
-        // fill them once here — the device-change path below never fires for a
-        // device-less op like signal.read.
-        FillSignalOptions();
+        // Device-independent combo options (signal catalog, motion-device picker) — the
+        // key/param carries its own device, so they're filled once here. The
+        // device-change path below never fires for a device-less op like signal.read.
+        FillGlobalOptions();
 
         // Default the device to the first of the right kind, which also seeds
         // position options + the preview through the setter.
@@ -131,6 +131,9 @@ public sealed class ProcessBlockViewModel : ObservableObject
                 "io.setoutputbyname" => $"{Or(P("pin"), "(pin?)")} → {(Truthy(P("state")) ? "ON" : "OFF")}",
                 "flow.wait" => $"wait {Or(P("ms"), "?")} ms",
                 "flow.waitpopup" => $"countdown {Or(P("ms"), "?")} ms",
+                "flow.ifsignal" => $"if {Or(P("signal"), "?")} {Or(P("op"), "?")} {Or(P("value"), "?")}",
+                "flow.ifposition" => $"if {Or(P("device"), "?")} {Or(P("axis"), "?")} {Or(P("op"), "?")} {Or(P("value"), "?")}",
+                "signal.read" => $"{Or(P("signal"), "?")} → {Or(P("storeAs"), P("signal"))}",
                 "dut.promptserial" => "ask DUT serial",
                 "flow.log" => Or(P("message"), "(message)"),
                 "pneumatic.extend" => "extend",
@@ -251,17 +254,25 @@ public sealed class ProcessBlockViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Fills any <see cref="ParamKind.SignalName"/> combo with the unified signal
-    /// catalog keys (built-in engine signals + registered product sources such as
-    /// SiPhOG). Device-independent — the key itself carries the device, so this is
-    /// resolved once at construction, not on device change.
+    /// Fills the device-independent combos resolved once at construction (not on device
+    /// change): <see cref="ParamKind.SignalName"/> ← the unified signal catalog (engine
+    /// signals + product sources such as SiPhOG); <see cref="ParamKind.MotionDeviceName"/>
+    /// ← all motion devices (for the guided If-Position block, which has no lane device).
     /// </summary>
-    private void FillSignalOptions()
+    private void FillGlobalOptions()
     {
-        var keys = _host.Process.DescribeSignals().Select(d => d.Key).ToList();
+        List<string>? signalKeys = null;
         foreach (var p in Params)
-            if (p.Kind == ParamKind.SignalName)
-                p.SetOptions(keys);
+            switch (p.Kind)
+            {
+                case ParamKind.SignalName:
+                    signalKeys ??= _host.Process.DescribeSignals().Select(d => d.Key).ToList();
+                    p.SetOptions(signalKeys);
+                    break;
+                case ParamKind.MotionDeviceName:
+                    p.SetOptions(_host.Engine.Motion.DeviceNames);
+                    break;
+            }
     }
 
     /// <summary>Call when the chosen position name changes — refreshes the recall preview.</summary>

@@ -176,19 +176,34 @@ internal sealed class WorkflowRunner
             // Conditional block — flow.if / flow.else / flow.endif. Forward-only
             // jumps over a stateless scan that respects nesting; no frame stack
             // is needed (there is no break/continue). Loops nest independently.
-            if (op == "flow.if")
+            if (IsIfOpener(op))
             {
                 bool taken;
-                try
+                if (op == "flow.if")
                 {
-                    taken = ConditionEvaluator.Evaluate(
-                        step.Parameters.GetValueOrDefault("condition"), ctx);
+                    try
+                    {
+                        taken = ConditionEvaluator.Evaluate(
+                            step.Parameters.GetValueOrDefault("condition"), ctx);
+                    }
+                    catch (FormatException ex)
+                    {
+                        var err = $"bad condition — {ex.Message}";
+                        _log(LogLevel.Error, $"Step {index + 1} '{desc}' failed: {err}");
+                        return Result.Fail(ErrorCode.InvalidParameter, $"Step {index + 1} '{desc}': {err}");
+                    }
                 }
-                catch (FormatException ex)
+                else
                 {
-                    var err = $"bad condition — {ex.Message}";
-                    _log(LogLevel.Error, $"Step {index + 1} '{desc}' failed: {err}");
-                    return Result.Fail(ErrorCode.InvalidParameter, $"Step {index + 1} '{desc}': {err}");
+                    // Guided If (flow.ifSignal / flow.ifPosition) — the dispatcher reads the
+                    // left-hand value live and compares it. A read failure aborts the run.
+                    var cond = await _dispatcher.EvaluateGuidedConditionAsync(step, ctx, ct).ConfigureAwait(false);
+                    if (!cond.IsSuccess)
+                    {
+                        _log(LogLevel.Error, $"Step {index + 1} '{desc}' failed: {cond.Message}");
+                        return Result.Fail(cond.Error, $"Step {index + 1} '{desc}': {cond.Message}");
+                    }
+                    taken = cond.Value;
                 }
 
                 _log(LogLevel.Info, $"Step {index + 1}: if '{desc}' → {(taken ? "true" : "false")}");
@@ -653,6 +668,10 @@ internal sealed class WorkflowRunner
         => double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && v > 0
             ? (int)v : 1;
 
+    /// <summary>True for any If-opening op — the text <c>flow.if</c> and the guided variants.</summary>
+    private static bool IsIfOpener(string op)
+        => op is "flow.if" or "flow.ifsignal" or "flow.ifposition";
+
     /// <summary>
     /// From a <c>flow.if</c> at <paramref name="ifIndex"/>, returns the index of
     /// its matching <c>flow.else</c> or <c>flow.endif</c> (whichever comes first
@@ -665,7 +684,9 @@ internal sealed class WorkflowRunner
         {
             switch (steps[i].Op.ToLowerInvariant())
             {
-                case "flow.if": depth++; break;
+                case "flow.if":
+                case "flow.ifsignal":
+                case "flow.ifposition": depth++; break;
                 case "flow.else" when depth == 0: return i;
                 case "flow.endif":
                     if (depth == 0) return i;
@@ -688,7 +709,9 @@ internal sealed class WorkflowRunner
         {
             switch (steps[i].Op.ToLowerInvariant())
             {
-                case "flow.if": depth++; break;
+                case "flow.if":
+                case "flow.ifsignal":
+                case "flow.ifposition": depth++; break;
                 case "flow.endif":
                     if (depth == 0) return i;
                     depth--;

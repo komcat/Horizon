@@ -8,8 +8,8 @@ using FAAM.UI.ViewModels.Timeline;
 namespace FAAM.UI.Views;
 
 /// <summary>
-/// The Engineer page — a horizontal timeline (Gantt) editor. Device lanes run down
-/// the left; ordered stages across the top. Drop palette commands onto a lane's
+/// The Engineer page — a vertical timeline (Gantt) editor. Device lanes run across
+/// the top; ordered stages down the left as rows. Drop palette commands onto a lane's
 /// stage cell; commands in the same stage on different lanes run concurrently (a
 /// barrier ends each stage). Builds / runs Layer 2 programs via the
 /// <see cref="TimelineEditorViewModel"/> (compiled through <c>flow.parallel</c>).
@@ -228,6 +228,23 @@ public partial class TimelineEditorView : UserControl
 
         if (e.Key == Key.C) { _vm.CopySelectedStages(); e.Handled = true; }
         else if (e.Key == Key.V) { _vm.PasteStages(); e.Handled = true; }
+    }
+
+    // Keep the frozen lane-header row and stage-label column aligned with the body's
+    // scroll position (the body owns both scrollbars; these two are slaved to it).
+    private void OnBodyScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (HeaderScroll != null) HeaderScroll.ScrollToHorizontalOffset(e.HorizontalOffset);
+        if (LabelScroll != null) LabelScroll.ScrollToVerticalOffset(e.VerticalOffset);
+    }
+
+    // A wheel over the frozen stage-label column drives the body's vertical scroll
+    // (which then re-syncs the label column), so the two panes can't drift apart.
+    private void OnFrozenPaneWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (BodyScroll == null) return;
+        BodyScroll.ScrollToVerticalOffset(BodyScroll.VerticalOffset - e.Delta);
+        e.Handled = true;
     }
 
     private void OnHistory(object sender, RoutedEventArgs e)

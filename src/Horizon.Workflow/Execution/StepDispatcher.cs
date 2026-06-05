@@ -810,6 +810,79 @@ internal sealed class StepDispatcher
         }
     }
 
+    /// <summary>
+    /// Evaluates a guided If condition (<c>flow.ifSignal</c> / <c>flow.ifPosition</c>) by
+    /// reading its left-hand value LIVE — a registered signal, or a motion device's axis —
+    /// and comparing it to the step's numeric <c>value</c> with the chosen operator. This
+    /// is deliberately separate from the text-based <c>flow.if</c> (which uses
+    /// <see cref="ConditionEvaluator"/>); the <see cref="WorkflowRunner"/> calls this for the
+    /// guided variants. Returns the branch decision, or a failure if the value can't be read.
+    /// </summary>
+    public async Task<Result<bool>> EvaluateGuidedConditionAsync(WorkflowStep step, WorkflowContext ctx, CancellationToken ct)
+    {
+        double lhs;
+        string lhsLabel;
+        switch (step.Op.ToLowerInvariant())
+        {
+            case "flow.ifsignal":
+            {
+                var key = Str(step, "signal", ctx);
+                if (string.IsNullOrWhiteSpace(key))
+                    return Result<bool>.Fail(ErrorCode.InvalidParameter, "If Signal: no signal selected.");
+                var read = await _signals.ReadAsync(key, ct).ConfigureAwait(false);
+                if (!read.IsSuccess) return Result<bool>.Fail(read.Error, read.Message);
+                lhs = read.Value;
+                lhsLabel = key;
+                break;
+            }
+            case "flow.ifposition":
+            {
+                var device = Str(step, "device", ctx);
+                if (string.IsNullOrWhiteSpace(device))
+                    return Result<bool>.Fail(ErrorCode.InvalidParameter, "If Position: no motion device selected.");
+                var axis = Str(step, "axis", ctx).Trim().ToUpperInvariant();
+                var r = await _engine.Motion.GetPositionAsync(device).ConfigureAwait(false);
+                if (!r.IsSuccess) return Result<bool>.Fail(r.Error, r.Message);
+                var p = r.Value;
+                lhs = axis switch
+                {
+                    "X" => p.X, "Y" => p.Y, "Z" => p.Z,
+                    "U" => p.U, "V" => p.V, "W" => p.W,
+                    _ => double.NaN,
+                };
+                if (double.IsNaN(lhs))
+                    return Result<bool>.Fail(ErrorCode.InvalidParameter, $"If Position: unknown axis '{axis}'.");
+                lhsLabel = $"{device}.{axis}";
+                break;
+            }
+            default:
+                return Result<bool>.Fail(ErrorCode.NotSupported, $"Not a guided condition op: '{step.Op}'.");
+        }
+
+        var op = Str(step, "op", ctx).Trim();
+        var rhs = Num(step, "value", ctx);
+        if (!TryCompare(lhs, op, rhs, out var taken))
+            return Result<bool>.Fail(ErrorCode.InvalidParameter, $"Unknown comparison operator '{op}'.");
+        _log(LogLevel.Info, $"if {lhsLabel} ({lhs}) {op} {rhs} -> {(taken ? "true" : "false")}");
+        return Result<bool>.Ok(taken);
+    }
+
+    /// <summary>Numeric comparison for the guided If operators; <c>==</c> / <c>!=</c> use a small tolerance.</summary>
+    private static bool TryCompare(double lhs, string op, double rhs, out bool result)
+    {
+        const double eps = 1e-9;
+        switch (op)
+        {
+            case ">":  result = lhs > rhs;  return true;
+            case ">=": result = lhs >= rhs; return true;
+            case "<":  result = lhs < rhs;  return true;
+            case "<=": result = lhs <= rhs; return true;
+            case "==": result = Math.Abs(lhs - rhs) <= eps; return true;
+            case "!=": result = Math.Abs(lhs - rhs) > eps;  return true;
+            default:   result = false; return false;
+        }
+    }
+
     // --- parameter resolution: literal | var:NAME | expr:EXPRESSION ---
 
     /// <summary>
