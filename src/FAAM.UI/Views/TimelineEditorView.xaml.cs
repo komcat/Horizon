@@ -185,8 +185,49 @@ public partial class TimelineEditorView : UserControl
 
     private void OnStageHeaderClick(object sender, MouseButtonEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: StageViewModel stage })
+        if (sender is not FrameworkElement { DataContext: StageViewModel stage }) return;
+
+        // Shift extends the selection from the anchor to here; a plain click selects one.
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+            _vm.SelectStageRange(stage);
+        else
             _vm.SelectStage(stage);
+
+        Focus();   // pull keyboard focus here so Ctrl+C / Ctrl+V reach OnPreviewKeyDown
+    }
+
+    // --- stage context menu (insert / copy / paste) ---
+
+    private void OnInsertStageLeft(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: StageViewModel stage })
+            _vm.InsertStageRelative(stage, toRight: false);
+    }
+
+    private void OnInsertStageRight(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: StageViewModel stage })
+            _vm.InsertStageRelative(stage, toRight: true);
+    }
+
+    private void OnCopyStages(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: StageViewModel stage })
+            _vm.CopyStagesFor(stage);
+    }
+
+    private void OnPasteStages(object sender, RoutedEventArgs e) => _vm.PasteStages();
+
+    // --- stage keyboard shortcuts: Ctrl+C copies the selection, Ctrl+V pastes ---
+
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // Don't hijack copy/paste while the operator is editing a parameter field.
+        if (e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase) return;
+        if (Keyboard.Modifiers != ModifierKeys.Control) return;
+
+        if (e.Key == Key.C) { _vm.CopySelectedStages(); e.Handled = true; }
+        else if (e.Key == Key.V) { _vm.PasteStages(); e.Handled = true; }
     }
 
     private void OnHistory(object sender, RoutedEventArgs e)

@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using FAAM.UI.Siphog;
 using Horizon.Engine;
 
 namespace FAAM.UI.Views;
@@ -67,6 +68,9 @@ public partial class RunView : UserControl
 
         // Hill Climber drives the Layer 2 engine, fed by the same SiPhOG client (SAG PWR V).
         HillClimbPanelControl.Attach(host, SiphogPanelControl.Client);
+
+        // Make that same SiPhOG signal available to hillclimb.* workflow steps (Engineer page).
+        host.Process.SetHillClimbFeedbackProvider(() => new SiphogHillClimbFeedback(SiphogPanelControl.Client));
     }
 
     /// <summary>

@@ -28,6 +28,16 @@ public sealed class HillClimbConfig
     /// <summary>Hard cap on cumulative Z+ travel (µm). Overridden per-run from the Distance input.</summary>
     public double ZBudget_um { get; set; } = 99.0;
 
+    /// <summary>
+    /// Target Sagnac signal (V). When &gt; 0 the climb stops early as soon as the global peak
+    /// reaches <see cref="TargetReachedFraction"/> of this value (see <c>HillClimbStopReason.TargetReached</c>).
+    /// 0 disables the target exit (climb until Z budget or convergence). Set per-run from the UI.
+    /// </summary>
+    public double TargetSagnacV { get; set; }
+
+    /// <summary>Fraction of <see cref="TargetSagnacV"/> that counts as "reached" (0.90 = 90%).</summary>
+    public double TargetReachedFraction { get; set; } = 0.90;
+
     /// <summary>Consecutive non-improving Z+ steps before falling out to lateral correction.</summary>
     public int ZStallLimit { get; set; } = 3;
 
@@ -78,6 +88,8 @@ public sealed class HillClimbConfig
         MidRemainingThreshold_um = MidRemainingThreshold_um,
         FineRemainingThreshold_um = FineRemainingThreshold_um,
         ZBudget_um = ZBudget_um,
+        TargetSagnacV = TargetSagnacV,
+        TargetReachedFraction = TargetReachedFraction,
         ZStallLimit = ZStallLimit,
         MaxLateralStepsPerDirection = MaxLateralStepsPerDirection,
         IoTimeoutMs = IoTimeoutMs,
@@ -100,6 +112,10 @@ public sealed class HillClimbConfig
             throw new ArgumentException("Step sizes must be positive.");
         if (ZBudget_um <= 0)
             throw new ArgumentException("ZBudget_um must be positive.");
+        if (TargetSagnacV < 0)
+            throw new ArgumentException("TargetSagnacV must be non-negative (0 disables the target exit).");
+        if (TargetReachedFraction is <= 0 or > 1)
+            throw new ArgumentException("TargetReachedFraction must be in (0, 1].");
         if (ZStallLimit < 1)
             throw new ArgumentException("ZStallLimit must be at least 1.");
         if (MaxLateralStepsPerDirection < 1)

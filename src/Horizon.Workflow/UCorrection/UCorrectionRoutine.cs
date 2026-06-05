@@ -19,7 +19,7 @@ public sealed record UCorrectionOptions(
     string FauPoint1,
     string FauPoint2,
     // Slow PI system velocity (mm/s) used while applying the U move; restored afterwards.
-    double ApplyVelocityMmPerSec = 0.1,
+    double ApplyVelocityMmPerSec = 1.0,
     // Refuse a navigation move whose saved target is farther than this from the current gantry position (stale-file guard).
     double MaxMoveDistanceMm = 20.0,
     // Sign of the applied U rotation; flip to -1 if the hexapod U convention is reversed.

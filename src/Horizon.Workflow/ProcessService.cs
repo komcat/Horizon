@@ -1,6 +1,7 @@
 using Horizon.Common;
 using Horizon.Engine;
 using Horizon.Workflow.FauPreAlign;
+using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Recipe;
 using Horizon.Workflow.UCorrection;
 
@@ -28,6 +29,7 @@ public sealed class ProcessService : IProcessService
     private OperatorContext? _operator;  // current operator, stamped onto DUT runs
     private (DutRecord Record, DutRun Run)? _interactiveDut;   // open operator-driven DUT run
     private (DutRecord Record, DutRun Run)? _runDut;   // the running program/deck's DUT (up-front serial, or set mid-run by dut.promptSerial)
+    private Func<IHillClimbFeedback?>? _hillClimbFeedbackProvider;   // Layer 3 (SiPhOG) wires the hill-climb signal source
 
     public ProcessService(IHorizonEngine engine)
     {
@@ -426,6 +428,14 @@ public sealed class ProcessService : IProcessService
     /// frame from the profile's camera (the camera must be grabbing). Back-end for the
     /// <c>vision.runProfile</c> workflow step; does not change the active profile.
     /// </summary>
+    /// <summary>
+    /// Registers the hill-climb signal source used by <c>hillclimb.start</c> steps. The
+    /// engine itself has no SiPhOG facet, so a Layer 3 head (FAAM.UI) supplies one backed by
+    /// its live SiPhOG client. Pass null to unregister.
+    /// </summary>
+    public void SetHillClimbFeedbackProvider(Func<IHillClimbFeedback?>? provider)
+        => _hillClimbFeedbackProvider = provider;
+
     public Task<Result<VisionDetectResult>> RunVisionProfileByNameAsync(string profileName)
     {
         if (_visionProfiles == null)
@@ -616,6 +626,7 @@ public sealed class ProcessService : IProcessService
             (device, name) => _positions?.Get(device, name),
             SaveNamedPosition,
             RunVisionProfileByNameAsync,
+            () => _hillClimbFeedbackProvider?.Invoke(),
             _deviceLinks,
             OperatorPrompt,
             // dut.promptSerial opens the DUT record mid-run into _runDut, which the
@@ -1079,6 +1090,7 @@ public sealed class ProcessService : IProcessService
             (device, name) => _positions?.Get(device, name),
             SaveNamedPosition,
             RunVisionProfileByNameAsync,
+            () => _hillClimbFeedbackProvider?.Invoke(),
             _deviceLinks,
             OperatorPrompt,
             (s, c) => SetRunDutSerial(s, deck.Name, c),

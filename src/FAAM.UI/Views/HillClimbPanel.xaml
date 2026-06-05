@@ -69,10 +69,45 @@
                 </StackPanel>
             </Border>
 
-            <!-- Distance (µm) — overrides ZBudget per run. -->
+            <!-- Lifetime Z anchor: Set Start captures the current hex-right Z and the
+                 Distance value as the lifetime ceiling; Clear Distance forgets it. -->
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="SetStartButton" Grid.Column="0" Content="Set Start" Height="26" Margin="0,0,3,0"
+                        Background="{StaticResource Panel}" Foreground="{StaticResource Text}"
+                        BorderBrush="{StaticResource Edge}" BorderThickness="1" FontSize="11.5" Cursor="Hand"
+                        Click="OnSetStart" />
+                <Button x:Name="ClearDistanceButton" Grid.Column="1" Content="Clear Distance" Height="26" Margin="3,0,0,0"
+                        Background="{StaticResource Panel}" Foreground="{StaticResource Text}"
+                        BorderBrush="{StaticResource Edge}" BorderThickness="1" FontSize="11.5" Cursor="Hand"
+                        IsEnabled="False" Click="OnClearDistance" />
+            </Grid>
+
+            <!-- Distance (µm) — per-run ZBudget. While a lifetime anchor is set this shows
+                 the remaining travel (ceiling minus what earlier runs consumed). The ✎
+                 button edits the lifetime ceiling (default 98 µm). -->
+            <Grid Margin="0,0,0,4">
+                <TextBlock x:Name="DistanceLabel" Text="Distance (µm)" Style="{StaticResource HcLabel}"
+                           VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="EditCeilingButton" Content="&#x270E;" Width="24" Height="22" Margin="0,0,4,0"
+                            Background="{StaticResource Panel}" Foreground="{StaticResource Text}"
+                            BorderBrush="{StaticResource Edge}" BorderThickness="1" FontSize="11" Cursor="Hand"
+                            ToolTip="Edit lifetime ceiling (µm)" Click="OnEditCeiling" />
+                    <TextBox x:Name="DistanceBox" Text="98.0" Width="80"
+                             HorizontalContentAlignment="Right" Padding="4,2"
+                             Background="{StaticResource Panel}" Foreground="{StaticResource Text}"
+                             BorderBrush="{StaticResource Edge}" />
+                </StackPanel>
+            </Grid>
+
+            <!-- Target Sagnac V — climb exits early at 90% of this (0 = disabled). -->
             <Grid Margin="0,0,0,8">
-                <TextBlock Text="Distance (µm)" Style="{StaticResource HcLabel}" />
-                <TextBox x:Name="DistanceBox" Text="99.0" Width="80" HorizontalAlignment="Right"
+                <TextBlock Text="Target V (≥90% exits)" Style="{StaticResource HcLabel}" />
+                <TextBox x:Name="TargetBox" Text="0" Width="80" HorizontalAlignment="Right"
                          HorizontalContentAlignment="Right" Padding="4,2"
                          Background="{StaticResource Panel}" Foreground="{StaticResource Text}"
                          BorderBrush="{StaticResource Edge}" />

@@ -17,6 +17,7 @@ public enum HillClimbStopReason
 {
     ZBudgetReached,
     Converged,
+    TargetReached,
     Cancelled,
     Error
 }

@@ -27,7 +27,16 @@ public sealed class TimelineEditorViewModel : ObservableObject
     private string? _selectedProgram;
     private ProcessBlockViewModel? _selectedBlock;
     private CellViewModel? _selectedCell;
-    private StageViewModel? _selectedStage;
+
+    // Stage selection: a set (for copy / range), plus the anchor a shift-click extends
+    // from. Each member's StageViewModel.IsSelected drives its header highlight.
+    private readonly List<StageViewModel> _selectedStages = new();
+    private StageViewModel? _anchorStage;
+
+    // Stage clipboard — per stage, the blocks on each lane captured as id-less steps
+    // (a fresh block id is minted on paste so copies stay independently trackable).
+    private List<List<LaneClip>>? _stageClipboard;
+
     private bool _isRunning;
     private string _status = "—";
     private bool _isDirty;
@@ -54,8 +63,10 @@ public sealed class TimelineEditorViewModel : ObservableObject
         SaveProgramCommand = new RelayCommand(SaveProgram);
         AddStageCommand = new RelayCommand(() => { AddStage(); MarkDirty(); });
         RemoveBlockCommand = new RelayCommand(RemoveSelectedBlock, () => _selectedBlock != null);
+        CopyStagesCommand = new RelayCommand(CopySelectedStages, () => _selectedStages.Count > 0);
+        PasteStagesCommand = new RelayCommand(PasteStages, () => _stageClipboard is { Count: > 0 });
         RunCommand = new AsyncRelayCommand(() => RunAsync(null), () => !_isRunning);
-        RunStageCommand = new AsyncRelayCommand(RunSelectedStageAsync, () => !_isRunning && _selectedStage != null);
+        RunStageCommand = new AsyncRelayCommand(RunSelectedStageAsync, () => !_isRunning && _selectedStages.Count == 1);
         StopCommand = new RelayCommand(() => _runCts?.Cancel(), () => _isRunning);
 
         AddStage();   // start with one empty stage to author into
@@ -158,30 +169,65 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public RelayCommand SaveProgramCommand { get; }
     public RelayCommand AddStageCommand { get; }
     public RelayCommand RemoveBlockCommand { get; }
+    public RelayCommand CopyStagesCommand { get; }
+    public RelayCommand PasteStagesCommand { get; }
     public AsyncRelayCommand RunCommand { get; }
     public AsyncRelayCommand RunStageCommand { get; }
     public RelayCommand StopCommand { get; }
 
-    /// <summary>The stage picked to run on its own (header highlight), or null for the whole program.</summary>
-    public StageViewModel? SelectedStage
+    /// <summary>True when at least one stage is selected (header highlight).</summary>
+    public bool HasSelectedStage => _selectedStages.Count > 0;
+
+    private void SetStageSelected(StageViewModel stage, bool on)
     {
-        get => _selectedStage;
-        private set
-        {
-            var old = _selectedStage;
-            if (!SetField(ref _selectedStage, value)) return;
-            if (old != null) old.IsSelected = false;
-            if (value != null) value.IsSelected = true;
-            RunStageCommand.RaiseCanExecuteChanged();
-            OnPropertyChanged(nameof(HasSelectedStage));
-        }
+        stage.IsSelected = on;
+        if (on) { if (!_selectedStages.Contains(stage)) _selectedStages.Add(stage); }
+        else _selectedStages.Remove(stage);
     }
 
-    public bool HasSelectedStage => _selectedStage != null;
+    private void ClearStageSelection()
+    {
+        foreach (var s in _selectedStages) s.IsSelected = false;
+        _selectedStages.Clear();
+    }
 
-    /// <summary>Toggles a stage as the run-only selection — clicking the selected one clears it.</summary>
+    private void StageSelectionChanged()
+    {
+        RunStageCommand.RaiseCanExecuteChanged();
+        CopyStagesCommand.RaiseCanExecuteChanged();
+        OnPropertyChanged(nameof(HasSelectedStage));
+    }
+
+    /// <summary>
+    /// Plain stage-header click. Selects only this stage (and sets it as the range
+    /// anchor); clicking the sole-selected stage again clears the selection. "Run
+    /// Stage" runs whenever exactly one stage is selected.
+    /// </summary>
     public void SelectStage(StageViewModel stage)
-        => SelectedStage = ReferenceEquals(_selectedStage, stage) ? null : stage;
+    {
+        var sole = _selectedStages.Count == 1 && ReferenceEquals(_selectedStages[0], stage);
+        ClearStageSelection();
+        if (sole) _anchorStage = null;                                  // toggled off
+        else { SetStageSelected(stage, true); _anchorStage = stage; }
+        StageSelectionChanged();
+    }
+
+    /// <summary>
+    /// Shift-click on a stage header — selects the contiguous run of stages from the
+    /// anchor (the last plain-clicked stage) to <paramref name="stage"/>. With no
+    /// anchor it behaves like a plain click, seeding one.
+    /// </summary>
+    public void SelectStageRange(StageViewModel stage)
+    {
+        if (_anchorStage == null || !Stages.Contains(_anchorStage)) { SelectStage(stage); return; }
+        var a = Stages.IndexOf(_anchorStage);
+        var b = Stages.IndexOf(stage);
+        if (a < 0 || b < 0) return;
+        ClearStageSelection();
+        for (int i = Math.Min(a, b); i <= Math.Max(a, b); i++)
+            SetStageSelected(Stages[i], true);                          // anchor kept for further shift-clicks
+        StageSelectionChanged();
+    }
 
     // --- page lifecycle ---
 
@@ -252,8 +298,112 @@ public sealed class TimelineEditorViewModel : ObservableObject
         MarkDirty();
         if (_selectedBlock != null && !BlockIsPlaced(_selectedBlock))
             SelectedBlock = null;
-        if (_selectedStage != null && !Stages.Contains(_selectedStage))
-            SelectedStage = null;
+        if (_selectedStages.RemoveAll(s => !Stages.Contains(s)) > 0)
+            StageSelectionChanged();
+        if (_anchorStage != null && !Stages.Contains(_anchorStage))
+            _anchorStage = null;
+    }
+
+    /// <summary>Inserts a new empty stage column at <paramref name="index"/> (and an empty
+    /// cell at that position on every lane). <paramref name="uid"/> seeds the stage's stable id.</summary>
+    public void InsertStage(int index, string? uid = null)
+    {
+        index = Math.Clamp(index, 0, Stages.Count);
+        var stage = new StageViewModel();
+        if (!string.IsNullOrEmpty(uid)) stage.Uid = uid;
+        Stages.Insert(index, stage);
+        foreach (var lane in Lanes)
+            lane.Cells.Insert(index, new CellViewModel(lane));
+        RenumberStages();
+    }
+
+    /// <summary>Inserts an empty stage immediately to the left or right of <paramref name="stage"/>.</summary>
+    public void InsertStageRelative(StageViewModel stage, bool toRight)
+    {
+        var idx = Stages.IndexOf(stage);
+        if (idx < 0) return;
+        InsertStage(toRight ? idx + 1 : idx);
+        MarkDirty();
+    }
+
+    // --- stage copy / paste ---
+
+    /// <summary>One lane's blocks within a copied stage, captured as id-less steps.</summary>
+    private sealed record LaneClip(string LaneId, List<WorkflowStep> Steps);
+
+    /// <summary>Ensures <paramref name="stage"/> is part of the selection, then copies — used
+    /// by the context menu so a right-click outside the current selection copies that stage.</summary>
+    public void CopyStagesFor(StageViewModel stage)
+    {
+        if (!_selectedStages.Contains(stage)) SelectStage(stage);
+        CopySelectedStages();
+    }
+
+    /// <summary>Copies the selected stages (their blocks, in stage order) to the stage clipboard.</summary>
+    public void CopySelectedStages()
+    {
+        if (_selectedStages.Count == 0) return;
+
+        var clip = new List<List<LaneClip>>();
+        foreach (var stage in Stages.Where(_selectedStages.Contains))   // capture in left-to-right order
+        {
+            var idx = Stages.IndexOf(stage);
+            var lanes = new List<LaneClip>();
+            foreach (var lane in Lanes)
+            {
+                if (idx >= lane.Cells.Count) continue;
+                var blocks = lane.Cells[idx].Blocks;
+                if (blocks.Count == 0) continue;
+                // Drop the id so paste mints a fresh one per block (independently trackable).
+                lanes.Add(new LaneClip(lane.Id, blocks.Select(b => b.ToStep() with { Id = string.Empty }).ToList()));
+            }
+            clip.Add(lanes);
+        }
+
+        _stageClipboard = clip;
+        PasteStagesCommand.RaiseCanExecuteChanged();
+        Status = $"Copied {clip.Count} stage(s).";
+    }
+
+    /// <summary>
+    /// Pastes the clipboard stages after the last selected stage (or at the end when
+    /// nothing is selected), then selects the newly pasted stages. Each block is rebuilt
+    /// with a fresh id; a block whose lane no longer exists is skipped.
+    /// </summary>
+    public void PasteStages()
+    {
+        if (_stageClipboard is not { Count: > 0 } clipboard) return;
+
+        var insertAt = _selectedStages.Count > 0
+            ? _selectedStages.Max(Stages.IndexOf) + 1
+            : Stages.Count;
+
+        ClearStageSelection();
+        var pasted = new List<StageViewModel>();
+        foreach (var stageClip in clipboard)
+        {
+            InsertStage(insertAt);
+            var stage = Stages[insertAt];
+            foreach (var laneClip in stageClip)
+            {
+                if (!_laneById.TryGetValue(laneClip.LaneId, out var lane)) continue;   // lane gone — skip
+                foreach (var step in laneClip.Steps)
+                {
+                    var spec = OpCatalog.Find(step.Op) ?? OpCatalog.ForUnknown(step.Op);
+                    var block = ProcessBlockViewModel.FromStep(_host, spec, step);   // empty id → fresh id
+                    Track(block);
+                    lane.Cells[insertAt].Blocks.Add(block);
+                }
+            }
+            pasted.Add(stage);
+            insertAt++;
+        }
+
+        foreach (var s in pasted) SetStageSelected(s, true);
+        _anchorStage = pasted.FirstOrDefault();
+        StageSelectionChanged();
+        MarkDirty();
+        Status = $"Pasted {pasted.Count} stage(s).";
     }
 
     private void RenumberStages()
@@ -264,7 +414,9 @@ public sealed class TimelineEditorViewModel : ObservableObject
 
     private void ClearAllStages()
     {
-        SelectedStage = null;
+        ClearStageSelection();
+        _anchorStage = null;
+        StageSelectionChanged();
         Stages.Clear();
         foreach (var lane in Lanes)
             lane.Cells.Clear();
@@ -584,11 +736,11 @@ public sealed class TimelineEditorViewModel : ObservableObject
 
     // --- run ---
 
-    /// <summary>Runs only the highlighted stage, or no-ops when none is selected.</summary>
+    /// <summary>Runs only the highlighted stage, or no-ops unless exactly one is selected.</summary>
     private async Task RunSelectedStageAsync()
     {
-        if (_selectedStage == null) return;
-        await RunAsync(Stages.IndexOf(_selectedStage));
+        if (_selectedStages.Count != 1) return;
+        await RunAsync(Stages.IndexOf(_selectedStages[0]));
     }
 
     /// <summary>Runs the program, or only stage <paramref name="onlyStage"/> when set.</summary>

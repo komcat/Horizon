@@ -1,7 +1,8 @@
 <UserControl x:Class="FAAM.UI.Views.TimelineEditorView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="clr-namespace:FAAM.UI.ViewModels">
+             xmlns:vm="clr-namespace:FAAM.UI.ViewModels"
+             Focusable="True" PreviewKeyDown="OnPreviewKeyDown">
     <UserControl.Resources>
         <SolidColorBrush x:Key="SelectedBlock" Color="#00C8FF" />
         <!-- Translucent tint shown on the lane cell a dragged block would drop into. -->
@@ -230,7 +231,18 @@
                                         <DataTemplate>
                                             <Border Width="150" Style="{StaticResource StageHeader}"
                                                     MouseLeftButtonDown="OnStageHeaderClick"
-                                                    ToolTip="Click to select this stage (then 'Run Stage' runs only it); click again to clear">
+                                                    ToolTip="Click to select (Shift+click for a range; Ctrl+C / Ctrl+V to copy / paste); right-click to insert">
+                                                <Border.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Header="Insert Stage Left" Click="OnInsertStageLeft" />
+                                                        <MenuItem Header="Insert Stage Right" Click="OnInsertStageRight" />
+                                                        <Separator />
+                                                        <MenuItem Header="Copy Stage(s)" Click="OnCopyStages" />
+                                                        <MenuItem Header="Paste Stage(s)" Click="OnPasteStages" />
+                                                        <Separator />
+                                                        <MenuItem Header="Remove Stage" Click="OnRemoveStage" />
+                                                    </ContextMenu>
+                                                </Border.ContextMenu>
                                                 <Grid Margin="6,0">
                                                     <TextBlock Text="{Binding Title}" Foreground="{StaticResource Subtle}"
                                                                FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />

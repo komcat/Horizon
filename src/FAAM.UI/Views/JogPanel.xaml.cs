@@ -28,10 +28,17 @@ public partial class JogPanel : UserControl
     };
     private const int DefaultStepIndex = 6;   // 10µm
 
+    /// <summary>θ (U/V/W rotational) step presets — used only for the U/V/W jog buttons.</summary>
+    private static readonly (string Label, double Step)[] ThetaSteps =
+    {
+        ("100µm", 0.1), ("200µm", 0.2), ("300µm", 0.3),
+    };
+
     private readonly JogTransformStore _transforms = new();
     private readonly ToggleButton[] _velButtons;
     private readonly double[] _velValues = new double[6];
     private readonly List<ToggleButton> _stepButtons = new();
+    private readonly List<ToggleButton> _thetaButtons = new();
     private readonly DispatcherTimer _poll;
 
     /// <summary>The four Camera exposure-preset buttons + their µs values (0 = unset).</summary>
@@ -41,6 +48,7 @@ public partial class JogPanel : UserControl
     private CameraExposure _camExposure = new(0, 0, false, false, 0);
 
     private double _stepMm = StepSizes[DefaultStepIndex].Mm;
+    private double _thetaStep = ThetaSteps[0].Step;   // U/V/W jog step (separate from the linear X/Y/Z step)
     private EngineHost? _host;
     private string? _device;
     private JogMatrix _matrix = JogMatrix.Identity;
@@ -65,6 +73,7 @@ public partial class JogPanel : UserControl
         InitializeComponent();
         _velButtons = new[] { Vel0, Vel1, Vel2, Vel3, Vel4, Vel5 };
         BuildSteps();
+        BuildThetaSteps();
         BuildExposurePresets();
         _poll = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _poll.Tick += (_, _) => UpdatePosition();
@@ -170,6 +179,28 @@ public partial class JogPanel : UserControl
         foreach (var b in _stepButtons) b.IsChecked = false;
         tb.IsChecked = true;
         _stepMm = mm;
+    }
+
+    private void BuildThetaSteps()
+    {
+        var style = (Style)FindResource("StepBtn");
+        foreach (var (label, step) in ThetaSteps)
+        {
+            var tb = new ToggleButton { Content = label, Tag = step, Style = style };
+            tb.Click += OnThetaStep;
+            _thetaButtons.Add(tb);
+            ThetaStepList.Children.Add(tb);
+        }
+        _thetaButtons[0].IsChecked = true;   // 100µm default
+    }
+
+    private void OnThetaStep(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton tb || tb.Tag is not double step) return;
+        foreach (var b in _thetaButtons) b.IsChecked = false;
+        tb.IsChecked = true;
+        _thetaStep = step;
+        SetStatus($"θ step {tb.Content}");
     }
 
     /// <summary>Supplies the engine host and builds the device list. Called by the shell.</summary>
@@ -414,6 +445,7 @@ public partial class JogPanel : UserControl
 
         string localAxis;
         int dir;
+        double step;
         if (axis is 'X' or 'Y' or 'Z')
         {
             // Global jog → device-local via the matrix. The configured matrices are
@@ -424,18 +456,21 @@ public partial class JogPanel : UserControl
             var dom = comps.OrderByDescending(c => Math.Abs(c.val)).First();
             localAxis = dom.ax;
             dir = Math.Sign(dom.val);
+            step = _stepMm;
         }
         else
         {
-            // U/V/W (rotational) jog directly — not part of the 3×3 position transform.
+            // U/V/W (rotational) jog directly — not part of the 3×3 position transform;
+            // driven by the separate θ step.
             localAxis = axis.ToString();
             dir = sign;
+            step = _thetaStep;
         }
         if (dir == 0) return;
 
         try
         {
-            var r = await _host.Engine.Motion.MoveRelativeAsync(_device, localAxis, dir * _stepMm, ct);
+            var r = await _host.Engine.Motion.MoveRelativeAsync(_device, localAxis, dir * step, ct);
             // A cancelled move (superseded by a newer press) is expected — not a failure.
             if (!r.IsSuccess && !ct.IsCancellationRequested)
                 SetStatus($"Jog {tag} → {localAxis}{(dir > 0 ? "+" : "-")} failed: {r.Message}");

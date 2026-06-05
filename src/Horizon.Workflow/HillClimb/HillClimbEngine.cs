@@ -142,7 +142,7 @@ public sealed class HillClimbEngine
 
                 // ---- Z+ sub-loop ----
                 int stall = 0;
-                while (stall < _config.ZStallLimit && _zCumulative_um < _config.ZBudget_um)
+                while (stall < _config.ZStallLimit && _zCumulative_um < _config.ZBudget_um && !TargetReached())
                 {
                     ct.ThrowIfCancellationRequested();
                     _currentZStep_um = PickZStep_um(_config.ZBudget_um - _zCumulative_um);
@@ -178,6 +178,13 @@ public sealed class HillClimbEngine
                     RaiseProgress();
                 }
 
+                // Early exit: global peak reached the Sagnac target — skip lateral correction.
+                if (TargetReached())
+                {
+                    stopReason = HillClimbStopReason.TargetReached;
+                    break;
+                }
+
                 // ---- Z backtrack to loop's best Z ----
                 if (stall >= _config.ZStallLimit)
                 {
@@ -206,6 +213,12 @@ public sealed class HillClimbEngine
 
                 RaiseLoop(loopIdx, _zCumulative_um - zLoopStart, vLoopStart, loopBest.V, loopImproved);
 
+                if (TargetReached())
+                {
+                    stopReason = HillClimbStopReason.TargetReached;
+                    break;
+                }
+
                 if (!loopImproved)
                 {
                     stopReason = HillClimbStopReason.Converged;
@@ -213,7 +226,9 @@ public sealed class HillClimbEngine
                 }
             }
 
-            if (_zCumulative_um >= _config.ZBudget_um && stopReason != HillClimbStopReason.Converged)
+            if (_zCumulative_um >= _config.ZBudget_um
+                && stopReason != HillClimbStopReason.Converged
+                && stopReason != HillClimbStopReason.TargetReached)
                 stopReason = HillClimbStopReason.ZBudgetReached;
 
             // ---- Return to global peak ----
@@ -388,6 +403,15 @@ public sealed class HillClimbEngine
 
         return improvedGlobalAny;
     }
+
+    /// <summary>
+    /// True once the global peak has reached the configured Sagnac target fraction
+    /// (<c>VPeak ≥ TargetSagnacV · TargetReachedFraction</c>). Disabled when
+    /// <see cref="HillClimbConfig.TargetSagnacV"/> is 0.
+    /// </summary>
+    private bool TargetReached()
+        => _config.TargetSagnacV > 0
+           && _vPeakGlobal >= _config.TargetSagnacV * _config.TargetReachedFraction;
 
     private bool TryUpdateBests(double v, double[] curPos, LoopBest loopBest)
     {

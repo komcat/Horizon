@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Horizon.Common;
 using Horizon.Engine;
+using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Scanning;
 
 namespace Horizon.Workflow;
@@ -21,8 +22,20 @@ internal sealed class StepDispatcher
     private readonly Func<string, string, NamedPosition?> _getPosition;
     private readonly Func<string, string, MotionPosition, double, Result> _savePosition;
     private readonly Func<string, Task<Result<VisionDetectResult>>> _runVisionProfile;
+    // Supplies the hill-climb signal source (Layer 3 SiPhOG). Returns null when no head
+    // has registered one — hillclimb.* steps then fail with a clear message rather than crash.
+    private readonly Func<IHillClimbFeedback?> _hillClimbFeedback;
     private readonly DeviceLinkStore _deviceLinks;
     private readonly Action<LogLevel, string> _log;
+
+    // The linked CTS of an in-flight hillclimb.start, so a hillclimb.stop step (which only
+    // runs from a parallel lane, since start blocks its own lane) can cancel it. Shared
+    // across parallel branches because they recurse on one dispatcher instance.
+    private CancellationTokenSource? _hillClimbCts;
+
+    /// <summary>Fixed lifetime Z+ ceiling (µm) — mirrors the Run-page Hill Climber panel.</summary>
+    private const double HillClimbCeilingUm = 98.0;
+    private const double HillClimbFloorUm = 1.0;
 
     public StepDispatcher(
         IHorizonEngine engine,
@@ -30,6 +43,7 @@ internal sealed class StepDispatcher
         Func<string, string, NamedPosition?> getPosition,
         Func<string, string, MotionPosition, double, Result> savePosition,
         Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
+        Func<IHillClimbFeedback?> hillClimbFeedback,
         DeviceLinkStore deviceLinks,
         Action<LogLevel, string> log)
     {
@@ -38,6 +52,7 @@ internal sealed class StepDispatcher
         _getPosition = getPosition;
         _savePosition = savePosition;
         _runVisionProfile = runVisionProfile;
+        _hillClimbFeedback = hillClimbFeedback;
         _deviceLinks = deviceLinks;
         _log = log;
     }
@@ -266,6 +281,109 @@ internal sealed class StepDispatcher
                 return result.FinalState == ScanState.Error
                     ? Result.Fail(ErrorCode.OperationFailed, result.Message)
                     : Result.Ok(result.Message);
+            }
+
+            case "hillclimb.setanchor":
+            {
+                // Anchors the lifetime Z+ budget at the device's current Z. Later
+                // hillclimb.start steps meter their budget against this anchor, so a
+                // second climb only gets the travel the first one didn't consume.
+                var r = await _engine.Motion.GetPositionAsync(step.Device);
+                if (!r.IsSuccess) return Result.Fail(r.Error, $"hillclimb.setAnchor: {r.Message}");
+                ctx.Set(HillClimbAnchorKey(step.Device), r.Value.Z);
+                _log(LogLevel.Info, $"Hill-climb anchor set on {step.Device}: Z={r.Value.Z:F4} mm (ceiling {HillClimbCeilingUm:0.0} µm).");
+                return Result.Ok();
+            }
+
+            case "hillclimb.clearanchor":
+            {
+                // Forgets the anchor — the next hillclimb.start gets the full ceiling.
+                ctx.Set(HillClimbAnchorKey(step.Device), string.Empty);
+                _log(LogLevel.Info, $"Hill-climb anchor cleared on {step.Device}.");
+                return Result.Ok();
+            }
+
+            case "hillclimb.stop":
+            {
+                // Cancels an in-flight climb (started in a parallel lane). No-op when idle.
+                if (_hillClimbCts is { } cts)
+                {
+                    cts.Cancel();
+                    _log(LogLevel.Info, "Hill-climb stop requested.");
+                }
+                else
+                {
+                    _log(LogLevel.Warning, "hillclimb.stop: no climb is running.");
+                }
+                return Result.Ok();
+            }
+
+            case "hillclimb.start":
+            {
+                // Runs the Layer 2 HillClimbEngine to completion, fed by the registered
+                // signal source. 'distance' is the lifetime ceiling (default 98 µm);
+                // when an anchor is set the per-run budget is what's left of it. 'targetV'
+                // (> 0) exits early at ≥90% of target. Results land in '{captureAs}_*'.
+                var feedback = _hillClimbFeedback();
+                if (feedback == null)
+                    return Result.Fail(ErrorCode.NotSupported,
+                        "hillclimb.start: no signal source registered (run from a head that wires SiPhOG feedback).");
+                if (!_engine.Motion.IsConnected(step.Device))
+                    return Result.Fail(ErrorCode.OperationFailed,
+                        $"hillclimb.start: device '{step.Device}' is not connected.");
+                if (!feedback.HasSample)
+                    return Result.Fail(ErrorCode.OperationFailed,
+                        $"hillclimb.start: no feedback samples yet ({feedback.Description}).");
+
+                double ceiling = Has(step, "distance") ? Num(step, "distance", ctx) : HillClimbCeilingUm;
+                double budget = ceiling;
+
+                var anchor = ctx.GetString(HillClimbAnchorKey(step.Device));
+                if (!string.IsNullOrWhiteSpace(anchor)
+                    && double.TryParse(anchor, NumberStyles.Float, CultureInfo.InvariantCulture, out var anchorZmm))
+                {
+                    var cur = await _engine.Motion.GetPositionAsync(step.Device);
+                    if (!cur.IsSuccess) return Result.Fail(cur.Error, $"hillclimb.start: {cur.Message}");
+                    double consumedUm = Math.Abs(cur.Value.Z - anchorZmm) * 1000.0;
+                    budget = ceiling - consumedUm;
+                    if (budget < HillClimbFloorUm)
+                        return Result.Fail(ErrorCode.OperationFailed,
+                            $"hillclimb.start: lifetime Z budget exhausted (used {consumedUm:0.0} of {ceiling:0.0} µm) — clear the anchor to reset.");
+                    _log(LogLevel.Info, $"Hill-climb budget on {step.Device}: {budget:0.0} µm remaining (used {consumedUm:0.0} of {ceiling:0.0}).");
+                }
+
+                var config = HillClimbConfig.Default;
+                config.ZBudget_um = Math.Clamp(budget, 1.0, 500.0);
+                config.TargetSagnacV = Has(step, "targetV") ? Num(step, "targetV", ctx) : 0.0;
+
+                var hc = new HillClimbEngine(_engine, _log);
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                _hillClimbCts = linked;
+                HillClimbResult hcResult;
+                try
+                {
+                    hcResult = await hc.RunAsync(step.Device, feedback, config, linked.Token).ConfigureAwait(false);
+                }
+                finally
+                {
+                    _hillClimbCts = null;
+                }
+
+                var captureAs = Has(step, "captureAs") ? Str(step, "captureAs", ctx) : "hillclimb";
+                ctx.Set($"{captureAs}_vstart", hcResult.VStart);
+                ctx.Set($"{captureAs}_vpeak", hcResult.VPeakGlobal);
+                ctx.Set($"{captureAs}_ztraveled", hcResult.ZTotalTraveled_um);
+                ctx.Set($"{captureAs}_loops", hcResult.LoopsExecuted);
+                ctx.Set($"{captureAs}_stop", hcResult.StopReason.ToString());
+
+                // A program-level abort (Stop button) cancelled our token → propagate so the
+                // run stops. A deliberate hillclimb.stop also yields Cancelled, but the program
+                // token is still live — treat that as a normal (branchable) outcome, not a fault.
+                if (ct.IsCancellationRequested) ct.ThrowIfCancellationRequested();
+
+                return hcResult.StopReason == HillClimbStopReason.Error
+                    ? Result.Fail(ErrorCode.OperationFailed, $"hillclimb.start: {hcResult.Message}")
+                    : Result.Ok(hcResult.Message);
             }
 
             case "camera.setexposure":
@@ -735,6 +853,10 @@ internal sealed class StepDispatcher
                 ? um / 1000.0 : 0.0)
             .Where(mm => mm > 0)
             .ToArray();
+
+    /// <summary>Context-variable key holding the hill-climb lifetime Z anchor (mm) for a device.</summary>
+    private static string HillClimbAnchorKey(string device)
+        => $"__hc_anchorz_{device.ToLowerInvariant()}";
 
     /// <summary>True if the step supplies a non-empty value for <paramref name="key"/>.</summary>
     private static bool Has(WorkflowStep step, string key)

@@ -1,6 +1,7 @@
 using Horizon.Common;
 using Horizon.Engine;
 using Horizon.Workflow.FauPreAlign;
+using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Recipe;
 using Horizon.Workflow.UCorrection;
 
@@ -131,6 +132,12 @@ public interface IProcessService
     /// and returns a unified key→value result plus a crop, or a failure.
     /// </summary>
     Task<Result<VisionDetectResult>> RunVisionProfileAsync(VisionProfile profile, CameraFrame frame);
+
+    /// <summary>
+    /// Registers the signal source for <c>hillclimb.start</c> steps (the engine has no
+    /// SiPhOG facet, so a Layer 3 head supplies one). Pass null to unregister.
+    /// </summary>
+    void SetHillClimbFeedbackProvider(Func<IHillClimbFeedback?>? provider);
 
     // --- Process programs (operate on the active product) ---
 

@@ -158,6 +158,25 @@ public static class OpCatalog
                 new ParamSpec("requireMatch", "Fail step if no match", ParamKind.Bool, "false"),
             }),
 
+        // ---- Align (Hill Climber) ----
+        // Anchors / clears the lifetime Z+ budget on the chosen motion device (hex). Once an
+        // anchor is set, each Start Hill Climb only gets the travel earlier climbs didn't use,
+        // so re-running can't silently spend the budget twice.
+        new("hillclimb.setAnchor", "Set Hill Anchor", "Align", DeviceKind.Motion, System.Array.Empty<ParamSpec>()),
+        new("hillclimb.clearAnchor", "Clear Hill Anchor", "Align", DeviceKind.Motion, System.Array.Empty<ParamSpec>()),
+        // Runs the SiPhOG-fed hill climb to completion on the device. 'distance' is the lifetime
+        // ceiling (µm); with an anchor set the run uses what's left of it. 'targetV' > 0 exits
+        // early at ≥90% of target. Results land in '{captureAs}_vpeak/_vstart/_ztraveled/_stop'.
+        new("hillclimb.start", "Start Hill Climb", "Align", DeviceKind.Motion,
+            new[]
+            {
+                new ParamSpec("distance", "Distance / ceiling (µm)", ParamKind.Number, "98"),
+                new ParamSpec("targetV", "Target Sagnac V (0 = disabled)", ParamKind.Number, "0"),
+                new ParamSpec("captureAs", "Capture prefix", ParamKind.Text, "hillclimb"),
+            }),
+        // Aborts a climb started in a parallel lane (Start blocks its own lane). No-op when idle.
+        new("hillclimb.stop", "Stop Hill Climb", "Align", DeviceKind.None, System.Array.Empty<ParamSpec>()),
+
         // ---- DUT ----
         // Prompts the operator (modal) for a serial number and opens the DUT record
         // for this run, so later dut.* steps record into it. Cancel fails the program.
