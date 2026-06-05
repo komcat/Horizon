@@ -3,6 +3,7 @@ using Horizon.Engine;
 using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Recipe;
+using Horizon.Workflow.Signals;
 using Horizon.Workflow.UCorrection;
 
 namespace Horizon.Workflow;
@@ -30,10 +31,12 @@ public sealed class ProcessService : IProcessService
     private (DutRecord Record, DutRun Run)? _interactiveDut;   // open operator-driven DUT run
     private (DutRecord Record, DutRun Run)? _runDut;   // the running program/deck's DUT (up-front serial, or set mid-run by dut.promptSerial)
     private Func<IHillClimbFeedback?>? _hillClimbFeedbackProvider;   // Layer 3 (SiPhOG) wires the hill-climb signal source
+    private readonly SignalRegistry _signals;   // built-in engine signals + any product source a head registers
 
     public ProcessService(IHorizonEngine engine)
     {
         _engine = engine;
+        _signals = new SignalRegistry(new EngineSignalSource(engine));
 
         // Load stores for a product that was already active from a prior run.
         var dir = _products.ActiveProductDir;
@@ -436,6 +439,21 @@ public sealed class ProcessService : IProcessService
     public void SetHillClimbFeedbackProvider(Func<IHillClimbFeedback?>? provider)
         => _hillClimbFeedbackProvider = provider;
 
+    /// <summary>
+    /// Registers a product-specific signal source (e.g. FAAM's SiPhOG) so its values
+    /// join the unified <c>signal.read</c> catalog. The built-in engine signals
+    /// (SMU / PSU / Measurement / TEC / Laser) are always present; this adds to them.
+    /// </summary>
+    public void AddSignalSource(ISignalSource source) => _signals.Add(source);
+
+    /// <summary>
+    /// The signals currently available to a <c>signal.read</c> block — the union of the
+    /// built-in engine catalog and every registered product source. The editor calls
+    /// this to fill the read-out drop-down; rebuilt on each call so newly-connected
+    /// hardware appears.
+    /// </summary>
+    public IReadOnlyList<SignalDescriptor> DescribeSignals() => _signals.Describe();
+
     public Task<Result<VisionDetectResult>> RunVisionProfileByNameAsync(string profileName)
     {
         if (_visionProfiles == null)
@@ -627,6 +645,7 @@ public sealed class ProcessService : IProcessService
             SaveNamedPosition,
             RunVisionProfileByNameAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
+            _signals,
             _deviceLinks,
             OperatorPrompt,
             // dut.promptSerial opens the DUT record mid-run into _runDut, which the
@@ -1091,6 +1110,7 @@ public sealed class ProcessService : IProcessService
             SaveNamedPosition,
             RunVisionProfileByNameAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
+            _signals,
             _deviceLinks,
             OperatorPrompt,
             (s, c) => SetRunDutSerial(s, deck.Name, c),

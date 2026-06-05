@@ -52,10 +52,24 @@
             <TextBlock Text="U CORRECTION" Foreground="{StaticResource Accent}" FontSize="15" FontWeight="Bold"
                        HorizontalAlignment="Center" Margin="0,2,0,8" />
 
-            <!-- Reference points: Move to + Save to (P1/F1 over P2/F2, matching the draft). -->
+            <!-- Reference points: Move to + Save to (P1/F1 over P2/F2, matching the draft).
+                 The whole group collapses via the header chevron. -->
             <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
                     CornerRadius="3" Padding="8" Margin="0,0,0,8">
                 <StackPanel>
+                    <!-- Collapsible header. -->
+                    <Button Click="OnToggleRefPoints" Cursor="Hand" Background="Transparent" BorderThickness="0"
+                            Padding="0" Margin="0,0,0,6" HorizontalContentAlignment="Stretch"
+                            ToolTip="Show / hide the reference-point buttons">
+                        <Grid>
+                            <TextBlock Text="Reference points" Foreground="{StaticResource Subtle}" FontSize="11"
+                                       FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock x:Name="RefPointsChevron" Text="▾" Foreground="{StaticResource Subtle}"
+                                       FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+
+                    <StackPanel x:Name="RefPointsBody">
                     <Grid Margin="0,0,0,4">
                         <TextBlock Text="Move to" Foreground="{StaticResource Subtle}" FontSize="11" VerticalAlignment="Center" />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
@@ -81,6 +95,7 @@
                         <Button x:Name="SaveP2" Style="{StaticResource SaveButton}" Content="P2" Tag="P2" Margin="0,0,2,0" Click="OnSave" />
                         <Button x:Name="SaveF2" Style="{StaticResource SaveButton}" Content="F2" Tag="F2" Margin="2,0,0,0" Click="OnSave" />
                     </UniformGrid>
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

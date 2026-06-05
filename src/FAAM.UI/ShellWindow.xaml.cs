@@ -7,6 +7,7 @@ using FAAM.UI.ViewModels.Sections;
 using FAAM.UI.Views;
 using Horizon.Common;
 using Horizon.Engine;
+using Horizon.Workflow;
 
 namespace FAAM.UI;
 
@@ -68,8 +69,10 @@ public partial class ShellWindow : Window
         _host.Session.Changed += UpdateIdentity;
         _host.Process.ProductChanged += OnProductChanged;
         _host.Process.ActiveSerialChanged += OnActiveSerialChanged;
+        _host.Activity.Changed += OnDutActivityChanged;   // gate Start DUT while an alignment/scan holds the hexapod
         UpdateIdentity();
         OnActiveSerialChanged(_host.Process.ActiveSerial);
+        RefreshDutButtons();
 
         ShowHome();
 
@@ -116,6 +119,7 @@ public partial class ShellWindow : Window
         LeaveCurrent();
         Header1Text.Text = "HOME";
         EngineHeader.Visibility = Visibility.Collapsed;
+        DutHeader.Visibility = Visibility.Collapsed;
         PageHost.Content = _home;
     }
 
@@ -125,6 +129,7 @@ public partial class ShellWindow : Window
         Header1Text.Text = "MACHINE";
         _machineVm.OnActivated();   // starts the ~5 Hz status sampler
         EngineHeader.Visibility = Visibility.Visible;
+        DutHeader.Visibility = Visibility.Collapsed;
         PageHost.Content = _machine;
     }
 
@@ -133,6 +138,8 @@ public partial class ShellWindow : Window
         LeaveCurrent();
         Header1Text.Text = "RUN";
         EngineHeader.Visibility = Visibility.Collapsed;
+        DutHeader.Visibility = Visibility.Visible;   // serial-bracketed DUT run lives in the header here
+        RefreshDutButtons();
         _run.Activate();   // starts grabbing + frame routing
         PageHost.Content = _run;
     }
@@ -142,6 +149,7 @@ public partial class ShellWindow : Window
         LeaveCurrent();
         Header1Text.Text = "ENGINEER";
         EngineHeader.Visibility = Visibility.Collapsed;
+        DutHeader.Visibility = Visibility.Collapsed;
         _engineer.Activate();
         PageHost.Content = _engineer;
     }
@@ -151,6 +159,7 @@ public partial class ShellWindow : Window
         LeaveCurrent();
         Header1Text.Text = "VISION PROFILE";
         EngineHeader.Visibility = Visibility.Collapsed;
+        DutHeader.Visibility = Visibility.Collapsed;
         _visionProfile.Activate();
         PageHost.Content = _visionProfile;
     }
@@ -295,6 +304,69 @@ public partial class ShellWindow : Window
         SerialRun.Text = serial ?? string.Empty;
         SerialChip.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    // --- DUT run lifecycle (header box; visible on the Run page) ---
+
+    private void OnDutActivityChanged()
+    {
+        if (Dispatcher.CheckAccess()) RefreshDutButtons();
+        else Dispatcher.BeginInvoke(RefreshDutButtons);
+    }
+
+    /// <summary>Reflects the open DUT run + alignment-busy state on the header DUT controls.</summary>
+    private void RefreshDutButtons()
+    {
+        bool hasRun = _host.Process.HasActiveDutRun;
+        bool busy = _host.Activity.AlignmentBusy;
+        if (hasRun && !string.IsNullOrEmpty(_host.Process.ActiveSerial))
+            SerialBox.Text = _host.Process.ActiveSerial;   // keep the box in sync with the active run
+        SerialBox.IsEnabled = !hasRun;
+        StartDutButton.IsEnabled = !busy && !hasRun;       // Start stays disabled while a run is open
+        PassButton.IsEnabled = hasRun;
+        FailButton.IsEnabled = hasRun;
+    }
+
+    private void OnStartDut(object sender, RoutedEventArgs e)
+    {
+        if (_host.Process.HasActiveDutRun) return;
+        if (_host.Activity.AlignmentBusy)
+        {
+            Log(LogLevel.Warning, "Start DUT blocked — an alignment/scan is running. Stop it first.");
+            return;
+        }
+
+        var serial = SerialBox.Text?.Trim() ?? string.Empty;
+        var r = _host.Process.BeginDutRun(serial, "FAU attach");
+        if (!r.IsSuccess) { Log(LogLevel.Warning, $"Start DUT failed: {r.Message}"); return; }
+
+        _run.StartProcessTimer();
+        RefreshDutButtons();
+    }
+
+    private void OnPass(object sender, RoutedEventArgs e) => EndDut(DutVerdict.Pass);
+
+    private void OnFail(object sender, RoutedEventArgs e) => EndDut(DutVerdict.Fail);
+
+    private void EndDut(DutVerdict verdict)
+    {
+        if (!_host.Process.HasActiveDutRun) return;
+
+        var serial = SerialBox.Text?.Trim() ?? string.Empty;
+        var r = _host.Process.EndDutRun(verdict);
+        Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
+            r.IsSuccess ? $"DUT '{serial}' → {verdict}." : $"End DUT failed: {r.Message}");
+
+        _run.StopProcessTimer();
+        RefreshDutButtons();
+        SerialBox.SelectAll();
+        SerialBox.Focus();
+    }
+
+    private void OnResults(object sender, RoutedEventArgs e)
+        => new DutResultsWindow(_host) { Owner = this }.Show();
+
+    private void Log(LogLevel level, string message)
+        => _host.Log.Add(new LogEntry(level, System.DateTimeOffset.Now, "DUT", message));
 
     /// <summary>Refreshes the product + operator chip and the login/logout button label.</summary>
     private void UpdateIdentity()

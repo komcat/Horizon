@@ -425,7 +425,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     /// <summary>Drops a palette op onto a lane's cell in the given stage.</summary>
     public void DropOp(OpSpec spec, LaneViewModel lane, int stageIndex)
     {
-        if (!lane.Accepts(spec.DeviceKind))
+        if (!lane.Accepts(spec))
         {
             Status = $"'{spec.Display}' can't run on the {lane.DomainLabel} lane.";
             return;
@@ -433,8 +433,8 @@ public sealed class TimelineEditorViewModel : ObservableObject
         if (stageIndex < 0 || stageIndex >= Stages.Count) return;
 
         var block = new ProcessBlockViewModel(_host, spec, ProcessBlockViewModel.NewId());
-        if (lane.Domain != LaneDomain.Control && lane.Cells.Count > stageIndex)
-            block.SelectedDevice = lane.Id;   // pin to this lane's device
+        if (spec.DeviceKind != DeviceKind.None && lane.Cells.Count > stageIndex)
+            block.SelectedDevice = lane.Id;   // pin to this lane's device (device ops only)
 
         lane.Cells[stageIndex].Blocks.Add(block);
         Track(block);
@@ -452,7 +452,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     /// </summary>
     public void MoveBlock(ProcessBlockViewModel block, LaneViewModel lane, int stageIndex)
     {
-        if (!lane.Accepts(block.Spec.DeviceKind))
+        if (!lane.Accepts(block.Spec))
         {
             Status = $"'{block.Display}' can't run on the {lane.DomainLabel} lane.";
             return;
@@ -465,8 +465,8 @@ public sealed class TimelineEditorViewModel : ObservableObject
 
         source.Blocks.Remove(block);
         target.Blocks.Add(block);
-        if (lane.Domain != LaneDomain.Control)
-            block.SelectedDevice = lane.Id;   // pin to the destination lane's device
+        if (block.Spec.DeviceKind != DeviceKind.None)
+            block.SelectedDevice = lane.Id;   // pin to the destination lane's device (device ops only)
 
         MarkDirty();
         SelectedCell = target;
@@ -572,9 +572,16 @@ public sealed class TimelineEditorViewModel : ObservableObject
         => _laneById.TryGetValue(id, out var lane) ? lane : _laneById[LaneBuilder.ControlLaneId];
 
     private LaneViewModel FindLaneForStep(WorkflowStep step)
-        => !string.IsNullOrEmpty(step.Device) && _laneById.TryGetValue(step.Device, out var lane)
-            ? lane
+    {
+        if (!string.IsNullOrEmpty(step.Device) && _laneById.TryGetValue(step.Device, out var lane))
+            return lane;
+        // Device-less: the read-out op routes to the Signal lane (by category), every
+        // other device-less op to the Control lane.
+        var spec = OpCatalog.Find(step.Op);
+        return spec != null && LaneViewModel.IsSignalOp(spec)
+            ? _laneById[LaneBuilder.SignalLaneId]
             : _laneById[LaneBuilder.ControlLaneId];
+    }
 
     /// <summary>
     /// Pre-flight validation — returns the first block that would no-op or error

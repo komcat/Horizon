@@ -59,6 +59,7 @@ public partial class FauPreAlignPanel : UserControl, IOperatorPrompt
         _targetAngleDeg = host.Settings.Current.FauPreAlignTargetAngleDeg;
         UpdateTargetText();
         host.Activity.Changed += OnActivityChanged;   // block Start/Move while a process step or other run holds the hexapod
+        SetRefPointsCollapsed(host.Settings.Current.FauPreAlignRefPointsCollapsed);   // restore last collapse state
         RefreshButtons();
     }
 
@@ -199,6 +200,25 @@ public partial class FauPreAlignPanel : UserControl, IOperatorPrompt
     }
 
     private void OnLockChanged(object sender, RoutedEventArgs e) => RefreshReferenceButtons();
+
+    /// <summary>Collapses / expands the reference-point group and persists the new state.</summary>
+    private void OnToggleRefPoints(object sender, RoutedEventArgs e)
+    {
+        bool collapsed = RefPointsBody.Visibility == Visibility.Visible;
+        SetRefPointsCollapsed(collapsed);
+        if (_host != null)
+        {
+            _host.Settings.Update(_host.Settings.Current with { FauPreAlignRefPointsCollapsed = collapsed });
+            _host.Settings.Save();
+        }
+    }
+
+    /// <summary>Applies the collapsed/expanded state to the reference-point group (no persist).</summary>
+    private void SetRefPointsCollapsed(bool collapsed)
+    {
+        RefPointsBody.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        RefPointsChevron.Text = collapsed ? "▸" : "▾";
+    }
 
     // --- Correction run ---
 

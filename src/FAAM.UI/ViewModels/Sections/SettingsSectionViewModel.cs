@@ -22,6 +22,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
     private string _hexVelocityPresetsText = "";
     private string _gantryVelocityPresetsText = "";
     private bool _showMainCameraOnStartup = true;
+    private bool _autoLoginOperator = true;
     private string _status = "—";
 
     public SettingsSectionViewModel(EngineHost host)
@@ -57,6 +58,13 @@ public sealed class SettingsSectionViewModel : ObservableObject
         set => SetField(ref _showMainCameraOnStartup, value);
     }
 
+    /// <summary>Sign in automatically as the first active operator at startup (skip the login prompt).</summary>
+    public bool AutoLoginOperator
+    {
+        get => _autoLoginOperator;
+        set => SetField(ref _autoLoginOperator, value);
+    }
+
     public string Status { get => _status; private set => SetField(ref _status, value); }
 
     public RelayCommand SaveCommand { get; }
@@ -74,6 +82,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
         HexVelocityPresetsText = string.Join(", ", s.HexVelocityPresets);
         GantryVelocityPresetsText = string.Join(", ", s.GantryVelocityPresets);
         ShowMainCameraOnStartup = s.ShowMainCameraOnStartup;
+        AutoLoginOperator = s.AutoLoginOperator;
     }
 
     private void Save()
@@ -91,6 +100,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
             HexVelocityPresets = ParsePresets(_hexVelocityPresetsText, current.HexVelocityPresets),
             GantryVelocityPresets = ParsePresets(_gantryVelocityPresetsText, current.GantryVelocityPresets),
             ShowMainCameraOnStartup = _showMainCameraOnStartup,
+            AutoLoginOperator = _autoLoginOperator,
         });
         try
         {

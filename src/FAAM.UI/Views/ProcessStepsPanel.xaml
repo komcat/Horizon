@@ -82,39 +82,6 @@
                        Foreground="{StaticResource Accent}" FontSize="15" FontWeight="Bold"
                        HorizontalAlignment="Center" Margin="0,2,0,8" />
 
-            <!-- DUT serial + run lifecycle — brackets a traceable, operator-stamped run. -->
-            <Border DockPanel.Dock="Top" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
-                    BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,8">
-                <StackPanel>
-                    <TextBlock Text="DUT Serial" Foreground="{StaticResource Subtle}" FontSize="11" Margin="0,0,0,3" />
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox x:Name="SerialBox" Grid.Column="0" Height="28" FontSize="13"
-                                 VerticalContentAlignment="Center" />
-                        <Button x:Name="StartDutButton" Grid.Column="1" Content="Start" Width="64" Height="28"
-                                Margin="6,0,0,0" Click="OnStartDut" />
-                    </Grid>
-                    <Grid Margin="0,6,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Button x:Name="PassButton" Grid.Column="0" Content="PASS" Height="30" Margin="0,0,4,0"
-                                Click="OnPass" Background="{StaticResource Ok}" Foreground="White"
-                                BorderThickness="0" FontWeight="Bold" IsEnabled="False" />
-                        <Button x:Name="FailButton" Grid.Column="1" Content="FAIL" Height="30" Margin="4,0,4,0"
-                                Click="OnFail" Background="{StaticResource Danger}" Foreground="White"
-                                BorderThickness="0" FontWeight="Bold" IsEnabled="False" />
-                        <Button x:Name="ResultsButton" Grid.Column="2" Content="Results" Height="30" Width="72"
-                                Click="OnResults" />
-                    </Grid>
-                </StackPanel>
-            </Border>
-
             <!-- Process timer — fixed green-on-black device readout. -->
             <Border DockPanel.Dock="Top" Background="Black" CornerRadius="3" Padding="0,6" Margin="0,0,0,8">
                 <TextBlock x:Name="TimerText" Text="Process: 00:00:00" Foreground="#33FF33"
@@ -122,26 +89,15 @@
                            HorizontalAlignment="Center" />
             </Border>
 
-            <!-- STOP — full width; halts all motion. -->
-            <Button DockPanel.Dock="Top" Content="STOP" Click="OnStop" Height="44" Margin="0,0,0,8"
-                    Background="{StaticResource Danger}" Foreground="White" BorderThickness="0"
-                    FontSize="16" FontWeight="Bold" Cursor="Hand" />
-
-            <!-- Teach toggle + Properties — a row beneath STOP. -->
-            <Grid DockPanel.Dock="Top" Height="40" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <ToggleButton Grid.Column="0" x:Name="TeachButton" Style="{StaticResource TeachToggle}" Margin="0,0,4,0"
-                              ToolTip="Teach mode — when ON, clicking a step teaches its current position; when OFF, clicking runs the step">
-                    <Image x:Name="TeachIcon" Stretch="Uniform" Margin="6" />
-                </ToggleButton>
-                <Button Grid.Column="1" x:Name="PropertiesButton" Style="{StaticResource IconButton}" Click="OnProperties" Margin="4,0,0,0"
-                        ToolTip="Step properties — IO pin names, debounce / wait delays, camera exposure, etc. (coming soon)">
-                    <Image x:Name="PropertiesIcon" Stretch="Uniform" Margin="6" />
-                </Button>
-            </Grid>
+            <!-- STOP — halts all motion — with the Auto-chain toggle beside it. -->
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <CheckBox x:Name="AutoChainCheck" DockPanel.Dock="Right" Content="Auto-chain"
+                          VerticalAlignment="Center" Margin="10,0,2,0" Foreground="{StaticResource Text}"
+                          ToolTip="When on, running a deck step auto-continues into the following deck entries whose transition is Auto (after each entry's delay). Stops at a manual entry (Auto off), an entry with a condition, a failed program, the end of the deck, or STOP. Default off." />
+                <Button Content="STOP" Click="OnStop" Height="44"
+                        Background="{StaticResource Danger}" Foreground="White" BorderThickness="0"
+                        FontSize="16" FontWeight="Bold" Cursor="Hand" />
+            </DockPanel>
 
             <!-- Deck selector — its "Run page" programs become the step buttons below. -->
             <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">

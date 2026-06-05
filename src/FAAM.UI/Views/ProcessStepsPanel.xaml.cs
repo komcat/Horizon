@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using FAAM.UI.Process;
 using Horizon.Common;
@@ -53,6 +52,7 @@ public partial class ProcessStepsPanel : UserControl
     private bool _running;
     private bool _alignmentBusy;                // an alignment/scan is driving the hexapod — process steps are blocked
     private CancellationTokenSource? _runCts;   // cancels the in-flight step sequence on STOP
+    private WorkflowDeck? _deck;                 // selected deck (null = built-in steps) — drives Auto-chain
 
     public ProcessStepsPanel()
     {
@@ -60,15 +60,6 @@ public partial class ProcessStepsPanel : UserControl
         StepList.ItemsSource = DefaultSteps();
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += (_, _) => UpdateTimer();
-
-        // Load the button icons; fall back to text if an asset isn't present yet.
-        // pack:// URIs reference embedded app resources, not environment paths.
-#pragma warning disable S1075
-        try { TeachIcon.Source = new BitmapImage(new Uri("pack://application:,,,/assets/teach.png")); }
-        catch { TeachButton.Content = "Teach"; }
-        try { PropertiesIcon.Source = new BitmapImage(new Uri("pack://application:,,,/assets/properties.png")); }
-        catch { PropertiesButton.Content = "Props"; }
-#pragma warning restore S1075
     }
 
     /// <summary>Supplies the engine host (for the step sequences, teach, STOP, logging).</summary>
@@ -119,6 +110,7 @@ public partial class ProcessStepsPanel : UserControl
 
         if (DeckSelector.SelectedItem is not string name)
         {
+            _deck = null;
             StepList.ItemsSource = DefaultSteps();
             TitleText.Text = "FAU ATTACH STEPS";
             return;
@@ -127,17 +119,22 @@ public partial class ProcessStepsPanel : UserControl
         var loaded = _host.Process.LoadDeck(name);   // also makes it the active deck
         if (!loaded.IsSuccess) { Log(LogLevel.Warning, loaded.Message); return; }
 
+        // Build a button per "Run page" entry, but stamp each with its real index in the
+        // deck so Auto-chain can walk the following entries (including ones with no button).
+        var deck = loaded.Value;
         var steps = new List<ProcessStep>();
-        foreach (var entry in loaded.Value.Entries)
+        for (int idx = 0; idx < deck.Entries.Count; idx++)
         {
+            var entry = deck.Entries[idx];
             if (!entry.ShowInRun || string.IsNullOrWhiteSpace(entry.Program)) continue;
             var n = steps.Count + 1;
-            steps.Add(new ProcessStep(n - 1, $"{n}. {entry.Program}", string.Empty, null, entry.Program));
+            steps.Add(new ProcessStep(n - 1, $"{n}. {entry.Program}", string.Empty, null, entry.Program, idx));
         }
 
+        _deck = deck;
         StepList.ItemsSource = steps;
-        TitleText.Text = string.IsNullOrWhiteSpace(loaded.Value.Name)
-            ? "PROCESS DECK" : loaded.Value.Name.ToUpperInvariant();
+        TitleText.Text = string.IsNullOrWhiteSpace(deck.Name)
+            ? "PROCESS DECK" : deck.Name.ToUpperInvariant();
     }
 
     /// <summary>
@@ -165,14 +162,11 @@ public partial class ProcessStepsPanel : UserControl
         else Dispatcher.BeginInvoke(() => SetAlignmentBusy(_host?.Activity.AlignmentBusy ?? false));
     }
 
-    /// <summary>Greys out the process step list + DUT Start while a scan/alignment is busy.</summary>
+    /// <summary>Greys out the process step list while a scan/alignment is busy.</summary>
     private void SetAlignmentBusy(bool busy)
     {
         _alignmentBusy = busy;
         StepList.IsEnabled = !busy;
-        TeachButton.IsEnabled = !busy;
-        // Respect the DUT lifecycle: Start stays disabled while a run is open even when not busy.
-        StartDutButton.IsEnabled = !busy && !(_host?.Process.HasActiveDutRun ?? false);
     }
 
     /// <summary>
@@ -209,17 +203,10 @@ public partial class ProcessStepsPanel : UserControl
 
         // Block starting a step while a safety flag is raised (e.g. E-Stop pressed and
         // not yet acknowledged) — otherwise the operator could drive straight back into
-        // the hazard. Teach (pose capture, no motion) is still allowed.
-        if (TeachButton.IsChecked != true && (_host?.Engine.Safety.GetState().FlagRaised ?? false))
+        // the hazard.
+        if (_host?.Engine.Safety.GetState().FlagRaised ?? false)
         {
             Log(LogLevel.Warning, $"Step '{step.Label}' blocked — safety flag raised. Acknowledge first.");
-            return;
-        }
-
-        // Teach mode (toggle ON) records the position; Run mode (OFF) executes the step.
-        if (TeachButton.IsChecked == true)
-        {
-            _ = TeachStepAsync(step);
             return;
         }
 
@@ -257,62 +244,17 @@ public partial class ProcessStepsPanel : UserControl
         finally { token.Dispose(); }
     }
 
-    // --- DUT run lifecycle (serial-bracketed, operator-stamped via Layer 2) ---
+    // --- Process timer (driven by step clicks here and by the DUT run in the shell header) ---
 
-    private void OnStartDut(object sender, RoutedEventArgs e)
+    /// <summary>Starts the process timer if it isn't already running. Called on a step click
+    /// and by the shell when a DUT run begins.</summary>
+    public void StartProcessTimer()
     {
-        if (_host == null || _host.Process.HasActiveDutRun)
-            return;
-        if (_alignmentBusy)
-        {
-            Log(LogLevel.Warning, "Start DUT blocked — an alignment/scan is running. Stop it first.");
-            return;
-        }
-
-        var serial = SerialBox.Text?.Trim() ?? string.Empty;
-        var r = _host.Process.BeginDutRun(serial, "FAU attach");
-        if (!r.IsSuccess)
-        {
-            Log(LogLevel.Warning, $"Start DUT failed: {r.Message}");
-            return;
-        }
-
-        SerialBox.IsEnabled = false;
-        StartDutButton.IsEnabled = false;
-        PassButton.IsEnabled = true;
-        FailButton.IsEnabled = true;
-        if (!_running)
-            StartTimer();
+        if (!_running) StartTimer();
     }
 
-    private void OnPass(object sender, RoutedEventArgs e) => EndDut(DutVerdict.Pass);
-
-    private void OnFail(object sender, RoutedEventArgs e) => EndDut(DutVerdict.Fail);
-
-    private void EndDut(DutVerdict verdict)
-    {
-        if (_host == null || !_host.Process.HasActiveDutRun)
-            return;
-
-        var r = _host.Process.EndDutRun(verdict);
-        Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
-            r.IsSuccess ? $"DUT '{SerialBox.Text.Trim()}' → {verdict}." : $"End DUT failed: {r.Message}");
-
-        StopTimer();
-        SerialBox.IsEnabled = true;
-        StartDutButton.IsEnabled = true;
-        PassButton.IsEnabled = false;
-        FailButton.IsEnabled = false;
-        SerialBox.SelectAll();
-        SerialBox.Focus();
-    }
-
-    private void OnResults(object sender, RoutedEventArgs e)
-    {
-        if (_host == null)
-            return;
-        new DutResultsWindow(_host) { Owner = Window.GetWindow(this) }.Show();
-    }
+    /// <summary>Stops the process timer. Called by the shell when a DUT run ends.</summary>
+    public void StopProcessTimer() => StopTimer();
 
     /// <summary>
     /// Runs a step by clicking its button. Prefers the step's authored
@@ -337,7 +279,13 @@ public partial class ProcessStepsPanel : UserControl
                 if (loaded.IsSuccess)
                 {
                     Log(LogLevel.Info, $"Running program '{step.Program}' for step '{step.Label}'.");
-                    await _host.Process.RunAsync(loaded.Value, serial: null, ct);
+                    var result = await _host.Process.RunAsync(loaded.Value, serial: null, ct);
+
+                    // Auto-chain (opt-in via the checkbox by STOP): once this deck step's
+                    // program succeeds, continue into the following Auto deck entries.
+                    if (result.IsSuccess && AutoChainCheck.IsChecked == true
+                        && _deck != null && step.DeckIndex >= 0)
+                        await AutoChainFromAsync(step.DeckIndex, ct);
                     return;
                 }
                 Log(LogLevel.Warning,
@@ -354,6 +302,74 @@ public partial class ProcessStepsPanel : UserControl
         {
             Log(LogLevel.Error, $"Step '{step.Label}' error: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Auto-chain (opt-in, off by default): after the clicked deck step's program runs,
+    /// continue into the following deck entries whose transition is <c>Auto</c>, waiting
+    /// each entry's <c>DelaySeconds</c> before running it. The walk stops at the first
+    /// entry that is manual (<c>Auto</c> off — the operator clicks it to resume), an
+    /// entry that carries a <c>Condition</c> (the Run page can't evaluate it — each
+    /// step here runs in its own context, so it's treated as a manual stop rather than
+    /// bypassing a gate), a program that fails to load or run, the end of the deck, or
+    /// STOP (which cancels <paramref name="ct"/>). Disabled entries are skipped, exactly
+    /// as the deck runner skips them. Only the chained programs run — <c>ShowInRun</c>
+    /// has no effect here (an entry without a Run-page button still runs in the chain).
+    /// </summary>
+    private async Task AutoChainFromAsync(int fromIndex, CancellationToken ct)
+    {
+        if (_host == null || _deck == null) return;
+        var entries = _deck.Entries;
+
+        for (int i = fromIndex + 1; i < entries.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var entry = entries[i];
+            var label = string.IsNullOrEmpty(entry.Program) ? $"entry {i + 1}" : entry.Program;
+
+            if (!entry.Enabled)
+            {
+                Log(LogLevel.Info, $"Auto-chain: '{label}' disabled — skipped.");
+                continue;
+            }
+
+            if (!entry.Auto)
+            {
+                Log(LogLevel.Info, $"Auto-chain stopped before '{label}' — manual transition (Auto off). Click it to continue.");
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(entry.Condition))
+            {
+                Log(LogLevel.Info,
+                    $"Auto-chain stopped before '{label}' — it has a condition ('{entry.Condition}'), which the Run page can't evaluate. Click it to continue.");
+                return;
+            }
+
+            if (entry.DelaySeconds > 0)
+            {
+                Log(LogLevel.Info, $"Auto-chain: waiting {entry.DelaySeconds:0.##}s before '{label}'.");
+                await Task.Delay(TimeSpan.FromSeconds(entry.DelaySeconds), ct);
+            }
+
+            var loaded = _host.Process.LoadProgram(entry.Program);
+            if (!loaded.IsSuccess)
+            {
+                Log(LogLevel.Warning, $"Auto-chain stopped — program '{label}' not found: {loaded.Message}.");
+                return;
+            }
+
+            Log(LogLevel.Info, $"Auto-chain: running '{label}'.");
+            _host.Process.RecordDutValue($"chain_{i}", label);
+            var result = await _host.Process.RunAsync(loaded.Value, serial: null, ct);
+            if (!result.IsSuccess)
+            {
+                Log(LogLevel.Error, $"Auto-chain stopped — '{label}' failed: {result.Message}.");
+                return;
+            }
+        }
+
+        Log(LogLevel.Info, "Auto-chain complete — end of deck.");
     }
 
     /// <summary>
@@ -586,11 +602,6 @@ public partial class ProcessStepsPanel : UserControl
         }
     }
 
-    // TODO (Properties editor): per-step NON-motion settings — IO pin names,
-    // inbound/outbound (debounce) delays, wait/dwell times, camera exposure, etc.
-    // This button is a placeholder; wire the editor here later.
-    private void OnProperties(object sender, RoutedEventArgs e)
-        => Log(LogLevel.Info, "Step properties editor — not implemented yet (IO names, debounce/wait delays, camera exposure…).");
 
     /// <summary>
     /// Raised when a step's "Inspect Motion" context-menu item is chosen. Carries
@@ -675,28 +686,6 @@ public partial class ProcessStepsPanel : UserControl
     private static string Fmt(double? v) => v.HasValue ? v.Value.ToString("0.###") : "—";
 
     /// <summary>Captures the device's current pose under the step's teach-target position name (Teach mode) and persists it.</summary>
-    private async Task TeachStepAsync(ProcessStep step)
-    {
-        if (_host == null)
-            return;
-
-        if (string.IsNullOrEmpty(step.Position))
-        {
-            Log(LogLevel.Warning, $"'{step.Label}' has no teachable position (it does not move).");
-            return;
-        }
-
-        // Teach through Layer 2 — captures the device's current pose under the
-        // position name in the active product, preserving its existing velocity
-        // and camera / exposure settings.
-        var velocity = _host.Process.GetPosition(step.Device, step.Position)?.Velocity ?? 0;
-        var r = await _host.Process.TeachPositionAsync(step.Device, step.Position, velocity);
-        Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
-            r.IsSuccess
-                ? $"Taught '{step.Position}' @ {step.Device}."
-                : $"Teach '{step.Position}' failed: {r.Message}");
-    }
-
     // --- Step-sequence primitives (shared by the RunStepAsync per-step methods) ---
 
     /// <summary>Operator Yes/No gate — faithful to the legacy confirmation dialogs.</summary>
@@ -713,7 +702,7 @@ public partial class ProcessStepsPanel : UserControl
         var r = await _host!.Process.MoveToNamedPositionAsync(device, position, ct);
         Log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning,
             r.IsSuccess ? $"Move {device} → {position}."
-                        : $"Move {device} → {position} failed: {r.Message} (teach it via Teach mode or Inspect Motion).");
+                        : $"Move {device} → {position} failed: {r.Message} (teach it via Inspect Motion).");
         return r.IsSuccess;
     }
 
@@ -839,9 +828,11 @@ public partial class ProcessStepsPanel : UserControl
 /// <c>Device</c> its teach target lives on, an optional teach-target position name
 /// (<c>Position</c>, null = no teachable pose, e.g. the UV dwell steps), and the
 /// name of the authored <c>.hwf</c> process the button runs (<c>Program</c>,
-/// resolved as <c>processes\{Program}.hwf</c> in the active product).
+/// resolved as <c>processes\{Program}.hwf</c> in the active product), and — for a
+/// deck-derived step — its index in the deck's entry list (<c>DeckIndex</c>, -1 for
+/// the built-in steps), which Auto-chain uses to walk the following entries.
 /// </summary>
-public sealed record ProcessStep(int Index, string Label, string Device, string? Position = null, string? Program = null);
+public sealed record ProcessStep(int Index, string Label, string Device, string? Position = null, string? Program = null, int DeckIndex = -1);
 
 /// <summary>One row of the motion inspector — a process position and its recall settings (values pre-formatted for display).</summary>
 public sealed record MotionInspectRow(

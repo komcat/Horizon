@@ -119,13 +119,13 @@ public partial class TimelineEditorView : UserControl
         CellViewModel? target = null;
         if (sender is FrameworkElement { DataContext: CellViewModel cell })
         {
-            if (e.Data.GetData(typeof(OpSpec)) is OpSpec spec && cell.Lane.Accepts(spec.DeviceKind))
+            if (e.Data.GetData(typeof(OpSpec)) is OpSpec spec && cell.Lane.Accepts(spec))
             {
                 effects = DragDropEffects.Copy;
                 target = cell;
             }
             else if (e.Data.GetData(typeof(ProcessBlockViewModel)) is ProcessBlockViewModel block
-                     && cell.Lane.Accepts(block.Spec.DeviceKind))
+                     && cell.Lane.Accepts(block.Spec))
             {
                 effects = DragDropEffects.Move;
                 target = cell;

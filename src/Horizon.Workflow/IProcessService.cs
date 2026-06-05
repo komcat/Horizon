@@ -3,6 +3,7 @@ using Horizon.Engine;
 using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Recipe;
+using Horizon.Workflow.Signals;
 using Horizon.Workflow.UCorrection;
 
 namespace Horizon.Workflow;
@@ -138,6 +139,20 @@ public interface IProcessService
     /// SiPhOG facet, so a Layer 3 head supplies one). Pass null to unregister.
     /// </summary>
     void SetHillClimbFeedbackProvider(Func<IHillClimbFeedback?>? provider);
+
+    /// <summary>
+    /// Registers a product-specific signal source (e.g. FAAM's SiPhOG) so its values
+    /// join the unified <c>signal.read</c> catalog alongside the built-in engine
+    /// signals (SMU / PSU / Measurement / TEC / Laser).
+    /// </summary>
+    void AddSignalSource(ISignalSource source);
+
+    /// <summary>
+    /// The signals currently available to a <c>signal.read</c> block — built-in engine
+    /// catalog plus every registered product source. The editor calls this to populate
+    /// the read-out drop-down.
+    /// </summary>
+    IReadOnlyList<SignalDescriptor> DescribeSignals();
 
     // --- Process programs (operate on the active product) ---
 

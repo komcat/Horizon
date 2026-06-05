@@ -37,7 +37,6 @@ public partial class JogPanel : UserControl
     private readonly JogTransformStore _transforms = new();
     private readonly ToggleButton[] _velButtons;
     private readonly double[] _velValues = new double[6];
-    private readonly List<ToggleButton> _stepButtons = new();
     private readonly List<ToggleButton> _thetaButtons = new();
     private readonly DispatcherTimer _poll;
 
@@ -47,6 +46,7 @@ public partial class JogPanel : UserControl
     /// <summary>Last-known camera exposure — gain / frame-rate preserved across edits.</summary>
     private CameraExposure _camExposure = new(0, 0, false, false, 0);
 
+    private int _stepIndex = DefaultStepIndex;
     private double _stepMm = StepSizes[DefaultStepIndex].Mm;
     private double _thetaStep = ThetaSteps[0].Step;   // U/V/W jog step (separate from the linear X/Y/Z step)
     private EngineHost? _host;
@@ -72,7 +72,7 @@ public partial class JogPanel : UserControl
     {
         InitializeComponent();
         _velButtons = new[] { Vel0, Vel1, Vel2, Vel3, Vel4, Vel5 };
-        BuildSteps();
+        UpdateStepDisplay();
         BuildThetaSteps();
         BuildExposurePresets();
         _poll = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
@@ -138,18 +138,23 @@ public partial class JogPanel : UserControl
             : "Keyboard jog off.");
     }
 
-    /// <summary>Selects the step preset <paramref name="delta"/> positions away (−1 finer, +1 coarser).</summary>
+    /// <summary>Moves the step selection <paramref name="delta"/> positions away (−1 finer, +1 coarser).</summary>
     private void StepBy(int delta)
     {
-        int cur = _stepButtons.FindIndex(b => b.IsChecked == true);
-        if (cur < 0) cur = DefaultStepIndex;
-        int next = Math.Clamp(cur + delta, 0, _stepButtons.Count - 1);
-        if (next == cur) return;
-        foreach (var b in _stepButtons) b.IsChecked = false;
-        _stepButtons[next].IsChecked = true;
-        _stepMm = (double)_stepButtons[next].Tag!;
-        SetStatus($"Step {_stepButtons[next].Content}");
+        int next = Math.Clamp(_stepIndex + delta, 0, StepSizes.Length - 1);
+        if (next == _stepIndex) return;
+        _stepIndex = next;
+        _stepMm = StepSizes[next].Mm;
+        UpdateStepDisplay();
+        SetStatus($"Step {StepSizes[next].Label}");
     }
+
+    /// <summary>Refreshes the large step-size readout to the current selection.</summary>
+    private void UpdateStepDisplay() => StepDisplay.Text = StepSizes[_stepIndex].Label;
+
+    private void OnStepCoarser(object sender, MouseButtonEventArgs e) => StepBy(+1);
+    private void OnStepFiner(object sender, MouseButtonEventArgs e) => StepBy(-1);
+    private void OnStepWheel(object sender, MouseWheelEventArgs e) => StepBy(e.Delta > 0 ? +1 : -1);
 
     /// <summary>Selects the next connected motion device (wraps around).</summary>
     private void CycleDevice()
@@ -160,30 +165,9 @@ public partial class JogPanel : UserControl
         buttons[(cur + 1) % buttons.Count].IsChecked = true;   // fires OnDeviceChecked (single-select)
     }
 
-    private void BuildSteps()
-    {
-        var style = (Style)FindResource("StepBtn");
-        foreach (var (label, mm) in StepSizes)
-        {
-            var tb = new ToggleButton { Content = label, Tag = mm, Style = style };
-            tb.Click += OnStep;
-            _stepButtons.Add(tb);
-            StepList.Children.Add(tb);
-        }
-        _stepButtons[DefaultStepIndex].IsChecked = true;   // 10µm default
-    }
-
-    private void OnStep(object sender, RoutedEventArgs e)
-    {
-        if (sender is not ToggleButton tb || tb.Tag is not double mm) return;
-        foreach (var b in _stepButtons) b.IsChecked = false;
-        tb.IsChecked = true;
-        _stepMm = mm;
-    }
-
     private void BuildThetaSteps()
     {
-        var style = (Style)FindResource("StepBtn");
+        var style = (Style)FindResource("ThetaStepBtn");
         foreach (var (label, step) in ThetaSteps)
         {
             var tb = new ToggleButton { Content = label, Tag = step, Style = style };
@@ -266,8 +250,10 @@ public partial class JogPanel : UserControl
             {
                 Content = dev,
                 Tag = dev,
-                Margin = new Thickness(0, 0, 0, 4),
+                Margin = new Thickness(2),
                 Padding = new Thickness(6),
+                FontSize = 15,
+                FontWeight = FontWeights.Bold,
                 Cursor = Cursors.Hand,
             };
             tb.Checked += OnDeviceChecked;

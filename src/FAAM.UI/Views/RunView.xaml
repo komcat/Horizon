@@ -43,22 +43,23 @@
         </Style>
     </UserControl.Resources>
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
-        <!-- Main area: left content + camera column. -->
-        <Grid Grid.Row="0">
+        <!-- Main area: left content + camera column. The Log sits under the LEFT column
+             only (Row 1, Col 0); the camera column spans both rows so its feed / zoom /
+             chart area keeps the vertical space beside the log. -->
+        <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <!-- Auto so the camera column shrinks to the (aspect-correct) feed
                      width instead of pillar-boxing it; the left column takes the rest. -->
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
             <!-- Left column — process steps panel + U-correction panel + SiPhOG client panel. -->
-            <Grid Grid.Column="0" Margin="0,0,8,0">
+            <Grid Grid.Row="0" Grid.Column="0" Margin="0,0,8,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -101,16 +102,17 @@
                 </Grid>
             </Grid>
 
-            <!-- Camera column. -->
-            <Grid Grid.Column="1">
+            <!-- Camera column — spans both rows so it extends down beside the log.
+                 Row 0 = Zoom2x + chart + thumbnails (on top); Row 1 = main live feed. -->
+            <Grid Grid.Row="0" Grid.RowSpan="2" Grid.Column="1">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
                 <!-- Main live feed with crosshair + center-ROI overlay. Clicking the
                      surface while MoveClick is armed measures (and jogs) — see code-behind. -->
-                <Border Grid.Row="0" Background="{StaticResource VideoBg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                <Border Grid.Row="1" Background="{StaticResource VideoBg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
                         CornerRadius="3" MouseLeftButtonDown="OnFeedClick"
                         MouseMove="OnFeedMouseMove" MouseLeave="OnFeedMouseLeave"
                         HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -163,14 +165,14 @@
                     </Grid>
                 </Border>
 
-                <!-- Zoom2x inset + SAG/target chart + thumbnail strip. -->
-                <Grid Grid.Row="1" Margin="0,8,0,0">
+                <!-- Zoom2x inset + SAG/target chart + thumbnail strip (sits above the feed). -->
+                <Grid Grid.Row="0" Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Border Grid.Column="0" Width="200" Height="200"
+                    <Border Grid.Column="0" Width="300" Height="300"
                             Background="{StaticResource VideoBg}" BorderBrush="{StaticResource Accent}" BorderThickness="1"
                             CornerRadius="3" MouseLeftButtonDown="OnZoomClick"
                             MouseMove="OnZoomMouseMove" MouseLeave="OnZoomMouseLeave">
@@ -198,8 +200,8 @@
                         </Grid>
                     </Border>
 
-                    <!-- SAG / target chart — moved here to sit beside the Zoom2x inset. -->
-                    <v:SiphogChart Grid.Column="1" x:Name="SiphogChartControl" Height="200" Margin="8,0,0,0" />
+                    <!-- SAG / target chart — sits beside the Zoom2x inset (matched height). -->
+                    <v:SiphogChart Grid.Column="1" x:Name="SiphogChartControl" Height="300" Margin="8,0,0,0" />
 
                     <ScrollViewer Grid.Column="2" Margin="8,0,0,0"
                                   HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
@@ -253,11 +255,11 @@
                     </DockPanel>
                 </Border>
             </Grid>
-        </Grid>
 
-        <!-- Log area. -->
-        <Border Grid.Row="1" Height="120" Margin="0,8,0,0"
-                Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3">
+            <!-- Log area — under the left column only (Row 1, Col 0); the camera column
+                 (RowSpan 2) keeps the vertical space to its right. -->
+            <Border Grid.Row="1" Grid.Column="0" Height="120" Margin="0,8,8,0"
+                    Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -271,6 +273,7 @@
                          VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap"
                          Margin="6,0,2,4" />
             </Grid>
-        </Border>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

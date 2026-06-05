@@ -17,6 +17,13 @@ public sealed record AppSettings
     /// </summary>
     public string StationId { get; init; } = string.Empty;
 
+    /// <summary>
+    /// When true (default), the app signs in automatically as the first active operator
+    /// at startup, skipping the login prompt. Disable to require an explicit operator
+    /// login (PIN) before the shell opens.
+    /// </summary>
+    public bool AutoLoginOperator { get; init; } = true;
+
     // --- MoveClick (FAAM Run page): click the live image to jog the stage by the
     //     real-world offset from the crosshair centre to the click point. ---
 
@@ -58,6 +65,14 @@ public sealed record AppSettings
 
     /// <summary>Angle (degrees) of the FAU pre-align target offset vector.</summary>
     public double FauPreAlignTargetAngleDeg { get; init; } = 0;
+
+    // --- Run-page alignment panels: collapse state of the reference-point group ---
+
+    /// <summary>True if the U-correction panel's reference-point (Move/Save) group is collapsed.</summary>
+    public bool UCorrectionRefPointsCollapsed { get; init; }
+
+    /// <summary>True if the FAU pre-align panel's reference-point (Move/Save) group is collapsed.</summary>
+    public bool FauPreAlignRefPointsCollapsed { get; init; }
 
     // --- Camera ---
 

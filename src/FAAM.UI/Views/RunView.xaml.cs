@@ -71,7 +71,17 @@ public partial class RunView : UserControl
 
         // Make that same SiPhOG signal available to hillclimb.* workflow steps (Engineer page).
         host.Process.SetHillClimbFeedbackProvider(() => new SiphogHillClimbFeedback(SiphogPanelControl.Client));
+
+        // Publish the live SiPhOG frame into the unified signal.read catalog so Engineer
+        // blocks can pull siphog.* values (alongside the built-in SMU/PSU/Measurement/…).
+        host.Process.AddSignalSource(new SiphogSignalSource(SiphogPanelControl.Client));
     }
+
+    /// <summary>Starts the process timer — called by the shell header when a DUT run begins.</summary>
+    public void StartProcessTimer() => StepsPanel.StartProcessTimer();
+
+    /// <summary>Stops the process timer — called by the shell header when a DUT run ends.</summary>
+    public void StopProcessTimer() => StepsPanel.StopProcessTimer();
 
     /// <summary>
     /// Show/hide the SiPhOG widget slot. Hiding collapses it (freeing the area for

@@ -57,6 +57,11 @@ public sealed class ProcessBlockViewModel : ObservableObject
                 EditPositionCommand.RaiseCanExecuteChanged();
             };
 
+        // Signal options are device-independent (the key carries its own device), so
+        // fill them once here — the device-change path below never fires for a
+        // device-less op like signal.read.
+        FillSignalOptions();
+
         // Default the device to the first of the right kind, which also seeds
         // position options + the preview through the setter.
         SelectedDevice = DeviceOptions.Count > 0 ? DeviceOptions[0] : null;
@@ -243,6 +248,20 @@ public sealed class ProcessBlockViewModel : ObservableObject
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// Fills any <see cref="ParamKind.SignalName"/> combo with the unified signal
+    /// catalog keys (built-in engine signals + registered product sources such as
+    /// SiPhOG). Device-independent — the key itself carries the device, so this is
+    /// resolved once at construction, not on device change.
+    /// </summary>
+    private void FillSignalOptions()
+    {
+        var keys = _host.Process.DescribeSignals().Select(d => d.Key).ToList();
+        foreach (var p in Params)
+            if (p.Kind == ParamKind.SignalName)
+                p.SetOptions(keys);
     }
 
     /// <summary>Call when the chosen position name changes — refreshes the recall preview.</summary>

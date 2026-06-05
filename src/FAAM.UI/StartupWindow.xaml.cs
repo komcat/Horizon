@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text;
 using System.Windows;
 
@@ -41,13 +42,26 @@ public partial class StartupWindow : Window
 
     private void HandOffToShell()
     {
+        // Auto-login (default on): sign in as the first active operator and skip the
+        // prompt, so unattended starts go straight to the shell. Disable in Settings to
+        // force an explicit, PIN-verified login.
+        if (_host.Settings.Current.AutoLoginOperator
+            && !_host.Session.IsLoggedIn
+            && _host.Users.ActiveUsers.FirstOrDefault() is { } op)
+        {
+            _host.Session.LogIn(op);
+        }
+
         // Hardware is up; require an operator login before the shell so every DUT
         // run is attributable. Cancelling the first login exits the app.
-        var login = new LoginWindow(_host) { Owner = this };
-        if (login.ShowDialog() != true)
+        if (!_host.Session.IsLoggedIn)
         {
-            Application.Current.Shutdown();
-            return;
+            var login = new LoginWindow(_host) { Owner = this };
+            if (login.ShowDialog() != true)
+            {
+                Application.Current.Shutdown();
+                return;
+            }
         }
 
         var shell = new ShellWindow(_host);

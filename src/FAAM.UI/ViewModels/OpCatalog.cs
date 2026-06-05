@@ -12,7 +12,7 @@ public enum DeviceKind { None, Motion, Io, Pneumatic, Camera }
 /// options are filled by the block (positions from the chosen device, the axis
 /// list, or Set/Clear); the rest are a text box / number box / check box.
 /// </summary>
-public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName }
+public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName, SignalName }
 
 /// <summary>One parameter of an op — its persisted key, a display label, the editor widget, and a default value.</summary>
 public sealed record ParamSpec(string Key, string Label, ParamKind Kind, string Default = "");
@@ -142,6 +142,20 @@ public static class OpCatalog
             {
                 new ParamSpec("name", "Variable name", ParamKind.Text),
                 new ParamSpec("value", "Value", ParamKind.Text),
+            }),
+
+        // ---- Signal ----
+        // Reads one value from the unified signal catalog (any connected SMU/PSU/
+        // Measurement/TEC/Laser channel, or a product source such as SiPhOG) into a
+        // context variable. The 'signal' drop-down is filled at edit time from
+        // IProcessService.DescribeSignals(); 'storeAs' defaults to the signal key when
+        // blank, so 'siphog.sagPwrV' lands in a same-named variable usable by flow.if /
+        // var.calculate. Device-less — the signal key carries its own device.
+        new("signal.read", "Read Out", "Signal", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("signal", "Signal", ParamKind.SignalName),
+                new ParamSpec("storeAs", "Store in variable (blank = signal key)", ParamKind.Text),
             }),
 
         // ---- Vision ----

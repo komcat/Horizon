@@ -60,6 +60,14 @@
             </Setter>
         </Style>
 
+        <!-- θ step-size preset — like StepBtn but larger font (U/V/W rotational steps). -->
+        <Style x:Key="ThetaStepBtn" TargetType="ToggleButton" BasedOn="{StaticResource StepBtn}">
+            <Setter Property="Width" Value="58" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
         <!-- Velocity preset — selectable; accent when active. -->
         <Style x:Key="VelBtn" TargetType="ToggleButton">
             <Setter Property="Height" Value="36" />
@@ -104,8 +112,8 @@
                     Background="{StaticResource Danger}" Foreground="White" BorderThickness="0"
                     FontSize="15" FontWeight="Bold" Cursor="Hand" />
 
-            <!-- Connected motion devices (single-select). -->
-            <StackPanel x:Name="DeviceList" />
+            <!-- Connected motion devices (single-select) — two across. -->
+            <UniformGrid x:Name="DeviceList" Columns="2" />
 
             <!-- Live position readout for the selected device. -->
             <Border Margin="0,8,0,0" Background="Black" CornerRadius="3" Padding="8,5">
@@ -152,9 +160,16 @@
                 <ToggleButton x:Name="Vel5" Style="{StaticResource VelBtn}" Click="OnVelocity" />
             </UniformGrid>
 
-            <!-- Step-size presets — each jog click moves by the selected step. -->
-            <TextBlock Text="Step  (Q finer · E coarser)" Foreground="{StaticResource Subtle}" FontSize="11" Margin="2,8,0,2" />
-            <WrapPanel x:Name="StepList" />
+            <!-- Step size — large readout; changed with Q (finer) / E (coarser) or the mouse wheel. -->
+            <TextBlock Text="Step  (Q finer · E coarser · scroll)" Foreground="{StaticResource Subtle}" FontSize="11" Margin="2,8,0,2" />
+            <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                    CornerRadius="3" Cursor="Hand" MouseWheel="OnStepWheel"
+                    MouseLeftButtonDown="OnStepCoarser" MouseRightButtonDown="OnStepFiner"
+                    ToolTip="Left-click / scroll up = coarser · right-click / scroll down = finer · keys Q / E">
+                <TextBlock x:Name="StepDisplay" Text="10µm" Foreground="{StaticResource Text}"
+                           FontSize="28" FontWeight="Bold" HorizontalAlignment="Center"
+                           VerticalAlignment="Center" Margin="0,4" />
+            </Border>
 
             <!-- X / Y / Z jog pad. -->
             <Grid Margin="0,10,0,0">
@@ -180,6 +195,8 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="10" />
                     <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                    <!-- Trailing spacer: shrinks the U/V/W jog buttons to ~75% of the row. -->
+                    <ColumnDefinition Width="0.66*" />
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />

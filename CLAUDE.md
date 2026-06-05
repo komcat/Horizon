@@ -84,6 +84,17 @@ defines its own program/recipe/position formats.
   from `bobcat_engine`). `HexapodScanEngine` orchestrates; `CoarseToFineStrategy`
   is the algorithm; `IScanFeedbackSource` bridges SMU/measurement/power-supply
   facet events to the algorithm. See `docs/hexapod-scanning.md`.
+- **Alignment routines** (FAU-attach, ported from `acs_solution_saa`) — Layer 2
+  algorithm objects driven by Layer 3 panels and exposed as workflow steps:
+  - `HillClimb/` — `HillClimbEngine` is the coordinate-descent FAU→PIC active
+    alignment (Z+ budget metering, optional `TargetSagnacV` early-exit at
+    `TargetReachedFraction`). Feedback comes via `IHillClimbFeedback` — the
+    engine has no SiPhOG facet, so a Layer 3 head supplies the signal source
+    through `IProcessService.SetHillClimbFeedbackProvider`, consumed by the
+    `hillclimb.setAnchor/clearAnchor/start/stop` steps in `StepDispatcher`.
+  - `UCorrection/`, `FauPreAlign/` — `UCorrectionRoutine` / `FauPreAlignRoutine`
+    with their angle/vector calculators; each is its own non-modal
+    `IOperatorPrompt` on the Run page (inline Capture/Apply).
 - `Dut/` — `DutStore` for per-DUT (device-under-test) results, keyed by serial. A
   `DutRun` is stamped with the operator + station (`OperatorContext`, set via
   `IProcessService.SetOperator`). Beyond the program-driven path, an **interactive DUT

@@ -5,10 +5,11 @@ namespace FAAM.UI.ViewModels.Timeline;
 
 /// <summary>
 /// Hardware domain a lane belongs to — drives grouping in the left column and which
-/// palette ops may drop onto the lane. <see cref="Control"/> carries device-less flow
-/// ops (wait / log / comment).
+/// palette ops may drop onto the lane. <see cref="Signal"/> carries the device-less
+/// read-out block; <see cref="Control"/> carries the other device-less flow ops
+/// (wait / log / comment).
 /// </summary>
-public enum LaneDomain { Motion, Io, Pneumatic, PowerSupply, Smu, Tec, Vision, Control }
+public enum LaneDomain { Motion, Io, Pneumatic, PowerSupply, Smu, Tec, Vision, Signal, Control }
 
 /// <summary>
 /// One device row in the timeline grid. A lane is fixed (built from the engine
@@ -43,16 +44,26 @@ public sealed class LaneViewModel : ObservableObject
     /// <summary>One cell per stage, index-aligned with the editor's <c>Stages</c>.</summary>
     public ObservableCollection<CellViewModel> Cells { get; } = new();
 
-    /// <summary>Whether a palette op may be dropped on this lane.</summary>
-    public bool Accepts(DeviceKind kind) => kind switch
+    /// <summary>
+    /// Whether a palette op may be dropped on this lane. Device ops match by their
+    /// <see cref="DeviceKind"/>; the two device-less lanes split on category — the
+    /// read-out block (category "Signal") goes to the Signal lane, every other
+    /// device-less op to the Control lane.
+    /// </summary>
+    public bool Accepts(OpSpec spec) => Domain switch
     {
-        DeviceKind.Motion => Domain == LaneDomain.Motion,
-        DeviceKind.Io => Domain == LaneDomain.Io,
-        DeviceKind.Pneumatic => Domain == LaneDomain.Pneumatic,
-        DeviceKind.Camera => Domain == LaneDomain.Vision,
-        DeviceKind.None => Domain == LaneDomain.Control,
+        LaneDomain.Motion => spec.DeviceKind == DeviceKind.Motion,
+        LaneDomain.Io => spec.DeviceKind == DeviceKind.Io,
+        LaneDomain.Pneumatic => spec.DeviceKind == DeviceKind.Pneumatic,
+        LaneDomain.Vision => spec.DeviceKind == DeviceKind.Camera,
+        LaneDomain.Signal => spec.DeviceKind == DeviceKind.None && IsSignalOp(spec),
+        LaneDomain.Control => spec.DeviceKind == DeviceKind.None && !IsSignalOp(spec),
         _ => false,
     };
+
+    /// <summary>True for the read-out op(s) that belong on the Signal lane.</summary>
+    internal static bool IsSignalOp(OpSpec spec)
+        => spec.Category.Equals("Signal", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>
@@ -121,11 +132,18 @@ public static class LaneBuilder
         AddGroup(LaneDomain.Tec, "TEC", host.Engine.Tec.DeviceNames);
         AddGroup(LaneDomain.Vision, "Vision", host.Engine.Camera.CameraIds);
 
+        // The signal lane is always present (signals span devices + product sources) —
+        // it carries the device-less read-out block.
+        lanes.Add(new LaneViewModel(SignalLaneId, "Signal", LaneDomain.Signal, "Signal", isGroupStart: true));
+
         // The flow lane is always present, even with no hardware — it carries the
         // device-less control ops (wait / log / comment).
         lanes.Add(new LaneViewModel(ControlLaneId, "Flow / Control", LaneDomain.Control, "Control", isGroupStart: true));
         return lanes;
     }
+
+    /// <summary>Lane id for the device-less read-out (signal.read) block.</summary>
+    public const string SignalLaneId = "signal";
 
     /// <summary>Lane id for device-less flow ops.</summary>
     public const string ControlLaneId = "control";

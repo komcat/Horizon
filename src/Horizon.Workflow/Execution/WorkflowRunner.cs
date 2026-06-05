@@ -2,6 +2,7 @@ using System.Globalization;
 using Horizon.Common;
 using Horizon.Engine;
 using Horizon.Workflow.HillClimb;
+using Horizon.Workflow.Signals;
 
 namespace Horizon.Workflow;
 
@@ -33,6 +34,7 @@ internal sealed class WorkflowRunner
         Func<string, string, MotionPosition, double, Result> savePosition,
         Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
         Func<IHillClimbFeedback?> hillClimbFeedback,
+        SignalRegistry signals,
         DeviceLinkStore deviceLinks,
         IOperatorPrompt? prompt,
         Func<string, WorkflowContext, Result>? setDutSerial,
@@ -40,7 +42,7 @@ internal sealed class WorkflowRunner
         Action<WorkflowStepEvent> onStep,
         Action<LogLevel, string> log)
     {
-        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, hillClimbFeedback, deviceLinks, log);
+        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, hillClimbFeedback, signals, deviceLinks, log);
         _loadProgram = loadProgram;
         _prompt = prompt;
         _setDutSerial = setDutSerial;

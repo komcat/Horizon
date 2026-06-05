@@ -4,6 +4,7 @@ using Horizon.Common;
 using Horizon.Engine;
 using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Scanning;
+using Horizon.Workflow.Signals;
 
 namespace Horizon.Workflow;
 
@@ -25,6 +26,9 @@ internal sealed class StepDispatcher
     // Supplies the hill-climb signal source (Layer 3 SiPhOG). Returns null when no head
     // has registered one — hillclimb.* steps then fail with a clear message rather than crash.
     private readonly Func<IHillClimbFeedback?> _hillClimbFeedback;
+    // Unified read-out catalog: built-in engine signals (SMU/PSU/Measurement/TEC/Laser)
+    // plus any product source a Layer 3 head registered (FAAM's SiPhOG). Drives signal.read.
+    private readonly SignalRegistry _signals;
     private readonly DeviceLinkStore _deviceLinks;
     private readonly Action<LogLevel, string> _log;
 
@@ -44,6 +48,7 @@ internal sealed class StepDispatcher
         Func<string, string, MotionPosition, double, Result> savePosition,
         Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
         Func<IHillClimbFeedback?> hillClimbFeedback,
+        SignalRegistry signals,
         DeviceLinkStore deviceLinks,
         Action<LogLevel, string> log)
     {
@@ -53,6 +58,7 @@ internal sealed class StepDispatcher
         _savePosition = savePosition;
         _runVisionProfile = runVisionProfile;
         _hillClimbFeedback = hillClimbFeedback;
+        _signals = signals;
         _deviceLinks = deviceLinks;
         _log = log;
     }
@@ -737,6 +743,23 @@ internal sealed class StepDispatcher
             case "flow.log":
                 _log(LogLevel.Info, Str(step, "message", ctx));
                 return Result.Ok();
+
+            case "signal.read":
+            {
+                // Reads one signal from the unified catalog (any connected SMU/PSU/
+                // Measurement/TEC/Laser channel, or a registered product signal such as
+                // SiPhOG) into a context variable. 'storeAs' defaults to the signal key,
+                // so 'siphog.sagPwrV' lands in a same-named variable when left blank.
+                var key = Str(step, "signal", ctx);
+                if (string.IsNullOrWhiteSpace(key))
+                    return Result.Fail(ErrorCode.InvalidParameter, "signal.read: no signal selected.");
+                var read = await _signals.ReadAsync(key, ct).ConfigureAwait(false);
+                if (!read.IsSuccess) return Result.Fail(read.Error, read.Message);
+                var storeAs = Has(step, "storeAs") ? Str(step, "storeAs", ctx) : key;
+                ctx.Set(storeAs, read.Value);
+                _log(LogLevel.Info, $"signal {key} = {read.Value} -> {storeAs}");
+                return Result.Ok();
+            }
 
             case "var.set":
                 ctx.Set(Str(step, "name", ctx), Str(step, "value", ctx));

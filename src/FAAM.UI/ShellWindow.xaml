@@ -56,6 +56,23 @@
                 </Grid>
             </Border>
 
+            <!-- DUT serial + run lifecycle — shown only on the Run page (shares Column 1
+                 with the Machine-page engine status). Serial-bracketed, operator-stamped. -->
+            <Border x:Name="DutHeader" Grid.Column="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="3" Margin="6,0,0,0" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" Margin="12,0" VerticalAlignment="Center">
+                    <TextBlock Text="DUT Serial" Foreground="{StaticResource Subtle}" FontSize="12"
+                               VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBox x:Name="SerialBox" Width="150" Height="28" FontSize="13" VerticalContentAlignment="Center" />
+                    <Button x:Name="StartDutButton" Content="Start" Width="64" Height="28" Margin="6,0,0,0" Click="OnStartDut" />
+                    <Button x:Name="PassButton" Content="PASS" Width="64" Height="28" Margin="12,0,0,0" Click="OnPass"
+                            Background="{StaticResource Ok}" Foreground="White" BorderThickness="0" FontWeight="Bold" IsEnabled="False" />
+                    <Button x:Name="FailButton" Content="FAIL" Width="64" Height="28" Margin="6,0,0,0" Click="OnFail"
+                            Background="{StaticResource Danger}" Foreground="White" BorderThickness="0" FontWeight="Bold" IsEnabled="False" />
+                    <Button x:Name="ResultsButton" Content="Results" Width="72" Height="28" Margin="12,0,0,0" Click="OnResults" />
+                </StackPanel>
+            </Border>
+
             <!-- Identity chip — current product + signed-in operator + log in/out.
                  Always visible; populated in code from the product/session state. -->
             <Border x:Name="IdentityHeader" Grid.Column="0" Background="{StaticResource Panel}"
