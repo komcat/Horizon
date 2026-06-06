@@ -66,6 +66,9 @@ public partial class RunView : UserControl
         AppHost.Attach(host);
         var siphog = AppHost.SiphogClient;
 
+        // Let app.* workflow steps drive the springboard (open/home/start/stop).
+        host.Process.SetUtilityAppHost(AppHost);
+
         // The SiPhOG chart (over the camera) shares the app's client/connection.
         SiphogChartControl.Attach(siphog);
 

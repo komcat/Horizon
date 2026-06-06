@@ -40,6 +40,9 @@ public sealed class UCorrectionApp : ObservableObject, IUtilityApp
     public AppRunState State => _panel.IsRunning ? AppRunState.Running : AppRunState.Idle;
     public string? StatusDetail => _panel.RunStatusDetail;
 
+    public Task StartAsync(CancellationToken ct) { _panel.RequestStart(); return Task.CompletedTask; }
+    public Task StopAsync() { _panel.RequestStop(); return Task.CompletedTask; }
+
     private void Refresh() => UtilityAppUi.OnUi(() =>
     {
         OnPropertyChanged(nameof(State));
@@ -63,6 +66,9 @@ public sealed class FauPreAlignApp : ObservableObject, IUtilityApp
     public UIElement Content => _panel;
     public AppRunState State => _panel.IsRunning ? AppRunState.Running : AppRunState.Idle;
     public string? StatusDetail => _panel.RunStatusDetail;
+
+    public Task StartAsync(CancellationToken ct) { _panel.RequestStart(); return Task.CompletedTask; }
+    public Task StopAsync() { _panel.RequestStop(); return Task.CompletedTask; }
 
     private void Refresh() => UtilityAppUi.OnUi(() =>
     {
@@ -91,6 +97,9 @@ public sealed class HillClimbApp : ObservableObject, IUtilityApp
         : AppRunState.Idle;
     public string? StatusDetail => _panel.RunStatusDetail;
 
+    public Task StartAsync(CancellationToken ct) { _panel.RequestStart(); return Task.CompletedTask; }
+    public Task StopAsync() { _panel.RequestStop(); return Task.CompletedTask; }
+
     private void Refresh() => UtilityAppUi.OnUi(() =>
     {
         OnPropertyChanged(nameof(State));
@@ -114,6 +123,9 @@ public sealed class SiphogApp : ObservableObject, IUtilityApp
     public UIElement Content => _panel;
     public AppRunState State => _panel.Client.IsConnected ? AppRunState.Connected : AppRunState.Idle;
     public string? StatusDetail => _panel.Client.IsConnected ? "Connected" : "Disconnected";
+
+    public Task StartAsync(CancellationToken ct) { _panel.EnsureConnected(); return Task.CompletedTask; }
+    public Task StopAsync() { _panel.Client.Disconnect(); return Task.CompletedTask; }
 
     private void Refresh() => UtilityAppUi.OnUi(() =>
     {

@@ -2,6 +2,8 @@ using System.Windows;
 using System.Windows.Controls;
 using FAAM.UI.Apps;
 using FAAM.UI.Siphog;
+using Horizon.Common;
+using Horizon.Workflow;
 
 namespace FAAM.UI.Views;
 
@@ -13,10 +15,10 @@ namespace FAAM.UI.Views;
 /// <see cref="UIElement.Visibility"/>, so a running climb / live SiPhOG stream survives
 /// while the operator looks at another app (see <c>docs/utility-app-launcher-design.md</c>).
 ///
-/// Phase 1: navigation + status badges only. The Layer 2 → Layer 3 command seam
-/// (open/close/start/stop via workflow steps) is Phase 2.
+/// Implements <see cref="IUtilityAppHost"/> (Phase 2) so <c>app.open</c> / <c>app.home</c>
+/// / <c>app.start</c> / <c>app.stop</c> workflow steps can drive the springboard.
 /// </summary>
-public partial class UtilityAppHost : UserControl
+public partial class UtilityAppHost : UserControl, IUtilityAppHost
 {
     private readonly List<IUtilityApp> _apps = new();
     private SiphogPanel? _siphogPanel;
@@ -70,17 +72,42 @@ public partial class UtilityAppHost : UserControl
             OpenApp(app);
     }
 
-    /// <summary>Brings an app to the foreground by id (used by the Phase 2 command seam). Returns false if unknown.</summary>
-    public bool Open(string id)
-    {
-        var app = _apps.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.OrdinalIgnoreCase));
-        if (app == null) return false;
-        OpenApp(app);
-        return true;
-    }
+    // --- IUtilityAppHost (Layer 2 → Layer 3 command seam, driven by app.* steps) ---
+    // StepDispatcher may call these off the UI thread, so each marshals onto it.
 
-    /// <summary>Returns to the home springboard (apps keep running in the background).</summary>
-    public void Home() => ShowHome();
+    public Result Open(string appId) => OnUi(() =>
+    {
+        var app = Find(appId);
+        if (app == null) return Result.Fail(ErrorCode.InvalidParameter, $"app.open: unknown app '{appId}'.");
+        OpenApp(app);
+        return Result.Ok();
+    });
+
+    public Result Home() => OnUi(() => { ShowHome(); return Result.Ok(); });
+
+    public Task<Result> StartAsync(string appId, CancellationToken ct) => Task.FromResult(OnUi(() =>
+    {
+        var app = Find(appId);
+        if (app == null) return Result.Fail(ErrorCode.InvalidParameter, $"app.start: unknown app '{appId}'.");
+        OpenApp(app);                  // foreground it
+        _ = app.StartAsync(ct);        // begin routine / connect — fire (does not await completion)
+        return Result.Ok();
+    }));
+
+    public Task<Result> StopAsync(string appId) => Task.FromResult(OnUi(() =>
+    {
+        var app = Find(appId);
+        if (app == null) return Result.Fail(ErrorCode.InvalidParameter, $"app.stop: unknown app '{appId}'.");
+        _ = app.StopAsync();
+        return Result.Ok();
+    }));
+
+    private IUtilityApp? Find(string id)
+        => _apps.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Runs <paramref name="fn"/> on the UI thread and returns its result.</summary>
+    private Result OnUi(Func<Result> fn)
+        => Dispatcher.CheckAccess() ? fn() : Dispatcher.Invoke(fn);
 
     private void OpenApp(IUtilityApp app)
     {

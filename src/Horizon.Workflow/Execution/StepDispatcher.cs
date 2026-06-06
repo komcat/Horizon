@@ -26,6 +26,9 @@ internal sealed class StepDispatcher
     // Supplies the hill-climb signal source (Layer 3 SiPhOG). Returns null when no head
     // has registered one — hillclimb.* steps then fail with a clear message rather than crash.
     private readonly Func<IHillClimbFeedback?> _hillClimbFeedback;
+    // Supplies the Layer 3 Run-page springboard for app.* steps. Returns null when no
+    // head has registered one — app.* steps then fail with a clear message rather than crash.
+    private readonly Func<IUtilityAppHost?> _utilityAppHost;
     // Unified read-out catalog: built-in engine signals (SMU/PSU/Measurement/TEC/Laser)
     // plus any product source a Layer 3 head registered (FAAM's SiPhOG). Drives signal.read.
     private readonly SignalRegistry _signals;
@@ -48,6 +51,7 @@ internal sealed class StepDispatcher
         Func<string, string, MotionPosition, double, Result> savePosition,
         Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
         Func<IHillClimbFeedback?> hillClimbFeedback,
+        Func<IUtilityAppHost?> utilityAppHost,
         SignalRegistry signals,
         DeviceLinkStore deviceLinks,
         Action<LogLevel, string> log)
@@ -58,6 +62,7 @@ internal sealed class StepDispatcher
         _savePosition = savePosition;
         _runVisionProfile = runVisionProfile;
         _hillClimbFeedback = hillClimbFeedback;
+        _utilityAppHost = utilityAppHost;
         _signals = signals;
         _deviceLinks = deviceLinks;
         _log = log;
@@ -805,10 +810,46 @@ internal sealed class StepDispatcher
                 return Result.Ok();
             }
 
+            // --- Utility-app springboard (Layer 3 Run-page). app.start/stop ACTIVATE an app
+            //     (foreground + begin its routine / connect) and return once started — they do
+            //     not await completion; the headless, await-to-completion climb is hillclimb.start. ---
+            case "app.open":
+            {
+                var host = _utilityAppHost();
+                return host == null ? AppHostMissing("app.open") : host.Open(Str(step, "appId", ctx));
+            }
+
+            case "app.home":
+            {
+                var host = _utilityAppHost();
+                return host == null ? AppHostMissing("app.home") : host.Home();
+            }
+
+            case "app.start":
+            {
+                var host = _utilityAppHost();
+                return host == null
+                    ? AppHostMissing("app.start")
+                    : await host.StartAsync(Str(step, "appId", ctx), ct).ConfigureAwait(false);
+            }
+
+            case "app.stop":
+            {
+                var host = _utilityAppHost();
+                return host == null
+                    ? AppHostMissing("app.stop")
+                    : await host.StopAsync(Str(step, "appId", ctx)).ConfigureAwait(false);
+            }
+
             default:
                 return Result.Fail(ErrorCode.NotSupported, $"Unknown step op: '{step.Op}'");
         }
     }
+
+    /// <summary>Failure returned by an app.* step when no Layer 3 head has registered a springboard.</summary>
+    private static Result AppHostMissing(string op)
+        => Result.Fail(ErrorCode.NotSupported,
+            $"{op}: no utility-app host registered (run from a head with the Run-page springboard).");
 
     /// <summary>
     /// Evaluates a guided If condition (<c>flow.ifSignal</c> / <c>flow.ifPosition</c>) by

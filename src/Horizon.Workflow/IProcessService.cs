@@ -152,6 +152,14 @@ public interface IProcessService
     void SetHillClimbFeedbackProvider(Func<IHillClimbFeedback?>? provider);
 
     /// <summary>
+    /// Registers the Layer 3 utility-app host (the Run-page springboard) that
+    /// <c>app.open</c> / <c>app.home</c> / <c>app.start</c> / <c>app.stop</c> steps drive.
+    /// Pass null to unregister; with no host registered those steps fail with a clear
+    /// message rather than crash.
+    /// </summary>
+    void SetUtilityAppHost(IUtilityAppHost? host);
+
+    /// <summary>
     /// Registers a product-specific signal source (e.g. FAAM's SiPhOG) so its values
     /// join the unified <c>signal.read</c> catalog alongside the built-in engine
     /// signals (SMU / PSU / Measurement / TEC / Laser).

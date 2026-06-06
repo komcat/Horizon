@@ -1,12 +1,14 @@
 # Utility App Launcher (Run-page "phone" springboard)
 
-Status: **Phase 1 implemented (L3 shell).** The springboard is live on the Run page —
+Status: **Phases 1 & 2 implemented.** The springboard is live on the Run page —
 `UtilityAppHost` shows a 2×2 home grid of the four apps with status badges; tapping a
-tile swaps its panel in with a Back button; panels stay alive in the background.
-Pure Layer 3, no Layer 2 changes yet. **Phase 2 (the L2→L3 command seam: `app.*`
-steps + `IUtilityAppHost` + `SetUtilityAppHost`) and Phase 3 (polish) are pending.**
-This doc captures the agreed architecture and the locked decisions. Brief: the Run
-page's middle area
+tile swaps its panel in with a Back button; panels stay alive in the background
+(Phase 1). The Layer 2 → Layer 3 command seam is wired (Phase 2):
+`IUtilityAppHost` + `IProcessService.SetUtilityAppHost`, threaded through
+`WorkflowRunner`/`StepDispatcher`, with `app.open` / `app.home` / `app.start` /
+`app.stop` steps + `OpCatalog` "App" entries. **Phase 3 (polish: real icons, badge
+animation, optional pinnable secondary widget) is pending.** This doc captures the
+agreed architecture and the locked decisions. Brief: the Run page's middle area
 (today a `TabControl{U correction, FAU pre-align}` + a stacked Hill Climber panel +
 the SiPhOG connect panel) becomes a **phone-style app springboard**. Idle, it shows a
 grid of utility-app icons with live status badges; tapping one swaps that app's panel
@@ -142,9 +144,14 @@ interface IUtilityAppHost
     Result        Home();                 // back to launcher
     Task<Result>  StartAsync(string appId, CancellationToken ct);
     Task<Result>  StopAsync(string appId);
-    AppRunState   GetState(string appId); // for flow.if* gating later
 }
 ```
+
+> **As built (Phase 2):** `GetState` was deferred — it would couple Layer 2 to the
+> `AppRunState` enum (which lives in L3) and is only needed for a future
+> `flow.ifAppState` gate. `StartAsync` *activates* an app (foreground + begin its
+> routine / connect) and returns once started; it does **not** await completion. The
+> headless await-to-completion climb stays `hillclimb.start`.
 
 If no host is registered (console/headless runs), every call returns
 `Result.Fail(...)` with a clear message — identical to how the hill-climb feedback
@@ -217,6 +224,14 @@ If this bites in practice, the fallback is the "pinnable secondary widget" optio
   (`app.*` cases), `FAAM.UI/ViewModels/OpCatalog.cs` (catalog entries).
 - **New L2 type (Phase 2)**: `Horizon.Workflow/IUtilityAppHost.cs` (+ `AppRunState`
   if shared with L2; otherwise keep the enum L3 and pass strings across the seam).
+
+## Command help (Engineer page)
+
+The `app.*` steps are explained inline in the Engineer command palette: left-click a
+command and the right-hand panel shows its description, how-to-use, and per-parameter
+notes (the App category is authored). This is a general mechanism, not App-specific —
+see `docs/engineer-command-help.md`. The App help text mirrors the activate-vs-await
+semantics above (notably `app.start` ↔ `hillclimb.start`); keep the two in sync.
 
 ## Open questions (for later phases)
 

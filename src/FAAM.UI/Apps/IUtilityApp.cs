@@ -45,4 +45,14 @@ public interface IUtilityApp
     AppRunState State { get; }
     /// <summary>Human-readable status line for the badge / header (e.g. "Scanning…", "Disconnected").</summary>
     string? StatusDetail { get; }
+
+    /// <summary>
+    /// Begins the app's routine / connection (the Phase 2 command seam). Called on the
+    /// UI thread by the host. Returns once started — it does not await the routine's
+    /// completion (mirrors pressing the panel's Start button).
+    /// </summary>
+    Task StartAsync(CancellationToken ct);
+
+    /// <summary>Stops the app's routine / disconnects it. Called on the UI thread by the host.</summary>
+    Task StopAsync();
 }

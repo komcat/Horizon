@@ -51,6 +51,17 @@ public partial class UCorrectionPanel : UserControl, IOperatorPrompt
 
     private void RaiseRunState() => RunStateChanged?.Invoke();
 
+    /// <summary>Begins the correction run (utility-app <c>app.start</c>) — same as pressing Start.</summary>
+    public void RequestStart() => OnStart(this, new RoutedEventArgs());
+
+    /// <summary>Cancels an in-flight run (utility-app <c>app.stop</c>); no-op when idle.</summary>
+    public void RequestStop()
+    {
+        if (!_running) return;
+        _cts?.Cancel();
+        _pending?.TrySetResult(false);
+    }
+
     public UCorrectionPanel()
     {
         InitializeComponent();

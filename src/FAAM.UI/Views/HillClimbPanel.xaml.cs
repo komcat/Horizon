@@ -49,6 +49,12 @@ public partial class HillClimbPanel : UserControl
     /// <summary>Current state text, surfaced to the launcher badge / app header.</summary>
     public string RunStatusDetail => StateText.Text;
 
+    /// <summary>Begins a climb (utility-app <c>app.start</c>) — same as pressing Start (uses the panel's current Distance / Target).</summary>
+    public void RequestStart() => OnStart(this, new RoutedEventArgs());
+
+    /// <summary>Cancels an in-flight climb (utility-app <c>app.stop</c>); no-op when idle.</summary>
+    public void RequestStop() => _cts?.Cancel();
+
     public HillClimbPanel()
     {
         InitializeComponent();

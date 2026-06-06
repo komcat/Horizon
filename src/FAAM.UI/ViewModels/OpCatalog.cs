@@ -209,6 +209,20 @@ public static class OpCatalog
         // Aborts a climb started in a parallel lane (Start blocks its own lane). No-op when idle.
         new("hillclimb.stop", "Stop Hill Climb", "Align", DeviceKind.None, System.Array.Empty<ParamSpec>()),
 
+        // ---- App (Run-page utility springboard) ----
+        // Drive the Run-page utility apps from a sequence. 'appId' is one of:
+        // ucorrection, faupre, hillclimb, siphog. Open/Home are navigation only.
+        // Start ACTIVATES an app (foreground + begin its routine / connect) and returns
+        // once started — it does NOT await completion (use hillclimb.start for the
+        // headless, await-to-completion climb). Requires a head with the springboard.
+        new("app.open", "Open App", "App", DeviceKind.None,
+            new[] { new ParamSpec("appId", "App (ucorrection / faupre / hillclimb / siphog)", ParamKind.Text, "hillclimb") }),
+        new("app.home", "Home (Launcher)", "App", DeviceKind.None, System.Array.Empty<ParamSpec>()),
+        new("app.start", "Open & Run App", "App", DeviceKind.None,
+            new[] { new ParamSpec("appId", "App (ucorrection / faupre / hillclimb / siphog)", ParamKind.Text, "hillclimb") }),
+        new("app.stop", "Stop App", "App", DeviceKind.None,
+            new[] { new ParamSpec("appId", "App (ucorrection / faupre / hillclimb / siphog)", ParamKind.Text, "hillclimb") }),
+
         // ---- DUT ----
         // Prompts the operator (modal) for a serial number and opens the DUT record
         // for this run, so later dut.* steps record into it. Cancel fails the program.

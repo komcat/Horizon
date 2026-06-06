@@ -31,6 +31,7 @@ public sealed class ProcessService : IProcessService
     private (DutRecord Record, DutRun Run)? _interactiveDut;   // open operator-driven DUT run
     private (DutRecord Record, DutRun Run)? _runDut;   // the running program/deck's DUT (up-front serial, or set mid-run by dut.promptSerial)
     private Func<IHillClimbFeedback?>? _hillClimbFeedbackProvider;   // Layer 3 (SiPhOG) wires the hill-climb signal source
+    private IUtilityAppHost? _utilityAppHost;   // Layer 3 Run-page springboard, driven by app.* steps
     private readonly SignalRegistry _signals;   // built-in engine signals + any product source a head registers
 
     public ProcessService(IHorizonEngine engine)
@@ -453,6 +454,9 @@ public sealed class ProcessService : IProcessService
     public void SetHillClimbFeedbackProvider(Func<IHillClimbFeedback?>? provider)
         => _hillClimbFeedbackProvider = provider;
 
+    public void SetUtilityAppHost(IUtilityAppHost? host)
+        => _utilityAppHost = host;
+
     /// <summary>
     /// Registers a product-specific signal source (e.g. FAAM's SiPhOG) so its values
     /// join the unified <c>signal.read</c> catalog. The built-in engine signals
@@ -659,6 +663,7 @@ public sealed class ProcessService : IProcessService
             SaveNamedPosition,
             RunVisionProfileByNameAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
+            () => _utilityAppHost,
             _signals,
             _deviceLinks,
             OperatorPrompt,
@@ -1177,6 +1182,7 @@ public sealed class ProcessService : IProcessService
             SaveNamedPosition,
             RunVisionProfileByNameAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
+            () => _utilityAppHost,
             _signals,
             _deviceLinks,
             OperatorPrompt,
