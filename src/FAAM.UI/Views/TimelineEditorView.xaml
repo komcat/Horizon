@@ -30,7 +30,10 @@
         <Style x:Key="DropCell" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource Bg}" />
             <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
-            <Setter Property="BorderThickness" Value="1,0,0,1" />
+            <!-- Right+bottom border, matching the lane-header cells (0,0,1,1) so the
+                 vertical dividers line up with the header columns. The leftmost line is
+                 supplied by the frozen stage-label column's right border. -->
+            <Setter Property="BorderThickness" Value="0,0,1,1" />
             <Style.Triggers>
                 <!-- Conditional-branch tint (drop highlight below wins when dragging). -->
                 <DataTrigger Binding="{Binding Region}" Value="Then">
