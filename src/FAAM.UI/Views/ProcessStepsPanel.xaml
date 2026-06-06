@@ -2,7 +2,15 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <UserControl.Resources>
-        <!-- A process step button — full width, stacked. -->
+        <!-- Run-status fills for the step buttons: running = yellow, success = green,
+             interrupted/cancel/error = red (idle keeps the default Bg). -->
+        <SolidColorBrush x:Key="StatusRunning" Color="#FFD54F" />
+        <SolidColorBrush x:Key="StatusSuccess" Color="#66BB6A" />
+        <SolidColorBrush x:Key="StatusFailed"  Color="#E74C3C" />
+
+        <!-- A process step button — full width, stacked. Its fill tracks the step's
+             run Status (bound from the ProcessStep item): idle = default, Running =
+             yellow, Success = green, Failed = red. -->
         <Style x:Key="StepButton" TargetType="Button">
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="Padding" Value="8,9" />
@@ -18,12 +26,25 @@
                         <Border x:Name="Bd" Background="{TemplateBinding Background}"
                                 BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3"
                                 Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <ContentPresenter x:Name="Cp" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
                             </Trigger>
+                            <!-- Bind to the ProcessStep.Status of the item (the button's DataContext). -->
+                            <DataTrigger Binding="{Binding Status}" Value="Running">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource StatusRunning}" />
+                                <Setter Property="Foreground" Value="Black" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Status}" Value="Success">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource StatusSuccess}" />
+                                <Setter Property="Foreground" Value="Black" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource StatusFailed}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>

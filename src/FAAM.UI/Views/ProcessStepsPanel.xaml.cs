@@ -243,6 +243,11 @@ public partial class ProcessStepsPanel : UserControl
             return;
         }
 
+        // Clicking the first step starts a fresh run — clear every button back to idle
+        // (default colour). Re-clicking any later step leaves the prior colours intact.
+        if (ReferenceEquals(step, (StepList.ItemsSource as IEnumerable<ProcessStep>)?.FirstOrDefault()))
+            ResetStepStatuses();
+
         if (!_running)
             StartTimer();
 
@@ -304,6 +309,7 @@ public partial class ProcessStepsPanel : UserControl
         if (_host == null)
             return;
 
+        step.Status = StepStatus.Running;   // yellow while executing
         try
         {
             if (!string.IsNullOrEmpty(step.Program))
@@ -313,11 +319,18 @@ public partial class ProcessStepsPanel : UserControl
                 {
                     Log(LogLevel.Info, $"Running program '{step.Program}' for step '{step.Label}'.");
                     var result = await _host.Process.RunAsync(loaded.Value, serial: null, ct);
+                    if (!result.IsSuccess)
+                    {
+                        step.Status = StepStatus.Failed;   // program reported failure → red
+                        Log(LogLevel.Error, $"Step '{step.Label}' failed: {result.Message}");
+                        return;
+                    }
+
+                    step.Status = StepStatus.Success;      // ran to the end → green
 
                     // Auto-chain (opt-in via the checkbox by STOP): once this deck step's
                     // program succeeds, continue into the following Auto deck entries.
-                    if (result.IsSuccess && AutoChainCheck.IsChecked == true
-                        && _deck != null && step.DeckIndex >= 0)
+                    if (AutoChainCheck.IsChecked == true && _deck != null && step.DeckIndex >= 0)
                         await AutoChainFromAsync(step.DeckIndex, ct);
                     return;
                 }
@@ -326,13 +339,16 @@ public partial class ProcessStepsPanel : UserControl
             }
 
             await RunBuiltInStepAsync(step, ct);
+            step.Status = StepStatus.Success;              // built-in sequence completed → green
         }
         catch (OperationCanceledException)
         {
+            step.Status = StepStatus.Failed;              // interrupted (STOP/safety/new click) → red
             Log(LogLevel.Warning, $"Step '{step.Label}' aborted (STOP).");
         }
         catch (Exception ex)
         {
+            step.Status = StepStatus.Failed;              // errored → red
             Log(LogLevel.Error, $"Step '{step.Label}' error: {ex.Message}");
         }
     }
@@ -392,17 +408,43 @@ public partial class ProcessStepsPanel : UserControl
                 return;
             }
 
+            // Mirror the chained entry's run onto its Run-page button colour (if it has one).
+            var chained = FindStepByDeckIndex(i);
+            if (chained != null) chained.Status = StepStatus.Running;
+
             Log(LogLevel.Info, $"Auto-chain: running '{label}'.");
             _host.Process.RecordDutValue($"chain_{i}", label);
-            var result = await _host.Process.RunAsync(loaded.Value, serial: null, ct);
-            if (!result.IsSuccess)
+            try
             {
-                Log(LogLevel.Error, $"Auto-chain stopped — '{label}' failed: {result.Message}.");
-                return;
+                var result = await _host.Process.RunAsync(loaded.Value, serial: null, ct);
+                if (!result.IsSuccess)
+                {
+                    if (chained != null) chained.Status = StepStatus.Failed;
+                    Log(LogLevel.Error, $"Auto-chain stopped — '{label}' failed: {result.Message}.");
+                    return;
+                }
+                if (chained != null) chained.Status = StepStatus.Success;
+            }
+            catch
+            {
+                if (chained != null) chained.Status = StepStatus.Failed;
+                throw;   // let RunStepAsync's handler log the cancel/error
             }
         }
 
         Log(LogLevel.Info, "Auto-chain complete — end of deck.");
+    }
+
+    /// <summary>Finds the Run-page step button backing a given deck-entry index (null if that entry has no button).</summary>
+    private ProcessStep? FindStepByDeckIndex(int deckIndex)
+        => (StepList.ItemsSource as IEnumerable<ProcessStep>)?.FirstOrDefault(s => s.DeckIndex == deckIndex);
+
+    /// <summary>Resets every step button back to <see cref="StepStatus.Idle"/> (default colour).</summary>
+    private void ResetStepStatuses()
+    {
+        if (StepList.ItemsSource is IEnumerable<ProcessStep> steps)
+            foreach (var s in steps)
+                s.Status = StepStatus.Idle;
     }
 
     /// <summary>
@@ -852,7 +894,25 @@ public partial class ProcessStepsPanel : UserControl
     }
 
     private void Log(LogLevel level, string message)
-        => _host?.Log.Add(new LogEntry(level, DateTimeOffset.Now, "Process", message));
+    {
+        _host?.Log.Add(new LogEntry(level, DateTimeOffset.Now, "Process", message));
+        // Mirror every process-step log line into the open DUT run (no-op if none is
+        // open) so each unit's serial carries its full, timestamped step history.
+        _host?.Process.RecordDutValue("log", level == LogLevel.Info ? message : $"[{level}] {message}");
+    }
+}
+
+/// <summary>Run state of a process step button — drives its fill colour.</summary>
+public enum StepStatus
+{
+    /// <summary>Never run (or reset) — default button colour.</summary>
+    Idle,
+    /// <summary>Currently executing — yellow.</summary>
+    Running,
+    /// <summary>Ran to completion successfully — green.</summary>
+    Success,
+    /// <summary>Interrupted, cancelled (STOP/safety), failed, or errored — red.</summary>
+    Failed,
 }
 
 /// <summary>
@@ -864,8 +924,36 @@ public partial class ProcessStepsPanel : UserControl
 /// resolved as <c>processes\{Program}.hwf</c> in the active product), and — for a
 /// deck-derived step — its index in the deck's entry list (<c>DeckIndex</c>, -1 for
 /// the built-in steps), which Auto-chain uses to walk the following entries.
+/// <see cref="Status"/> is mutable and observable so the button colour tracks the
+/// run live.
 /// </summary>
-public sealed record ProcessStep(int Index, string Label, string Device, string? Position = null, string? Program = null, int DeckIndex = -1);
+public sealed class ProcessStep : Mvvm.ObservableObject
+{
+    public ProcessStep(int index, string label, string device, string? position = null, string? program = null, int deckIndex = -1)
+    {
+        Index = index;
+        Label = label;
+        Device = device;
+        Position = position;
+        Program = program;
+        DeckIndex = deckIndex;
+    }
+
+    public int Index { get; }
+    public string Label { get; }
+    public string Device { get; }
+    public string? Position { get; }
+    public string? Program { get; }
+    public int DeckIndex { get; }
+
+    private StepStatus _status = StepStatus.Idle;
+    /// <summary>Live run state — the button's fill colour binds to this.</summary>
+    public StepStatus Status
+    {
+        get => _status;
+        set => SetField(ref _status, value);
+    }
+}
 
 /// <summary>One row of the motion inspector — a process position and its recall settings (values pre-formatted for display).</summary>
 public sealed record MotionInspectRow(
