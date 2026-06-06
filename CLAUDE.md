@@ -158,9 +158,19 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   **Home** (launcher + product selector), **Machine** (ported wholesale from
   Horizon.UI), **Run** (the production page: camera feed + crosshair/Zoom2× inset,
   **MoveClick** click-to-jog, process steps panel with Teach/Run toggle, serial-
-  bracketed DUT run with PASS/FAIL + a DUT results viewer, log), and **Engineer**
-  (the Gantt editor below). A SiPhOG TCP client + Skia chart live under `Siphog/`;
+  bracketed DUT run with PASS/FAIL + a DUT results viewer, log), **Engineer**
+  (the Gantt editor below), and **Vision Profile** (per-position vision recipe
+  authoring, below). A SiPhOG TCP client + Skia chart live under `Siphog/`;
   `MoveClick.cs` holds the shared `mm/pixel` jog maths.
+- **Vision Profile page** — authors a saved, per-position vision recipe (camera +
+  lighting, an ordered pre-process filter chain of up to 3 stages, a detection
+  method, and a taught template) and runs it against a live frame. Detection
+  methods (HALCON): **NCC** (`find_ncc_model`, rotation-search → returns match
+  angle; anchor is X/Y pixel + rotation), **Circle** (threshold → `connection` →
+  `select_shape` by circularity → `smallest_circle`), **Line** (threshold → blob →
+  `smallest_rectangle2` major axis). All three return a method-agnostic
+  `VisionDetectResult` so one result grid and one `vision.runProfile` step serve
+  every method. See `docs/vision-profile-design.md`.
 - **Engineer = the Gantt timeline editor** (`Views/TimelineEditorView`,
   `ViewModels/Timeline/`): device **lanes** down the left (from the engine facets),
   ordered **stages** across the top; same-stage-different-lane = parallel. It compiles
@@ -260,6 +270,31 @@ nonexistent IO pin). Authoring-side only — not part of the runtime stack.
   `MVTec.HalconDotNet-Windows` native-bundling package in executable projects.
   HALCON 24.05 is x64-only.
 
+### Mission-critical coding standard (enforced at build)
+
+Because Horizon drives motion hardware in closed loops against live sensor
+feedback, the repo holds code to a NASA/JPL "Power of 10" adaptation, wired via
+root `Directory.Build.props` (`AnalysisLevel=latest`, `EnforceCodeStyleInBuild`)
++ `.editorconfig`. **A subset of analyzer rules are build-breaking errors**, so
+write code that won't trip them:
+
+- **No unbounded recursion / no statically-infinite loops** (`S2190`, `S2189` =
+  error). A `while(true)` that the analyzer can't prove exits will **fail the
+  build**. Long-lived pumps must exit on a cancellation token; if a construct is
+  genuinely unbounded-by-design, wrap it in a justified
+  `#pragma warning disable S2189` … `restore` with a one-line reason.
+- **Every hardware `await` is time-bounded** — pass a timeout/`CancellationToken`;
+  `CA2016`/`CA2247` (token forwarding) = error.
+- Quality rules (`S138`/`S1541`/`S3776` complexity, `IDE0059`, `CA1806`, `S2201`)
+  are **warnings** today, ratcheted to error per-assembly as each is cleaned — do
+  not introduce new ones. There is intentionally **no** blanket
+  `TreatWarningsAsErrors` (brownfield solution still builds).
+- Active-alignment code (`HillClimbEngine`, `CoarseToFineStrategy`, FAU pre-align /
+  U-correction) has extra review rules the tools can't check: validate sensor
+  inputs at the boundary, and **fail safe** — on any abort (cancel/timeout/error)
+  return the stage to the last known-good position. See
+  `docs/coding-standards-power-of-10.md`.
+
 ## Documentation
 
 - 3-layer design: `docs/headless-engine-concept.md`, `docs/layer1-*.md`,
@@ -275,3 +310,5 @@ nonexistent IO pin). Authoring-side only — not part of the runtime stack.
 - Product encapsulation + operator login + DUT traceability: `docs/product-and-traceability-design.md`.
 - Gantt timeline editor + `flow.parallel`: `docs/timeline-sequence-editor-design.md`.
 - Program history → SQLite: `docs/program-history-sqlite-design.md`.
+- Vision Profile page (per-position vision recipes): `docs/vision-profile-design.md`.
+- Mission-critical coding standard (Power of 10): `docs/coding-standards-power-of-10.md`.

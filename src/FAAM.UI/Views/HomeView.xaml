@@ -50,6 +50,9 @@
                           IsEditable="True" VerticalContentAlignment="Center" />
                 <Button x:Name="OpenButton" Content="Open / Create" Width="130" Height="30"
                         Margin="10,0,0,0" Click="OnOpenProduct" />
+                <Button x:Name="SaveAsButton" Content="Save As…" Width="100" Height="30"
+                        Margin="6,0,0,0" Click="OnSaveAsProduct"
+                        ToolTip="Clone the active product (positions, vision, programs/decks) as a new variation" />
                 <TextBlock x:Name="ActiveProductText" Foreground="{StaticResource Text}" FontSize="13"
                            VerticalAlignment="Center" Margin="16,0,0,0" />
             </StackPanel>

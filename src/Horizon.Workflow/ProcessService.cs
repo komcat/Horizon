@@ -138,6 +138,20 @@ public sealed class ProcessService : IProcessService
         return Result.Ok();
     }
 
+    public Result CloneProduct(string source, string newName)
+    {
+        if (!_products.Exists(source))
+            return Result.Fail(ErrorCode.FileNotFound, $"Source product '{source}' not found.");
+        if (!_products.IsValidName(newName))
+            return Result.Fail(ErrorCode.InvalidParameter, $"Invalid product name: '{newName}'.");
+        if (_products.Exists(newName))
+            return Result.Fail(ErrorCode.OperationFailed, $"Product '{newName}' already exists.");
+
+        _products.Clone(source, newName);
+        Log(LogLevel.Info, $"Product cloned: {source} -> {newName}");
+        return Result.Ok();
+    }
+
     public Result LoadProduct(string name)
     {
         if (!_products.Exists(name))
@@ -1077,6 +1091,59 @@ public sealed class ProcessService : IProcessService
 
         _decks.Delete(name);
         Log(LogLevel.Info, $"Deck deleted: {name}");
+        return Result.Ok();
+    }
+
+    public IReadOnlyList<string> ListDecksOf(string product)
+        => _products.Exists(product)
+            ? new DeckStore(_products.ProductDir(product)).List()
+            : Array.Empty<string>();
+
+    public Result ImportDeck(string sourceProduct, string deckName, string newDeckName)
+    {
+        if (_decks == null || _programs == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (!_products.Exists(sourceProduct))
+            return Result.Fail(ErrorCode.FileNotFound, $"Source product '{sourceProduct}' not found.");
+        if (string.Equals(sourceProduct, _products.ActiveProduct, StringComparison.OrdinalIgnoreCase))
+            return Result.Fail(ErrorCode.InvalidParameter, "Source is the active product — use Save As instead.");
+
+        newDeckName = (newDeckName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(newDeckName))
+            return Result.Fail(ErrorCode.InvalidParameter, "New deck name is required.");
+        if (_decks.List().Contains(newDeckName, StringComparer.OrdinalIgnoreCase))
+            return Result.Fail(ErrorCode.OperationFailed, $"Deck '{newDeckName}' already exists here — pick a new name.");
+
+        var srcDir = _products.ProductDir(sourceProduct);
+        var deck = new DeckStore(srcDir).Load(deckName);
+        if (deck == null)
+            return Result.Fail(ErrorCode.FileNotFound, $"Deck '{deckName}' not found in '{sourceProduct}'.");
+
+        // Copy the deck's referenced programs into the active product (only those
+        // missing here), so the imported deck is runnable.
+        var srcPrograms = new ProgramStore(srcDir);
+        var have = _programs.List();
+        int copied = 0;
+        foreach (var prog in deck.Entries.Select(e => e.Program)
+                     .Where(p => !string.IsNullOrWhiteSpace(p))
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (have.Contains(prog, StringComparer.OrdinalIgnoreCase)) continue;
+            if (srcPrograms.Load(prog) is { } p) { _programs.Save(p); copied++; }
+        }
+
+        // Save under the new name with a fresh identity so its history doesn't fork the source's.
+        var imported = deck with
+        {
+            Uid = "deck-" + Guid.NewGuid().ToString("N"),
+            Name = newDeckName,
+            Entries = deck.Entries.Select(e => e with { Uid = "dge-" + Guid.NewGuid().ToString("N") }).ToList(),
+        };
+        var save = SaveDeck(imported);   // also sets active + records history
+        if (!save.IsSuccess) return save;
+
+        Log(LogLevel.Info,
+            $"Imported deck '{deckName}' from '{sourceProduct}' as '{newDeckName}' ({copied} program(s) copied).");
         return Result.Ok();
     }
 

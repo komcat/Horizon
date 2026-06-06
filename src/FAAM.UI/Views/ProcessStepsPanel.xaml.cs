@@ -77,10 +77,26 @@ public partial class ProcessStepsPanel : UserControl
         // the next move once the engine halts the current one (mirrors the STOP button).
         host.SafetyAbort += OnSafetyAbort;
 
+        // Re-point the Run page at the new product's active deck when the product
+        // changes, so switching product immediately reloads the right steps.
+        host.Process.ProductChanged += OnProductChanged;
+
         // Populate the deck picker; re-list each time it's opened so decks authored in
         // the Engineer page show up without re-entering the Run page.
         RefreshDecks();
         DeckSelector.DropDownOpened += (_, _) => RefreshDecks();
+    }
+
+    /// <summary>
+    /// On a product switch, rebuild the deck picker for the new product and select its
+    /// active deck (dropping the previous product's selection) — or fall to the
+    /// built-in steps + no-deck banner if it has none. Marshalled: <c>ProductChanged</c>
+    /// may arrive off the UI thread.
+    /// </summary>
+    private void OnProductChanged(string? product)
+    {
+        if (Dispatcher.CheckAccess()) RefreshDecks(productSwitched: true);
+        else Dispatcher.BeginInvoke(() => RefreshDecks(productSwitched: true));
     }
 
     /// <summary>
@@ -89,19 +105,34 @@ public partial class ProcessStepsPanel : UserControl
     /// deck rebuilds the step buttons from its <c>Run page</c> programs via
     /// <see cref="OnDeckSelected"/>.
     /// </summary>
-    private void RefreshDecks()
+    private void RefreshDecks(bool productSwitched = false)
     {
         if (_host == null) return;
         var decks = _host.Process.ListDecks();
-        if (DeckSelector.ItemsSource is IEnumerable<string> existing && existing.SequenceEqual(decks))
-            return;   // unchanged — don't disturb the current selection
 
-        var current = DeckSelector.SelectedItem as string;
+        // Plain refresh (dropdown opened): skip if nothing changed so the current
+        // selection isn't disturbed. A product switch always rebuilds.
+        if (!productSwitched && DeckSelector.ItemsSource is IEnumerable<string> existing
+            && existing.SequenceEqual(decks))
+            return;
+
+        // On a product switch, drop the previous product's selection and fall to the
+        // new product's active deck.
+        var current = productSwitched ? null : DeckSelector.SelectedItem as string;
         DeckSelector.ItemsSource = decks;
         var target = current ?? _host.Process.ActiveDeck;
         if (target != null && decks.Contains(target))
             DeckSelector.SelectedItem = target;
+
+        UpdateNoDeckBanner();
     }
+
+    /// <summary>
+    /// Shows the guidance banner whenever no deck is driving the steps (the built-in
+    /// fallback is in use) — i.e. the product has no deck, or none is selected/active.
+    /// </summary>
+    private void UpdateNoDeckBanner()
+        => NoDeckBanner.Visibility = _deck == null ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>Rebuilds the step buttons from the selected deck's <c>Run page</c> programs (in deck order).</summary>
     private void OnDeckSelected(object sender, SelectionChangedEventArgs e)
@@ -113,6 +144,7 @@ public partial class ProcessStepsPanel : UserControl
             _deck = null;
             StepList.ItemsSource = DefaultSteps();
             TitleText.Text = "FAU ATTACH STEPS";
+            UpdateNoDeckBanner();
             return;
         }
 
@@ -135,6 +167,7 @@ public partial class ProcessStepsPanel : UserControl
         StepList.ItemsSource = steps;
         TitleText.Text = string.IsNullOrWhiteSpace(deck.Name)
             ? "PROCESS DECK" : deck.Name.ToUpperInvariant();
+        UpdateNoDeckBanner();
     }
 
     /// <summary>

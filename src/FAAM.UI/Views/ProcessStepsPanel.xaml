@@ -107,6 +107,14 @@
                           ToolTip="Pick a deck — its programs flagged 'Run page' appear as buttons below" />
             </StackPanel>
 
+            <!-- No-deck guidance — shown when no deck drives the steps (built-in fallback in use). -->
+            <Border DockPanel.Dock="Top" x:Name="NoDeckBanner" Visibility="Collapsed"
+                    Background="{StaticResource Panel}" BorderBrush="{StaticResource Warn}" BorderThickness="1"
+                    CornerRadius="3" Padding="8,6" Margin="0,0,0,10">
+                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Warn}" FontSize="11"
+                           Text="No deck linked to this product — showing built-in fallback steps. Author or clone a deck in Engineer and flag its programs 'Run page' to drive this list." />
+            </Border>
+
             <!-- Step buttons. -->
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <ItemsControl x:Name="StepList">

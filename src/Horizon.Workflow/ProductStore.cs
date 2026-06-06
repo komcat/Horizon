@@ -111,6 +111,59 @@ internal sealed class ProductStore
     }
 
     /// <summary>
+    /// Creates <paramref name="newName"/> as a full editable copy of
+    /// <paramref name="source"/>'s process definition — <c>positions.json</c>, the
+    /// <c>vision\</c> profiles, and the <c>processes\</c> / <c>decks\</c> /
+    /// <c>recipes\</c> programs — so a model variation starts from a working process
+    /// the operator can re-teach positions on and edit command blocks in. Only
+    /// <c>dut\</c> run history is NOT copied (it belongs to the source's physical
+    /// units). The clone gets a fresh identity + timestamps, seeded with the source's
+    /// part number / description. Callers must have validated that
+    /// <paramref name="source"/> exists and <paramref name="newName"/> is valid and free.
+    /// </summary>
+    public void Clone(string source, string newName)
+    {
+        var src = Path.Combine(_root, source);
+        var dst = Path.Combine(_root, newName);
+        Create(newName);   // dirs + a default product.json
+
+        CopyFile(Path.Combine(src, "positions.json"), Path.Combine(dst, "positions.json"));
+        foreach (var sub in new[] { "vision", "processes", "decks", "recipes" })
+            CopyDirectory(Path.Combine(src, sub), Path.Combine(dst, sub));
+
+        var s = ReadInfo(source);
+        var now = DateTime.UtcNow;
+        WriteInfo(new ProductInfo
+        {
+            Name = newName,
+            DisplayName = newName,
+            PartNumber = s?.PartNumber ?? string.Empty,
+            Description = s?.Description ?? string.Empty,
+            CreatedUtc = now,
+            ModifiedUtc = now,
+        });
+    }
+
+    private static void CopyFile(string src, string dst)
+    {
+        if (!File.Exists(src)) return;
+        Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+        File.Copy(src, dst, overwrite: true);
+    }
+
+    private static void CopyDirectory(string src, string dst)
+    {
+        if (!Directory.Exists(src)) return;
+        Directory.CreateDirectory(dst);
+        foreach (var file in Directory.GetFiles(src, "*", SearchOption.AllDirectories))
+        {
+            var target = Path.Combine(dst, Path.GetRelativePath(src, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target, overwrite: true);
+        }
+    }
+
+    /// <summary>
     /// Reads a product's <c>product.json</c>. Returns a defaulted record (with the
     /// directory name) when the file is absent or unreadable — so products created
     /// before metadata existed still resolve. Returns null only if the product

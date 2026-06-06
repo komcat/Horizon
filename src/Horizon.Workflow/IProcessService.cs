@@ -42,6 +42,17 @@ public interface IProcessService
     Result DeleteProduct(string name);
 
     /// <summary>
+    /// Creates <paramref name="newName"/> as a full editable copy of an existing
+    /// product's process definition — positions, vision profiles, and programs /
+    /// decks / recipes — with a fresh identity and empty DUT history. Each variation
+    /// owns its own copy, so command blocks can be edited independently. Does not
+    /// change the active product (the caller loads the new one if desired). Fails if
+    /// the source is missing, the name is invalid, or a product by that name already
+    /// exists.
+    /// </summary>
+    Result CloneProduct(string source, string newName);
+
+    /// <summary>
     /// Loads (activates) a product, re-scoping all process data (programs, positions,
     /// decks, DUT records) to it. Refused while a program run or interactive DUT run
     /// is in progress — switching mid-run would split a unit's data across products.
@@ -255,6 +266,19 @@ public interface IProcessService
 
     /// <summary>Deletes a deck from the active product.</summary>
     Result DeleteDeck(string name);
+
+    /// <summary>Deck names in another (non-active) product — for importing a deck from it.</summary>
+    IReadOnlyList<string> ListDecksOf(string product);
+
+    /// <summary>
+    /// Imports a deck from <paramref name="sourceProduct"/> into the active product
+    /// under <paramref name="newDeckName"/>, copying any programs the deck references
+    /// that the active product is missing (so it is runnable here). The new deck gets
+    /// a fresh identity (deck + entry UIDs) and becomes the active deck. Fails if the
+    /// source/deck is missing, the source is the active product, the name is empty, or
+    /// a deck by that name already exists here.
+    /// </summary>
+    Result ImportDeck(string sourceProduct, string deckName, string newDeckName);
 
     /// <summary>
     /// Runs a deck — its programs in order, sharing one context. The first program

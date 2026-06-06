@@ -68,6 +68,10 @@
                       ItemsSource="{Binding Decks}" SelectedItem="{Binding SelectedDeck}" />
             <Button Content="New" Style="{StaticResource ToolButton}" Command="{Binding NewCommand}" />
             <Button Content="Save" Style="{StaticResource ToolButton}" Command="{Binding SaveCommand}" />
+            <Button Content="Save As" Style="{StaticResource ToolButton}" MinWidth="64" Click="OnSaveAs"
+                    ToolTip="Save the current deck as a new, independent deck to edit for a product variation" />
+            <Button Content="Import" Style="{StaticResource ToolButton}" MinWidth="60" Click="OnImport"
+                    ToolTip="Import a deck (and its programs) from another product, saved under a new name here" />
             <Button Content="Delete" Style="{StaticResource ToolButton}" Command="{Binding DeleteCommand}" />
             <Button Content="History" Style="{StaticResource ToolButton}" MinWidth="62" Click="OnHistory" />
             <Border Width="1" Margin="6,2,12,2" Background="{StaticResource Edge}" />

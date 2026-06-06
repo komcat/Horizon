@@ -318,6 +318,75 @@ public sealed class DeckEditorViewModel : ObservableObject
         Status = $"Saved '{DeckName.Trim()}'.";
     }
 
+    /// <summary>
+    /// Saves the current deck under a new name as an <b>independent</b> deck — a fresh
+    /// deck UID and fresh per-row UIDs, so its history / diff do not fork the source's.
+    /// Intended for building a product-variation deck from an existing one; the new
+    /// deck becomes the loaded/selected deck. Returns false (with <see cref="Status"/>
+    /// set) if the name is empty, unchanged, or already in use.
+    /// </summary>
+    public bool SaveDeckAs(string newName)
+    {
+        if (_isRunning) { Status = "Stop the run before saving."; return false; }
+        if (Entries.Count == 0) { Status = "Add at least one program first."; return false; }
+        if (Entries.Any(r => string.IsNullOrWhiteSpace(r.Program)))
+        {
+            Status = "Every row needs a program selected.";
+            return false;
+        }
+
+        newName = (newName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(newName)) { Status = "Enter a new deck name."; return false; }
+        if (string.Equals(newName, _selectedDeck, StringComparison.OrdinalIgnoreCase))
+        {
+            Status = "Pick a name different from the current deck.";
+            return false;
+        }
+        if (_host.Process.ListDecks().Contains(newName, StringComparer.OrdinalIgnoreCase))
+        {
+            Status = $"Deck '{newName}' already exists — pick a new name.";
+            return false;
+        }
+
+        // An independent copy: fresh deck + row UIDs so history/diff don't fork the source.
+        _suppressDirty = true;
+        _deckUid = NewDeckId();
+        foreach (var row in Entries) row.Uid = DeckEntryRowViewModel.NewId();
+        DeckName = newName;
+        _suppressDirty = false;
+
+        var result = _host.Process.SaveDeck(BuildDeck());
+        if (!result.IsSuccess) { Status = result.Message; return false; }
+
+        RefreshDecks();
+        _selectedDeck = newName;
+        OnPropertyChanged(nameof(SelectedDeck));
+        DeleteCommand.RaiseCanExecuteChanged();
+        IsDirty = false;
+        Status = $"Saved as '{newName}'.";
+        return true;
+    }
+
+    /// <summary>
+    /// Imports a deck from another product into the active product under
+    /// <paramref name="newName"/> (copying any programs it references that are missing
+    /// here), then loads it into the editor. Returns false (with <see cref="Status"/>
+    /// set) on failure.
+    /// </summary>
+    public bool ImportDeck(string sourceProduct, string deckName, string newName)
+    {
+        if (_isRunning) { Status = "Stop the run before importing."; return false; }
+
+        var result = _host.Process.ImportDeck(sourceProduct, deckName, newName);
+        if (!result.IsSuccess) { Status = result.Message; return false; }
+
+        RefreshPrograms();          // copied programs are now selectable in the rows
+        RefreshDecks();
+        SelectedDeck = newName.Trim();   // load the imported deck into the editor
+        Status = $"Imported '{deckName}' from '{sourceProduct}' as '{newName.Trim()}'.";
+        return true;
+    }
+
     private void DeleteDeck()
     {
         var name = _selectedDeck;
