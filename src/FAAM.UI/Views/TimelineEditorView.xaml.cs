@@ -59,6 +59,7 @@ public partial class TimelineEditorView : UserControl
 
         _paletteDragStart = e.GetPosition(null);
         _paletteDragItem = item;
+        _vm.ShowHelp(item.Spec);   // single click → show this command's help in the right panel
     }
 
     private void OnPaletteMouseMove(object sender, MouseEventArgs e)

@@ -312,4 +312,5 @@ write code that won't trip them:
 - Program history → SQLite: `docs/program-history-sqlite-design.md`.
 - Vision Profile page (per-position vision recipes): `docs/vision-profile-design.md`.
 - Run-page utility-app launcher (phone-style springboard + L2→L3 app facet): `docs/utility-app-launcher-design.md`.
+- Engineer command help (palette help panel + `OpCatalogHelp` authoring): `docs/engineer-command-help.md`.
 - Mission-critical coding standard (Power of 10): `docs/coding-standards-power-of-10.md`.

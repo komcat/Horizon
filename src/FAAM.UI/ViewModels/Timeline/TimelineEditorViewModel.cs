@@ -26,6 +26,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     private string _programName = "New Program";
     private string? _selectedProgram;
     private ProcessBlockViewModel? _selectedBlock;
+    private OpHelpViewModel? _selectedHelp;
     private CellViewModel? _selectedCell;
 
     // Stage selection: a set (for copy / range), plus the anchor a shift-click extends
@@ -116,11 +117,42 @@ public sealed class TimelineEditorViewModel : ObservableObject
             var old = _selectedBlock;
             if (!SetField(ref _selectedBlock, value)) return;
             if (old != null) old.IsSelected = false;
-            if (value != null) { value.IsSelected = true; SelectedCell = FindCell(value); }
+            if (value != null) { value.IsSelected = true; SelectedCell = FindCell(value); SelectedHelp = null; }
             OnPropertyChanged(nameof(HasSelectedBlock));
             OnPropertyChanged(nameof(HasNoSelectedBlock));
+            OnPropertyChanged(nameof(ShowPaletteHelp));
+            OnPropertyChanged(nameof(ShowEmptyHint));
             RemoveBlockCommand.RaiseCanExecuteChanged();
         }
+    }
+
+    /// <summary>
+    /// Command help shown in the right panel when a palette command is clicked (and no
+    /// block is selected). Set via <see cref="ShowHelp"/>; cleared when a block is
+    /// selected so the parameter editor takes over.
+    /// </summary>
+    public OpHelpViewModel? SelectedHelp
+    {
+        get => _selectedHelp;
+        private set
+        {
+            if (!SetField(ref _selectedHelp, value)) return;
+            OnPropertyChanged(nameof(ShowPaletteHelp));
+            OnPropertyChanged(nameof(ShowEmptyHint));
+        }
+    }
+
+    /// <summary>True when the right panel should show command help (a palette item is selected, no block).</summary>
+    public bool ShowPaletteHelp => _selectedBlock == null && _selectedHelp != null;
+
+    /// <summary>True when the right panel should show the "nothing selected" hint.</summary>
+    public bool ShowEmptyHint => _selectedBlock == null && _selectedHelp == null;
+
+    /// <summary>Shows the given command's help in the right panel (clears any block selection).</summary>
+    public void ShowHelp(OpSpec spec)
+    {
+        SelectedBlock = null;
+        SelectedHelp = new OpHelpViewModel(spec);
     }
 
     /// <summary>Selects a cell (for palette-click placement) and clears the block selection.</summary>
