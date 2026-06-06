@@ -60,21 +60,21 @@ public partial class RunView : UserControl
 
         StepsPanel.Attach(host);   // process panel logs + STOP via the engine host
         StepsPanel.InspectMotionRequested += OnInspectMotionRequested;
-        UCorrPanel.Attach(host);   // U-correction protocol panel → Layer 2 routine
-        FauPrePanel.Attach(host);  // FAU pre-align protocol panel → Layer 2 routine
 
-        // The SiPhOG chart shares the panel's client/connection.
-        SiphogChartControl.Attach(SiphogPanelControl.Client);
+        // The utility-app springboard owns the four utility apps (U correction, FAU
+        // pre-align, Hill Climber, SiPhOG connection) and the shared SiPhOG client.
+        AppHost.Attach(host);
+        var siphog = AppHost.SiphogClient;
 
-        // Hill Climber drives the Layer 2 engine, fed by the same SiPhOG client (SAG PWR V).
-        HillClimbPanelControl.Attach(host, SiphogPanelControl.Client);
+        // The SiPhOG chart (over the camera) shares the app's client/connection.
+        SiphogChartControl.Attach(siphog);
 
         // Make that same SiPhOG signal available to hillclimb.* workflow steps (Engineer page).
-        host.Process.SetHillClimbFeedbackProvider(() => new SiphogHillClimbFeedback(SiphogPanelControl.Client));
+        host.Process.SetHillClimbFeedbackProvider(() => new SiphogHillClimbFeedback(siphog));
 
         // Publish the live SiPhOG frame into the unified signal.read catalog so Engineer
         // blocks can pull siphog.* values (alongside the built-in SMU/PSU/Measurement/…).
-        host.Process.AddSignalSource(new SiphogSignalSource(SiphogPanelControl.Client));
+        host.Process.AddSignalSource(new SiphogSignalSource(siphog));
     }
 
     /// <summary>Starts the process timer — called by the shell header when a DUT run begins.</summary>
@@ -82,23 +82,6 @@ public partial class RunView : UserControl
 
     /// <summary>Stops the process timer — called by the shell header when a DUT run ends.</summary>
     public void StopProcessTimer() => StepsPanel.StopProcessTimer();
-
-    /// <summary>
-    /// Show/hide the SiPhOG widget slot. Hiding collapses it (freeing the area for
-    /// another widget) and disconnects the client so it stops streaming. Guarded
-    /// because the CheckBox's initial IsChecked fires before the slot is built.
-    /// </summary>
-    private void OnSiphogToggle(object sender, RoutedEventArgs e)
-    {
-        if (SiphogSlot is null) return;   // fires once during InitializeComponent — slot not ready
-
-        var show = SiphogToggle.IsChecked == true;
-        SiphogSlot.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (show)
-            SiphogPanelControl.EnsureConnected();      // re-shown ⇒ reconnect automatically
-        else
-            SiphogPanelControl.Client.Disconnect();    // hidden ⇒ idle (no socket, no stream)
-    }
 
     /// <summary>Shows the motion-inspector grid (over the camera column) with the supplied position rows.</summary>
     private void OnInspectMotionRequested(object? sender, IReadOnlyList<MotionInspectRow> rows)

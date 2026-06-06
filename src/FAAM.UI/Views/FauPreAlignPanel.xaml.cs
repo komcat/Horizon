@@ -44,6 +44,17 @@ public partial class FauPreAlignPanel : UserControl, IOperatorPrompt
     private int _captureIndex;
     private bool _running;
 
+    /// <summary>Raised whenever the run-state or status changes — the utility-app launcher badge listens.</summary>
+    public event Action? RunStateChanged;
+
+    /// <summary>True while a pre-align run is in progress (drives the launcher's Running badge).</summary>
+    public bool IsRunning => _running;
+
+    /// <summary>Current status line, surfaced to the launcher badge / app header.</summary>
+    public string RunStatusDetail => StatusText.Text;
+
+    private void RaiseRunState() => RunStateChanged?.Invoke();
+
     public FauPreAlignPanel()
     {
         InitializeComponent();
@@ -242,6 +253,7 @@ public partial class FauPreAlignPanel : UserControl, IOperatorPrompt
         }
 
         _running = true;
+        RaiseRunState();
         _captureIndex = 0;
         ResetDots();
         RefreshReferenceButtons();
@@ -354,6 +366,7 @@ public partial class FauPreAlignPanel : UserControl, IOperatorPrompt
                 SetDot(_captureIndex, captured: false);
                 CaptureButton.IsEnabled = true;
             }
+            RaiseRunState();   // refresh the launcher badge / app-header status line
         });
 
         return tcs.Task;
@@ -393,6 +406,7 @@ public partial class FauPreAlignPanel : UserControl, IOperatorPrompt
         CaptureButton.IsEnabled = false;
         MoveFauButton.IsEnabled = false;
         RefreshButtons();
+        RaiseRunState();
     }
 
     private void Log(LogLevel level, string message)

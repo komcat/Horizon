@@ -40,6 +40,17 @@ public partial class UCorrectionPanel : UserControl, IOperatorPrompt
     private int _captureIndex;
     private bool _running;
 
+    /// <summary>Raised whenever the run-state or status changes — the utility-app launcher badge listens.</summary>
+    public event Action? RunStateChanged;
+
+    /// <summary>True while a correction run is in progress (drives the launcher's Running badge).</summary>
+    public bool IsRunning => _running;
+
+    /// <summary>Current status line, surfaced to the launcher badge / app header.</summary>
+    public string RunStatusDetail => StatusText.Text;
+
+    private void RaiseRunState() => RunStateChanged?.Invoke();
+
     public UCorrectionPanel()
     {
         InitializeComponent();
@@ -187,6 +198,7 @@ public partial class UCorrectionPanel : UserControl, IOperatorPrompt
         }
 
         _running = true;
+        RaiseRunState();
         _captureIndex = 0;
         ResetDots();
         RefreshReferenceButtons();
@@ -299,6 +311,7 @@ public partial class UCorrectionPanel : UserControl, IOperatorPrompt
                 SetDot(_captureIndex, captured: false);   // highlight the point now being refined
                 CaptureButton.IsEnabled = true;
             }
+            RaiseRunState();   // refresh the launcher badge / app-header status line
         });
 
         return tcs.Task;
@@ -340,6 +353,7 @@ public partial class UCorrectionPanel : UserControl, IOperatorPrompt
         CaptureButton.IsEnabled = false;
         ApplyButton.IsEnabled = false;
         RefreshButtons();
+        RaiseRunState();
     }
 
     private void Log(LogLevel level, string message)

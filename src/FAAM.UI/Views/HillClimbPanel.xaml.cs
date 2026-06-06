@@ -35,6 +35,20 @@ public partial class HillClimbPanel : UserControl
     private bool _editingCeiling;                    // true while the ✎ button has the box in ceiling-edit mode
     private const double LifetimeFloorUm = 1.0;      // below this the anchor is spent
 
+    private HillClimbState _lastState = HillClimbState.Idle;
+
+    /// <summary>Raised whenever the climb state changes — the utility-app launcher badge listens.</summary>
+    public event Action? RunStateChanged;
+
+    /// <summary>True while a climb is in progress (drives the launcher's Running badge).</summary>
+    public bool IsRunning => _engine?.IsRunning ?? false;
+
+    /// <summary>True when the last climb ended in an error (drives the launcher's Error badge).</summary>
+    public bool IsError => _lastState == HillClimbState.Error;
+
+    /// <summary>Current state text, surfaced to the launcher badge / app header.</summary>
+    public string RunStatusDetail => StateText.Text;
+
     public HillClimbPanel()
     {
         InitializeComponent();
@@ -282,6 +296,7 @@ public partial class HillClimbPanel : UserControl
 
     private void OnStateChanged(object? sender, HillClimbStateChangedEventArgs e) => Ui(() =>
     {
+        _lastState = e.NewState;
         StateText.Text = e.NewState.ToString();
         StateText.Foreground = e.NewState switch
         {
@@ -291,6 +306,7 @@ public partial class HillClimbPanel : UserControl
             HillClimbState.Cancelled => (Brush)FindResource("Subtle"),
             _ => (Brush)FindResource("Accent"),
         };
+        RunStateChanged?.Invoke();   // refresh the launcher badge
     });
 
     private void OnBaselineRecorded(object? sender, HillClimbBaselineRecordedEventArgs e) => Ui(() =>
