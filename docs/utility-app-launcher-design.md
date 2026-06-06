@@ -1,7 +1,12 @@
 # Utility App Launcher (Run-page "phone" springboard)
 
-Status: **Design — not yet implemented.** This captures the agreed architecture and
-the locked decisions before any code is written. Brief: the Run page's middle area
+Status: **Phase 1 implemented (L3 shell).** The springboard is live on the Run page —
+`UtilityAppHost` shows a 2×2 home grid of the four apps with status badges; tapping a
+tile swaps its panel in with a Back button; panels stay alive in the background.
+Pure Layer 3, no Layer 2 changes yet. **Phase 2 (the L2→L3 command seam: `app.*`
+steps + `IUtilityAppHost` + `SetUtilityAppHost`) and Phase 3 (polish) are pending.**
+This doc captures the agreed architecture and the locked decisions. Brief: the Run
+page's middle area
 (today a `TabControl{U correction, FAU pre-align}` + a stacked Hill Climber panel +
 the SiPhOG connect panel) becomes a **phone-style app springboard**. Idle, it shows a
 grid of utility-app icons with live status badges; tapping one swaps that app's panel
