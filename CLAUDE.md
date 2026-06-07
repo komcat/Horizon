@@ -78,6 +78,15 @@ defines its own program/recipe/position formats.
   `decks\`, `recipes\`, `dut\`, `product.json` metadata via `ProductInfo`); the active
   product is recorded in `products\active.json`. `IProcessService` exposes
   `ActiveProductInfo` + a `ProductChanged` event and refuses to switch mid-run.
+  **Product variations** (same process, different positions/edited blocks — each
+  product owns an editable copy, not a shared library): `ProductStore.CloneProduct`
+  (FAAM Home "Save As…") deep-copies positions, vision profiles, and
+  programs/decks/recipes into a new product with a fresh identity and empty DUT
+  history (only `dut\` is excluded). The deck editor has its own **Save As**
+  (duplicate a deck in-product with fresh deck/entry UIDs so history doesn't fork)
+  and **Import** (`ListDecksOf`/`ImportDeck` — pull a deck from another product,
+  copying any missing referenced programs). The Run page re-points to the active
+  product's deck on `ProductChanged`.
 - `IOperatorPrompt` — abstraction for asking the operator a question; the UI
   supplies a WPF implementation, consoles a stdin one.
 - `Scanning/` — hexapod beam-alignment scan (coarse-to-fine hill-climb, ported
