@@ -61,8 +61,8 @@ public partial class RunView : UserControl
         StepsPanel.Attach(host);   // process panel logs + STOP via the engine host
         StepsPanel.InspectMotionRequested += OnInspectMotionRequested;
 
-        // The utility-app springboard owns the four utility apps (U correction, FAU
-        // pre-align, Hill Climber, SiPhOG connection) and the shared SiPhOG client.
+        // The utility-app springboard owns the utility apps (U correction, FAU
+        // pre-align, Hill Climber, Hexapod Scan, SiPhOG connection) and the shared SiPhOG client.
         AppHost.Attach(host);
         var siphog = AppHost.SiphogClient;
 

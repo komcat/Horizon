@@ -1,0 +1,162 @@
+<UserControl x:Class="FAAM.UI.Views.ScanPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- Compact "label : value" readout row helpers (mirrors HillClimbPanel). -->
+        <Style x:Key="ScLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="ScValue" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="ScCombo" TargetType="ComboBox">
+            <Setter Property="Height" Value="24" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="ScBox" TargetType="TextBox">
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="HorizontalContentAlignment" Value="Right" />
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}" BorderThickness="2"
+            CornerRadius="4" Width="300" VerticalAlignment="Top">
+        <StackPanel Margin="10">
+            <TextBlock Text="HEXAPOD SCAN" Foreground="{StaticResource Accent}" FontSize="15" FontWeight="Bold"
+                       HorizontalAlignment="Center" Margin="0,2,0,8" />
+
+            <!-- Live readouts (driven by HexapodScanEngine progress). -->
+            <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                    CornerRadius="3" Padding="8,6" Margin="0,0,0,8">
+                <StackPanel>
+                    <Grid Margin="0,0,0,4">
+                        <TextBlock Text="State" Style="{StaticResource ScLabel}" />
+                        <TextBlock x:Name="StateText" Text="Idle" HorizontalAlignment="Right"
+                                   FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource Subtle}" />
+                    </Grid>
+                    <Grid Margin="0,2,0,2">
+                        <TextBlock Text="Phase" Style="{StaticResource ScLabel}" />
+                        <TextBlock x:Name="PhaseText" Text="—" Style="{StaticResource ScValue}"
+                                   HorizontalAlignment="Right" MaxWidth="190" TextTrimming="CharacterEllipsis" />
+                    </Grid>
+
+                    <!-- value cur / peak -->
+                    <Grid Margin="0,2,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Axis / step" Style="{StaticResource ScLabel}" />
+                            <TextBlock x:Name="AxisStepText" Text="—" Style="{StaticResource ScValue}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="Value" Style="{StaticResource ScLabel}" />
+                            <TextBlock x:Name="ValueText" Text="—" Style="{StaticResource ScValue}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Peak" Style="{StaticResource ScLabel}" />
+                            <TextBlock x:Name="PeakText" Text="—" Style="{StaticResource ScValue}"
+                                       Foreground="{StaticResource Ok}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Margin="0,2,0,4">
+                        <TextBlock Text="Peak SNR (σ)" Style="{StaticResource ScLabel}" />
+                        <TextBlock x:Name="SnrText" Text="—" Style="{StaticResource ScValue}" HorizontalAlignment="Right" />
+                    </Grid>
+                    <ProgressBar x:Name="ScanProgressBar" Height="6" Minimum="0" Maximum="1" Value="0"
+                                 Background="{StaticResource Panel}" Foreground="{StaticResource Accent}"
+                                 BorderThickness="0" />
+                </StackPanel>
+            </Border>
+
+            <!-- Hexapod device (connected motion devices; ⟳ re-reads the list). -->
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Hexapod" Style="{StaticResource ScLabel}" Margin="0,0,6,0" />
+                <ComboBox x:Name="HexCombo" Grid.Column="1" Style="{StaticResource ScCombo}" />
+                <Button x:Name="RefreshButton" Grid.Column="2" Content="&#x21BB;" Width="26" Height="24" Margin="4,0,0,0"
+                        Background="{StaticResource Panel}" Foreground="{StaticResource Text}"
+                        BorderBrush="{StaticResource Edge}" BorderThickness="1" FontSize="12" Cursor="Hand"
+                        ToolTip="Re-read connected devices" Click="OnRefreshDevices" />
+            </Grid>
+
+            <!-- Feedback source: Kind + device. -->
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Feedback" Style="{StaticResource ScLabel}" Margin="0,0,6,0" />
+                <ComboBox x:Name="KindCombo" Grid.Column="1" Style="{StaticResource ScCombo}"
+                          SelectionChanged="OnKindChanged">
+                    <ComboBoxItem Content="Current meter (6482)" />
+                    <ComboBoxItem Content="SMU (2400/2602B)" />
+                    <ComboBoxItem Content="Power supply" />
+                </ComboBox>
+            </Grid>
+            <ComboBox x:Name="DeviceCombo" Style="{StaticResource ScCombo}" Margin="0,0,0,4" />
+
+            <!-- Channel + value type. -->
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="46" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Ch" Style="{StaticResource ScLabel}" Margin="0,0,6,0" />
+                <TextBox x:Name="ChannelBox" Grid.Column="1" Text="1" Style="{StaticResource ScBox}" />
+                <TextBlock Grid.Column="2" Text="Value" Style="{StaticResource ScLabel}"
+                           HorizontalAlignment="Right" Margin="8,0,6,0" />
+                <ComboBox x:Name="ValueTypeCombo" Grid.Column="3" Width="90" Style="{StaticResource ScCombo}">
+                    <ComboBoxItem Content="Current" />
+                    <ComboBoxItem Content="Voltage" />
+                </ComboBox>
+            </Grid>
+
+            <!-- Scan mode (step schedule). -->
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Mode" Style="{StaticResource ScLabel}" Margin="0,0,6,0" />
+                <ComboBox x:Name="ModeCombo" Grid.Column="1" Style="{StaticResource ScCombo}">
+                    <ComboBoxItem Content="Coarse (5→2→1→0.5 µm, ±0.2 mm)" />
+                    <ComboBoxItem Content="Fine (2→1→0.5 µm, ±0.2 mm)" />
+                    <ComboBoxItem Content="Ultra-fine (0.5→0.2→0.1 µm, ±0.1 mm)" />
+                </ComboBox>
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="StartButton" Grid.Column="0" Content="Start Scan" Height="40" Margin="0,0,3,0"
+                        Background="{StaticResource Accent}" Foreground="White" BorderThickness="0"
+                        FontSize="13" FontWeight="Bold" Cursor="Hand" Click="OnStart" />
+                <Button x:Name="StopButton" Grid.Column="1" Content="Stop" Height="40" Margin="3,0,0,0"
+                        Background="#D9534F" Foreground="White" BorderThickness="0"
+                        FontSize="13" FontWeight="Bold" Cursor="Hand" IsEnabled="False" Click="OnStop" />
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

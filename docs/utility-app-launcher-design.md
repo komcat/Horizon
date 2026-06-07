@@ -1,5 +1,16 @@
 # Utility App Launcher (Run-page "phone" springboard)
 
+> **Update — 5th app added (Hexapod Scan).** The "generalize to a registry only if a
+> 5th app appears" decision below was resolved by *staying concrete*: `ScanApp`
+> (`Apps/UtilityAppAdapters.cs`) was simply appended to the hardcoded `_apps` list in
+> `UtilityAppHost.Attach`, and `Views/ScanPanel.xaml(.cs)` wraps the Layer 2
+> `HexapodScanEngine` (coarse-to-fine beam-alignment scan ported from `bobcat_engine`;
+> see `docs/hexapod-scanning.md`). It uses **engine-facet feedback** (current-meter /
+> SMU / power-supply via `FeedbackDescriptor`) — not SiPhOG — picks the hexapod from
+> the connected motion devices, and takes the `ActivityKind.Alignment` gate while it
+> drives the stage. `app.open/start/stop "scan"` work with no seam changes (the host
+> resolves apps by id). The home grid (`UniformGrid Columns=2`) now wraps to 3 rows.
+
 Status: **Phases 1 & 2 implemented.** The springboard is live on the Run page —
 `UtilityAppHost` shows a 2×2 home grid of the four apps with status badges; tapping a
 tile swaps its panel in with a Back button; panels stay alive in the background
