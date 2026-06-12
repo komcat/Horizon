@@ -42,45 +42,54 @@
                                    HorizontalAlignment="Center" />
                     </StackPanel>
                 </Border>
+
+                <!-- SET_CURRENT presets — sit to the right of the SAG badge on the top row. -->
+                <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="Set SLED current" Foreground="{StaticResource Subtle}" FontSize="11"
+                               Margin="0,0,0,4" />
+                    <ItemsControl ItemsSource="{Binding Presets}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Content="{Binding Label}" Command="{Binding ApplyCommand}"
+                                        MinWidth="64" Height="30" Margin="0,0,6,0"
+                                        IsEnabled="{Binding DataContext.IsConnected, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
             </StackPanel>
 
-            <!-- Field / value table -->
+            <!-- Field / value table — 3 rows × 2 columns; small label over a large
+                 value per cell, so the six readings stay compact but readable. -->
             <Border BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3"
-                    Background="{StaticResource Bg}" Padding="0" Margin="0,0,0,8">
+                    Background="{StaticResource Bg}" Padding="4" Margin="0,0,0,8">
                 <ItemsControl ItemsSource="{Binding Fields}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="2" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="120" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding Name}" Foreground="{StaticResource Subtle}"
-                                           Padding="10,5" />
-                                <TextBlock Grid.Column="1" Text="{Binding Value}" Foreground="{StaticResource Text}"
-                                           FontFamily="Consolas" HorizontalAlignment="Right" Padding="10,5" />
-                            </Grid>
+                            <Border Margin="3" Padding="10,6" CornerRadius="3"
+                                    Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                                    BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}" Foreground="{StaticResource Subtle}"
+                                               FontSize="12.5" />
+                                    <TextBlock Text="{Binding Value}" Foreground="{StaticResource Text}"
+                                               FontFamily="Consolas" FontSize="22" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </Border>
-
-            <!-- SET_CURRENT presets -->
-            <TextBlock Text="Set SLED current" Foreground="{StaticResource Subtle}" FontSize="11" Margin="0,0,0,4" />
-            <ItemsControl ItemsSource="{Binding Presets}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel Orientation="Horizontal" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Button Content="{Binding Label}" Command="{Binding ApplyCommand}"
-                                MinWidth="64" Height="30" Margin="0,0,6,6"
-                                IsEnabled="{Binding DataContext.IsConnected, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
 
             <!-- Last reply / status -->
             <TextBlock Text="{Binding Status}" Foreground="{StaticResource Subtle}" FontStyle="Italic"

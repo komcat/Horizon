@@ -33,7 +33,7 @@ public enum AppRunState
 /// </summary>
 public interface IUtilityApp
 {
-    /// <summary>Stable identifier used by command blocks (Phase 2): "ucorrection","faupre","hillclimb","siphog".</summary>
+    /// <summary>Stable identifier used by command blocks (Phase 2): "ucorrection","faupre","hillclimb","scan".</summary>
     string Id { get; }
     /// <summary>Display title shown on the home tile and the app-view header.</summary>
     string Title { get; }

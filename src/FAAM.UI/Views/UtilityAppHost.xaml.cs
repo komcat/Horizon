@@ -9,7 +9,7 @@ namespace FAAM.UI.Views;
 
 /// <summary>
 /// The Run-page "phone" springboard. Hosts the utility apps (U correction, FAU
-/// pre-align, Hill Climber, Hexapod Scan, SiPhOG connection) as a home grid of tiles; tapping a tile
+/// pre-align, Hill Climber, Hexapod Scan) as a home grid of tiles; tapping a tile
 /// swaps that app's panel into the content area with a Back button that returns to the
 /// grid. Apps are created once and kept alive — navigation only toggles
 /// <see cref="UIElement.Visibility"/>, so a running climb / live SiPhOG stream survives
@@ -21,23 +21,19 @@ namespace FAAM.UI.Views;
 public partial class UtilityAppHost : UserControl, IUtilityAppHost
 {
     private readonly List<IUtilityApp> _apps = new();
-    private SiphogPanel? _siphogPanel;
 
     public UtilityAppHost()
     {
         InitializeComponent();
     }
 
-    /// <summary>The shared SiPhOG client — used by the Run-page chart + the Layer 2 signal/feedback seams.</summary>
-    public SiphogClient SiphogClient =>
-        _siphogPanel?.Client ?? throw new InvalidOperationException("Attach(host) must be called first.");
-
     /// <summary>
-    /// Builds and attaches the apps. Must be called once before <see cref="SiphogClient"/>
-    /// is read. SiPhOG is left disconnected on load (as before — the operator connects it
-    /// from the SiPhOG app, or a Phase 2 command block does).
+    /// Builds and attaches the apps. The SiPhOG client is supplied by the caller — it is
+    /// owned by the Run-page SiPhOG tab now, not the springboard — and shared into the
+    /// Hill Climber app for its feedback. SiPhOG is left disconnected on load (the
+    /// operator connects it from the SiPhOG tab, or a Phase 2 command block does).
     /// </summary>
-    public void Attach(EngineHost host)
+    public void Attach(EngineHost host, SiphogClient siphog)
     {
         var ucorr = new UCorrectionPanel();
         ucorr.Attach(host);
@@ -45,10 +41,8 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
         var fau = new FauPreAlignPanel();
         fau.Attach(host);
 
-        _siphogPanel = new SiphogPanel();          // self-attached (owns its client)
-
         var hill = new HillClimbPanel();
-        hill.Attach(host, _siphogPanel.Client);
+        hill.Attach(host, siphog);
 
         var scan = new ScanPanel();
         scan.Attach(host);
@@ -57,7 +51,6 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
         _apps.Add(new FauPreAlignApp(fau));
         _apps.Add(new HillClimbApp(hill));
         _apps.Add(new ScanApp(scan));
-        _apps.Add(new SiphogApp(_siphogPanel));
 
         // All the panels live in the content host at once; navigation toggles visibility.
         foreach (var app in _apps)

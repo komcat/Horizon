@@ -61,16 +61,17 @@ public partial class RunView : UserControl
         StepsPanel.Attach(host);   // process panel logs + STOP via the engine host
         StepsPanel.InspectMotionRequested += OnInspectMotionRequested;
 
-        // The utility-app springboard owns the utility apps (U correction, FAU
-        // pre-align, Hill Climber, Hexapod Scan, SiPhOG connection) and the shared SiPhOG client.
-        AppHost.Attach(host);
-        var siphog = AppHost.SiphogClient;
+        // The SiPhOG client is now owned by the in-tab SiPhOG panel (camera-area tab
+        // group), not the springboard. The chart tab shares that one client/connection.
+        var siphog = SiphogPanelControl.Client;
+        SiphogChartControl.Attach(siphog);
+
+        // The utility-app springboard owns the remaining utility apps (U correction, FAU
+        // pre-align, Hill Climber, Hexapod Scan); it borrows the SiPhOG client above.
+        AppHost.Attach(host, siphog);
 
         // Let app.* workflow steps drive the springboard (open/home/start/stop).
         host.Process.SetUtilityAppHost(AppHost);
-
-        // The SiPhOG chart (over the camera) shares the app's client/connection.
-        SiphogChartControl.Attach(siphog);
 
         // Make that same SiPhOG signal available to hillclimb.* workflow steps (Engineer page).
         host.Process.SetHillClimbFeedbackProvider(() => new SiphogHillClimbFeedback(siphog));

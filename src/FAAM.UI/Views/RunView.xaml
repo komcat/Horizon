@@ -172,8 +172,20 @@
                         </Grid>
                     </Border>
 
-                    <!-- SAG / target chart — sits beside the Zoom2x inset (matched height). -->
-                    <v:SiphogChart Grid.Column="1" x:Name="SiphogChartControl" Height="300" Margin="8,0,0,0" />
+                    <!-- SiPhOG tab group — sits beside the Zoom2x inset (matched height).
+                         Tab 1 = the SAG/Target trend chart; tab 2 = the connection + value
+                         table (the former springboard "SiPhOG" app, moved in here). -->
+                    <TabControl Grid.Column="1" x:Name="SiphogTabs" Height="300" Margin="8,0,0,0"
+                                Background="{StaticResource Panel}">
+                        <TabItem Header="Chart">
+                            <v:SiphogChart x:Name="SiphogChartControl" />
+                        </TabItem>
+                        <TabItem Header="SiPhOG">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <v:SiphogPanel x:Name="SiphogPanelControl" />
+                            </ScrollViewer>
+                        </TabItem>
+                    </TabControl>
 
                     <ScrollViewer Grid.Column="2" Margin="8,0,0,0"
                                   HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">

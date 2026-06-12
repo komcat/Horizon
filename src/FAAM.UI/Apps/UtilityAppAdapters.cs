@@ -1,6 +1,5 @@
 using System.Windows;
 using FAAM.UI.Mvvm;
-using FAAM.UI.Siphog;
 using FAAM.UI.Views;
 
 namespace FAAM.UI.Apps;
@@ -129,33 +128,6 @@ public sealed class ScanApp : ObservableObject, IUtilityApp
 
     public Task StartAsync(CancellationToken ct) { _panel.RequestStart(); return Task.CompletedTask; }
     public Task StopAsync() { _panel.RequestStop(); return Task.CompletedTask; }
-
-    private void Refresh() => UtilityAppUi.OnUi(() =>
-    {
-        OnPropertyChanged(nameof(State));
-        OnPropertyChanged(nameof(StatusDetail));
-    });
-}
-
-/// <summary>SiPhOG connection app (TCP client + value table). Passive — Connected, not Running.</summary>
-public sealed class SiphogApp : ObservableObject, IUtilityApp
-{
-    private readonly SiphogPanel _panel;
-    public SiphogApp(SiphogPanel panel)
-    {
-        _panel = panel;
-        _panel.Client.ConnectionChanged += _ => Refresh();
-    }
-
-    public string Id => "siphog";
-    public string Title => "SiPhOG";
-    public string Glyph => "((•))";
-    public UIElement Content => _panel;
-    public AppRunState State => _panel.Client.IsConnected ? AppRunState.Connected : AppRunState.Idle;
-    public string? StatusDetail => _panel.Client.IsConnected ? "Connected" : "Disconnected";
-
-    public Task StartAsync(CancellationToken ct) { _panel.EnsureConnected(); return Task.CompletedTask; }
-    public Task StopAsync() { _panel.Client.Disconnect(); return Task.CompletedTask; }
 
     private void Refresh() => UtilityAppUi.OnUi(() =>
     {
