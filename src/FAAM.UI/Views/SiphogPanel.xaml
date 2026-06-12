@@ -1,24 +1,31 @@
 <UserControl x:Class="FAAM.UI.Views.SiphogPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
-            BorderThickness="1" CornerRadius="4" Padding="12">
-        <StackPanel>
-            <TextBlock Text="SiPhOG" Foreground="{StaticResource Accent}" FontSize="15" FontWeight="SemiBold"
-                       Margin="0,0,0,8" />
+    <!-- Vertical 280-wide panel matching its alignment-utility siblings (FAU / Hill
+         Climber): accent border, centred title, everything stacked top-to-bottom. -->
+    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}"
+            BorderThickness="2" CornerRadius="4" Width="280" VerticalAlignment="Top">
+        <StackPanel Margin="10">
+            <TextBlock Text="SiPhOG" Foreground="{StaticResource Accent}" FontSize="15" FontWeight="Bold"
+                       HorizontalAlignment="Center" Margin="0,2,0,8" />
 
-            <!-- Connect / disconnect + live data rate -->
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                <Button Content="{Binding ConnectLabel}" Command="{Binding ConnectCommand}"
-                        Width="120" Height="32" />
-                <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
+            <!-- Connect / disconnect — full width. -->
+            <Button Content="{Binding ConnectLabel}" Command="{Binding ConnectCommand}"
+                    Height="32" Margin="0,0,0,8" />
+
+            <!-- Live data rate + SAG/target percentage (traffic-light background). -->
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
                     <TextBlock Text="{Binding DataRate}" Foreground="{StaticResource Text}"
                                FontFamily="Consolas" FontSize="16" FontWeight="SemiBold" />
                     <TextBlock Text="data rate" Foreground="{StaticResource Subtle}" FontSize="11" />
                 </StackPanel>
 
-                <!-- SAG / target percentage with traffic-light background. -->
-                <Border Margin="16,0,0,0" CornerRadius="4" Padding="12,4" VerticalAlignment="Center" MinWidth="80">
+                <Border Grid.Column="1" CornerRadius="4" Padding="12,4" VerticalAlignment="Center" MinWidth="84">
                     <Border.Style>
                         <Style TargetType="Border">
                             <Setter Property="Background" Value="{StaticResource Bg}" />
@@ -42,50 +49,42 @@
                                    HorizontalAlignment="Center" />
                     </StackPanel>
                 </Border>
+            </Grid>
 
-                <!-- SET_CURRENT presets — sit to the right of the SAG badge on the top row. -->
-                <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="Set SLED current" Foreground="{StaticResource Subtle}" FontSize="11"
-                               Margin="0,0,0,4" />
-                    <ItemsControl ItemsSource="{Binding Presets}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel Orientation="Horizontal" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Button Content="{Binding Label}" Command="{Binding ApplyCommand}"
-                                        MinWidth="64" Height="30" Margin="0,0,6,0"
-                                        IsEnabled="{Binding DataContext.IsConnected, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </StackPanel>
+            <!-- SET_CURRENT presets. -->
+            <TextBlock Text="Set SLED current" Foreground="{StaticResource Subtle}" FontSize="11" Margin="0,0,0,4" />
+            <ItemsControl ItemsSource="{Binding Presets}" Margin="0,0,0,8">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <UniformGrid Columns="2" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Content="{Binding Label}" Command="{Binding ApplyCommand}"
+                                Height="30" Margin="0,0,4,4"
+                                IsEnabled="{Binding DataContext.IsConnected, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
-            <!-- Field / value table — 3 rows × 2 columns; small label over a large
-                 value per cell, so the six readings stay compact but readable. -->
+            <!-- Field / value table — one row per reading, label left + large value right. -->
             <Border BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3"
-                    Background="{StaticResource Bg}" Padding="4" Margin="0,0,0,8">
+                    Background="{StaticResource Bg}" Padding="8,4" Margin="0,0,0,8">
                 <ItemsControl ItemsSource="{Binding Fields}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <UniformGrid Columns="2" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Margin="3" Padding="10,6" CornerRadius="3"
-                                    Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
-                                    BorderThickness="1">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Name}" Foreground="{StaticResource Subtle}"
-                                               FontSize="12.5" />
-                                    <TextBlock Text="{Binding Value}" Foreground="{StaticResource Text}"
-                                               FontFamily="Consolas" FontSize="22" FontWeight="SemiBold" />
-                                </StackPanel>
-                            </Border>
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Name}" Foreground="{StaticResource Subtle}"
+                                           FontSize="12.5" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding Value}" Foreground="{StaticResource Text}"
+                                           FontFamily="Consolas" FontSize="19" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" />
+                            </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

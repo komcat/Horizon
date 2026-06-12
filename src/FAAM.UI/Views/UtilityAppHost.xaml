@@ -1,114 +1,24 @@
 <UserControl x:Class="FAAM.UI.Views.UtilityAppHost"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <UserControl.Resources>
-        <!-- Springboard backdrop — a deliberate dark override of the system-theme rule
-             (operator request). The app panels keep their own light Panel/Text brushes
-             so their readouts stay readable against this dark surround. -->
-        <SolidColorBrush x:Key="HostBackdrop" Color="#1E2024" />
-
-        <!-- Badge colours: running = yellow, connected = green, error = red. -->
-        <SolidColorBrush x:Key="BadgeRunning" Color="#FFD54F" />
-        <SolidColorBrush x:Key="BadgeOk"      Color="#66BB6A" />
-        <SolidColorBrush x:Key="BadgeError"   Color="#E74C3C" />
-
-        <!-- Home app tile — big square button with a glyph, title and status line. -->
-        <Style x:Key="AppTile" TargetType="Button">
-            <Setter Property="Margin" Value="6" />
-            <Setter Property="MinHeight" Value="110" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Foreground" Value="{StaticResource Text}" />
-            <Setter Property="Background" Value="{StaticResource Bg}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="6"
-                                Padding="8,10">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
-                                <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </UserControl.Resources>
-
-    <Border Background="{StaticResource HostBackdrop}" BorderBrush="{StaticResource Accent}" BorderThickness="2" CornerRadius="4">
-        <Grid Margin="8">
-            <!-- HOME (springboard) -->
-            <DockPanel x:Name="HomeView">
-                <TextBlock DockPanel.Dock="Top" Text="UTILITIES"
-                           Foreground="{StaticResource Accent}" FontSize="15" FontWeight="Bold"
-                           HorizontalAlignment="Center" Margin="0,2,0,10" />
-                <ItemsControl x:Name="AppGrid" VerticalAlignment="Top">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <UniformGrid Columns="2" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Button Style="{StaticResource AppTile}" Tag="{Binding}" Click="OnAppClick">
-                                <StackPanel>
-                                    <!-- Glyph "icon" disc -->
-                                    <Border Width="46" Height="46" CornerRadius="23"
-                                            Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
-                                            BorderThickness="1" HorizontalAlignment="Center" Margin="0,0,0,8">
-                                        <TextBlock Text="{Binding Glyph}" Foreground="{StaticResource Accent}"
-                                                   FontSize="15" FontWeight="Bold"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                    </Border>
-                                    <TextBlock Text="{Binding Title}" Foreground="{StaticResource Text}"
-                                               FontSize="13" FontWeight="SemiBold" TextAlignment="Center" />
-                                    <!-- Status line — coloured by State. -->
-                                    <TextBlock x:Name="StatusLine" Text="{Binding StatusDetail}"
-                                               Foreground="{StaticResource Subtle}" FontSize="11"
-                                               TextAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
-                                </StackPanel>
-                            </Button>
-                            <DataTemplate.Triggers>
-                                <DataTrigger Binding="{Binding State}" Value="Running">
-                                    <Setter TargetName="StatusLine" Property="Foreground" Value="{StaticResource BadgeRunning}" />
-                                    <Setter TargetName="StatusLine" Property="FontWeight" Value="SemiBold" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding State}" Value="Connected">
-                                    <Setter TargetName="StatusLine" Property="Foreground" Value="{StaticResource BadgeOk}" />
-                                    <Setter TargetName="StatusLine" Property="FontWeight" Value="SemiBold" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding State}" Value="Error">
-                                    <Setter TargetName="StatusLine" Property="Foreground" Value="{StaticResource BadgeError}" />
-                                    <Setter TargetName="StatusLine" Property="FontWeight" Value="SemiBold" />
-                                </DataTrigger>
-                            </DataTemplate.Triggers>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </DockPanel>
-
-            <!-- APP VIEW (one app foreground; DataContext = the selected IUtilityApp) -->
-            <DockPanel x:Name="AppView" Visibility="Collapsed">
-                <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
-                    <Button Content="← Back" Click="OnBack" HorizontalAlignment="Left"
-                            Padding="10,3" Cursor="Hand" />
-                    <TextBlock Text="{Binding Title}" Foreground="{StaticResource Accent}"
-                               FontSize="14" FontWeight="Bold"
-                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    <TextBlock Text="{Binding StatusDetail}" Foreground="{StaticResource Subtle}"
-                               FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"
-                               MaxWidth="160" TextTrimming="CharacterEllipsis" />
-                </Grid>
-                <!-- All app panels live here at once (added in code-behind); navigation
-                     toggles their Visibility so background run-state survives. -->
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <Grid x:Name="AppContentHost" />
-                </ScrollViewer>
-            </DockPanel>
+    <!-- The Run-page alignment utilities, laid out directly and always ready to use:
+         U correction + FAU pre-align on the top row, Hill Climber + the SiPhOG connection
+         panel below. The old "phone" springboard (tiles + Back navigation) was dropped per
+         operator feedback, and the Hexapod Scan app is not used on FAAM. -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <ContentControl x:Name="UCorrHost"  Grid.Row="0" Grid.Column="0" Margin="0,0,6,12" VerticalAlignment="Top" />
+            <ContentControl x:Name="FauHost"    Grid.Row="0" Grid.Column="1" Margin="6,0,0,12" VerticalAlignment="Top" />
+            <ContentControl x:Name="HillHost"   Grid.Row="1" Grid.Column="0" Margin="0,0,6,0"  VerticalAlignment="Top" />
+            <ContentControl x:Name="SiphogHost" Grid.Row="1" Grid.Column="1" Margin="6,0,0,0"  VerticalAlignment="Top" />
         </Grid>
-    </Border>
+    </ScrollViewer>
 </UserControl>

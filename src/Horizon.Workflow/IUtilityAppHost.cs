@@ -10,7 +10,7 @@ namespace Horizon.Workflow;
 /// defines the contract, a Layer 3 head implements it. When no head is registered the
 /// <c>app.*</c> steps fail with a clear message rather than crash.
 ///
-/// App ids: <c>ucorrection</c>, <c>faupre</c>, <c>hillclimb</c>, <c>siphog</c>.
+/// App ids: <c>ucorrection</c>, <c>faupre</c>, <c>hillclimb</c>.
 ///
 /// Note on semantics: <see cref="StartAsync"/> <i>activates</i> an app (foregrounds it
 /// and begins its routine / connection) and returns once started — it does NOT await

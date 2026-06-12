@@ -105,33 +105,3 @@ public sealed class HillClimbApp : ObservableObject, IUtilityApp
         OnPropertyChanged(nameof(StatusDetail));
     });
 }
-
-/// <summary>Hexapod Scan app (coarse-to-fine beam-alignment scan over the Layer 2 engine).</summary>
-public sealed class ScanApp : ObservableObject, IUtilityApp
-{
-    private readonly ScanPanel _panel;
-    public ScanApp(ScanPanel panel)
-    {
-        _panel = panel;
-        _panel.RunStateChanged += Refresh;
-    }
-
-    public string Id => "scan";
-    public string Title => "Scan";
-    public string Glyph => "⌖";   // ⌖ position target
-    public UIElement Content => _panel;
-    public AppRunState State =>
-        _panel.IsError ? AppRunState.Error
-        : _panel.IsRunning ? AppRunState.Running
-        : AppRunState.Idle;
-    public string? StatusDetail => _panel.RunStatusDetail;
-
-    public Task StartAsync(CancellationToken ct) { _panel.RequestStart(); return Task.CompletedTask; }
-    public Task StopAsync() { _panel.RequestStop(); return Task.CompletedTask; }
-
-    private void Refresh() => UtilityAppUi.OnUi(() =>
-    {
-        OnPropertyChanged(nameof(State));
-        OnPropertyChanged(nameof(StatusDetail));
-    });
-}
