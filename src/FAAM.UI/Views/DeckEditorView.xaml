@@ -5,6 +5,11 @@
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
 
+        <!-- Row state tints: enabled-but-manual = light blue; enabled + auto-start =
+             pale green; disabled rows keep the default Panel background. -->
+        <SolidColorBrush x:Key="EnabledRowBrush" Color="#DCEAF7" />
+        <SolidColorBrush x:Key="AutoRowBrush"    Color="#DFF3E1" />
+
         <!-- A deck row card. -->
         <Style x:Key="RowCard" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource Panel}" />
@@ -14,6 +19,22 @@
             <Setter Property="Padding" Value="8,6" />
             <Setter Property="Margin" Value="0,0,0,6" />
             <Style.Triggers>
+                <!-- Enabled (manual) → light blue. -->
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding Enabled}" Value="True" />
+                        <Condition Binding="{Binding Auto}" Value="False" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Background" Value="{StaticResource EnabledRowBrush}" />
+                </MultiDataTrigger>
+                <!-- Enabled + auto-start → pale green (will advance on its own). -->
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding Enabled}" Value="True" />
+                        <Condition Binding="{Binding Auto}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Background" Value="{StaticResource AutoRowBrush}" />
+                </MultiDataTrigger>
                 <DataTrigger Binding="{Binding RunState}" Value="awaiting">
                     <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
                     <Setter Property="BorderThickness" Value="2" />
@@ -96,8 +117,41 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="{Binding Order}" Width="22" VerticalAlignment="Center"
                                            Foreground="{StaticResource Subtle}" />
-                                <CheckBox IsChecked="{Binding Enabled}" VerticalAlignment="Center" Margin="0,0,8,0"
-                                          ToolTip="Enabled — unchecked rows are skipped" />
+
+                                <!-- Transition INTO this program — moved to the front so the
+                                     auto-start / delay is read first. Fixed-width cell so the
+                                     Program columns line up across rows; the first row has no
+                                     transition (it runs immediately) and shows a faint hint. -->
+                                <Grid Width="500" Margin="0,0,10,0">
+                                    <TextBlock Text="▶ runs first (no wait)" Foreground="{StaticResource Subtle}"
+                                               FontStyle="Italic" VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasTransition}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <StackPanel Orientation="Horizontal"
+                                                Visibility="{Binding HasTransition, Converter={StaticResource BoolToVis}}">
+                                        <CheckBox Content="Auto start, after delay" IsChecked="{Binding Auto}"
+                                                  VerticalAlignment="Center" Margin="0,0,12,0"
+                                                  ToolTip="On = this program starts automatically (after the delay / condition) once the previous one finishes.  Off = the deck pauses and waits for the operator to press Activate Next." />
+                                        <TextBlock Text="Delay(s)" VerticalAlignment="Center" Margin="0,0,4,0"
+                                                   Foreground="{StaticResource Text}" />
+                                        <TextBox Width="48" Height="26" Margin="0,0,12,0" VerticalContentAlignment="Center"
+                                                 Text="{Binding DelaySeconds}" IsEnabled="{Binding Auto}" />
+                                        <TextBlock Text="When" VerticalAlignment="Center" Margin="0,0,4,0"
+                                                   Foreground="{StaticResource Text}" />
+                                        <TextBox Width="150" Height="26" VerticalContentAlignment="Center"
+                                                 Text="{Binding Condition}" IsEnabled="{Binding Auto}"
+                                                 ToolTip="Optional condition, e.g. sag_v &gt; 0.5  (empty = always)" />
+                                    </StackPanel>
+                                </Grid>
+
                                 <TextBlock Text="Program" VerticalAlignment="Center" Margin="0,0,4,0"
                                            Foreground="{StaticResource Text}" />
                                 <ComboBox Width="180" Height="26" Margin="0,0,8,0" VerticalContentAlignment="Center"
@@ -109,28 +163,14 @@
                                           Margin="0,0,12,0"
                                           ToolTip="Show a button for this program on the Run page" />
 
-                                <!-- Transition into this program (hidden for the first row) -->
-                                <StackPanel Orientation="Horizontal"
-                                            Visibility="{Binding HasTransition, Converter={StaticResource BoolToVis}}">
-                                    <Border Width="1" Margin="0,2,12,2" Background="{StaticResource Edge}" />
-                                    <CheckBox Content="Auto" IsChecked="{Binding Auto}" VerticalAlignment="Center"
-                                              Margin="0,0,12,0"
-                                              ToolTip="On = advance automatically (after delay/condition); Off = wait for operator" />
-                                    <TextBlock Text="Delay(s)" VerticalAlignment="Center" Margin="0,0,4,0"
-                                               Foreground="{StaticResource Text}" />
-                                    <TextBox Width="48" Height="26" Margin="0,0,12,0" VerticalContentAlignment="Center"
-                                             Text="{Binding DelaySeconds}" IsEnabled="{Binding Auto}" />
-                                    <TextBlock Text="When" VerticalAlignment="Center" Margin="0,0,4,0"
-                                               Foreground="{StaticResource Text}" />
-                                    <TextBox Width="150" Height="26" Margin="0,0,12,0" VerticalContentAlignment="Center"
-                                             Text="{Binding Condition}" IsEnabled="{Binding Auto}"
-                                             ToolTip="Optional condition, e.g. sag_v &gt; 0.5  (empty = always)" />
-                                </StackPanel>
-
                                 <Button Content="↑" Width="26" Height="26" Margin="0,0,4,0" Command="{Binding MoveUpCommand}" />
                                 <Button Content="↓" Width="26" Height="26" Margin="0,0,4,0" Command="{Binding MoveDownCommand}" />
                                 <Button Content="✕" Width="26" Height="26" Margin="0,0,8,0" Command="{Binding RemoveCommand}" />
                                 <TextBlock Text="{Binding RunState}" Style="{StaticResource RunStateText}" />
+
+                                <!-- Enable last — unchecked rows are skipped at run time. -->
+                                <CheckBox Content="Enabled" IsChecked="{Binding Enabled}" VerticalAlignment="Center"
+                                          Margin="12,0,0,0" ToolTip="Enabled — unchecked rows are skipped" />
                             </StackPanel>
                         </Border>
                     </DataTemplate>

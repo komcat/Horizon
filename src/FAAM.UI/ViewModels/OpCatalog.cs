@@ -234,6 +234,14 @@ public static class OpCatalog
                 new ParamSpec("message", "Prompt", ParamKind.Text, "Enter or scan the unit serial number:"),
                 new ParamSpec("var", "Store serial in variable (optional)", ParamKind.Text),
             }),
+        // Snapshots EVERY signal in the unified catalog (all SiPhOG fields plus every
+        // connected SMU / PSU / Measurement / TEC / Laser channel) into one grouped DUT
+        // entry, named by 'dataset'. One block = the unit's full telemetry at this point.
+        new("dut.readAllSignals", "Read All Signals", "DUT", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("dataset", "Data set name", ParamKind.Text, "signals"),
+            }),
     };
 
     private static readonly Dictionary<string, OpSpec> ByKey =

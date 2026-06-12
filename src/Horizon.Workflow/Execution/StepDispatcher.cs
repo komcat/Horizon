@@ -810,6 +810,37 @@ internal sealed class StepDispatcher
                 return Result.Ok();
             }
 
+            case "dut.readallsignals":
+            {
+                // Reads EVERY signal currently in the unified catalog (all SiPhOG fields
+                // plus every connected SMU / PSU / Measurement / TEC / Laser channel) and
+                // records them as one grouped Object entry under the data-set name — a
+                // snapshot of the unit's full telemetry at this point in the process.
+                // Signals whose device is offline are skipped (logged), not fatal.
+                if (ctx.Dut == null)
+                {
+                    _log(LogLevel.Warning, "dut.readAllSignals skipped — no DUT serial for this run.");
+                    return Result.Ok();
+                }
+                var dataset = Has(step, "dataset") ? Str(step, "dataset", ctx) : "signals";
+                if (string.IsNullOrWhiteSpace(dataset)) dataset = "signals";
+
+                var descriptors = _signals.Describe();
+                var values = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+                foreach (var d in descriptors)
+                {
+                    var read = await _signals.ReadAsync(d.Key, ct).ConfigureAwait(false);
+                    if (read.IsSuccess) values[d.Key] = read.Value;
+                    else _log(LogLevel.Warning, $"dut.readAllSignals: '{d.Key}' unavailable — {read.Message}");
+                }
+
+                ctx.Dut.Entries.Add(new DutEntry(
+                    DateTime.UtcNow, dataset, JsonSerializer.Serialize(values), DutValueType.Object));
+                _log(LogLevel.Info,
+                    $"DUT data set '{dataset}' <- {values.Count}/{descriptors.Count} signal(s).");
+                return Result.Ok();
+            }
+
             // --- Utility-app springboard (Layer 3 Run-page). app.start/stop ACTIVATE an app
             //     (foreground + begin its routine / connect) and return once started — they do
             //     not await completion; the headless, await-to-completion climb is hillclimb.start. ---

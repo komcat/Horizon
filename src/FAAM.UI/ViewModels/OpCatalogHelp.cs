@@ -73,7 +73,19 @@ public static class OpCatalogHelp
             },
         },
 
+        // ===== DUT — per-unit traceability records =====
+
+        ["dut.readAllSignals"] = new()
+        {
+            Summary = "Snapshot EVERY available signal into the DUT record as one named data set — all SiPhOG readings plus every connected SMU / PSU / Measurement / TEC / Laser channel.",
+            Usage = "Drop it wherever you want a full telemetry snapshot of the unit (e.g. right after alignment, or at end-of-test). It reads each signal live and stores them together as one grouped entry under the data-set name, so a unit can carry several snapshots (e.g. \"before\" and \"after\") across the run.\n\nNeeds a DUT serial for the run (a \"DUT Entry\" step or an up-front serial); with no serial it is skipped with a warning. Signals whose device is offline are skipped (logged), not fatal. The set is read from the same catalog as \"Read Out\" (Signal).",
+            ParamNotes = new[]
+            {
+                ("dataset", "Name this snapshot is filed under in the DUT record (e.g. \"post-align\"). Defaults to \"signals\"."),
+            },
+        },
+
         // ===== TODO: other categories (Motion, IO, Pneumatic, Flow, Signal, Vision,
-        // Align, DUT) — add entries here in the same shape. =====
+        // Align) — add entries here in the same shape. =====
     };
 }
