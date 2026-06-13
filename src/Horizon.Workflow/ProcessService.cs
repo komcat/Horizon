@@ -674,9 +674,9 @@ public sealed class ProcessService : IProcessService
             e => StepEvent?.Invoke(e),
             Log);
 
-        _runDut = BeginDut(serial, program.Name, ctx);
+        var dutSerial = OpenRunDut(serial, program.Name, ctx);
 
-        Log(LogLevel.Info, $"Program started: {program.Name}" + (_runDut != null ? $" [DUT {_runDut.Value.Record.Serial}]" : ""));
+        Log(LogLevel.Info, $"Program started: {program.Name}" + (dutSerial != null ? $" [DUT {dutSerial}]" : ""));
         var verdict = DutVerdict.Fail;
         try
         {
@@ -700,7 +700,20 @@ public sealed class ProcessService : IProcessService
             _pause = null;
             EndDut(_runDut, verdict);
             _runDut = null;
+            PersistSessionIfUsed(ctx);
         }
+    }
+
+    /// <summary>
+    /// When a run recorded into an open operator DUT session (the fallback path,
+    /// not its own owned run), persists that session now so its entries — e.g. a
+    /// <c>Read All Signals</c> snapshot — survive even before the operator presses
+    /// Pass/Fail. No-op when the run owned its DUT or used none.
+    /// </summary>
+    private void PersistSessionIfUsed(WorkflowContext ctx)
+    {
+        if (_interactiveDut != null && ReferenceEquals(ctx.Dut, _interactiveDut.Value.Run))
+            TrySaveDut(_interactiveDut.Value.Record, "session updated after run");
     }
 
     /// <summary>
@@ -716,13 +729,17 @@ public sealed class ProcessService : IProcessService
             return Result.Fail(ErrorCode.OperationFailed, "No active product — cannot set DUT serial.");
         if (string.IsNullOrWhiteSpace(serial))
             return Result.Fail(ErrorCode.InvalidParameter, "Serial number is required.");
-        if (ctx.Dut != null)
+        // A serial this run already OWNS (up-front serial, or an earlier prompt) is
+        // fixed; a fallback DUT (open session / active serial) may be overridden so a
+        // deck's own DUT Entry block still works when a unit happens to be active.
+        if (ctx.Dut != null && !ctx.DutIsFallback)
             return Result.Fail(ErrorCode.OperationFailed, "A DUT serial is already set for this run.");
 
         var begun = BeginDut(serial, source, ctx);   // creates the run, sets ctx.Dut
         if (begun == null)
             return Result.Fail(ErrorCode.OperationFailed, "Could not open the DUT record.");
         _runDut = begun;
+        ctx.DutIsFallback = false;
         return Result.Ok();
     }
 
@@ -781,10 +798,12 @@ public sealed class ProcessService : IProcessService
             return Result.Fail(ErrorCode.InvalidParameter, "Serial number is required.");
 
         var record = _dut.LoadOrCreate(serial.Trim());
-        var run = new DutRun { StartedUtc = DateTime.UtcNow, Source = source };
+        var run = new DutRun { StartedUtc = DateTime.UtcNow, Source = source, Verdict = DutVerdict.InProgress };
         StampOperator(run);
+        record.Runs.Add(run);            // persist the open run now so the file exists from Start
         _interactiveDut = (record, run);
         SetActiveSerial(record.Serial);
+        TrySaveDut(record, "run started");
         Log(LogLevel.Info, $"DUT run started: {record.Serial} [{source}]" +
             (_operator != null ? $" by {_operator.DisplayName}" : ""));
         return Result.Ok();
@@ -804,7 +823,8 @@ public sealed class ProcessService : IProcessService
         var (record, run) = _interactiveDut.Value;
         run.EndedUtc = DateTime.UtcNow;
         run.Verdict = verdict;
-        record.Runs.Add(run);
+        // The run was added to record.Runs and persisted at Start (BeginDutRun); here we
+        // just finalise it in place — do NOT add it again.
         _interactiveDut = null;
 
         if (_dut == null)
@@ -831,6 +851,43 @@ public sealed class ProcessService : IProcessService
     /// <see cref="DutRun"/> to <paramref name="ctx"/>. Returns null when no
     /// serial was given or no product is active — the run then records nothing.
     /// </summary>
+    /// <summary>
+    /// Resolves the DUT a program/deck run records into and wires it to
+    /// <paramref name="ctx"/>. Precedence:
+    /// <list type="number">
+    ///   <item>an explicit up-front <paramref name="serial"/> — owns the run;</item>
+    ///   <item>an open operator DUT session (<see cref="_interactiveDut"/>) —
+    ///         <c>dut.*</c> steps append to it; the session keeps its own lifecycle
+    ///         (this run does not close it), recorded as a <em>fallback</em>;</item>
+    ///   <item>the sticky <see cref="ActiveSerial"/> — a fresh run on the last-set
+    ///         unit, recorded as a <em>fallback</em>;</item>
+    ///   <item>none — <c>ctx.Dut</c> stays null (steps skip, or a
+    ///         <c>dut.promptSerial</c> step may set one mid-run).</item>
+    /// </list>
+    /// A fallback (2/3) is marked <see cref="WorkflowContext.DutIsFallback"/> so a
+    /// <c>dut.promptSerial</c> step can still override it. Sets <see cref="_runDut"/>
+    /// only for cases this run owns and must close (1 and 3). Returns the serial for
+    /// logging, or null when none was resolved.
+    /// </summary>
+    private string? OpenRunDut(string? serial, string source, WorkflowContext ctx)
+    {
+        if (!string.IsNullOrWhiteSpace(serial))
+        {
+            _runDut = BeginDut(serial, source, ctx);
+            return _runDut?.Record.Serial;
+        }
+        if (_interactiveDut != null)
+        {
+            ctx.Dut = _interactiveDut.Value.Run;
+            ctx.DutSerial = _interactiveDut.Value.Record.Serial;
+            ctx.DutIsFallback = true;
+            return _interactiveDut.Value.Record.Serial;
+        }
+        _runDut = BeginDut(ActiveSerial, source, ctx);
+        if (_runDut != null) ctx.DutIsFallback = true;
+        return _runDut?.Record.Serial;
+    }
+
     private (DutRecord Record, DutRun Run)? BeginDut(string? serial, string source, WorkflowContext ctx)
     {
         if (string.IsNullOrWhiteSpace(serial) || _dut == null)
@@ -840,6 +897,7 @@ public sealed class ProcessService : IProcessService
         var run = new DutRun { StartedUtc = DateTime.UtcNow, Source = source };
         StampOperator(run);
         ctx.Dut = run;
+        ctx.DutSerial = record.Serial;
         SetActiveSerial(record.Serial);
         return (record, run);
     }
@@ -873,6 +931,21 @@ public sealed class ProcessService : IProcessService
             _dut.Save(record);
             Log(LogLevel.Info,
                 $"DUT record saved: {record.Serial} — run {verdict}, {run.Entries.Count} entry(ies).");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Error, $"DUT record save failed for {record.Serial}: {ex.Message}");
+        }
+    }
+
+    /// <summary>Persists a DUT record, logging (not throwing) on failure. No-op if no product is loaded.</summary>
+    private void TrySaveDut(DutRecord record, string note)
+    {
+        if (_dut == null) return;
+        try
+        {
+            _dut.Save(record);
+            Log(LogLevel.Debug, $"DUT record saved: {record.Serial} ({note}).");
         }
         catch (Exception ex)
         {
@@ -1208,9 +1281,9 @@ public sealed class ProcessService : IProcessService
             },
             log: Log);
 
-        _runDut = BeginDut(serial, deck.Name, ctx);
+        var dutSerial = OpenRunDut(serial, deck.Name, ctx);
 
-        Log(LogLevel.Info, $"Deck started: {deck.Name}" + (_runDut != null ? $" [DUT {_runDut.Value.Record.Serial}]" : ""));
+        Log(LogLevel.Info, $"Deck started: {deck.Name}" + (dutSerial != null ? $" [DUT {dutSerial}]" : ""));
         var verdict = DutVerdict.Fail;
         try
         {
@@ -1235,6 +1308,7 @@ public sealed class ProcessService : IProcessService
             _deckGate = null;
             EndDut(_runDut, verdict);
             _runDut = null;
+            PersistSessionIfUsed(ctx);
         }
     }
 

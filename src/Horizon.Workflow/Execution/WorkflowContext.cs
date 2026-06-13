@@ -17,6 +17,23 @@ public sealed class WorkflowContext
     /// </summary>
     public DutRun? Dut { get; set; }
 
+    /// <summary>
+    /// True when <see cref="Dut"/> was supplied as a <em>fallback</em> (an open
+    /// operator session or the sticky active serial) rather than owned by this run
+    /// (an up-front serial or a <c>dut.promptSerial</c> step). A
+    /// <c>dut.promptSerial</c> step is allowed to override a fallback DUT, but not
+    /// an owned one.
+    /// </summary>
+    public bool DutIsFallback { get; set; }
+
+    /// <summary>
+    /// Serial of the active <see cref="Dut"/> run, kept alongside it (the run itself
+    /// doesn't carry the serial). Lets a <c>dut.promptSerial</c> step <em>adopt</em>
+    /// an already-active DUT — skipping its prompt — so the block and the Run-page
+    /// "Start DUT" button are interchangeable.
+    /// </summary>
+    public string? DutSerial { get; set; }
+
     public void Set(string name, string value) => _vars[name] = value;
 
     /// <summary>Removes all variables. Does not affect the active <see cref="Dut"/> run.</summary>

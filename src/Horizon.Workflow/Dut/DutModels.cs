@@ -13,6 +13,9 @@ public enum DutValueType
 /// <summary>Disposition of one run against a DUT.</summary>
 public enum DutVerdict
 {
+    /// <summary>The run has started but not yet finished — persisted on Start so the
+    /// record exists immediately; replaced by a final verdict when the run ends.</summary>
+    InProgress,
     /// <summary>The run completed successfully.</summary>
     Pass,
     /// <summary>A step failed or a condition stopped the run.</summary>
