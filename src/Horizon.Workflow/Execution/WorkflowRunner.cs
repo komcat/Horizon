@@ -536,6 +536,22 @@ internal sealed class WorkflowRunner
     {
         _onStep(new WorkflowStepEvent(index, total, desc, Completed: false, Success: false, Message: "", Lane: lane));
 
+        // If a unit is already active — an open Run-page "Start DUT" session, an
+        // inherited active serial, or an earlier prompt this run — adopt it and skip
+        // the prompt, so this block and the Start button are fully interchangeable.
+        if (ctx.Dut != null)
+        {
+            var adopted = ctx.DutSerial ?? string.Empty;
+            ctx.DutIsFallback = false;   // the block has explicitly chosen this DUT
+            var adoptVar = step.Parameters.GetValueOrDefault("var", string.Empty);
+            if (!string.IsNullOrWhiteSpace(adoptVar) && !string.IsNullOrWhiteSpace(adopted))
+                ctx.Set(adoptVar, adopted);
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: true,
+                Message: $"using active DUT {adopted}", Lane: lane));
+            _log(LogLevel.Info, $"Step {index + 1}: DUT already active → {adopted} (prompt skipped).");
+            return null;
+        }
+
         if (_prompt == null)
         {
             const string err = "no operator-prompt handler registered";
