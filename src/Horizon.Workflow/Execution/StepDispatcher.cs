@@ -4,6 +4,7 @@ using Horizon.Common;
 using Horizon.Engine;
 using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Scanning;
+using Horizon.Workflow.Scanning.Feedback;
 using Horizon.Workflow.Signals;
 
 namespace Horizon.Workflow;
@@ -246,17 +247,6 @@ internal sealed class StepDispatcher
             {
                 // Coarse-to-fine hexapod beam-alignment scan — exposes
                 // HexapodScanEngine (see docs/hexapod-scanning.md) as a step.
-                var feedback = new FeedbackDescriptor
-                {
-                    Kind = ParseFeedbackKind(Str(step, "feedbackKind", ctx)),
-                    Device = Str(step, "feedbackDevice", ctx),
-                    Channel = Has(step, "feedbackChannel") ? (int)Num(step, "feedbackChannel", ctx) : 1,
-                    ValueType = Str(step, "feedbackValue", ctx).Trim()
-                        .Equals("voltage", StringComparison.OrdinalIgnoreCase)
-                        ? FeedbackValue.Voltage : FeedbackValue.Current,
-                    IntervalMs = Has(step, "feedbackIntervalMs") ? (int)Num(step, "feedbackIntervalMs", ctx) : 50,
-                };
-
                 var p = ScanParameters.ForMode(ParseScanMode(Str(step, "mode", ctx)));
                 if (Has(step, "axes"))
                 {
@@ -273,25 +263,36 @@ internal sealed class StepDispatcher
                 if (Has(step, "velocity"))
                     p = p with { ScanVelocityMmPerSec = Num(step, "velocity", ctx) };
 
-                var result = await new HexapodScanEngine(_engine, _log)
-                    .RunAsync(step.Device, feedback, p, progress: null, ct).ConfigureAwait(false);
+                return await RunScanStepAsync(step, ctx, p, strategy: null, ct).ConfigureAwait(false);
+            }
 
-                var captureAs = Str(step, "captureAs", ctx);
-                if (!string.IsNullOrWhiteSpace(captureAs))
+            case "scan.grid":
+            {
+                // Full XY-raster scan — same HexapodScanEngine, GridScanStrategy.
+                // 'axes' picks the two grid axes (default X,Y); 'stepUm' is the
+                // pitch between nodes (µm); 'extentMm' the half-extent per axis.
+                var axes = Has(step, "axes") ? SplitAxes(Str(step, "axes", ctx)) : new[] { "X", "Y" };
+                if (axes.Length < 2)
+                    return Result.Fail(ErrorCode.InvalidParameter,
+                        "scan.grid: 'axes' must name two axes (e.g. \"X,Y\").");
+
+                double stepMm = Has(step, "stepUm") ? Num(step, "stepUm", ctx) / 1000.0 : 0.005;
+                double extentMm = Has(step, "extentMm") ? Num(step, "extentMm", ctx) : 0.05;
+
+                var p = new ScanParameters
                 {
-                    ctx.Set($"{captureAs}_peak", result.Peak.Value);
-                    ctx.Set($"{captureAs}_baseline", result.Baseline.Value);
-                    ctx.Set($"{captureAs}_snr", result.PeakSnr);
-                    ctx.Set($"{captureAs}_significant", result.PeakIsSignificant ? "1" : "0");
-                    ctx.Set($"{captureAs}_state", result.FinalState.ToString());
-                }
+                    AxesToScan = new[] { axes[0], axes[1] },
+                    StepSizes = new[] { stepMm },
+                    MaxTotalDistanceMm = extentMm,
+                };
+                if (Has(step, "settleMs"))
+                    p = p with { MotionSettleMs = (int)Num(step, "settleMs", ctx) };
+                if (Has(step, "velocity"))
+                    p = p with { ScanVelocityMmPerSec = Num(step, "velocity", ctx) };
+                if (Has(step, "averaging"))
+                    p = p with { AveragingCount = (int)Num(step, "averaging", ctx) };
 
-                // A scan that ran (even one that found only noise) is a step
-                // success — the recipe branches on '{captureAs}_significant'.
-                // Only a setup/hardware error fails the step.
-                return result.FinalState == ScanState.Error
-                    ? Result.Fail(ErrorCode.OperationFailed, result.Message)
-                    : Result.Ok(result.Message);
+                return await RunScanStepAsync(step, ctx, p, new GridScanStrategy(), ct).ConfigureAwait(false);
             }
 
             case "hillclimb.setanchor":
@@ -991,6 +992,67 @@ internal sealed class StepDispatcher
         if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
             return DutValueType.Double;
         return DutValueType.String;
+    }
+
+    /// <summary>
+    /// Shared body for the <c>scan.*</c> steps: builds the feedback descriptor
+    /// from the step, runs <see cref="HexapodScanEngine"/> with the given
+    /// <paramref name="strategy"/> (null = coarse-to-fine), and captures the
+    /// result into <c>{captureAs}_*</c> context variables. A scan that ran (even
+    /// one that found only noise) is a step success — the recipe branches on
+    /// <c>{captureAs}_significant</c>; only a setup/hardware error fails the step.
+    /// </summary>
+    private async Task<Result> RunScanStepAsync(
+        WorkflowStep step, WorkflowContext ctx, ScanParameters p, IScanStrategy? strategy, CancellationToken ct)
+    {
+        // Feedback selection. Preferred: a single 'signal' key from the unified
+        // catalog (any connected SMU/PSU/Measurement/TEC/Laser channel, or a product
+        // source such as SiPhOG on FAAM.UI) — the same catalog the 'Read Out' block
+        // uses. Legacy fallback: the explicit feedbackKind/device/channel/value facet
+        // descriptor (e.g. bobcat-migrated programs) when no 'signal' is set.
+        IScanFeedbackSource? feedbackSource = null;
+        var feedback = new FeedbackDescriptor();
+
+        if (Has(step, "signal"))
+        {
+            var key = Str(step, "signal", ctx);
+            var descriptor = _signals.Describe()
+                .FirstOrDefault(d => string.Equals(d.Key, key, StringComparison.OrdinalIgnoreCase));
+            feedbackSource = new SignalScanFeedbackSource(
+                (k, t) => _signals.ReadAsync(k, t), key,
+                descriptor?.Display ?? key, descriptor?.Unit ?? string.Empty);
+        }
+        else
+        {
+            feedback = new FeedbackDescriptor
+            {
+                Kind = ParseFeedbackKind(Str(step, "feedbackKind", ctx)),
+                Device = Str(step, "feedbackDevice", ctx),
+                Channel = Has(step, "feedbackChannel") ? (int)Num(step, "feedbackChannel", ctx) : 1,
+                ValueType = Str(step, "feedbackValue", ctx).Trim()
+                    .Equals("voltage", StringComparison.OrdinalIgnoreCase)
+                    ? FeedbackValue.Voltage : FeedbackValue.Current,
+                IntervalMs = Has(step, "feedbackIntervalMs") ? (int)Num(step, "feedbackIntervalMs", ctx) : 50,
+            };
+        }
+
+        var result = await new HexapodScanEngine(_engine, _log)
+            .RunAsync(step.Device, feedback, p, progress: null, strategy: strategy,
+                      feedbackOverride: feedbackSource, ct: ct).ConfigureAwait(false);
+
+        var captureAs = Str(step, "captureAs", ctx);
+        if (!string.IsNullOrWhiteSpace(captureAs))
+        {
+            ctx.Set($"{captureAs}_peak", result.Peak.Value);
+            ctx.Set($"{captureAs}_baseline", result.Baseline.Value);
+            ctx.Set($"{captureAs}_snr", result.PeakSnr);
+            ctx.Set($"{captureAs}_significant", result.PeakIsSignificant ? "1" : "0");
+            ctx.Set($"{captureAs}_state", result.FinalState.ToString());
+        }
+
+        return result.FinalState == ScanState.Error
+            ? Result.Fail(ErrorCode.OperationFailed, result.Message)
+            : Result.Ok(result.Message);
     }
 
     private static FeedbackKind ParseFeedbackKind(string raw) => raw.Trim().ToLowerInvariant() switch

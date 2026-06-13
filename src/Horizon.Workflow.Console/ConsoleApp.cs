@@ -697,7 +697,7 @@ internal sealed class ConsoleApp : IOperatorPrompt
                 });
 
                 using var cts = new CancellationTokenSource();
-                var runTask = scanEngine.RunAsync(device, descriptor, parameters, progress, cts.Token);
+                var runTask = scanEngine.RunAsync(device, descriptor, parameters, progress, ct: cts.Token);
                 while (!runTask.IsCompleted)
                 {
                     if (!_awaitingPrompt && Console.KeyAvailable)
@@ -738,7 +738,7 @@ internal sealed class ConsoleApp : IOperatorPrompt
 
         // Verbose mode relies on the Debug log for detail — no progress bar needed.
         using var cts = new CancellationTokenSource();
-        var runTask = scanEngine.RunAsync(device, descriptor, parameters, progress: null, cts.Token);
+        var runTask = scanEngine.RunAsync(device, descriptor, parameters, progress: null, ct: cts.Token);
         while (!runTask.IsCompleted)
         {
             if (!_awaitingPrompt && Console.KeyAvailable)

@@ -215,7 +215,7 @@ public partial class ScanPanel : UserControl
             $"({descriptor.ValueType}), mode {SelectedMode()}.");
         try
         {
-            var result = await _scanEngine.RunAsync(hexDevice, descriptor, parameters, progress, _cts.Token);
+            var result = await _scanEngine.RunAsync(hexDevice, descriptor, parameters, progress, ct: _cts.Token);
             ApplyResult(result);
         }
         catch (Exception ex)

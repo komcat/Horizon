@@ -22,7 +22,7 @@ public sealed class OpHelp
 /// to their parameter labels — no help is not an error.
 ///
 /// Authoring guide + structure: <c>docs/engineer-command-help.md</c>.
-/// Coverage so far: <b>App</b> category. Other categories: TODO.
+/// Coverage so far: <b>App</b>, <b>DUT</b>, <b>Scan</b> categories. Other categories: TODO.
 /// </summary>
 public static class OpCatalogHelp
 {
@@ -82,6 +82,41 @@ public static class OpCatalogHelp
             ParamNotes = new[]
             {
                 ("dataset", "Name this snapshot is filed under in the DUT record (e.g. \"post-align\"). Defaults to \"signals\"."),
+            },
+        },
+
+        // ===== Scan — beam-alignment searches =====
+
+        ["scan.grid"] = new()
+        {
+            Summary = "Raster an XY grid about the start position, measuring the feedback signal at every node, then return the device to the strongest node.",
+            Usage = "Use it to MAP a field rather than climb it — it visits every lattice point, so it can't be trapped by a local maximum, at the cost of more moves than a hill-climb. Centred on wherever the device sits when the block runs; it sweeps the start ± the half-extent on each axis in a serpentine (back-and-forth) pattern.\n\nThe grid is square: (2·floor(extent/step)+1) nodes per axis, capped at 4096 nodes total — if you exceed it, increase the pitch or shrink the extent. On finish (or halt) the device ends at the best node found. A scan that ran is a success even if it only found noise; branch on '{captureAs}_significant' (\"1\"/\"0\"). Only a hardware/setup error fails the step.",
+            ParamNotes = new[]
+            {
+                ("axes", "The two axes that form the grid, e.g. \"X,Y\". Only the first two are used."),
+                ("stepUm", "Pitch between adjacent grid nodes, in micrometres. This is the configurable step size."),
+                ("extentMm", "Half-extent per axis in mm: the grid spans the start position ± this on each axis."),
+                ("settleMs", "Dwell after each move before measuring."),
+                ("velocity", "Move velocity during the scan (mm/s); 0 leaves the controller's current velocity."),
+                ("averaging", "Feedback samples averaged into each node's reading."),
+                ("signal", "The feedback signal to maximise — pick from the catalog (any connected SMU / PSU / Measurement / TEC / Laser channel, or SiPhOG on FAAM.UI, e.g. siphog.sagPwrV). Same list as \"Read Out\"; the chosen signal must be available on this head."),
+                ("captureAs", "Prefix for the result variables ({prefix}_peak/_baseline/_snr/_significant/_state)."),
+            },
+        },
+
+        ["scan.hexapod"] = new()
+        {
+            Summary = "Coarse-to-fine hill-climb: per axis, step toward the rising feedback signal with progressively finer steps, then settle on the peak.",
+            Usage = "Use it to FIND a peak quickly when you expect a single well-behaved maximum near the start — it follows the gradient instead of mapping the whole field, so it is much faster than Grid Scan but can stall on a local maximum. 'mode' picks a built-in step schedule; leave 'axes'/'stepSizesUm' blank to use the mode's defaults, or override them.\n\nSame feedback and capture contract as Grid Scan: ends at the best position, a no-signal result is still a step success (branch on '{captureAs}_significant'), only a hardware/setup error fails it.",
+            ParamNotes = new[]
+            {
+                ("mode", "Preset step schedule: coarse, fine, or ultrafine."),
+                ("axes", "Axis order to climb, e.g. \"Z,Y,X\". Blank uses the mode default."),
+                ("stepSizesUm", "Comma-separated step sizes in µm, coarse→fine. Blank uses the mode default."),
+                ("settleMs", "Dwell after each move before measuring."),
+                ("velocity", "Move velocity during the scan (mm/s); 0 leaves the controller's current velocity."),
+                ("signal", "The feedback signal to maximise — pick from the catalog (any connected SMU / PSU / Measurement / TEC / Laser channel, or SiPhOG on FAAM.UI, e.g. siphog.sagPwrV). Same list as \"Read Out\"; the chosen signal must be available on this head."),
+                ("captureAs", "Prefix for the result variables ({prefix}_peak/_baseline/_snr/_significant/_state)."),
             },
         },
 

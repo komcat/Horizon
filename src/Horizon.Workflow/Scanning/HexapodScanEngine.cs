@@ -24,16 +24,22 @@ public sealed class HexapodScanEngine
     }
 
     /// <summary>
-    /// Runs a coarse-to-fine scan on <paramref name="hexapodDevice"/>, optimising
-    /// the signal from <paramref name="feedback"/>. Cancelling <paramref name="ct"/>
-    /// halts the scan; the hexapod still returns to the best position found
-    /// (legacy <c>HaltScan</c> contract).
+    /// Runs a scan on <paramref name="hexapodDevice"/>, optimising the feedback
+    /// signal. <paramref name="strategy"/> selects the search algorithm (defaults
+    /// to <see cref="CoarseToFineStrategy"/>; pass a <see cref="GridScanStrategy"/>
+    /// for a full raster). The feedback comes from <paramref name="feedbackSource"/>
+    /// when supplied (e.g. a catalog-signal source such as SiPhOG); otherwise it is
+    /// built from <paramref name="feedback"/> over the engine facets. Cancelling
+    /// <paramref name="ct"/> halts the scan; the hexapod still returns to the best
+    /// position found (legacy <c>HaltScan</c> contract).
     /// </summary>
     public async Task<ScanResult> RunAsync(
         string hexapodDevice,
         FeedbackDescriptor feedback,
         ScanParameters parameters,
         IProgress<ScanProgress>? progress = null,
+        IScanStrategy? strategy = null,
+        IScanFeedbackSource? feedbackOverride = null,
         CancellationToken ct = default)
     {
         var startTime = DateTime.Now;
@@ -49,7 +55,7 @@ public sealed class HexapodScanEngine
             return Failed(hexapodDevice, startTime, ScanState.Error,
                 $"Motion device '{hexapodDevice}' is not connected.");
 
-        var feedbackSource = ScanFeedbackFactory.Create(_engine, feedback);
+        var feedbackSource = feedbackOverride ?? ScanFeedbackFactory.Create(_engine, feedback);
         try
         {
             var started = await feedbackSource.StartAsync(ct).ConfigureAwait(false);
@@ -93,7 +99,9 @@ public sealed class HexapodScanEngine
 
                 // --- Scan (legacy ExecuteScanStrategy) ---
                 context.State = ScanState.Scanning;
-                var scanResult = await new CoarseToFineStrategy()
+                var activeStrategy = strategy ?? new CoarseToFineStrategy();
+                _log(LogLevel.Info, $"Scan strategy: {activeStrategy.Name}.");
+                var scanResult = await activeStrategy
                     .ExecuteAsync(context, ct).ConfigureAwait(false);
                 if (!scanResult.IsSuccess)
                     _log(LogLevel.Warning, $"Scan strategy reported: {scanResult.Message}");

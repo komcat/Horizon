@@ -190,6 +190,42 @@ public static class OpCatalog
                 new ParamSpec("requireMatch", "Fail step if no match", ParamKind.Bool, "false"),
             }),
 
+        // ---- Scan ----
+        // XY raster over a lattice about the start position: visits EVERY node and
+        // returns the device to the best one (no hill-climbing, so it maps the whole
+        // field). 'axes' = the two grid axes; 'stepUm' the pitch between nodes;
+        // 'extentMm' the half-extent per axis (grid spans the start ± this). 'signal'
+        // is the feedback, picked from the unified signal catalog (any connected
+        // SMU/PSU/Measurement/TEC/Laser channel, or a product source such as SiPhOG on
+        // FAAM.UI — same drop-down as "Read Out"). Results land in '{captureAs}_peak/
+        // _baseline/_snr/_significant/_state'. Device = the hexapod/gantry that rasters.
+        new("scan.grid", "Grid Scan", "Scan", DeviceKind.Motion,
+            new[]
+            {
+                new ParamSpec("axes", "Grid axes (two, e.g. X,Y)", ParamKind.Text, "X,Y"),
+                new ParamSpec("stepUm", "Step / pitch (µm)", ParamKind.Number, "5"),
+                new ParamSpec("extentMm", "Half-extent per axis (mm)", ParamKind.Number, "0.05"),
+                new ParamSpec("settleMs", "Settle per node (ms)", ParamKind.Number, "400"),
+                new ParamSpec("velocity", "Scan velocity (mm/s, 0 = current)", ParamKind.Number, "1"),
+                new ParamSpec("averaging", "Samples averaged per node", ParamKind.Number, "3"),
+                new ParamSpec("signal", "Feedback signal", ParamKind.SignalName),
+                new ParamSpec("captureAs", "Capture prefix", ParamKind.Text, "grid"),
+            }),
+        // Coarse-to-fine hill-climb scan (multi-pass, progressively finer steps). 'mode'
+        // presets the step schedule; 'axes' / 'stepSizesUm' override it. Same 'signal'
+        // feedback + capture as Grid Scan. Device = the hexapod/gantry.
+        new("scan.hexapod", "Hexapod Scan", "Scan", DeviceKind.Motion,
+            new[]
+            {
+                new ParamSpec("mode", "Mode (coarse / fine / ultrafine)", ParamKind.Text, "coarse"),
+                new ParamSpec("axes", "Axes order (blank = mode default)", ParamKind.Text, "Z,Y,X"),
+                new ParamSpec("stepSizesUm", "Step sizes µm (CSV, blank = mode)", ParamKind.Text),
+                new ParamSpec("settleMs", "Settle per step (ms)", ParamKind.Number, "400"),
+                new ParamSpec("velocity", "Scan velocity (mm/s, 0 = current)", ParamKind.Number, "1"),
+                new ParamSpec("signal", "Feedback signal", ParamKind.SignalName),
+                new ParamSpec("captureAs", "Capture prefix", ParamKind.Text, "scan"),
+            }),
+
         // ---- Align (Hill Climber) ----
         // Anchors / clears the lifetime Z+ budget on the chosen motion device (hex). Once an
         // anchor is set, each Start Hill Climb only gets the travel earlier climbs didn't use,
