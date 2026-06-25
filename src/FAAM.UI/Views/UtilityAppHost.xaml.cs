@@ -21,6 +21,7 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
 {
     private readonly List<IUtilityApp> _apps = new();
     private SiphogPanel? _siphogPanel;
+    private AlignmentPanel? _align;
 
     public UtilityAppHost()
     {
@@ -32,6 +33,13 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
         _siphogPanel?.Client ?? throw new InvalidOperationException("Attach(host) must be called first.");
 
     /// <summary>
+    /// Routes the alignment panel's per-point Capture / Apply prompts onto a camera overlay
+    /// (the Run-page main feed), so they mirror the panel's inline buttons. Call after
+    /// <see cref="Attach"/>.
+    /// </summary>
+    public void SetCapturePromptSurface(ICapturePromptSurface surface) => _align?.SetCapturePromptSurface(surface);
+
+    /// <summary>
     /// Builds and attaches the four panels into the fixed grid. The SiPhOG panel owns the
     /// shared client (exposed via <see cref="SiphogClient"/> for the chart) and feeds the
     /// Hill Climber. SiPhOG is left disconnected on load — the operator connects it from
@@ -39,11 +47,10 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
     /// </summary>
     public void Attach(EngineHost host)
     {
-        var ucorr = new UCorrectionPanel();
-        ucorr.Attach(host);
-
-        var fau = new FauPreAlignPanel();
-        fau.Attach(host);
+        // U correction + FAU pre-align merged into one panel that chains the two routines.
+        var align = new AlignmentPanel();
+        align.Attach(host);
+        _align = align;
 
         _siphogPanel = new SiphogPanel();          // self-attached (owns its client)
 
@@ -53,15 +60,17 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
         var autoW = new AutoWPanel();
         autoW.Attach(host, _siphogPanel.Client);
 
-        UCorrHost.Content = ucorr;
-        FauHost.Content = fau;
-        HillHost.Content = hill;
+        AlignHost.Content = align;
         SiphogHost.Content = _siphogPanel;
+        HillHost.Content = hill;
         AutoWHost.Content = autoW;
 
         // Thin adapters keep the id → panel + Start/Stop mapping for the app.* command seam.
-        _apps.Add(new UCorrectionApp(ucorr));
-        _apps.Add(new FauPreAlignApp(fau));
+        // The combined panel backs the chained "align" id plus the legacy "ucorrection" /
+        // "faupre" ids (single-phase starts), so existing app.* steps keep working.
+        _apps.Add(new AlignmentApp(align));
+        _apps.Add(new UCorrectionApp(align));
+        _apps.Add(new FauPreAlignApp(align));
         _apps.Add(new HillClimbApp(hill));
         _apps.Add(new AutoWApp(autoW));
     }

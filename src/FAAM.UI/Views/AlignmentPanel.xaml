@@ -1,0 +1,185 @@
+<UserControl x:Class="FAAM.UI.Views.AlignmentPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- A compact reference-point button (Move to / Save to grids). -->
+        <Style x:Key="PointButton" TargetType="Button">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="Background" Value="{StaticResource Bg}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- "Save to" variant — accent border to set it apart from "Move to". -->
+        <Style x:Key="SaveButton" TargetType="Button" BasedOn="{StaticResource PointButton}">
+            <Setter Property="Foreground" Value="{StaticResource Accent}" />
+        </Style>
+
+        <Style x:Key="SubHeader" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+
+        <!-- Small state indicator dot. -->
+        <Style x:Key="Dot" TargetType="Ellipse">
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="16" />
+            <Setter Property="Margin" Value="3" />
+            <Setter Property="Fill" Value="{StaticResource Edge}" />
+            <Setter Property="Stroke" Value="{StaticResource Subtle}" />
+            <Setter Property="StrokeThickness" Value="1" />
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}" BorderThickness="2"
+            CornerRadius="4" Width="280" VerticalAlignment="Top">
+        <StackPanel Margin="10">
+            <TextBlock Text="U CORR → FAU PRE-ALIGN" Foreground="{StaticResource Accent}" FontSize="14" FontWeight="Bold"
+                       HorizontalAlignment="Center" Margin="0,2,0,8" />
+
+            <!-- One collapsible reference-point group holding BOTH the U-correction points
+                 (P1/P2/F1/F2) and the FAU pre-align points (Out1/Out2/Fiber1/Fiber2), plus
+                 the FAU target offset. Collapsed by default to keep the widget compact. -->
+            <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                    CornerRadius="3" Padding="8" Margin="0,0,0,8">
+                <StackPanel>
+                    <Button Click="OnToggleRefPoints" Cursor="Hand" Background="Transparent" BorderThickness="0"
+                            Padding="0" Margin="0,0,0,6" HorizontalContentAlignment="Stretch"
+                            ToolTip="Show / hide the reference-point buttons">
+                        <Grid>
+                            <TextBlock Text="Reference points &amp; target" Foreground="{StaticResource Subtle}" FontSize="11"
+                                       FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock x:Name="RefPointsChevron" Text="▸" Foreground="{StaticResource Subtle}"
+                                       FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+
+                    <StackPanel x:Name="RefPointsBody" Visibility="Collapsed">
+                        <!-- FAU target offset (master vector) editor. -->
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="FAU target offset" Style="{StaticResource SubHeader}" />
+                                <TextBlock x:Name="TargetText" Text="100 µm @ 0°" Foreground="{StaticResource Text}"
+                                           FontSize="14" FontWeight="SemiBold" />
+                            </StackPanel>
+                            <Button x:Name="TargetApplyButton" Grid.Column="1" Content="Set" Width="56" Height="28"
+                                    Style="{StaticResource SaveButton}" Margin="0"
+                                    Click="OnEditDistance" MouseRightButtonUp="OnEditAngle"
+                                    ToolTip="Left-click: set distance (µm).  Right-click: set angle (deg)." />
+                        </Grid>
+
+                        <!-- Exposure editors + a single Lock for all Move/Save buttons. -->
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,6">
+                            <Button Content="⚙ U exp" FontSize="10.5" Padding="6,1" Margin="0,0,8,0" Cursor="Hand"
+                                    Click="OnEditExposuresU"
+                                    ToolTip="Camera exposure (µs) per U-correction point (0 = leave unchanged)." />
+                            <Button Content="⚙ FAU exp" FontSize="10.5" Padding="6,1" Margin="0,0,10,0" Cursor="Hand"
+                                    Click="OnEditExposuresFau"
+                                    ToolTip="Camera exposure (µs) per FAU pre-align point (0 = leave unchanged)." />
+                            <CheckBox x:Name="LockBox" Content="Lock" Foreground="{StaticResource Subtle}" FontSize="11"
+                                      VerticalAlignment="Center" Checked="OnLockChanged" Unchecked="OnLockChanged"
+                                      ToolTip="Lock the Move/Save buttons to prevent accidental clicks" />
+                        </StackPanel>
+
+                        <!-- U-correction reference points. -->
+                        <TextBlock Text="U correction · Move to" Style="{StaticResource SubHeader}" Margin="0,0,0,4" />
+                        <UniformGrid Columns="2" Rows="2">
+                            <Button x:Name="MoveP1" Style="{StaticResource PointButton}" Content="P1" Tag="P1" Margin="0,0,2,4" Click="OnMoveU" />
+                            <Button x:Name="MoveF1" Style="{StaticResource PointButton}" Content="F1" Tag="F1" Margin="2,0,0,4" Click="OnMoveU" />
+                            <Button x:Name="MoveP2" Style="{StaticResource PointButton}" Content="P2" Tag="P2" Margin="0,0,2,0" Click="OnMoveU" />
+                            <Button x:Name="MoveF2" Style="{StaticResource PointButton}" Content="F2" Tag="F2" Margin="2,0,0,0" Click="OnMoveU" />
+                        </UniformGrid>
+                        <TextBlock Text="Save to (teach current pose)" Style="{StaticResource SubHeader}" Margin="0,6,0,4" />
+                        <UniformGrid Columns="2" Rows="2">
+                            <Button x:Name="SaveP1" Style="{StaticResource SaveButton}" Content="P1" Tag="P1" Margin="0,0,2,4" Click="OnSaveU" />
+                            <Button x:Name="SaveF1" Style="{StaticResource SaveButton}" Content="F1" Tag="F1" Margin="2,0,0,4" Click="OnSaveU" />
+                            <Button x:Name="SaveP2" Style="{StaticResource SaveButton}" Content="P2" Tag="P2" Margin="0,0,2,0" Click="OnSaveU" />
+                            <Button x:Name="SaveF2" Style="{StaticResource SaveButton}" Content="F2" Tag="F2" Margin="2,0,0,0" Click="OnSaveU" />
+                        </UniformGrid>
+
+                        <Border Height="1" Background="{StaticResource Edge}" Margin="0,10,0,8" />
+
+                        <!-- FAU pre-align reference points. -->
+                        <TextBlock Text="FAU pre-align · Move to" Style="{StaticResource SubHeader}" Margin="0,0,0,4" />
+                        <UniformGrid Columns="2" Rows="2">
+                            <Button x:Name="MoveOut1" Style="{StaticResource PointButton}" Content="Out1" Tag="Out1" Margin="0,0,2,4" Click="OnMoveFauPoint" />
+                            <Button x:Name="MoveFiber1" Style="{StaticResource PointButton}" Content="Fiber1" Tag="Fiber1" Margin="2,0,0,4" Click="OnMoveFauPoint" />
+                            <Button x:Name="MoveOut2" Style="{StaticResource PointButton}" Content="Out2" Tag="Out2" Margin="0,0,2,0" Click="OnMoveFauPoint" />
+                            <Button x:Name="MoveFiber2" Style="{StaticResource PointButton}" Content="Fiber2" Tag="Fiber2" Margin="2,0,0,0" Click="OnMoveFauPoint" />
+                        </UniformGrid>
+                        <TextBlock Text="Save to (teach current pose)" Style="{StaticResource SubHeader}" Margin="0,6,0,4" />
+                        <UniformGrid Columns="2" Rows="2">
+                            <Button x:Name="SaveOut1" Style="{StaticResource SaveButton}" Content="Out1" Tag="Out1" Margin="0,0,2,4" Click="OnSaveFauPoint" />
+                            <Button x:Name="SaveFiber1" Style="{StaticResource SaveButton}" Content="Fiber1" Tag="Fiber1" Margin="2,0,0,4" Click="OnSaveFauPoint" />
+                            <Button x:Name="SaveOut2" Style="{StaticResource SaveButton}" Content="Out2" Tag="Out2" Margin="0,0,2,0" Click="OnSaveFauPoint" />
+                            <Button x:Name="SaveFiber2" Style="{StaticResource SaveButton}" Content="Fiber2" Tag="Fiber2" Margin="2,0,0,0" Click="OnSaveFauPoint" />
+                        </UniformGrid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Chained run: U correction → (apply U) → FAU pre-align, automatically. -->
+            <Button x:Name="StartButton" Content="Start correction" Height="38" Margin="0,0,0,6"
+                    Background="{StaticResource Accent}" Foreground="White" BorderThickness="0"
+                    FontSize="14" FontWeight="Bold" Cursor="Hand" Click="OnStart" />
+
+            <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                    CornerRadius="3" Padding="8,5" Margin="0,0,0,6">
+                <StackPanel>
+                    <TextBlock x:Name="PhaseText" Text="Idle" Foreground="{StaticResource Subtle}"
+                               FontSize="11" FontWeight="SemiBold" />
+                    <TextBlock x:Name="StatusText" Text="U → FAU, one button." Foreground="{StaticResource Text}"
+                               TextWrapping="Wrap" FontSize="12.5" />
+                </StackPanel>
+            </Border>
+
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="CaptureButton" Grid.Column="0" Content="Capture Point" Height="48"
+                        Background="#E08A1E" Foreground="White" BorderThickness="0" FontSize="14" FontWeight="Bold"
+                        Cursor="Hand" IsEnabled="False" Click="OnCapture" />
+                <UniformGrid Grid.Column="1" Columns="2" Rows="2" Margin="8,0,0,0" VerticalAlignment="Center">
+                    <Ellipse x:Name="DotA" Style="{StaticResource Dot}" />
+                    <Ellipse x:Name="DotB" Style="{StaticResource Dot}" />
+                    <Ellipse x:Name="DotC" Style="{StaticResource Dot}" />
+                    <Ellipse x:Name="DotD" Style="{StaticResource Dot}" />
+                </UniformGrid>
+            </Grid>
+
+            <Button x:Name="ClearButton" Content="Clear" Height="30" Margin="0,0,0,6"
+                    Style="{StaticResource PointButton}" Click="OnClear" />
+
+            <!-- Final apply confirm — label morphs per phase: "Apply U" then "Move FAU". -->
+            <Button x:Name="ApplyButton" Content="Apply U" Height="44"
+                    Background="{StaticResource Ok}" Foreground="White" BorderThickness="0"
+                    FontSize="15" FontWeight="Bold" Cursor="Hand" IsEnabled="False" Click="OnApply" />
+        </StackPanel>
+    </Border>
+</UserControl>

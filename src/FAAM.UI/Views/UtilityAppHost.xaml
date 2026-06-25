@@ -2,9 +2,9 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <!-- The Run-page alignment utilities, laid out directly and always ready to use:
-         U correction + FAU pre-align on the top row, Hill Climber + the SiPhOG connection
-         panel below. The old "phone" springboard (tiles + Back navigation) was dropped per
-         operator feedback, and the Hexapod Scan app is not used on FAAM. -->
+         the combined U-correction → FAU pre-align panel + the SiPhOG connection panel on the
+         top row, Hill Climber + Auto W below. The old "phone" springboard (tiles + Back
+         navigation) was dropped per operator feedback, and the Hexapod Scan app is not used. -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Grid>
             <Grid.ColumnDefinitions>
@@ -14,13 +14,11 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <ContentControl x:Name="UCorrHost"  Grid.Row="0" Grid.Column="0" Margin="0,0,6,12" VerticalAlignment="Top" />
-            <ContentControl x:Name="FauHost"    Grid.Row="0" Grid.Column="1" Margin="6,0,0,12" VerticalAlignment="Top" />
-            <ContentControl x:Name="HillHost"   Grid.Row="1" Grid.Column="0" Margin="0,0,6,12" VerticalAlignment="Top" />
-            <ContentControl x:Name="SiphogHost" Grid.Row="1" Grid.Column="1" Margin="6,0,0,12" VerticalAlignment="Top" />
-            <ContentControl x:Name="AutoWHost"  Grid.Row="2" Grid.Column="0" Margin="0,0,6,0"  VerticalAlignment="Top" />
+            <ContentControl x:Name="AlignHost"  Grid.Row="0" Grid.Column="0" Margin="0,0,6,12" VerticalAlignment="Top" />
+            <ContentControl x:Name="SiphogHost" Grid.Row="0" Grid.Column="1" Margin="6,0,0,12" VerticalAlignment="Top" />
+            <ContentControl x:Name="HillHost"   Grid.Row="1" Grid.Column="0" Margin="0,0,6,0"  VerticalAlignment="Top" />
+            <ContentControl x:Name="AutoWHost"  Grid.Row="1" Grid.Column="1" Margin="6,0,0,0"  VerticalAlignment="Top" />
         </Grid>
     </ScrollViewer>
 </UserControl>

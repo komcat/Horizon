@@ -22,19 +22,22 @@ internal static class UtilityAppUi
     }
 }
 
-/// <summary>U-correction app (gantry reference-point U-axis correction).</summary>
-public sealed class UCorrectionApp : ObservableObject, IUtilityApp
+/// <summary>
+/// Chained alignment app — runs U correction then FAU pre-align automatically
+/// (the combined <see cref="AlignmentPanel"/>'s Start button).
+/// </summary>
+public sealed class AlignmentApp : ObservableObject, IUtilityApp
 {
-    private readonly UCorrectionPanel _panel;
-    public UCorrectionApp(UCorrectionPanel panel)
+    private readonly AlignmentPanel _panel;
+    public AlignmentApp(AlignmentPanel panel)
     {
         _panel = panel;
         _panel.RunStateChanged += Refresh;
     }
 
-    public string Id => "ucorrection";
-    public string Title => "U Correction";
-    public string Glyph => "U°";
+    public string Id => "align";
+    public string Title => "U → FAU";
+    public string Glyph => "U→F";
     public UIElement Content => _panel;
     public AppRunState State => _panel.IsRunning ? AppRunState.Running : AppRunState.Idle;
     public string? StatusDetail => _panel.RunStatusDetail;
@@ -49,11 +52,44 @@ public sealed class UCorrectionApp : ObservableObject, IUtilityApp
     });
 }
 
-/// <summary>FAU pre-align app (gantry reference-point Y/Z pre-alignment).</summary>
+/// <summary>
+/// U-correction app — the legacy <c>ucorrection</c> id, now backed by the combined
+/// <see cref="AlignmentPanel"/> and running its U-correction phase only.
+/// </summary>
+public sealed class UCorrectionApp : ObservableObject, IUtilityApp
+{
+    private readonly AlignmentPanel _panel;
+    public UCorrectionApp(AlignmentPanel panel)
+    {
+        _panel = panel;
+        _panel.RunStateChanged += Refresh;
+    }
+
+    public string Id => "ucorrection";
+    public string Title => "U Correction";
+    public string Glyph => "U°";
+    public UIElement Content => _panel;
+    public AppRunState State => _panel.IsRunning ? AppRunState.Running : AppRunState.Idle;
+    public string? StatusDetail => _panel.RunStatusDetail;
+
+    public Task StartAsync(CancellationToken ct) { _panel.RequestStartU(); return Task.CompletedTask; }
+    public Task StopAsync() { _panel.RequestStop(); return Task.CompletedTask; }
+
+    private void Refresh() => UtilityAppUi.OnUi(() =>
+    {
+        OnPropertyChanged(nameof(State));
+        OnPropertyChanged(nameof(StatusDetail));
+    });
+}
+
+/// <summary>
+/// FAU pre-align app — the legacy <c>faupre</c> id, now backed by the combined
+/// <see cref="AlignmentPanel"/> and running its FAU pre-align phase only.
+/// </summary>
 public sealed class FauPreAlignApp : ObservableObject, IUtilityApp
 {
-    private readonly FauPreAlignPanel _panel;
-    public FauPreAlignApp(FauPreAlignPanel panel)
+    private readonly AlignmentPanel _panel;
+    public FauPreAlignApp(AlignmentPanel panel)
     {
         _panel = panel;
         _panel.RunStateChanged += Refresh;
@@ -66,7 +102,7 @@ public sealed class FauPreAlignApp : ObservableObject, IUtilityApp
     public AppRunState State => _panel.IsRunning ? AppRunState.Running : AppRunState.Idle;
     public string? StatusDetail => _panel.RunStatusDetail;
 
-    public Task StartAsync(CancellationToken ct) { _panel.RequestStart(); return Task.CompletedTask; }
+    public Task StartAsync(CancellationToken ct) { _panel.RequestStartFau(); return Task.CompletedTask; }
     public Task StopAsync() { _panel.RequestStop(); return Task.CompletedTask; }
 
     private void Refresh() => UtilityAppUi.OnUi(() =>
