@@ -1,0 +1,112 @@
+<UserControl x:Class="FAAM.UI.Views.AutoWPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <Style x:Key="AwLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="AwValue" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}" BorderThickness="2"
+            CornerRadius="4" Width="280" VerticalAlignment="Top">
+        <StackPanel Margin="10">
+            <TextBlock Text="AUTO W MAXIMIZER" Foreground="{StaticResource Accent}" FontSize="15" FontWeight="Bold"
+                       HorizontalAlignment="Center" Margin="0,2,0,8" />
+
+            <!-- Live readouts (driven by AutoWEngine events). -->
+            <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                    CornerRadius="3" Padding="8,6" Margin="0,0,0,8">
+                <StackPanel>
+                    <Grid Margin="0,0,0,4">
+                        <TextBlock Text="State" Style="{StaticResource AwLabel}" />
+                        <TextBlock x:Name="StateText" Text="Idle" HorizontalAlignment="Right"
+                                   FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource Subtle}" />
+                    </Grid>
+
+                    <!-- T (XY-peaked Sagnac) start / cur / peak -->
+                    <Grid Margin="0,2,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="T0" Style="{StaticResource AwLabel}" />
+                            <TextBlock x:Name="T0Text" Text="—" Style="{StaticResource AwValue}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="T cur" Style="{StaticResource AwLabel}" />
+                            <TextBlock x:Name="TCurText" Text="—" Style="{StaticResource AwValue}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="T peak" Style="{StaticResource AwLabel}" />
+                            <TextBlock x:Name="TPeakText" Text="—" Style="{StaticResource AwValue}"
+                                       Foreground="{StaticResource Ok}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Margin="0,4,0,2">
+                        <TextBlock Text="W offset (°)" Style="{StaticResource AwLabel}" />
+                        <TextBlock x:Name="WOffsetText" Text="—" Style="{StaticResource AwValue}" HorizontalAlignment="Right" />
+                    </Grid>
+                    <Grid Margin="0,2,0,2">
+                        <TextBlock Text="W peak (°)" Style="{StaticResource AwLabel}" />
+                        <TextBlock x:Name="WPeakText" Text="—" Style="{StaticResource AwValue}" HorizontalAlignment="Right" />
+                    </Grid>
+                    <Grid Margin="0,2,0,0">
+                        <TextBlock Text="Eff threshold" Style="{StaticResource AwLabel}" />
+                        <TextBlock x:Name="ThresholdText" Text="—" Style="{StaticResource AwValue}" HorizontalAlignment="Right" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- W step (deg) -->
+            <Grid Margin="0,0,0,4">
+                <TextBlock Text="W step (°)" Style="{StaticResource AwLabel}" />
+                <TextBox x:Name="WStepBox" Text="0.1" Width="80" HorizontalAlignment="Right"
+                         HorizontalContentAlignment="Right" Padding="4,2"
+                         Background="{StaticResource Panel}" Foreground="{StaticResource Text}"
+                         BorderBrush="{StaticResource Edge}" />
+            </Grid>
+
+            <!-- Max W excursion (deg, ±) -->
+            <Grid Margin="0,0,0,4">
+                <TextBlock Text="Max W (±°)" Style="{StaticResource AwLabel}" />
+                <TextBox x:Name="MaxWBox" Text="2.0" Width="80" HorizontalAlignment="Right"
+                         HorizontalContentAlignment="Right" Padding="4,2"
+                         Background="{StaticResource Panel}" Foreground="{StaticResource Text}"
+                         BorderBrush="{StaticResource Edge}" />
+            </Grid>
+
+            <!-- System velocity (mm/s) — the spec fixes this at 1 mm/s; editable for the bench. -->
+            <Grid Margin="0,0,0,8">
+                <TextBlock Text="Velocity (mm/s)" Style="{StaticResource AwLabel}" />
+                <TextBox x:Name="VelocityBox" Text="1.0" Width="80" HorizontalAlignment="Right"
+                         HorizontalContentAlignment="Right" Padding="4,2"
+                         Background="{StaticResource Panel}" Foreground="{StaticResource Text}"
+                         BorderBrush="{StaticResource Edge}" />
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="StartButton" Grid.Column="0" Content="Start Auto W" Height="40" Margin="0,0,3,0"
+                        Background="{StaticResource Accent}" Foreground="White" BorderThickness="0"
+                        FontSize="13" FontWeight="Bold" Cursor="Hand" Click="OnStart" />
+                <Button x:Name="StopButton" Grid.Column="1" Content="Stop" Height="40" Margin="3,0,0,0"
+                        Background="#D9534F" Foreground="White" BorderThickness="0"
+                        FontSize="13" FontWeight="Bold" Cursor="Hand" IsEnabled="False" Click="OnStop" />
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

@@ -105,3 +105,33 @@ public sealed class HillClimbApp : ObservableObject, IUtilityApp
         OnPropertyChanged(nameof(StatusDetail));
     });
 }
+
+/// <summary>Auto W maximizer app (1-D W-axis line search re-peaking XY at each angle).</summary>
+public sealed class AutoWApp : ObservableObject, IUtilityApp
+{
+    private readonly AutoWPanel _panel;
+    public AutoWApp(AutoWPanel panel)
+    {
+        _panel = panel;
+        _panel.RunStateChanged += Refresh;
+    }
+
+    public string Id => "autow";
+    public string Title => "Auto W";
+    public string Glyph => "W↻";
+    public UIElement Content => _panel;
+    public AppRunState State =>
+        _panel.IsError ? AppRunState.Error
+        : _panel.IsRunning ? AppRunState.Running
+        : AppRunState.Idle;
+    public string? StatusDetail => _panel.RunStatusDetail;
+
+    public Task StartAsync(CancellationToken ct) { _panel.RequestStart(); return Task.CompletedTask; }
+    public Task StopAsync() { _panel.RequestStop(); return Task.CompletedTask; }
+
+    private void Refresh() => UtilityAppUi.OnUi(() =>
+    {
+        OnPropertyChanged(nameof(State));
+        OnPropertyChanged(nameof(StatusDetail));
+    });
+}

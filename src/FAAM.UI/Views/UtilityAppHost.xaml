@@ -14,11 +14,13 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <ContentControl x:Name="UCorrHost"  Grid.Row="0" Grid.Column="0" Margin="0,0,6,12" VerticalAlignment="Top" />
             <ContentControl x:Name="FauHost"    Grid.Row="0" Grid.Column="1" Margin="6,0,0,12" VerticalAlignment="Top" />
-            <ContentControl x:Name="HillHost"   Grid.Row="1" Grid.Column="0" Margin="0,0,6,0"  VerticalAlignment="Top" />
-            <ContentControl x:Name="SiphogHost" Grid.Row="1" Grid.Column="1" Margin="6,0,0,0"  VerticalAlignment="Top" />
+            <ContentControl x:Name="HillHost"   Grid.Row="1" Grid.Column="0" Margin="0,0,6,12" VerticalAlignment="Top" />
+            <ContentControl x:Name="SiphogHost" Grid.Row="1" Grid.Column="1" Margin="6,0,0,12" VerticalAlignment="Top" />
+            <ContentControl x:Name="AutoWHost"  Grid.Row="2" Grid.Column="0" Margin="0,0,6,0"  VerticalAlignment="Top" />
         </Grid>
     </ScrollViewer>
 </UserControl>

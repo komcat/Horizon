@@ -50,15 +50,20 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
         var hill = new HillClimbPanel();
         hill.Attach(host, _siphogPanel.Client);
 
+        var autoW = new AutoWPanel();
+        autoW.Attach(host, _siphogPanel.Client);
+
         UCorrHost.Content = ucorr;
         FauHost.Content = fau;
         HillHost.Content = hill;
         SiphogHost.Content = _siphogPanel;
+        AutoWHost.Content = autoW;
 
         // Thin adapters keep the id → panel + Start/Stop mapping for the app.* command seam.
         _apps.Add(new UCorrectionApp(ucorr));
         _apps.Add(new FauPreAlignApp(fau));
         _apps.Add(new HillClimbApp(hill));
+        _apps.Add(new AutoWApp(autoW));
     }
 
     // --- IUtilityAppHost (Layer 2 → Layer 3 command seam, driven by app.* steps) ---
