@@ -3,6 +3,7 @@ using Horizon.Engine;
 using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Recipe;
+using Horizon.Workflow.Scripting;
 using Horizon.Workflow.Signals;
 using Horizon.Workflow.UCorrection;
 
@@ -265,6 +266,25 @@ public interface IProcessService
 
     /// <summary>Runs a recipe script against the engine.</summary>
     Task<Result> RunRecipeAsync(string name, CancellationToken ct = default);
+
+    // --- Scripts (.moon Lua procedural scripts, operate on the active product) ---
+
+    /// <summary>Script names in the active product.</summary>
+    IReadOnlyList<string> ListScripts();
+
+    /// <summary>Reads a script's source text, or null if it doesn't exist / no product is active.</summary>
+    string? LoadScript(string name);
+
+    /// <summary>Saves <c>.moon</c> source text into the active product.</summary>
+    Result SaveScript(string name, string source);
+
+    /// <summary>
+    /// Runs raw <c>.moon</c> source against the engine, streaming each emitted line to
+    /// <paramref name="onOutput"/> (off the UI thread). The result carries success /
+    /// cancel / error plus the full output. Drives the script editor's Run button.
+    /// </summary>
+    Task<ScriptRunResult> RunScriptAsync(
+        string source, Action<string>? onOutput = null, CancellationToken ct = default);
 
     // --- Decks (ordered program chains, operate on the active product) ---
 

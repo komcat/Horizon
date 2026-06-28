@@ -29,6 +29,7 @@ public partial class ShellWindow : Window
     private readonly RunView _run;
     private readonly EngineerPageView _engineer;
     private readonly VisionProfileView _visionProfile;
+    private readonly ScriptEditorView _scriptEditor;
 
     /// <summary>Camera pop-out windows this shell owns (auto-opened + restored).</summary>
     private readonly List<DisplayWindow> _cameraWindows = new();
@@ -42,6 +43,7 @@ public partial class ShellWindow : Window
         _run = new RunView(host);
         _engineer = new EngineerPageView(host);
         _visionProfile = new VisionProfileView(host);
+        _scriptEditor = new ScriptEditorView(host);
         InitializeComponent();
 
         RestoreMainWindowPlacement();
@@ -64,6 +66,7 @@ public partial class ShellWindow : Window
         _home.RunRequested += ShowRun;
         _home.EngineerRequested += ShowEngineer;
         _home.VisionProfileRequested += ShowVisionProfile;
+        _home.ScriptRequested += ShowScript;
 
         // Identity chip — refresh on login/logout and on product switch.
         _host.Session.Changed += UpdateIdentity;
@@ -112,6 +115,8 @@ public partial class ShellWindow : Window
             _engineer.Deactivate();
         else if (ReferenceEquals(PageHost.Content, _visionProfile))
             _visionProfile.Deactivate();
+        else if (ReferenceEquals(PageHost.Content, _scriptEditor))
+            _scriptEditor.Deactivate();
     }
 
     private void ShowHome()
@@ -162,6 +167,16 @@ public partial class ShellWindow : Window
         DutHeader.Visibility = Visibility.Collapsed;
         _visionProfile.Activate();
         PageHost.Content = _visionProfile;
+    }
+
+    private void ShowScript()
+    {
+        LeaveCurrent();
+        Header1Text.Text = "SCRIPT";
+        EngineHeader.Visibility = Visibility.Collapsed;
+        DutHeader.Visibility = Visibility.Collapsed;
+        _scriptEditor.Activate();
+        PageHost.Content = _scriptEditor;
     }
 
     /// <summary>

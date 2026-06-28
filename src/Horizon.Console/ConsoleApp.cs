@@ -9,7 +9,7 @@ namespace Horizon.ConsoleHost;
 /// Spectre.Console menu loop over the engine. Deliberately minimal — one menu
 /// section is added per hardware bring-up step.
 /// </summary>
-internal sealed class ConsoleApp
+internal sealed partial class ConsoleApp
 {
     private const string ShowStatus = "Show hardware status";
     private const string IoDevices = "IO devices";
@@ -25,6 +25,7 @@ internal sealed class ConsoleApp
     private const string Cameras = "Cameras";
     private const string Vision = "Vision (HALCON)";
     private const string Safety = "Safety";
+    private const string Scripting = "Scripting (.moon)";
     private const string ParallelTest = "Parallel testing";
     private const string Reconnect = "Reconnect hardware";
     private const string Exit = "Exit";
@@ -45,7 +46,7 @@ internal sealed class ConsoleApp
                     .AddChoices(ShowStatus, IoDevices, IoWatchMenu, MotionDevices, PneumaticSlides,
                                 CurrentMeasurement, LaserControllers, PowerSupplies, Lighting,
                                 TecControllers, Smu, Cameras, Vision, Safety,
-                                ParallelTest, Reconnect, Exit));
+                                Scripting, ParallelTest, Reconnect, Exit));
 
             switch (choice)
             {
@@ -103,6 +104,10 @@ internal sealed class ConsoleApp
 
                 case Safety:
                     await SafetyMenuAsync();
+                    break;
+
+                case Scripting:
+                    await ScriptingMenuAsync();
                     break;
 
                 case ParallelTest:

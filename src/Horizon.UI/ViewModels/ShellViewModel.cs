@@ -33,6 +33,7 @@ public sealed class ShellViewModel : ObservableObject, IShellNavigator, IDisposa
             "Each trainer UI arrives in Phases 8–10.");
         var programming = new ProgramEditorPageViewModel(host);
         var sequence = new DeckPageViewModel(host);
+        var script = new ScriptPageViewModel(host);
 
         _home = new HomeViewModel(new[]
         {
@@ -46,6 +47,8 @@ public sealed class ShellViewModel : ObservableObject, IShellNavigator, IDisposa
                 new RelayCommand(() => NavigateTo(programming))),
             new HomeTile("Process Sequence", "Process-step sequencing",
                 new RelayCommand(() => NavigateTo(sequence))),
+            new HomeTile("Script", "Write & run .moon Lua scripts",
+                new RelayCommand(() => NavigateTo(script))),
         });
 
         _currentView = _home;
