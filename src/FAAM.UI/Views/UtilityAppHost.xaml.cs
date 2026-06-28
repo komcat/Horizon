@@ -60,6 +60,10 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
         var autoW = new AutoWPanel();
         autoW.Attach(host, _siphogPanel.Client);
 
+        // After the climber parks at peak it auto-runs the Auto W maximizer once per lifetime
+        // (re-armed on the climber's Set Start / Clear Distance).
+        hill.SetAutoWPanel(autoW);
+
         AlignHost.Content = align;
         SiphogHost.Content = _siphogPanel;
         HillHost.Content = hill;
