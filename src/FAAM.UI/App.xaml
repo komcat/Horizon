@@ -34,6 +34,75 @@
             <SolidColorBrush x:Key="Crosshair" Color="#CCFFD500" />
             <SolidColorBrush x:Key="Roi"       Color="#FFD500" />
 
+            <!-- Raised "3D" button: a top-lit gradient face (system ControlLightLight → Control
+                 bevel shades) with a soft drop shadow, a 1px ControlDark edge, an accent-lit hover
+                 that lifts the shadow, and a pressed state that inverts the gradient, sinks the
+                 shadow and nudges the label down 1px. All bevel colours come from the Windows
+                 SystemColors palette (DynamicResource), so it tracks the system theme. -->
+            <Style x:Key="Bevel3D" TargetType="Button">
+                <Setter Property="Foreground" Value="{StaticResource Text}" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="SnapsToDevicePixels" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid Margin="3">
+                                <Border x:Name="Bd" CornerRadius="6" BorderThickness="1"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                            <GradientStop Offset="0" Color="{DynamicResource {x:Static SystemColors.ControlLightLightColorKey}}" />
+                                            <GradientStop Offset="1" Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}" />
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="8" ShadowDepth="3" Direction="270" Opacity="0.4" Color="#000000" />
+                                    </Border.Effect>
+                                    <ContentPresenter x:Name="CP" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                    <Setter TargetName="Bd" Property="Effect">
+                                        <Setter.Value>
+                                            <DropShadowEffect BlurRadius="12" ShadowDepth="5" Direction="270" Opacity="0.5" Color="#000000" />
+                                        </Setter.Value>
+                                    </Setter>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Bd" Property="Background">
+                                        <Setter.Value>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                <GradientStop Offset="0" Color="{DynamicResource {x:Static SystemColors.ControlDarkColorKey}}" />
+                                                <GradientStop Offset="1" Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}" />
+                                            </LinearGradientBrush>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ControlDarkDarkBrushKey}}" />
+                                    <Setter TargetName="Bd" Property="Effect">
+                                        <Setter.Value>
+                                            <DropShadowEffect BlurRadius="3" ShadowDepth="1" Direction="270" Opacity="0.3" Color="#000000" />
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Setter TargetName="CP" Property="RenderTransform">
+                                        <Setter.Value>
+                                            <TranslateTransform Y="1" />
+                                        </Setter.Value>
+                                    </Setter>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="Bd" Property="Effect" Value="{x:Null}" />
+                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource Panel}" />
+                                    <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <!-- Horizontal device picker — a persistent button per device,
                  single-select with the active one highlighted. Used by every
                  Machine-page section in place of a device drop-down. -->

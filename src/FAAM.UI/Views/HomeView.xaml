@@ -2,33 +2,13 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <UserControl.Resources>
-        <!-- Big launcher tile. -->
-        <Style x:Key="Tile" TargetType="Button">
+        <!-- Big launcher tile — the shared raised 3D button, scaled up. -->
+        <Style x:Key="Tile" TargetType="Button" BasedOn="{StaticResource Bevel3D}">
             <Setter Property="FontSize" Value="22" />
-            <Setter Property="Foreground" Value="{StaticResource Text}" />
-            <Setter Property="Background" Value="{StaticResource Panel}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Margin" Value="10" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="4">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
         </Style>
         <!-- A dimmed tile for the not-yet-built slots. -->
         <Style x:Key="ReserveTile" TargetType="Button" BasedOn="{StaticResource Tile}">
-            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
             <Setter Property="IsEnabled" Value="False" />
         </Style>
     </UserControl.Resources>

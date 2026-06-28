@@ -115,9 +115,10 @@
                 <CheckBox x:Name="AutoChainCheck" DockPanel.Dock="Right" Content="Auto-chain"
                           VerticalAlignment="Center" Margin="10,0,2,0" Foreground="{StaticResource Text}"
                           ToolTip="When on, running a deck step auto-continues into the following deck entries whose transition is Auto (after each entry's delay). Stops at a manual entry (Auto off), an entry with a condition, a failed program, the end of the deck, or STOP. Default off." />
-                <Button Content="STOP" Click="OnStop" Height="44"
-                        Background="{StaticResource Danger}" Foreground="White" BorderThickness="0"
-                        FontSize="16" FontWeight="Bold" Cursor="Hand" />
+                <Button Click="OnStop" Height="44" ToolTip="STOP — halt all motion"
+                        Background="{StaticResource Danger}" BorderThickness="0" Cursor="Hand">
+                    <Image Source="/assets/stop.png" Height="30" RenderOptions.BitmapScalingMode="HighQuality" />
+                </Button>
             </DockPanel>
 
             <!-- Deck selector — its "Run page" programs become the step buttons below. -->

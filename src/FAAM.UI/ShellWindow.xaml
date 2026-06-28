@@ -16,9 +16,16 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Top-left: Home button (native themed). -->
-        <Button Grid.Row="0" Grid.Column="0" Content="Home" Click="OnHomeClick"
-                Width="290" Height="56" Margin="2,2,8,8" FontSize="14" />
+        <!-- Top-left: Home button (raised 3D). -->
+        <Button Grid.Row="0" Grid.Column="0" Click="OnHomeClick"
+                Width="290" Height="56" Margin="2,2,8,8" FontSize="14"
+                Style="{StaticResource Bevel3D}">
+            <StackPanel Orientation="Horizontal">
+                <Image Source="/assets/home-button.png" Width="24" Height="24" Margin="0,0,8,0"
+                       RenderOptions.BitmapScalingMode="HighQuality" />
+                <TextBlock Text="Home" VerticalAlignment="Center" />
+            </StackPanel>
+        </Button>
 
         <!-- Top: identity chip + engine status + Header1 (page title). The chip sits
              on the left and the page title on the right (swapped from the original). -->

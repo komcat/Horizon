@@ -108,9 +108,10 @@
             </Grid>
 
             <!-- STOP — halts all motion. -->
-            <Button Content="STOP" Click="OnStop" Height="36" Margin="0,0,0,8"
-                    Background="{StaticResource Danger}" Foreground="White" BorderThickness="0"
-                    FontSize="15" FontWeight="Bold" Cursor="Hand" />
+            <Button Click="OnStop" Height="36" Margin="0,0,0,8" ToolTip="STOP — halt all motion"
+                    Background="{StaticResource Danger}" BorderThickness="0" Cursor="Hand">
+                <Image Source="/assets/stop.png" Height="24" RenderOptions.BitmapScalingMode="HighQuality" />
+            </Button>
 
             <!-- Connected motion devices (single-select) — two across. -->
             <UniformGrid x:Name="DeviceList" Columns="2" />
