@@ -3,6 +3,7 @@ using Horizon.Engine;
 using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Recipe;
+using Horizon.Workflow.Scripting;
 using Horizon.Workflow.Signals;
 using Horizon.Workflow.UCorrection;
 
@@ -20,6 +21,7 @@ public sealed class ProcessService : IProcessService
     private PositionStore? _positions;   // null when no product is active
     private ProgramStore? _programs;     // null when no product is active
     private RecipeStore? _recipes;       // null when no product is active
+    private ScriptStore? _scripts;       // .moon Lua scripts; null when no product is active
     private DeckStore? _decks;           // null when no product is active
     private VisionProfileStore? _visionProfiles;   // null when no product is active
     private TaskCompletionSource<bool>? _deckGate;   // set while a deck waits for operator activation
@@ -47,6 +49,7 @@ public sealed class ProcessService : IProcessService
             _positions = new PositionStore(dir);
             _programs = new ProgramStore(dir);
             _recipes = new RecipeStore(dir);
+            _scripts = new ScriptStore(dir);
             _decks = new DeckStore(dir);
             _visionProfiles = new VisionProfileStore(dir);
             _dut = new DutStore(dir, _products.ActiveProduct!);
@@ -138,6 +141,7 @@ public sealed class ProcessService : IProcessService
             _positions = null;
             _programs = null;
             _recipes = null;
+            _scripts = null;
             _decks = null;
             _dut = null;
             SetActiveSerial(null);
@@ -174,6 +178,7 @@ public sealed class ProcessService : IProcessService
         _positions = new PositionStore(dir);
         _programs = new ProgramStore(dir);
         _recipes = new RecipeStore(dir);
+        _scripts = new ScriptStore(dir);
         _decks = new DeckStore(dir);
         _visionProfiles = new VisionProfileStore(dir);
         _dut = new DutStore(dir, name);
@@ -194,6 +199,7 @@ public sealed class ProcessService : IProcessService
         _positions = null;
         _programs = null;
         _recipes = null;
+        _scripts = null;
         _decks = null;
         _visionProfiles = null;
         _dut = null;
@@ -1099,6 +1105,60 @@ public sealed class ProcessService : IProcessService
             pause.PausedChanged -= OnPausedChanged;
             _pause = null;
         }
+    }
+
+    // --- Scripts (.moon Lua) ---
+
+    public IReadOnlyList<string> ListScripts()
+        => _scripts?.List() ?? Array.Empty<string>();
+
+    public string? LoadScript(string name) => _scripts?.Load(name);
+
+    public Result SaveScript(string name, string source)
+    {
+        if (_scripts == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (string.IsNullOrWhiteSpace(name))
+            return Result.Fail(ErrorCode.InvalidParameter, "Script name is required.");
+
+        _scripts.Save(name, source);
+        Log(LogLevel.Info, $"Script saved: {name}");
+        return Result.Ok();
+    }
+
+    /// <summary>
+    /// Runs raw <c>.moon</c> source against the engine. The Lua <c>machine</c> API
+    /// reaches every facet plus named-position <c>moveTo</c>, unified
+    /// <c>signal.read</c>, and operator prompts (all wired to this active product).
+    /// Each emitted line is logged and streamed to <paramref name="onOutput"/>.
+    /// </summary>
+    public async Task<ScriptRunResult> RunScriptAsync(
+        string source, Action<string>? onOutput = null, CancellationToken ct = default)
+    {
+        var script = new MoonScriptEngine(
+            _engine,
+            namedPositionMover: (device, position, token) =>
+                MoveToNamedPositionCoreAsync(device, position, new MoveOverrides(), token),
+            signalReader: (key, token) => _signals.ReadAsync(key, token),
+            operatorPrompt: OperatorPrompt);
+
+        void Sink(string line)
+        {
+            Log(LogLevel.Info, line);
+            onOutput?.Invoke(line);
+        }
+
+        Log(LogLevel.Info, "Script started.");
+        var result = await script.RunAsync(source, Sink, ct).ConfigureAwait(false);
+
+        if (result.Success)
+            Log(LogLevel.Info, "Script completed.");
+        else if (result.Cancelled)
+            Log(LogLevel.Warning, "Script cancelled.");
+        else
+            Log(LogLevel.Error, $"Script error: {result.Error}");
+
+        return result;
     }
 
     // --- Decks ---

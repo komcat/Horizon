@@ -19,6 +19,8 @@
     <PackageReference Include="MVTec.HalconDotNet-Windows" Version="24050.0.0" />
     <!-- SkiaSharp WPF surface for live telemetry charts. -->
     <PackageReference Include="SkiaSharp.Views.WPF" Version="3.116.1" />
+    <!-- Code editor for the .moon script page (syntax highlight + completion). -->
+    <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
   </ItemGroup>
 
   <!-- Layer 3 references the engine + workflow interfaces only. -->

@@ -11,6 +11,9 @@
     <!-- Program revision history / audit store (machine-global history.db).
          Full package bundles the native engine for the referencing executables. -->
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    <!-- Pure-C# Lua interpreter for the .moon procedural scripting layer
+         (Scripting/). No native DLL; sandboxed via Preset_HardSandbox. -->
+    <PackageReference Include="MoonSharp" Version="2.0.0" />
   </ItemGroup>
 
   <ItemGroup>

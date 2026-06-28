@@ -97,6 +97,9 @@
             <DataTemplate DataType="{x:Type vm:ProgramEditorPageViewModel}">
                 <v:ProgramEditorPageView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:ScriptPageViewModel}">
+                <v:ScriptPageView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vms:StatusSectionViewModel}">
                 <vsec:StatusSectionView />
             </DataTemplate>

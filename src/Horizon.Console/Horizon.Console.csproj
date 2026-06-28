@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Horizon.Engine\Horizon.Engine.csproj" />
+    <ProjectReference Include="..\Horizon.Workflow\Horizon.Workflow.csproj" />
   </ItemGroup>
 
 </Project>
