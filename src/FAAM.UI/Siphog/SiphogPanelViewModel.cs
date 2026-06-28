@@ -40,15 +40,21 @@ public sealed class SiphogPanelViewModel : ObservableObject, IDisposable
     // SET_CURRENT is limited to 100–200 mA by the server (see PROTOCOL.md §4.1).
     private static readonly int[] PresetCurrents = { 110, 200 };
     private const double DisplayHz = 10;   // UI refresh rate (throttle for the fast stream)
+    private const double ReconnectSeconds = 3;   // how often to silently retry while disconnected
+    private const double StallSeconds = 3;       // no frames for this long ⇒ treat the link as dead
 
     private readonly SiphogClient _client = new();
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _timer;
+    private readonly DispatcherTimer _reconnectTimer;
     private readonly Stopwatch _rateClock = new();
 
     private long _lastFrameCount;
     private double _lastElapsed;
+    private double _lastDataElapsed;   // _rateClock time when the frame counter last advanced (stall watchdog)
     private bool _isConnected;
+    private bool _autoReconnect = true;   // keep retrying until the operator explicitly disconnects
+    private bool _connecting;             // guards against overlapping connect attempts
     private string _dataRate = "—";
     private string _status = "Disconnected";
     private string _sagPercent = "—";
@@ -76,7 +82,16 @@ public sealed class SiphogPanelViewModel : ObservableObject, IDisposable
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000.0 / DisplayHz) };
         _timer.Tick += (_, _) => UpdateDisplay();
 
+        // Periodically retries a connection while disconnected (and auto-reconnect is armed),
+        // so the panel comes up on its own and silently recovers from server drops.
+        _reconnectTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(ReconnectSeconds) };
+        _reconnectTimer.Tick += (_, _) => _ = TryAutoConnectAsync();
+        _reconnectTimer.Start();
+
         _client.ConnectionChanged += OnConnectionChanged;
+
+        // Kick off the first attempt immediately rather than waiting a full interval.
+        _ = TryAutoConnectAsync();
     }
 
     /// <summary>The underlying client — shared with the SiPhOG chart so both use one connection.</summary>
@@ -106,22 +121,40 @@ public sealed class SiphogPanelViewModel : ObservableObject, IDisposable
     /// <summary>Traffic-light level for <see cref="SagPercent"/>: ok / warn / danger / none — drives the background.</summary>
     public string SagLevel { get => _sagLevel; private set => SetField(ref _sagLevel, value); }
 
-    /// <summary>Connects if not already connected (used when the widget is re-shown).</summary>
+    /// <summary>Re-arms auto-reconnect (used when the widget is re-shown); the timer does the rest.</summary>
     public void EnsureConnected()
     {
+        _autoReconnect = true;
         if (!_isConnected)
-            _ = ToggleConnectAsync();
+            _ = TryAutoConnectAsync();
     }
 
     private async Task ToggleConnectAsync()
     {
         if (_isConnected)
         {
+            // Explicit operator disconnect — stop trying to reconnect until they ask again.
+            _autoReconnect = false;
             _client.Disconnect();   // OnConnectionChanged updates state + stops the timer
             return;
         }
 
+        _autoReconnect = true;
         Status = $"Connecting to {SiphogClient.DefaultHost}:{SiphogClient.DefaultPort}…";
+        await TryAutoConnectAsync(quiet: false).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Attempts a connection if armed and not already connected/connecting. Failures are
+    /// swallowed silently when <paramref name="quiet"/> (the periodic path) so a missing
+    /// server just leaves the panel idle; an explicit operator click reports the error.
+    /// </summary>
+    private async Task TryAutoConnectAsync(bool quiet = true)
+    {
+        if (!_autoReconnect || _isConnected || _connecting)
+            return;
+
+        _connecting = true;
         try
         {
             await _client.ConnectAsync().ConfigureAwait(true);
@@ -129,7 +162,13 @@ public sealed class SiphogPanelViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            Status = $"Connect failed: {ex.Message}";
+            if (!quiet)
+                Status = $"Connect failed: {ex.Message}";
+            // Quiet path: stay silent; the reconnect timer will try again.
+        }
+        finally
+        {
+            _connecting = false;
         }
     }
 
@@ -158,6 +197,7 @@ public sealed class SiphogPanelViewModel : ObservableObject, IDisposable
         {
             _lastFrameCount = 0;
             _lastElapsed = 0;
+            _lastDataElapsed = 0;
             _rateClock.Restart();
             _timer.Start();
         }
@@ -167,7 +207,10 @@ public sealed class SiphogPanelViewModel : ObservableObject, IDisposable
             DataRate = "—";
             SagPercent = "—";
             SagLevel = "none";
-            if (Status == "Connected") Status = "Disconnected";
+            // A drop while still armed reads as a transient "Reconnecting…"; an explicit
+            // operator disconnect (auto-reconnect off) reads as a settled "Disconnected".
+            if (Status == "Connected")
+                Status = _autoReconnect ? "Reconnecting…" : "Disconnected";
             foreach (var f in Fields) f.Value = "—";
         }
     }
@@ -207,12 +250,28 @@ public sealed class SiphogPanelViewModel : ObservableObject, IDisposable
             var rate = (count - _lastFrameCount) / dt;
             DataRate = $"{rate:0.0} Hz";
         }
+
+        // Stall watchdog: a silently-dead link (server hung / cable pulled) keeps the socket
+        // "open" so ReadAsync never returns — but the 200 Hz stream stops. If the frame counter
+        // hasn't advanced for StallSeconds, drop the link so auto-reconnect can recover it.
+        if (count != _lastFrameCount)
+            _lastDataElapsed = elapsed;
+        else if (elapsed - _lastDataElapsed > StallSeconds)
+        {
+            _lastFrameCount = count;
+            _lastElapsed = elapsed;
+            _client.Disconnect();   // fires ConnectionChanged(false) → Reconnecting… → timer recovers
+            return;
+        }
+
         _lastFrameCount = count;
         _lastElapsed = elapsed;
     }
 
     public void Dispose()
     {
+        _autoReconnect = false;
+        _reconnectTimer.Stop();
         _timer.Stop();
         _client.ConnectionChanged -= OnConnectionChanged;
         _client.Dispose();
