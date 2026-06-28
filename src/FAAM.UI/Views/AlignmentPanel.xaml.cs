@@ -3,10 +3,13 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using FAAM.UI.Siphog;
 using Horizon.Common;
 using Horizon.Engine;
 using Horizon.Workflow;
 using Horizon.Workflow.FauPreAlign;
+using Horizon.Workflow.GridSearch;
+using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.UCorrection;
 
 namespace FAAM.UI.Views;
@@ -34,10 +37,18 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     private static readonly string[] UOrder = { "P1", "P2", "F1", "F2" };
     private static readonly string[] FauOrder = { "Out1", "Out2", "Fiber1", "Fiber2" };
 
-    private enum Phase { None, U, Fau }
+    private enum Phase { None, U, Fau, Grid }
 
     private EngineHost? _host;
     private readonly Ellipse[] _dots;
+
+    // Post-FAU XY signal finder (Stage 1 X line → Stage 2 grid). On a hit it hands off to the
+    // hill climber. Wired by UtilityAppHost via EnableGridSearch once the SiPhOG client + hill
+    // panel exist; left null (skipped) otherwise.
+    private FauGridSearchEngine? _gridEngine;
+    private IHillClimbFeedback? _gridFeedback;
+    private HillClimbPanel? _hill;
+    private bool _gridEnabled;
 
     // FAU target "master" offset — persisted in AppSettings (loaded on Attach).
     private double _targetUm = 100.0;
@@ -134,6 +145,22 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         host.Activity.Changed += OnActivityChanged;   // block Start/Move while a process step or other run holds the hexapod
         SetRefPointsCollapsed(host.Settings.Current.UCorrectionRefPointsCollapsed);   // restore last collapse state
         RefreshButtons();
+    }
+
+    /// <summary>
+    /// Enables the post-FAU grid search: after the FAU pre-align phase succeeds, the panel runs the
+    /// Layer 2 <see cref="FauGridSearchEngine"/> over hex-right XY (live SiPhOG SAG-V feedback) and,
+    /// if a stage finds signal, hands off to <paramref name="hill"/> (mirrors the hill-climb → Auto-W
+    /// one-shot). Call after <see cref="Attach"/>.
+    /// </summary>
+    public void EnableGridSearch(SiphogClient siphog, HillClimbPanel hill)
+    {
+        if (_host == null) return;
+        _hill = hill;
+        _gridFeedback = new SiphogHillClimbFeedback(siphog);
+        _gridEngine = new FauGridSearchEngine(_host.Engine, Log);
+        _gridEngine.Measured += OnGridMeasured;
+        _gridEnabled = true;
     }
 
     private void OnActivityChanged()
@@ -340,6 +367,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         _cts = cts;
         _activity = _host.Activity.Begin(ActivityKind.Alignment, "Alignment (U → FAU)");
 
+        bool handoffClimb = false;
         try
         {
             if (runU)
@@ -365,6 +393,10 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
                         ? $"Applied hex Y={rF.Value.HexYmm:F4}, Z={rF.Value.HexZmm:F4} mm"
                         : $"Declined — corr ({rF.Value.CorrectionXmm:F4}, {rF.Value.CorrectionYmm:F4}) mm")
                     : rF.Message);
+
+                // End of corrections: find the Sagnac signal in XY (Stage 1 X line → Stage 2 grid).
+                if (rF.IsSuccess && !cts.IsCancellationRequested && _gridEnabled)
+                    handoffClimb = await RunGridSearchAsync(cts.Token);
             }
         }
         catch (OperationCanceledException)
@@ -380,6 +412,54 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         {
             Finish();
         }
+
+        // Hand off to the hill climber once this run released the hexapod (alignment activity
+        // disposed in Finish), mirroring the hill-climb → Auto-W one-shot. Only fires when a grid
+        // stage actually found signal.
+        if (handoffClimb && _hill != null)
+        {
+            Log(LogLevel.Info, "Grid search found signal — handing off to hill climb.");
+            _hill.RequestStart();
+        }
+    }
+
+    /// <summary>
+    /// Runs the post-FAU grid search on hex-right. Returns true when a stage found signal (the
+    /// hexapod is parked at the hand-off pose). Skips quietly (returns false) when the hexapod is
+    /// disconnected or the SiPhOG isn't streaming.
+    /// </summary>
+    private async Task<bool> RunGridSearchAsync(CancellationToken ct)
+    {
+        if (_host == null || _gridEngine == null || _gridFeedback == null) return false;
+
+        if (!_host.Engine.Motion.IsConnected(HexDevice))
+        {
+            SetStatus(Phase.Grid, "Grid search skipped — hexapod not connected");
+            Log(LogLevel.Warning, "Grid search skipped: hexapod not connected.");
+            return false;
+        }
+        if (!_gridFeedback.HasSample)
+        {
+            SetStatus(Phase.Grid, "Grid search skipped — SiPhOG not streaming");
+            Log(LogLevel.Warning, "Grid search skipped: no SiPhOG feedback (connect the SiPhOG widget).");
+            return false;
+        }
+
+        _phase = Phase.Grid;
+        SetStatus(Phase.Grid, "Grid search: baseline…");
+        var r = await _gridEngine.RunAsync(HexDevice, _gridFeedback, GridSearchConfig.Default, ct);
+        SetStatus(Phase.Grid, r.Message);
+        return r.SignalFound;
+    }
+
+    /// <summary>Surfaces each grid node/step value to the status line (engine fires on a bg thread).</summary>
+    private void OnGridMeasured(object? sender, GridSearchMeasuredEventArgs e) => Ui(() =>
+        SetStatus(Phase.Grid, $"{e.Phase} {e.Label}: {e.V:F4} V (peak {e.VPeak:F4}){(e.SignalSeen ? " ✓" : "")}"));
+
+    private void Ui(Action action)
+    {
+        if (Dispatcher.CheckAccess()) action();
+        else Dispatcher.BeginInvoke(action);
     }
 
     private UCorrectionOptions BuildUOptions()
@@ -541,6 +621,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         {
             Phase.U => "U correction",
             Phase.Fau => "FAU pre-align",
+            Phase.Grid => "Grid search",
             _ => "Idle",
         };
         StatusText.Text = message;

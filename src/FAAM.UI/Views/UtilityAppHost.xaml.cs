@@ -64,6 +64,10 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
         // (re-armed on the climber's Set Start / Clear Distance).
         hill.SetAutoWPanel(autoW);
 
+        // After FAU pre-align, the alignment panel runs the XY grid signal search and, on a hit,
+        // hands off to the hill climber (which then chains Auto-W). Completes the corrections chain.
+        align.EnableGridSearch(_siphogPanel.Client, hill);
+
         AlignHost.Content = align;
         SiphogHost.Content = _siphogPanel;
         HillHost.Content = hill;
