@@ -29,6 +29,12 @@ public partial class HillClimbPanel : UserControl
     private CancellationTokenSource? _cts;
     private double _budgetUm = 99.0;
 
+    // One-shot Auto W maximizer: after the climb parks at peak, auto-run the Auto W panel once
+    // per "lifetime" (the same lifetime as the distance budget — re-armed on Set Start / Clear
+    // Distance). _autoWDoneThisLifetime gates it to a single run until the next re-arm.
+    private AutoWPanel? _autoW;
+    private bool _autoWDoneThisLifetime;
+
     // --- Auto-SLED handoff (one-shot per Start press) ---
     // When the climb's SAG peak first reaches AutoSledTriggerV, switch the SiPhOG SLED to its
     // operating current, let it settle, then re-baseline and continue the climb once from the
@@ -87,6 +93,13 @@ public partial class HillClimbPanel : UserControl
         host.Activity.Changed += OnActivityChanged;
         RefreshStartEnabled();
     }
+
+    /// <summary>
+    /// Wires the Auto W maximizer panel so the climber can auto-run it once after it parks at
+    /// peak. The one-shot's "lifetime" matches the distance-budget lifetime: it re-arms when the
+    /// operator presses Set Start (re-anchor) or Clear Distance.
+    /// </summary>
+    public void SetAutoWPanel(AutoWPanel autoW) => _autoW = autoW;
 
     private void OnActivityChanged()
     {
@@ -174,6 +187,7 @@ public partial class HillClimbPanel : UserControl
         Log(LogLevel.Info,
             $"Hill climb starting: distance={distance:0.0} µm; auto-SLED handoff at peak ≥ {AutoSledTriggerV:0.###} V → {AutoSledCurrentMa} mA, then continue"
             + (target > 0 ? $" toward target V={target:0.######} (exit at ≥90% = {target * 0.9:0.######})." : "."));
+        bool climbedOk = false;
         try
         {
             // ---- Phase 1: climb until the SAG peak reaches the auto-SLED trigger (or budget/convergence). ----
@@ -184,8 +198,16 @@ public partial class HillClimbPanel : UserControl
             var r1 = await _engine.RunAsync(HexDevice, _feedback, phase1, _cts.Token);
 
             // ---- Auto-SLED handoff + one continuation: only when the trigger was actually reached. ----
+            var finalReason = r1.StopReason;
             if (r1.StopReason == HillClimbStopReason.TargetReached && !_cts.IsCancellationRequested)
-                await AutoSledHandoffAndContinueAsync(distance, target, _cts.Token);
+                finalReason = await AutoSledHandoffAndContinueAsync(distance, target, _cts.Token);
+
+            // A "normal finish" parks the hexapod at the global peak (budget / convergence / target);
+            // cancel + error do not. Only that arms the one-shot Auto W maximizer below.
+            climbedOk = !_cts.IsCancellationRequested
+                && finalReason is HillClimbStopReason.ZBudgetReached
+                    or HillClimbStopReason.Converged
+                    or HillClimbStopReason.TargetReached;
         }
         catch (OperationCanceledException)
         {
@@ -206,6 +228,16 @@ public partial class HillClimbPanel : UserControl
             // Update the remaining lifetime travel now that this run consumed some Z.
             if (_lifetimeStartZmm is not null) await RefreshRemaining();
         }
+
+        // ---- One-shot Auto W maximizer: once per lifetime, re-armed on Set Start / Clear Distance. ----
+        // The climb has parked at peak and released the hexapod (activity disposed in finally), so the
+        // Auto W panel can take it. Runs at most once until the operator re-anchors or clears.
+        if (climbedOk && !_autoWDoneThisLifetime && _autoW != null)
+        {
+            _autoWDoneThisLifetime = true;
+            Log(LogLevel.Info, "Hill climb parked at peak — auto-running Auto W maximizer once for this lifetime.");
+            _autoW.RequestStart();
+        }
     }
 
     private void OnStop(object sender, RoutedEventArgs e) => _cts?.Cancel();
@@ -218,10 +250,13 @@ public partial class HillClimbPanel : UserControl
     /// a new baseline, so the operating-current signal isn't compared against the old baseline. The
     /// continuation honors the panel's Target V box and does NOT switch the current again.
     /// </summary>
-    private async System.Threading.Tasks.Task AutoSledHandoffAndContinueAsync(
+    /// <returns>The stop reason of the final climb the hexapod parked on (the continuation's, or
+    /// the phase-1 <c>TargetReached</c> when the continuation is skipped) — used by the caller to
+    /// decide whether the run ended in a normal peak-parked finish.</returns>
+    private async System.Threading.Tasks.Task<HillClimbStopReason> AutoSledHandoffAndContinueAsync(
         double phase1Distance, double continueTarget, CancellationToken ct)
     {
-        if (_host == null || _engine == null || _feedback == null) return;
+        if (_host == null || _engine == null || _feedback == null) return HillClimbStopReason.TargetReached;
 
         // 1) Switch the SLED to its operating current.
         if (_siphog != null)
@@ -245,7 +280,7 @@ public partial class HillClimbPanel : UserControl
             if (remaining is not double rem || rem < LifetimeFloorUm)
             {
                 Log(LogLevel.Warning, "Auto-SLED: lifetime Z budget exhausted — SLED set, continuation skipped.");
-                return;
+                return HillClimbStopReason.TargetReached;   // still parked at the phase-1 peak
             }
             continueDistance = Math.Clamp(rem, 1.0, 500.0);
         }
@@ -256,7 +291,8 @@ public partial class HillClimbPanel : UserControl
         var phase2 = HillClimbConfig.Default;
         phase2.ZBudget_um = continueDistance;
         phase2.TargetSagnacV = continueTarget;   // 0 = run to budget/convergence
-        await _engine.RunAsync(HexDevice, _feedback, phase2, ct);
+        var r2 = await _engine.RunAsync(HexDevice, _feedback, phase2, ct);
+        return r2.StopReason;
     }
 
     // --- Lifetime Z anchor ---
@@ -282,6 +318,7 @@ public partial class HillClimbPanel : UserControl
         }
 
         _lifetimeStartZmm = pos.Value.Components[2];   // Z (X,Y,Z,U,V,W)
+        _autoWDoneThisLifetime = false;                // re-arm the one-shot Auto W for the new lifetime
         ClearDistanceButton.IsEnabled = true;
         Log(LogLevel.Info, $"Lifetime Z anchor set at Z={_lifetimeStartZmm:F4} mm, ceiling {_lifetimeCeilingUm:0.0} µm.");
         await RefreshRemaining();
@@ -292,6 +329,7 @@ public partial class HillClimbPanel : UserControl
     {
         if (_engine?.IsRunning ?? false) return;
         _lifetimeStartZmm = null;
+        _autoWDoneThisLifetime = false;                // re-arm the one-shot Auto W
         ClearDistanceButton.IsEnabled = false;
         DistanceLabel.Text = "Distance (µm)";
         DistanceBox.IsReadOnly = false;
