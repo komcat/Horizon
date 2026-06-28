@@ -1,5 +1,6 @@
 using Horizon.Common;
 using Horizon.Engine;
+using Horizon.Workflow.Calibration;
 using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Recipe;
@@ -252,6 +253,25 @@ public interface IProcessService
     /// page's inline Capture/Move-FAU buttons) instead of the globally-registered <see cref="OperatorPrompt"/>.
     /// </summary>
     Task<Result<FauPreAlignResult>> RunFauPreAlignAsync(FauPreAlignOptions options, IOperatorPrompt prompt, CancellationToken ct = default);
+
+    // --- Calibration (machine-global; camera <-> needle is the first) ---
+
+    /// <summary>The current camera→needle calibration (config + last measured results).</summary>
+    CameraNeedleCalibrationData GetCameraNeedleCalibration();
+
+    /// <summary>
+    /// Runs the camera→needle "dispense-and-look" calibration using the globally-registered
+    /// <see cref="OperatorPrompt"/>. Measures the camera-needle XY offset and the
+    /// focus-to-needle-tip Z, and persists them to the machine-global calibration file.
+    /// </summary>
+    Task<Result<CameraNeedleResult>> RunCameraNeedleCalibrationAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// As <see cref="RunCameraNeedleCalibrationAsync(CancellationToken)"/> but drives the focus /
+    /// needle-touch / center-the-dot confirmations through the supplied non-modal
+    /// <paramref name="prompt"/> (the Calibration page's inline buttons + live camera).
+    /// </summary>
+    Task<Result<CameraNeedleResult>> RunCameraNeedleCalibrationAsync(IOperatorPrompt prompt, CancellationToken ct = default);
 
     // --- Recipes (.hrec scripts, operate on the active product) ---
 

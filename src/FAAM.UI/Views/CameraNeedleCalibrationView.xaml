@@ -1,0 +1,88 @@
+<UserControl x:Class="FAAM.UI.Views.CameraNeedleCalibrationView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:FAAM.UI.Views">
+    <Grid Background="{StaticResource Bg}" Margin="6">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header: back / title / run controls / status -->
+        <Border Grid.Row="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                BorderThickness="1" CornerRadius="4" Padding="10,6" Margin="0,0,0,6">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="BackButton" Content="‹ Back" Width="70" Height="28"
+                        Style="{StaticResource Bevel3D}" Click="OnBack" />
+                <TextBlock Text="Camera → Needle" Foreground="{StaticResource Text}" FontWeight="SemiBold"
+                           FontSize="15" VerticalAlignment="Center" Margin="14,0,0,0" />
+
+                <Border Width="1" Background="{StaticResource Edge}" Margin="14,2" />
+
+                <Button x:Name="StartButton" Content="► Start" Width="84" Height="28"
+                        Style="{StaticResource Bevel3D}" Click="OnStart" />
+                <Button x:Name="CancelButton" Content="■ Cancel" Width="84" Height="28" Margin="6,0,0,0"
+                        IsEnabled="False" Style="{StaticResource Bevel3D}" Click="OnCancel" />
+
+                <TextBlock x:Name="StatusText" Foreground="{StaticResource Subtle}" VerticalAlignment="Center"
+                           Margin="14,0,0,0" Text="Ready" />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="280" MinWidth="220" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Live feed + crosshair + MoveClick + prompt overlay -->
+            <Border Grid.Column="0" Background="#202020" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                    CornerRadius="3" MouseLeftButtonDown="OnFeedClick"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Grid>
+                    <Image x:Name="MainImage" Stretch="Uniform" Margin="2" MaxWidth="1280" MaxHeight="1024" />
+
+                    <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch" Fill="#C0FFD600" />
+                    <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Fill="#C0FFD600" />
+
+                    <TextBlock x:Name="NoVideo" Text="No video" Foreground="{StaticResource Subtle}" FontSize="18"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="6">
+                        <ToggleButton x:Name="MoveToggle" Content="MoveClick"
+                                      ToolTip="Enable — click the image to jog the gantry from the crosshair centre" />
+                        <Border Background="#A0000000" CornerRadius="3" Padding="8,3" Margin="8,0,0,0"
+                                VerticalAlignment="Center">
+                            <TextBlock x:Name="MainLabel" Text="—" Foreground="{StaticResource Accent}"
+                                       FontSize="13" FontWeight="SemiBold" />
+                        </Border>
+                    </StackPanel>
+
+                    <Border x:Name="MoveReadoutBox" VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                            Background="#A0000000" CornerRadius="3" Margin="6" Padding="8,3" Visibility="Collapsed">
+                        <TextBlock x:Name="MoveReadout" Foreground="#FFD600" FontFamily="Consolas" FontSize="12.5" />
+                    </Border>
+
+                    <!-- Green/red prompt overlay — the routine's confirm gates. Centre stays click-through. -->
+                    <v:CameraPromptOverlay x:Name="MainPrompt" />
+                </Grid>
+            </Border>
+
+            <!-- Step guide + results -->
+            <Border Grid.Column="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="4" Margin="6,0,0,0" Padding="10">
+                <StackPanel>
+                    <TextBlock Text="Steps" Foreground="{StaticResource Text}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <TextBlock x:Name="StepText" Foreground="{StaticResource Subtle}" TextWrapping="Wrap" FontSize="12.5"
+                               Text="Press Start. Use the jog rail and MoveClick to satisfy each prompt, then press the green button on the feed." />
+
+                    <Border Height="1" Background="{StaticResource Edge}" Margin="0,12" />
+
+                    <TextBlock Text="Result" Foreground="{StaticResource Text}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <TextBlock x:Name="ResultText" Foreground="{StaticResource Subtle}" TextWrapping="Wrap"
+                               FontFamily="Consolas" FontSize="12.5" Text="—" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

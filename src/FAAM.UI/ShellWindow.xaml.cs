@@ -30,6 +30,8 @@ public partial class ShellWindow : Window
     private readonly EngineerPageView _engineer;
     private readonly VisionProfileView _visionProfile;
     private readonly ScriptEditorView _scriptEditor;
+    private readonly CalibrationView _calibration;
+    private readonly CameraNeedleCalibrationView _cameraNeedle;
 
     /// <summary>Camera pop-out windows this shell owns (auto-opened + restored).</summary>
     private readonly List<DisplayWindow> _cameraWindows = new();
@@ -44,6 +46,8 @@ public partial class ShellWindow : Window
         _engineer = new EngineerPageView(host);
         _visionProfile = new VisionProfileView(host);
         _scriptEditor = new ScriptEditorView(host);
+        _calibration = new CalibrationView();
+        _cameraNeedle = new CameraNeedleCalibrationView(host);
         InitializeComponent();
 
         RestoreMainWindowPlacement();
@@ -67,6 +71,9 @@ public partial class ShellWindow : Window
         _home.EngineerRequested += ShowEngineer;
         _home.VisionProfileRequested += ShowVisionProfile;
         _home.ScriptRequested += ShowScript;
+        _home.CalibrationRequested += ShowCalibration;
+        _calibration.CameraNeedleRequested += ShowCameraNeedle;
+        _cameraNeedle.BackRequested += ShowCalibration;
 
         // Identity chip — refresh on login/logout and on product switch.
         _host.Session.Changed += UpdateIdentity;
@@ -117,6 +124,8 @@ public partial class ShellWindow : Window
             _visionProfile.Deactivate();
         else if (ReferenceEquals(PageHost.Content, _scriptEditor))
             _scriptEditor.Deactivate();
+        else if (ReferenceEquals(PageHost.Content, _cameraNeedle))
+            _cameraNeedle.Deactivate();
     }
 
     private void ShowHome()
@@ -177,6 +186,25 @@ public partial class ShellWindow : Window
         DutHeader.Visibility = Visibility.Collapsed;
         _scriptEditor.Activate();
         PageHost.Content = _scriptEditor;
+    }
+
+    private void ShowCalibration()
+    {
+        LeaveCurrent();
+        Header1Text.Text = "CALIBRATION";
+        EngineHeader.Visibility = Visibility.Collapsed;
+        DutHeader.Visibility = Visibility.Collapsed;
+        PageHost.Content = _calibration;
+    }
+
+    private void ShowCameraNeedle()
+    {
+        LeaveCurrent();
+        Header1Text.Text = "CALIBRATION — CAMERA → NEEDLE";
+        EngineHeader.Visibility = Visibility.Collapsed;
+        DutHeader.Visibility = Visibility.Collapsed;
+        _cameraNeedle.Activate();
+        PageHost.Content = _cameraNeedle;
     }
 
     /// <summary>

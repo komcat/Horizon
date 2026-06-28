@@ -59,8 +59,8 @@
                     Style="{StaticResource Tile}" Click="OnVisionProfileClick" />
             <Button Grid.Row="2" Grid.Column="0" Content="Script"
                     Style="{StaticResource Tile}" Click="OnScriptClick" />
-            <Button Grid.Row="2" Grid.Column="1" Content="—"
-                    Style="{StaticResource ReserveTile}" />
+            <Button Grid.Row="2" Grid.Column="1" Content="Calibration"
+                    Style="{StaticResource Tile}" Click="OnCalibrationClick" />
         </Grid>
     </Grid>
 </UserControl>

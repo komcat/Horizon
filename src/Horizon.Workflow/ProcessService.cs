@@ -1,5 +1,6 @@
 using Horizon.Common;
 using Horizon.Engine;
+using Horizon.Workflow.Calibration;
 using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Recipe;
@@ -28,6 +29,7 @@ public sealed class ProcessService : IProcessService
     private DutStore? _dut;              // null when no product is active
     private readonly ProgramHistoryDb _history = new();   // machine-global audit store (history.db)
     private readonly DeviceLinkStore _deviceLinks = new();   // machine-global, not per-product
+    private readonly CameraNeedleCalibrationStore _cameraNeedle = new();   // machine-global camera->needle calibration
     private PauseController? _pause;     // non-null only while a program runs
     private OperatorContext? _operator;  // current operator, stamped onto DUT runs
     private (DutRecord Record, DutRun Run)? _interactiveDut;   // open operator-driven DUT run
@@ -1030,6 +1032,46 @@ public sealed class ProcessService : IProcessService
 
         Log(LogLevel.Info, $"FAU pre-align started: gantry '{options.GantryDevice}', hexapod '{options.HexapodDevice}'.");
         return await routine.RunAsync(options, ct).ConfigureAwait(false);
+    }
+
+    // --- Calibration: camera <-> needle ---
+
+    public CameraNeedleCalibrationData GetCameraNeedleCalibration() => _cameraNeedle.Current;
+
+    public Task<Result<CameraNeedleResult>> RunCameraNeedleCalibrationAsync(CancellationToken ct = default)
+        => RunCameraNeedleCoreAsync(OperatorPrompt, ct);
+
+    public Task<Result<CameraNeedleResult>> RunCameraNeedleCalibrationAsync(
+        IOperatorPrompt prompt, CancellationToken ct = default)
+        => RunCameraNeedleCoreAsync(prompt, ct);
+
+    private async Task<Result<CameraNeedleResult>> RunCameraNeedleCoreAsync(
+        IOperatorPrompt? prompt, CancellationToken ct)
+    {
+        var cfg = _cameraNeedle.Current;
+        var options = new CameraNeedleOptions(
+            cfg.GantryDevice, cfg.DispenserSlide, cfg.DwellMs, cfg.LiftoffMm, cfg.SlowZVelocity,
+            cfg.CalPosition, cfg.VcamneedleX, cfg.VcamneedleY);
+
+        var routine = new CameraNeedleCalibrationRoutine(_engine, prompt, Log);
+        Log(LogLevel.Info, $"Camera-needle calibration started: gantry '{cfg.GantryDevice}', dispenser '{cfg.DispenserSlide}'.");
+
+        var result = await routine.RunAsync(options, ct).ConfigureAwait(false);
+        if (result.IsSuccess)
+        {
+            var r = result.Value;
+            _cameraNeedle.Update(cfg with
+            {
+                CalPosition = r.CalPosition,
+                VcamneedleX = r.VcamneedleX,
+                VcamneedleY = r.VcamneedleY,
+                FocusToNeedleZmm = r.FocusToNeedleZmm,
+                SavedBy = _operator?.DisplayName,
+                SavedAt = DateTimeOffset.Now.ToString("o"),
+            });
+            Log(LogLevel.Info, "Camera-needle calibration saved.");
+        }
+        return result;
     }
 
     // --- Recipes ---
