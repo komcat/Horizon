@@ -30,6 +30,9 @@ internal sealed class StepDispatcher
     // Supplies the Layer 3 Run-page springboard for app.* steps. Returns null when no
     // head has registered one — app.* steps then fail with a clear message rather than crash.
     private readonly Func<IUtilityAppHost?> _utilityAppHost;
+    // Supplies the Layer 3 SiPhOG -> Google Sheet writer for siphog.updateSheet steps.
+    // Returns null when no head has registered one — the step then fails with a clear message.
+    private readonly Func<ISiphogSheetSink?> _siphogSheetSink;
     // Unified read-out catalog: built-in engine signals (SMU/PSU/Measurement/TEC/Laser)
     // plus any product source a Layer 3 head registered (FAAM's SiPhOG). Drives signal.read.
     private readonly SignalRegistry _signals;
@@ -53,6 +56,7 @@ internal sealed class StepDispatcher
         Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
         Func<IHillClimbFeedback?> hillClimbFeedback,
         Func<IUtilityAppHost?> utilityAppHost,
+        Func<ISiphogSheetSink?> siphogSheetSink,
         SignalRegistry signals,
         DeviceLinkStore deviceLinks,
         Action<LogLevel, string> log)
@@ -64,6 +68,7 @@ internal sealed class StepDispatcher
         _runVisionProfile = runVisionProfile;
         _hillClimbFeedback = hillClimbFeedback;
         _utilityAppHost = utilityAppHost;
+        _siphogSheetSink = siphogSheetSink;
         _signals = signals;
         _deviceLinks = deviceLinks;
         _log = log;
@@ -871,6 +876,33 @@ internal sealed class StepDispatcher
                 return host == null
                     ? AppHostMissing("app.stop")
                     : await host.StopAsync(Str(step, "appId", ctx)).ConfigureAwait(false);
+            }
+
+            // --- SiPhOG -> Google Sheet (V11 UPDATE_SAG). Writes the bench row's current
+            //     SAG-PWR readings into the chosen stage column. The bench is the run's DUT
+            //     serial (the sheet's column-A key); the measured values come from the SiPhOG
+            //     server's own live stream, so the step only sends bench + stage + completed.
+            //     Blocks until the server's ACK/ERR (a Google round-trip), failing on ERR. ---
+            case "siphog.updatesheet":
+            {
+                var sink = _siphogSheetSink();
+                if (sink == null)
+                    return Result.Fail(ErrorCode.NotSupported,
+                        "siphog.updateSheet: no SiPhOG sheet sink registered (run from a head with the SiPhOG client).");
+
+                var bench = ctx.DutSerial;
+                if (string.IsNullOrWhiteSpace(bench))
+                    return Result.Fail(ErrorCode.InvalidParameter,
+                        "siphog.updateSheet: no active DUT serial — the bench row key. Start a DUT run (or add a DUT Entry step) first.");
+
+                var stage = Str(step, "stage", ctx).Trim().ToUpperInvariant();
+                if (stage is not ("ACTUAL" or "WET" or "UV"))
+                    return Result.Fail(ErrorCode.InvalidParameter,
+                        $"siphog.updateSheet: stage must be ACTUAL, WET, or UV (got '{stage}').");
+
+                // 'completed' defaults to true — a save normally means the stage is done.
+                var completed = !Has(step, "completed") || Bool(step, "completed", ctx);
+                return await sink.UpdateSagAsync(bench, stage, completed, ct).ConfigureAwait(false);
             }
 
             default:

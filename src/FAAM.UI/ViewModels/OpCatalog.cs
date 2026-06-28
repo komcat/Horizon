@@ -259,6 +259,20 @@ public static class OpCatalog
         new("app.stop", "Stop App", "App", DeviceKind.None,
             new[] { new ParamSpec("appId", "App (ucorrection / faupre / hillclimb / siphog)", ParamKind.Text, "hillclimb") }),
 
+        // ---- SiPhOG -> Google Sheet (V11 UPDATE_SAG) ----
+        // Writes the bench row's current SAG-PWR readings into the chosen stage column of
+        // the SiPhOG server's Google Sheet. The bench (column-A key) is the run's DUT serial
+        // — taken automatically, so there's no field for it; start a DUT run / DUT Entry first.
+        // The measured values come from the SiPhOG server's own live stream, so only the stage
+        // and completed flag are sent. The step blocks until the server's ACK/ERR (a Google
+        // round-trip) and fails the program on ERR. Needs the Run-page SiPhOG client connected.
+        new("siphog.updateSheet", "Save SAG to Sheet", "Signal", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("stage", "Stage (ACTUAL / WET / UV)", ParamKind.Text, "ACTUAL"),
+                new ParamSpec("completed", "Mark stage completed", ParamKind.Bool, "true"),
+            }),
+
         // ---- DUT ----
         // Prompts the operator (modal) for a serial number and opens the DUT record
         // for this run, so later dut.* steps record into it. Cancel fails the program.

@@ -91,6 +91,11 @@
                         <Run Text="DUT: " Foreground="{StaticResource Subtle}" />
                         <Run x:Name="SerialRun" Foreground="{StaticResource Accent}" FontWeight="SemiBold" />
                     </TextBlock>
+                    <!-- Clears the sticky DUT serial without switching products (disabled mid-run). -->
+                    <Button x:Name="ClearSerialButton" Content="✕" Width="18" Height="18" Padding="0" FontSize="10"
+                            Margin="4,0,0,0" VerticalAlignment="Center" Background="Transparent" BorderThickness="0"
+                            Cursor="Hand" Foreground="{StaticResource Subtle}" Visibility="Collapsed"
+                            ToolTip="Clear current DUT serial" Click="OnClearSerial" />
                     <Button x:Name="LogoutButton" Content="Logout" Width="82" Height="26"
                             Margin="16,0,0,0" Click="OnLogout" />
                 </StackPanel>

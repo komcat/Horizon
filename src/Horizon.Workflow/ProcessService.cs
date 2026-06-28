@@ -32,6 +32,7 @@ public sealed class ProcessService : IProcessService
     private (DutRecord Record, DutRun Run)? _runDut;   // the running program/deck's DUT (up-front serial, or set mid-run by dut.promptSerial)
     private Func<IHillClimbFeedback?>? _hillClimbFeedbackProvider;   // Layer 3 (SiPhOG) wires the hill-climb signal source
     private IUtilityAppHost? _utilityAppHost;   // Layer 3 Run-page springboard, driven by app.* steps
+    private ISiphogSheetSink? _siphogSheetSink;   // Layer 3 SiPhOG -> Google Sheet writer, driven by siphog.updateSheet steps
     private readonly SignalRegistry _signals;   // built-in engine signals + any product source a head registers
 
     public ProcessService(IHorizonEngine engine)
@@ -89,6 +90,14 @@ public sealed class ProcessService : IProcessService
         if (string.Equals(ActiveSerial, serial, StringComparison.Ordinal)) return;
         ActiveSerial = serial;
         ActiveSerialChanged?.Invoke(serial);
+    }
+
+    public bool ClearActiveSerial()
+    {
+        if (HasActiveDutRun) return false;   // a run owns the serial — don't clear mid-run
+        if (ActiveSerial == null) return false;
+        SetActiveSerial(null);
+        return true;
     }
 
     public IOperatorPrompt? OperatorPrompt { get; set; }
@@ -457,6 +466,9 @@ public sealed class ProcessService : IProcessService
     public void SetUtilityAppHost(IUtilityAppHost? host)
         => _utilityAppHost = host;
 
+    public void SetSiphogSheetSink(ISiphogSheetSink? sink)
+        => _siphogSheetSink = sink;
+
     /// <summary>
     /// Registers a product-specific signal source (e.g. FAAM's SiPhOG) so its values
     /// join the unified <c>signal.read</c> catalog. The built-in engine signals
@@ -664,6 +676,7 @@ public sealed class ProcessService : IProcessService
             RunVisionProfileByNameAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,
+            () => _siphogSheetSink,
             _signals,
             _deviceLinks,
             OperatorPrompt,
@@ -1256,6 +1269,7 @@ public sealed class ProcessService : IProcessService
             RunVisionProfileByNameAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,
+            () => _siphogSheetSink,
             _signals,
             _deviceLinks,
             OperatorPrompt,

@@ -39,7 +39,15 @@ public sealed class TimelineEditorViewModel : ObservableObject
     private List<List<LaneClip>>? _stageClipboard;
 
     private bool _isRunning;
+    private bool _showAllLanes;
+    private double _laneWidth = DefaultLaneWidth;
     private string _status = "—";
+
+    // Lane-column zoom: width in px, clamped to [MinLaneWidth, MaxLaneWidth], stepped by ZoomStep.
+    private const double DefaultLaneWidth = 110;
+    private const double MinLaneWidth = 60;
+    private const double MaxLaneWidth = 220;
+    private const double ZoomStep = 15;
     private bool _isDirty;
     private bool _suppressDirty;   // true while loading / resetting, so it doesn't count as an edit
     private bool _subscribed;
@@ -69,8 +77,11 @@ public sealed class TimelineEditorViewModel : ObservableObject
         RunCommand = new AsyncRelayCommand(() => RunAsync(null), () => !_isRunning);
         RunStageCommand = new AsyncRelayCommand(RunSelectedStageAsync, () => !_isRunning && _selectedStages.Count == 1);
         StopCommand = new RelayCommand(() => _runCts?.Cancel(), () => _isRunning);
+        ZoomInCommand = new RelayCommand(() => LaneWidth += ZoomStep, () => _laneWidth < MaxLaneWidth);
+        ZoomOutCommand = new RelayCommand(() => LaneWidth -= ZoomStep, () => _laneWidth > MinLaneWidth);
 
         AddStage();   // start with one empty stage to author into
+        UpdateLaneVisibility();
     }
 
     // --- bound state ---
@@ -80,6 +91,58 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public ObservableCollection<StageViewModel> Stages { get; } = new();
     public ObservableCollection<string> Programs { get; } = new();
     public ObservableCollection<string> Log { get; } = new();
+
+    /// <summary>
+    /// When false (default), only lanes that carry a block are shown — a loaded program
+    /// shows just the devices it uses. Flip on to reveal every device lane so an op can
+    /// be added to a device the program doesn't touch yet.
+    /// </summary>
+    public bool ShowAllLanes
+    {
+        get => _showAllLanes;
+        set { if (SetField(ref _showAllLanes, value)) UpdateLaneVisibility(); }
+    }
+
+    /// <summary>Lane column width in px — driven by the zoom buttons; bound by header + cells.</summary>
+    public double LaneWidth
+    {
+        get => _laneWidth;
+        private set
+        {
+            var clamped = Math.Clamp(value, MinLaneWidth, MaxLaneWidth);
+            if (!SetField(ref _laneWidth, clamped)) return;
+            OnPropertyChanged(nameof(LaneFontSize));
+            OnPropertyChanged(nameof(BlockNameFontSize));
+            OnPropertyChanged(nameof(BlockValueFontSize));
+            ZoomInCommand.RaiseCanExecuteChanged();
+            ZoomOutCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    // Gentle font scale tracking the zoom — clamped tight so wide columns don't clip the
+    // fixed-height rows, but text still grows/shrinks "a bit" with the column width.
+    private double FontScale => Math.Clamp(_laneWidth / DefaultLaneWidth, 0.8, 1.2);
+
+    /// <summary>Lane-header device name font size, scaled with the column zoom.</summary>
+    public double LaneFontSize => 13 * FontScale;
+
+    /// <summary>In-cell block op-name font size, scaled with the column zoom.</summary>
+    public double BlockNameFontSize => 9 * FontScale;
+
+    /// <summary>In-cell block param-summary font size, scaled with the column zoom.</summary>
+    public double BlockValueFontSize => 11 * FontScale;
+
+    /// <summary>
+    /// Shows a lane when "Show all lanes" is on, or it carries at least one block.
+    /// A program with no blocks at all (e.g. a fresh New Program) shows every lane,
+    /// so there's always somewhere to drop the first op.
+    /// </summary>
+    private void UpdateLaneVisibility()
+    {
+        var anyBlocks = Lanes.Any(l => l.Cells.Any(c => c.Blocks.Count > 0));
+        foreach (var lane in Lanes)
+            lane.IsVisible = _showAllLanes || !anyBlocks || lane.Cells.Any(c => c.Blocks.Count > 0);
+    }
 
     public string ProgramName { get => _programName; set { if (SetField(ref _programName, value)) MarkDirty(); } }
 
@@ -206,6 +269,8 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public AsyncRelayCommand RunCommand { get; }
     public AsyncRelayCommand RunStageCommand { get; }
     public RelayCommand StopCommand { get; }
+    public RelayCommand ZoomInCommand { get; }
+    public RelayCommand ZoomOutCommand { get; }
 
     /// <summary>True when at least one stage is selected (header highlight).</summary>
     public bool HasSelectedStage => _selectedStages.Count > 0;
@@ -333,6 +398,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         RenumberStages();
         MarkDirty();
         RecomputeConditionRegions();
+        UpdateLaneVisibility();
         if (_selectedBlock != null && !BlockIsPlaced(_selectedBlock))
             SelectedBlock = null;
         if (_selectedStages.RemoveAll(s => !Stages.Contains(s)) > 0)
@@ -446,6 +512,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         StageSelectionChanged();
         MarkDirty();
         RecomputeConditionRegions();
+        UpdateLaneVisibility();
         Status = $"Pasted {pasted.Count} stage(s).";
     }
 
@@ -483,6 +550,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         Track(block);
         MarkDirty();
         RecomputeConditionRegions();
+        UpdateLaneVisibility();
         SelectedCell = lane.Cells[stageIndex];
         SelectedBlock = block;
         Status = $"Added '{spec.Display}' to {lane.Display}, stage {stageIndex + 1}.";
@@ -514,6 +582,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
 
         MarkDirty();
         RecomputeConditionRegions();
+        UpdateLaneVisibility();
         SelectedCell = target;
         SelectedBlock = block;
         Status = $"Moved '{block.Display}' to {lane.Display}, stage {stageIndex + 1}.";
@@ -524,7 +593,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         if (_selectedBlock == null) return;
         foreach (var lane in Lanes)
             foreach (var cell in lane.Cells)
-                if (cell.Blocks.Remove(_selectedBlock)) { SelectedBlock = null; MarkDirty(); RecomputeConditionRegions(); return; }
+                if (cell.Blocks.Remove(_selectedBlock)) { SelectedBlock = null; MarkDirty(); RecomputeConditionRegions(); UpdateLaneVisibility(); return; }
     }
 
     private bool BlockIsPlaced(ProcessBlockViewModel block)
@@ -557,6 +626,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         AddStage();
         SelectedBlock = null;
         SelectedCell = null;
+        UpdateLaneVisibility();
         _suppressDirty = false;
         IsDirty = false;
         Status = "New program.";
@@ -604,6 +674,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         }
         if (Stages.Count == 0) AddStage();
         RecomputeConditionRegions();
+        UpdateLaneVisibility();
     }
 
     private ProcessBlockViewModel MakeBlock(WorkflowStep step)

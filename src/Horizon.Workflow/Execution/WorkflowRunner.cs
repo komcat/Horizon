@@ -35,6 +35,7 @@ internal sealed class WorkflowRunner
         Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
         Func<IHillClimbFeedback?> hillClimbFeedback,
         Func<IUtilityAppHost?> utilityAppHost,
+        Func<ISiphogSheetSink?> siphogSheetSink,
         SignalRegistry signals,
         DeviceLinkStore deviceLinks,
         IOperatorPrompt? prompt,
@@ -43,7 +44,7 @@ internal sealed class WorkflowRunner
         Action<WorkflowStepEvent> onStep,
         Action<LogLevel, string> log)
     {
-        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, hillClimbFeedback, utilityAppHost, signals, deviceLinks, log);
+        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, hillClimbFeedback, utilityAppHost, siphogSheetSink, signals, deviceLinks, log);
         _loadProgram = loadProgram;
         _prompt = prompt;
         _setDutSerial = setDutSerial;

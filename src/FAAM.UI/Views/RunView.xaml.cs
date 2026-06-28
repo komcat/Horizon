@@ -81,6 +81,10 @@ public partial class RunView : UserControl
         // Publish the live SiPhOG frame into the unified signal.read catalog so Engineer
         // blocks can pull siphog.* values (alongside the built-in SMU/PSU/Measurement/…).
         host.Process.AddSignalSource(new SiphogSignalSource(siphog));
+
+        // Let siphog.updateSheet workflow steps write a staged SAG-PWR measurement to the
+        // SiPhOG server's Google Sheet (V11 UPDATE_SAG) over that same client/connection.
+        host.Process.SetSiphogSheetSink(new SiphogSheetSink(siphog));
     }
 
     /// <summary>Starts the process timer — called by the shell header when a DUT run begins.</summary>

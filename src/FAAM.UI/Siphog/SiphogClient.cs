@@ -108,8 +108,11 @@ public sealed class SiphogClient : IDisposable
     /// Sends a command and waits for its <c>ACK:</c>/<c>ERR:</c> reply. Commands are
     /// serialized (one in flight at a time) per the protocol's FIFO rule. Returns the
     /// reply line, or an <c>ERR:</c>-style string on timeout / not-connected.
+    /// <paramref name="timeoutMs"/> defaults to the streaming-command tick (a few ms);
+    /// pass a larger value for commands whose reply waits on a slow side effect — e.g.
+    /// <c>UPDATE_SAG</c>, whose ACK only returns after a Google Sheets round-trip.
     /// </summary>
-    public async Task<string> SendCommandAsync(string command, CancellationToken ct = default)
+    public async Task<string> SendCommandAsync(string command, CancellationToken ct = default, int timeoutMs = ReplyTimeoutMs)
     {
         var stream = _stream;
         if (!IsConnected || stream == null)
@@ -124,7 +127,7 @@ public sealed class SiphogClient : IDisposable
             var bytes = Encoding.ASCII.GetBytes(command + "\n");
             await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
 
-            using var timeout = new CancellationTokenSource(ReplyTimeoutMs);
+            using var timeout = new CancellationTokenSource(timeoutMs);
             using (ct.Register(() => tcs.TrySetCanceled()))
             using (timeout.Token.Register(() => tcs.TrySetResult("ERR:reply timeout")))
                 return await tcs.Task.ConfigureAwait(false);

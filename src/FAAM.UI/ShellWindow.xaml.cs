@@ -303,6 +303,16 @@ public partial class ShellWindow : Window
         var has = !string.IsNullOrWhiteSpace(serial);
         SerialRun.Text = serial ?? string.Empty;
         SerialChip.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+        // The clear-x rides with the chip, but only while no run owns the serial.
+        ClearSerialButton.Visibility = has && !_host.Process.HasActiveDutRun
+            ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Clears the sticky DUT serial from the header (the tiny ✕ next to "DUT:").</summary>
+    private void OnClearSerial(object sender, RoutedEventArgs e)
+    {
+        if (_host.Process.ClearActiveSerial())
+            Log(LogLevel.Info, "Cleared current DUT serial.");
     }
 
     // --- DUT run lifecycle (header box; visible on the Run page) ---
@@ -324,6 +334,9 @@ public partial class ShellWindow : Window
         StartDutButton.IsEnabled = !busy && !hasRun;       // Start stays disabled while a run is open
         PassButton.IsEnabled = hasRun;
         FailButton.IsEnabled = hasRun;
+        // The header clear-x is allowed only when a serial is shown and no run owns it.
+        ClearSerialButton.Visibility = !hasRun && !string.IsNullOrWhiteSpace(_host.Process.ActiveSerial)
+            ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnStartDut(object sender, RoutedEventArgs e)

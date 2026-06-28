@@ -160,6 +160,14 @@ public interface IProcessService
     void SetUtilityAppHost(IUtilityAppHost? host);
 
     /// <summary>
+    /// Registers the Layer 3 sink that <c>siphog.updateSheet</c> steps drive — a head
+    /// (FAAM.UI) writes a staged SAG-PWR measurement to the SiPhOG server's Google Sheet
+    /// over its live client. Pass null to unregister; with none registered the step fails
+    /// with a clear message rather than crash.
+    /// </summary>
+    void SetSiphogSheetSink(ISiphogSheetSink? sink);
+
+    /// <summary>
     /// Registers a product-specific signal source (e.g. FAAM's SiPhOG) so its values
     /// join the unified <c>signal.read</c> catalog alongside the built-in engine
     /// signals (SMU / PSU / Measurement / TEC / Laser).
@@ -347,6 +355,14 @@ public interface IProcessService
     /// run is actually in progress.
     /// </summary>
     string? ActiveSerial { get; }
+
+    /// <summary>
+    /// Clears the sticky <see cref="ActiveSerial"/> (→ null) without switching products —
+    /// the operator dismissing "the unit we last ran" from the header. No-op while an
+    /// interactive DUT run is in progress (<see cref="HasActiveDutRun"/>); returns whether
+    /// the serial was cleared.
+    /// </summary>
+    bool ClearActiveSerial();
 
     /// <summary>
     /// Raised when <see cref="ActiveSerial"/> changes — a new unit starting (serial)

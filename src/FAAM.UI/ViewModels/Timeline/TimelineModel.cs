@@ -48,6 +48,15 @@ public sealed class LaneViewModel : ObservableObject
     /// <summary>True for the first lane of its domain — the view shows the group caption.</summary>
     public bool IsGroupStart { get; }
 
+    private bool _isVisible = true;
+
+    /// <summary>
+    /// Whether this lane (and its column of cells) is shown. The editor hides lanes
+    /// that carry no blocks unless "Show all lanes" is on — so a loaded program shows
+    /// only the devices it actually uses. Bound by the header and every cell column.
+    /// </summary>
+    public bool IsVisible { get => _isVisible; set => SetField(ref _isVisible, value); }
+
     /// <summary>One cell per stage, index-aligned with the editor's <c>Stages</c>.</summary>
     public ObservableCollection<CellViewModel> Cells { get; } = new();
 
