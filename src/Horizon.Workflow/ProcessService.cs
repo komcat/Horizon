@@ -691,6 +691,7 @@ public sealed class ProcessService : IProcessService
             // dut.promptSerial opens the DUT record mid-run into _runDut, which the
             // finally block persists with the run's verdict.
             (s, c) => SetRunDutSerial(s, program.Name, c),
+            CloseRunDut,   // dut.close finalises + persists the DUT mid-run
             pause,
             e => StepEvent?.Invoke(e),
             Log);
@@ -760,6 +761,40 @@ public sealed class ProcessService : IProcessService
         if (begun == null)
             return Result.Fail(ErrorCode.OperationFailed, "Could not open the DUT record.");
         _runDut = begun;
+        ctx.DutIsFallback = false;
+        return Result.Ok();
+    }
+
+    /// <summary>
+    /// Back-end for the <c>dut.close</c> step: finalises the DUT this run <em>owns</em>
+    /// (<see cref="_runDut"/> — an up-front serial or a <c>dut.promptSerial</c> step) with
+    /// <paramref name="verdict"/>, persists the record, and detaches it from
+    /// <paramref name="ctx"/> so later <c>dut.*</c> steps skip and the program's own
+    /// end-of-run close (the <c>RunAsync</c> finally) doesn't double-record. An open
+    /// operator session (<see cref="_interactiveDut"/>) keeps its own lifecycle — its
+    /// Pass/Fail belongs to the Run page — so a fallback DUT is detached, not ended.
+    /// No-op when no DUT is attached.
+    /// </summary>
+    private Result CloseRunDut(DutVerdict verdict, WorkflowContext ctx)
+    {
+        if (ctx.Dut == null) return Result.Ok();
+
+        if (_runDut != null && ReferenceEquals(ctx.Dut, _runDut.Value.Run))
+        {
+            EndDut(_runDut, verdict);   // adds the run to the record + persists
+            _runDut = null;
+        }
+        else
+        {
+            // An adopted operator session (or sticky-serial fallback the Run page owns):
+            // persist its entries so far, but leave the session open for its own Pass/Fail.
+            if (_interactiveDut != null && ReferenceEquals(ctx.Dut, _interactiveDut.Value.Run))
+                TrySaveDut(_interactiveDut.Value.Record, "dut.close (session left open)");
+            Log(LogLevel.Info, $"dut.close: DUT {ctx.DutSerial} is operator-owned — detached, not ended.");
+        }
+
+        ctx.Dut = null;
+        ctx.DutSerial = null;
         ctx.DutIsFallback = false;
         return Result.Ok();
     }
@@ -1376,6 +1411,7 @@ public sealed class ProcessService : IProcessService
             _deviceLinks,
             OperatorPrompt,
             (s, c) => SetRunDutSerial(s, deck.Name, c),
+            CloseRunDut,   // dut.close finalises + persists the DUT mid-run
             pause,
             e => StepEvent?.Invoke(e),
             Log);

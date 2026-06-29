@@ -22,6 +22,7 @@ internal sealed class WorkflowRunner
     private readonly Func<string, WorkflowProgram?> _loadProgram;
     private readonly IOperatorPrompt? _prompt;
     private readonly Func<string, WorkflowContext, Result>? _setDutSerial;
+    private readonly Func<DutVerdict, WorkflowContext, Result>? _closeDut;
     private readonly PauseController _pause;
     private readonly Action<WorkflowStepEvent> _onStep;
     private readonly Action<LogLevel, string> _log;
@@ -40,6 +41,7 @@ internal sealed class WorkflowRunner
         DeviceLinkStore deviceLinks,
         IOperatorPrompt? prompt,
         Func<string, WorkflowContext, Result>? setDutSerial,
+        Func<DutVerdict, WorkflowContext, Result>? closeDut,
         PauseController pause,
         Action<WorkflowStepEvent> onStep,
         Action<LogLevel, string> log)
@@ -48,6 +50,7 @@ internal sealed class WorkflowRunner
         _loadProgram = loadProgram;
         _prompt = prompt;
         _setDutSerial = setDutSerial;
+        _closeDut = closeDut;
         _pause = pause;
         _onStep = onStep;
         _log = log;
@@ -285,6 +288,13 @@ internal sealed class WorkflowRunner
                 continue;
             }
 
+            if (op == "dut.close")
+            {
+                CloseDut(step, ctx, index, steps.Count, desc, lane);
+                index++;
+                continue;
+            }
+
             _onStep(new WorkflowStepEvent(index, steps.Count, desc, Completed: false, Success: false, Message: "", Lane: lane));
             _log(LogLevel.Info, $"Step {index + 1}/{steps.Count}: {desc}");
 
@@ -323,6 +333,17 @@ internal sealed class WorkflowRunner
                     && await PromptMoveFailureAsync(step, index, steps.Count, desc, result, lane, ct)
                         .ConfigureAwait(false))
                 {
+                    index++;
+                    continue;
+                }
+
+                // Best-effort ops (e.g. writing SiPhOG SAG to the Google Sheet) report
+                // their failure but never abort the run — a missing DUT serial, an
+                // unregistered sink, or a server ERR is a logged nuisance, not a fault
+                // worth stopping the process over.
+                if (IsNonFatalOp(op))
+                {
+                    _log(LogLevel.Warning, $"Step {index + 1} '{desc}' failed (continuing): {result.Message}");
                     index++;
                     continue;
                 }
@@ -598,6 +619,38 @@ internal sealed class WorkflowRunner
     }
 
     /// <summary>
+    /// Handles a <c>dut.close</c> step: finalises the DUT this run is recording into
+    /// with the chosen verdict (default Pass), persists the record, and detaches it
+    /// so later <c>dut.*</c> steps skip and the program's own end-of-run close doesn't
+    /// double-record. Best-effort — closing with no DUT open, or a persist hiccup, is
+    /// logged but never aborts the program (the bookend to <c>dut.promptSerial</c>).
+    /// </summary>
+    private void CloseDut(WorkflowStep step, WorkflowContext ctx, int index, int total, string desc, string? lane)
+    {
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: false, Success: false, Message: "", Lane: lane));
+
+        if (ctx.Dut == null)
+        {
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: true, Message: "no DUT open", Lane: lane));
+            _log(LogLevel.Warning, $"Step {index + 1} '{desc}' — no DUT open (nothing to close).");
+            return;
+        }
+
+        var verdictText = step.Parameters.GetValueOrDefault("verdict", "Pass");
+        if (!Enum.TryParse<DutVerdict>(verdictText, ignoreCase: true, out var verdict))
+            verdict = DutVerdict.Pass;
+
+        var serial = ctx.DutSerial ?? string.Empty;
+        var r = _closeDut?.Invoke(verdict, ctx) ?? Result.Ok();
+
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, r.IsSuccess,
+            r.IsSuccess ? $"{serial} {verdict}" : r.Message, Lane: lane));
+        _log(r.IsSuccess ? LogLevel.Info : LogLevel.Warning, r.IsSuccess
+            ? $"Step {index + 1}: DUT closed → {serial} [{verdict}]."
+            : $"Step {index + 1} '{desc}' — DUT close issue: {r.Message}");
+    }
+
+    /// <summary>
     /// Motion ops whose failure is worth offering the operator a "skip and continue"
     /// choice — a rejected target (near a limit, unreachable) is a recoverable nuisance
     /// rather than a hard fault. Non-move ops always abort on failure.
@@ -605,6 +658,14 @@ internal sealed class WorkflowRunner
     private static bool IsRecoverableMoveOp(string op) => op is
         "motion.moverelative" or "motion.movetoposition" or
         "motion.parallelmove" or "motion.compensatedevicelink";
+
+    /// <summary>
+    /// Best-effort ops whose failure is logged but never aborts the run. Writing the
+    /// SiPhOG SAG row to the Google Sheet can fail for several benign reasons (no
+    /// active DUT serial, no sink registered when run from a non-SiPhOG head, a server
+    /// ERR / Google round-trip hiccup); none of those should stop the process.
+    /// </summary>
+    private static bool IsNonFatalOp(string op) => op is "siphog.updatesheet";
 
     /// <summary>
     /// A motion move failed (e.g. the controller rejected an unreachable target).
