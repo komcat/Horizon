@@ -18,6 +18,9 @@ public sealed class GridSearchConfig
 {
     // ---- Stage 1: X line search ----
 
+    /// <summary>When false, Stage 1 (the X line search) is skipped entirely — the run goes straight to Stage 2.</summary>
+    public bool Stage1Enabled { get; set; } = true;
+
     /// <summary>Initial +X excursion from centre (µm) before the downward sweep — the line "apex".</summary>
     public double LineJumpUm { get; set; } = 60.0;
     /// <summary>Step size for the −X sweep (µm).</summary>
@@ -28,6 +31,9 @@ public sealed class GridSearchConfig
     public int LineAxisIndex { get; set; }
 
     // ---- Stage 2: XY grid fallback ----
+
+    /// <summary>When false, the Stage 2 XY grid fallback is skipped — if Stage 1 finds nothing the run reports "no signal".</summary>
+    public bool Stage2Enabled { get; set; } = true;
 
     /// <summary>Half-extent per axis for the grid (µm); the raster spans centre ± this on X and Y.</summary>
     public double GridExtentUm { get; set; } = 60.0;
@@ -52,7 +58,7 @@ public sealed class GridSearchConfig
     /// Absolute (not relative) so a near-zero or negative baseline (e.g. −0.031 V) is handled
     /// cleanly — a percentage threshold blows up around zero.
     /// </summary>
-    public double DetectDeltaV { get; set; } = 0.1;
+    public double DetectDeltaV { get; set; } = 0.02;
 
     /// <summary>
     /// Early-exit drop, as a fraction of the peak's height above baseline. Once signal is seen,
@@ -90,6 +96,8 @@ public sealed class GridSearchConfig
 
     public GridSearchConfig Clone() => new()
     {
+        Stage1Enabled = Stage1Enabled,
+        Stage2Enabled = Stage2Enabled,
         LineJumpUm = LineJumpUm,
         LineStepUm = LineStepUm,
         LineSteps = LineSteps,

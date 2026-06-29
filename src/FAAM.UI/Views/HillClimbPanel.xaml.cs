@@ -232,7 +232,8 @@ public partial class HillClimbPanel : UserControl
         // ---- One-shot Auto W maximizer: once per lifetime, re-armed on Set Start / Clear Distance. ----
         // The climb has parked at peak and released the hexapod (activity disposed in finally), so the
         // Auto W panel can take it. Runs at most once until the operator re-anchors or clears.
-        if (climbedOk && !_autoWDoneThisLifetime && _autoW != null)
+        if (climbedOk && !_autoWDoneThisLifetime && _autoW != null
+            && (_host?.Settings.Current.FindFirstLight.AutoWEnabled ?? false))
         {
             _autoWDoneThisLifetime = true;
             Log(LogLevel.Info, "Hill climb parked at peak — auto-running Auto W maximizer once for this lifetime.");

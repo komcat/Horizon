@@ -142,9 +142,17 @@ public sealed class FauGridSearchEngine
             _log(LogLevel.Info,
                 $"Grid search baseline: V={_vBase:F6}, σ={_baselineSigma:F6}, detect ≥ {_detectLevel:F6} V ({_feedback.Description}).");
 
-            // ---- Stage 1: X line ----
-            SetState(GridSearchState.LineSearch);
-            bool signalSeen = await LineSearchAsync(ct).ConfigureAwait(false);
+            // ---- Stage 1: X line (skipped when disabled) ----
+            bool signalSeen = false;
+            if (_config.Stage1Enabled)
+            {
+                SetState(GridSearchState.LineSearch);
+                signalSeen = await LineSearchAsync(ct).ConfigureAwait(false);
+            }
+            else
+            {
+                _log(LogLevel.Info, "Grid search: Stage 1 (X line) disabled — skipping to Stage 2.");
+            }
 
             if (signalSeen)
             {
@@ -154,9 +162,17 @@ public sealed class FauGridSearchEngine
             }
             else
             {
-                // ---- Stage 2: XY grid fallback ----
-                SetState(GridSearchState.GridSearch);
-                double[]? hit = await GridSearchAsync(ct).ConfigureAwait(false);
+                // ---- Stage 2: XY grid fallback (skipped when disabled) ----
+                double[]? hit = null;
+                if (_config.Stage2Enabled)
+                {
+                    SetState(GridSearchState.GridSearch);
+                    hit = await GridSearchAsync(ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    _log(LogLevel.Info, "Grid search: Stage 2 (XY grid) disabled — not running grid fallback.");
+                }
 
                 if (hit != null)
                 {
@@ -168,7 +184,7 @@ public sealed class FauGridSearchEngine
                 {
                     await ParkAtAsync(_posPeak!, ct).ConfigureAwait(false);
                     FillResult(result, GridSearchStopReason.NoSignal, signalFound: false);
-                    result.Message = $"No signal found across line + grid ({result.PointsMeasured} pts); parked at best {_peakV:F6} V.";
+                    result.Message = $"No signal found ({result.PointsMeasured} pts); parked at best {_peakV:F6} V.";
                 }
             }
 

@@ -175,12 +175,26 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         RefreshReferenceButtons();
     }
 
-    /// <summary>Start is available only when nothing else (a process step or another alignment) holds the hexapod.</summary>
+    /// <summary>
+    /// Drives the prominent button. While running it morphs into a red Stop (always enabled so the
+    /// operator can break the whole chain mid-step); when idle it is the accent Start, enabled only
+    /// when nothing else (a process step or another alignment) holds the hexapod.
+    /// </summary>
     private void RefreshStartEnabled()
     {
         if (_host == null) return;
+        if (_running)
+        {
+            StartButton.Content = "■ Stop";
+            StartButton.Background = new SolidColorBrush(Color.FromRgb(0xC6, 0x28, 0x28));
+            StartButton.IsEnabled = true;
+            return;
+        }
+
+        StartButton.Content = "Start correction";
+        StartButton.Background = (Brush)FindResource("Accent");
         bool othersBusy = _host.Activity.ProcessBusy || (_host.Activity.AlignmentBusy && !_running);
-        StartButton.IsEnabled = !_running && !othersBusy;
+        StartButton.IsEnabled = !othersBusy;
     }
 
     private static string UName(string point) => $"UCorr_{point}";
@@ -332,7 +346,19 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
 
     // --- Chained correction run: U correction → FAU pre-align ---
 
-    private async void OnStart(object sender, RoutedEventArgs e) => await RunSequenceAsync(runU: true, runFau: true);
+    /// <summary>
+    /// The prominent button does double duty: it starts the chained U → FAU run when idle,
+    /// and becomes a Stop that cancels the whole chain (U / FAU / grid search) while running.
+    /// </summary>
+    private async void OnStart(object sender, RoutedEventArgs e)
+    {
+        if (_running)
+        {
+            RequestStop();
+            return;
+        }
+        await RunSequenceAsync(runU: true, runFau: true);
+    }
 
     /// <summary>
     /// Runs the requested phases in order (U then FAU). The chain stops if a phase is
@@ -362,7 +388,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
 
         _running = true;
         RaiseRunState();
-        StartButton.IsEnabled = false;
+        RefreshStartEnabled();   // morph Start → Stop immediately
         var cts = new CancellationTokenSource();
         _cts = cts;
         _activity = _host.Activity.Begin(ActivityKind.Alignment, "Alignment (U → FAU)");
@@ -418,8 +444,15 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         // stage actually found signal.
         if (handoffClimb && _hill != null)
         {
-            Log(LogLevel.Info, "Grid search found signal — handing off to hill climb.");
-            _hill.RequestStart();
+            if (_host.Settings.Current.FindFirstLight.HillClimbEnabled)
+            {
+                Log(LogLevel.Info, "Grid search found signal — handing off to hill climb.");
+                _hill.RequestStart();
+            }
+            else
+            {
+                Log(LogLevel.Info, "Grid search found signal — hill climb disabled in settings, stopping here.");
+            }
         }
     }
 
@@ -431,6 +464,14 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     private async Task<bool> RunGridSearchAsync(CancellationToken ct)
     {
         if (_host == null || _gridEngine == null || _gridFeedback == null) return false;
+
+        var ffl = _host.Settings.Current.FindFirstLight;
+        if (!ffl.Enabled)
+        {
+            SetStatus(Phase.Grid, "Grid search disabled (Find First Light off)");
+            Log(LogLevel.Info, "Grid search skipped: Find First Light disabled on the Engineer page.");
+            return false;
+        }
 
         if (!_host.Engine.Motion.IsConnected(HexDevice))
         {
@@ -445,9 +486,23 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
             return false;
         }
 
+        // Build the search config from the operator-edited Find First Light settings.
+        GridSearchConfig config;
+        try
+        {
+            config = ffl.ToGridSearchConfig();
+            config.Validate();
+        }
+        catch (ArgumentException ex)
+        {
+            SetStatus(Phase.Grid, $"Grid search skipped — invalid settings: {ex.Message}");
+            Log(LogLevel.Warning, $"Grid search skipped: invalid Find First Light settings — {ex.Message}");
+            return false;
+        }
+
         _phase = Phase.Grid;
         SetStatus(Phase.Grid, "Grid search: baseline…");
-        var r = await _gridEngine.RunAsync(HexDevice, _gridFeedback, GridSearchConfig.Default, ct);
+        var r = await _gridEngine.RunAsync(HexDevice, _gridFeedback, config, ct);
         SetStatus(Phase.Grid, r.Message);
         return r.SignalFound;
     }

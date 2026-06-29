@@ -11,5 +11,8 @@
         <TabItem Header="Process Deck">
             <ContentControl x:Name="DeckHost" />
         </TabItem>
+        <TabItem Header="Find First Light">
+            <ContentControl x:Name="FindFirstLightHost" />
+        </TabItem>
     </TabControl>
 </UserControl>
