@@ -22,7 +22,7 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
     private int _lineSteps = 24;
 
     private bool _stage2Enabled = true;
-    private double _gridExtentUm = 60;
+    private int _gridYRows = 12;
     private double _gridStepUm = 5;
     private int _maxGridNodes = 4096;
 
@@ -32,6 +32,7 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
 
     private bool _hillClimbEnabled = true;
     private bool _autoWEnabled;
+    private int _autoSledWaitMs = 4000;
 
     private string _status = "—";
 
@@ -54,7 +55,7 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
 
     // --- Stage 2: XY grid fallback ---
     public bool Stage2Enabled { get => _stage2Enabled; set => SetField(ref _stage2Enabled, value); }
-    public double GridExtentUm { get => _gridExtentUm; set => SetField(ref _gridExtentUm, value); }
+    public int GridYRows { get => _gridYRows; set => SetField(ref _gridYRows, value); }
     public double GridStepUm { get => _gridStepUm; set => SetField(ref _gridStepUm, value); }
     public int MaxGridNodes { get => _maxGridNodes; set => SetField(ref _maxGridNodes, value); }
 
@@ -66,6 +67,7 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
     // --- Hand-off chain (after grid search finds signal) ---
     public bool HillClimbEnabled { get => _hillClimbEnabled; set => SetField(ref _hillClimbEnabled, value); }
     public bool AutoWEnabled { get => _autoWEnabled; set => SetField(ref _autoWEnabled, value); }
+    public int AutoSledWaitMs { get => _autoSledWaitMs; set => SetField(ref _autoSledWaitMs, value); }
 
     public string Status { get => _status; private set => SetField(ref _status, value); }
 
@@ -81,7 +83,7 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
         LineStepUm = s.LineStepUm;
         LineSteps = s.LineSteps;
         Stage2Enabled = s.Stage2Enabled;
-        GridExtentUm = s.GridExtentUm;
+        GridYRows = s.GridYRows;
         GridStepUm = s.GridStepUm;
         MaxGridNodes = s.MaxGridNodes;
         DetectDeltaV = s.DetectDeltaV;
@@ -89,6 +91,7 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
         DropConfirmCount = s.DropConfirmCount;
         HillClimbEnabled = s.HillClimbEnabled;
         AutoWEnabled = s.AutoWEnabled;
+        AutoSledWaitMs = s.AutoSledWaitMs;
     }
 
     private FindFirstLightSettings BuildSettings() => new()
@@ -99,7 +102,7 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
         LineStepUm = _lineStepUm,
         LineSteps = _lineSteps,
         Stage2Enabled = _stage2Enabled,
-        GridExtentUm = _gridExtentUm,
+        GridYRows = _gridYRows,
         GridStepUm = _gridStepUm,
         MaxGridNodes = _maxGridNodes,
         DetectDeltaV = _detectDeltaV,
@@ -107,11 +110,18 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
         DropConfirmCount = _dropConfirmCount,
         HillClimbEnabled = _hillClimbEnabled,
         AutoWEnabled = _autoWEnabled,
+        AutoSledWaitMs = _autoSledWaitMs,
     };
 
     private void Save()
     {
         var settings = BuildSettings();
+
+        if (settings.AutoSledWaitMs < 0)
+        {
+            Status = "Invalid: Auto-SLED wait must be ≥ 0 ms.";
+            return;
+        }
 
         // Validate by mapping onto the Layer-2 config — same ranges the engine enforces.
         try

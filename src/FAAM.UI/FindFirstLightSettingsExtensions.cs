@@ -19,7 +19,7 @@ public static class FindFirstLightSettingsExtensions
         c.LineStepUm = s.LineStepUm;
         c.LineSteps = s.LineSteps;
         c.Stage2Enabled = s.Stage2Enabled;
-        c.GridExtentUm = s.GridExtentUm;
+        c.GridYRows = s.GridYRows;
         c.GridStepUm = s.GridStepUm;
         c.MaxGridNodes = s.MaxGridNodes;
         c.DetectDeltaV = s.DetectDeltaV;

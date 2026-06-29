@@ -66,11 +66,13 @@
                 <TextBlock Grid.Row="2" Grid.Column="2" Text="number of −X steps after the apex" Style="{StaticResource Hint}" />
             </Grid>
 
-            <!-- ===== Stage 2: XY grid fallback ===== -->
-            <TextBlock Text="Stage 2 — XY grid fallback" Style="{StaticResource SectionHeader}" />
+            <!-- ===== Stage 2: Y+ line-scan fallback ===== -->
+            <TextBlock Text="Stage 2 — Y+ line scan" Style="{StaticResource SectionHeader}" />
             <CheckBox Content="Enable Stage 2 (runs only when Stage 1 finds nothing)"
-                      Foreground="{StaticResource Text}" Margin="0,0,0,8"
+                      Foreground="{StaticResource Text}" Margin="0,0,0,4"
                       IsChecked="{Binding Stage2Enabled}" />
+            <TextBlock Text="Steps Y+ only; runs the Stage-1 X line scan at each row (move +X to apex, step down −X)."
+                       Foreground="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,0,0,8" />
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -83,17 +85,17 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Grid extent (µm)" Style="{StaticResource FieldLabel}" />
-                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding GridExtentUm}" />
-                <TextBlock Grid.Row="0" Grid.Column="2" Text="half-extent per axis (raster spans centre ± this)" Style="{StaticResource Hint}" />
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Y rows" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding GridYRows}" />
+                <TextBlock Grid.Row="0" Grid.Column="2" Text="how many Y+ rows to test (centre upward only)" Style="{StaticResource Hint}" />
 
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Grid step (µm)" Style="{StaticResource FieldLabel}" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Y step (µm)" Style="{StaticResource FieldLabel}" />
                 <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding GridStepUm}" />
-                <TextBlock Grid.Row="1" Grid.Column="2" Text="pitch between adjacent nodes" Style="{StaticResource Hint}" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="Y+ pitch between rows (each row runs an X line scan)" Style="{StaticResource Hint}" />
 
                 <TextBlock Grid.Row="2" Grid.Column="0" Text="Max grid nodes" Style="{StaticResource FieldLabel}" />
                 <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding MaxGridNodes}" />
-                <TextBlock Grid.Row="2" Grid.Column="2" Text="runaway-sweep cap (raster refuses to exceed this)" Style="{StaticResource Hint}" />
+                <TextBlock Grid.Row="2" Grid.Column="2" Text="runaway-sweep cap: Y rows × (line steps + 1)" Style="{StaticResource Hint}" />
             </Grid>
 
             <!-- ===== Detection (shared) ===== -->
@@ -127,8 +129,18 @@
             <TextBlock Text="Hand-off chain (after grid search finds signal)" Style="{StaticResource SectionHeader}" />
             <CheckBox Content="Run hill climb after grid search" Foreground="{StaticResource Text}" Margin="0,0,0,4"
                       IsChecked="{Binding HillClimbEnabled}" />
-            <CheckBox Content="Run Auto-W maximizer after hill climb" Foreground="{StaticResource Text}" Margin="0,0,0,4"
+            <CheckBox Content="Run Auto-W maximizer after hill climb" Foreground="{StaticResource Text}" Margin="0,0,0,8"
                       IsChecked="{Binding AutoWEnabled}" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="SLED settle (ms)" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Column="1" Text="{Binding AutoSledWaitMs}" />
+                <TextBlock Grid.Column="2" Text="wait after the hill climber switches the SLED to 110 mA, before continuing the climb" Style="{StaticResource Hint}" />
+            </Grid>
 
             <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                 <Button Content="Save" Width="90" Height="30" Command="{Binding SaveCommand}" />

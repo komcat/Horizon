@@ -146,18 +146,18 @@ public sealed record FindFirstLightSettings
     /// <summary>Number of −X steps after the apex.</summary>
     public int LineSteps { get; init; } = 24;
 
-    // --- Stage 2: XY grid fallback ---
+    // --- Stage 2: Y+ line-scan fallback ---
 
-    /// <summary>Run Stage 2 (the XY grid fallback) when Stage 1 finds nothing.</summary>
+    /// <summary>Run Stage 2 (the Y+ line-scan fallback) when Stage 1 finds nothing.</summary>
     public bool Stage2Enabled { get; init; } = true;
 
-    /// <summary>Half-extent per axis for the grid (µm); the raster spans centre ± this on X and Y.</summary>
-    public double GridExtentUm { get; init; } = 60;
+    /// <summary>Number of Y+ rows to test; Stage 2 only steps Y in the + direction from centre.</summary>
+    public int GridYRows { get; init; } = 12;
 
-    /// <summary>Grid pitch between adjacent nodes (µm).</summary>
+    /// <summary>Y+ pitch between rows (µm) — how far Y advances between successive X line scans.</summary>
     public double GridStepUm { get; init; } = 5;
 
-    /// <summary>Hard cap on the grid node count (runaway-sweep guard).</summary>
+    /// <summary>Hard cap on the total node count (runaway-sweep guard): GridYRows × (LineSteps + 1).</summary>
     public int MaxGridNodes { get; init; } = 4096;
 
     // --- Detection (shared by both stages) ---
@@ -178,6 +178,13 @@ public sealed record FindFirstLightSettings
 
     /// <summary>Chain the Auto-W maximizer once after the hill climb parks at peak. Default off.</summary>
     public bool AutoWEnabled { get; init; }
+
+    /// <summary>
+    /// Settle wait (ms) after the hill climber switches the SiPhOG SLED to its operating current at
+    /// the auto-SLED handoff, before re-baselining and continuing the climb. The SAG PWR voltage
+    /// drops on the current change, so this lets it stabilise first.
+    /// </summary>
+    public int AutoSledWaitMs { get; init; } = 4000;
 }
 
 /// <summary>Saved bounds + maximized state of a window.</summary>

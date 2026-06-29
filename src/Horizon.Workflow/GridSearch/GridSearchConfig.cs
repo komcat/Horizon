@@ -7,9 +7,9 @@ namespace Horizon.Workflow.GridSearch;
 ///   <item><b>Stage 1</b> — a 1-D X line search: jump <see cref="LineJumpUm"/> in +X, then step
 ///         back in −X by <see cref="LineStepUm"/> for <see cref="LineSteps"/> steps, watching for
 ///         the signal to clear the baseline by <see cref="DetectDeltaV"/> and then crest.</item>
-///   <item><b>Stage 2</b> — only if Stage 1 saw nothing: a full serpentine XY raster over
-///         ±<see cref="GridExtentUm"/> at <see cref="GridStepUm"/> pitch, stopping at the first
-///         node that clears the detect level so the caller can hand off to the hill climber.</item>
+///   <item><b>Stage 2</b> — only if Stage 1 saw nothing: step Y+ for <see cref="GridYRows"/> rows at
+///         <see cref="GridStepUm"/> pitch and run a Stage-1-style X line scan at each row, stopping at
+///         the first row that clears the detect level so the caller can hand off to the hill climber.</item>
 /// </list>
 /// Plain POCO so a front-end can serialize/edit it (System.Text.Json). Mirrors the
 /// <c>AutoWConfig</c>/<c>HillClimbConfig</c> shape (timing, sampling, I/O timeout, axis indices).
@@ -30,24 +30,22 @@ public sealed class GridSearchConfig
     /// <summary>Index of the line-scan axis into the 6-DOF pose (X,Y,Z,U,V,W). Default X.</summary>
     public int LineAxisIndex { get; set; }
 
-    // ---- Stage 2: XY grid fallback ----
+    // ---- Stage 2: Y+ line-scan fallback ----
 
-    /// <summary>When false, the Stage 2 XY grid fallback is skipped — if Stage 1 finds nothing the run reports "no signal".</summary>
+    /// <summary>When false, the Stage 2 fallback is skipped — if Stage 1 finds nothing the run reports "no signal".</summary>
     public bool Stage2Enabled { get; set; } = true;
 
-    /// <summary>Half-extent per axis for the grid (µm); the raster spans centre ± this on X and Y.</summary>
-    public double GridExtentUm { get; set; } = 60.0;
-    /// <summary>Grid pitch between adjacent nodes (µm).</summary>
+    /// <summary>Number of Y+ rows to test; the search only steps Y in the + direction from centre.</summary>
+    public int GridYRows { get; set; } = 12;
+    /// <summary>Y+ pitch between rows (µm) — how far Y advances between successive X line scans.</summary>
     public double GridStepUm { get; set; } = 5.0;
-    /// <summary>Grid X axis index into the 6-DOF pose. Default X.</summary>
-    public int GridXAxisIndex { get; set; }
-    /// <summary>Grid Y axis index into the 6-DOF pose. Default Y.</summary>
+    /// <summary>Grid Y axis index into the 6-DOF pose. Default Y. (The per-row X scan uses <see cref="LineAxisIndex"/>.)</summary>
     public int GridYAxisIndex { get; set; } = 1;
 
     /// <summary>
-    /// Hard cap on the grid node count — a bounded-loop guard (Power of 10 Rule 2: no runaway
-    /// sweep). ±60 µm at 5 µm pitch is 25×25 = 625; the cap forces a coarser step or tighter
-    /// extent before a sweep could explode.
+    /// Hard cap on the total node count — a bounded-loop guard (Power of 10 Rule 2: no runaway
+    /// sweep). Stage 2 measures <c>GridYRows × (LineSteps + 1)</c> nodes; the cap forces fewer rows
+    /// or a shorter X line before a sweep could explode.
     /// </summary>
     public int MaxGridNodes { get; set; } = 4096;
 
@@ -102,9 +100,8 @@ public sealed class GridSearchConfig
         LineStepUm = LineStepUm,
         LineSteps = LineSteps,
         LineAxisIndex = LineAxisIndex,
-        GridExtentUm = GridExtentUm,
+        GridYRows = GridYRows,
         GridStepUm = GridStepUm,
-        GridXAxisIndex = GridXAxisIndex,
         GridYAxisIndex = GridYAxisIndex,
         MaxGridNodes = MaxGridNodes,
         DetectDeltaV = DetectDeltaV,
@@ -124,9 +121,8 @@ public sealed class GridSearchConfig
         if (LineJumpUm <= 0) throw new ArgumentException("LineJumpUm must be positive.");
         if (LineStepUm <= 0) throw new ArgumentException("LineStepUm must be positive.");
         if (LineSteps < 1) throw new ArgumentException("LineSteps must be at least 1.");
-        if (GridExtentUm <= 0) throw new ArgumentException("GridExtentUm must be positive.");
+        if (GridYRows < 1) throw new ArgumentException("GridYRows must be at least 1.");
         if (GridStepUm <= 0) throw new ArgumentException("GridStepUm must be positive.");
-        if (GridStepUm > GridExtentUm) throw new ArgumentException("GridStepUm must not exceed GridExtentUm.");
         if (MaxGridNodes < 1) throw new ArgumentException("MaxGridNodes must be at least 1.");
         if (DetectDeltaV <= 0) throw new ArgumentException("DetectDeltaV must be positive.");
         if (DropFraction is <= 0 or >= 1) throw new ArgumentException("DropFraction must be in (0, 1).");
@@ -137,9 +133,9 @@ public sealed class GridSearchConfig
             throw new ArgumentException("Timing parameters must be non-negative.");
         if (SamplesPerStep < 1 || BaselineSamples < 1)
             throw new ArgumentException("Sample counts must be at least 1.");
-        if (LineAxisIndex is < 0 or > 5 || GridXAxisIndex is < 0 or > 5 || GridYAxisIndex is < 0 or > 5)
+        if (LineAxisIndex is < 0 or > 5 || GridYAxisIndex is < 0 or > 5)
             throw new ArgumentException("Axis indices must be in range 0..5.");
-        if (GridXAxisIndex == GridYAxisIndex)
-            throw new ArgumentException("Grid X and Y axes must differ.");
+        if (LineAxisIndex == GridYAxisIndex)
+            throw new ArgumentException("The X line axis and the Y row axis must differ.");
     }
 }

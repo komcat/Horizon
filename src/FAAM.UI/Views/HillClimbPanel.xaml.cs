@@ -41,7 +41,10 @@ public partial class HillClimbPanel : UserControl
     // current position. The continuation does NOT switch the current again.
     private const double AutoSledTriggerV = 1.8;    // V — SAG PWR milestone that triggers the handoff
     private const int AutoSledCurrentMa = 110;      // mA — operating SLED current set at the milestone
-    private const int AutoSledWaitMs = 2500;        // ms — settle time after the current change
+    private const int AutoSledWaitMsFallback = 4000; // ms — settle time used when no host/settings are attached
+    // Settle time after the current change is operator-tunable in the Find First Light settings
+    // (FindFirstLightSettings.AutoSledWaitMs); read at handoff time so an edit takes effect next run.
+    private int AutoSledWaitMs => Math.Max(0, _host?.Settings.Current.FindFirstLight.AutoSledWaitMs ?? AutoSledWaitMsFallback);
 
     // Lifetime Z anchor. When set, Z+ travel is metered against a single ceiling across
     // repeated runs, so a second climb only gets the budget the first one didn't consume.
@@ -270,8 +273,10 @@ public partial class HillClimbPanel : UserControl
             Log(LogLevel.Warning, "Auto-SLED: no SiPhOG client — skipping current change, continuing climb.");
         }
 
-        // 2) Let the new SLED current settle.
-        await System.Threading.Tasks.Task.Delay(AutoSledWaitMs, ct);
+        // 2) Let the new SLED current settle (operator-tunable in Find First Light settings).
+        int settleMs = AutoSledWaitMs;
+        Log(LogLevel.Info, $"Auto-SLED: settling {settleMs} ms before re-baselining.");
+        await System.Threading.Tasks.Task.Delay(settleMs, ct);
 
         // 3) Budget for the continuation: remaining lifetime travel if anchored, else a fresh run.
         double continueDistance = phase1Distance;
