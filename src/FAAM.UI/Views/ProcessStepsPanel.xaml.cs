@@ -134,6 +134,22 @@ public partial class ProcessStepsPanel : UserControl
     private void UpdateNoDeckBanner()
         => NoDeckBanner.Visibility = _deck == null ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>
+    /// Re-syncs the step buttons with the on-disk deck — called when the Run page is
+    /// shown, so a deck edited and saved in the Engineer page (same product, same name,
+    /// which <see cref="RefreshDecks"/> leaves untouched because the deck-name list is
+    /// unchanged) is picked up without re-selecting it in the dropdown. Re-lists the
+    /// deck names first (one may have been added/renamed/deleted), then reloads the
+    /// selected deck's content and rebuilds the buttons from its current Run-page entries.
+    /// </summary>
+    public void SyncDeck()
+    {
+        if (_host == null) return;
+        RefreshDecks();
+        if (DeckSelector.SelectedItem is string name)
+            LoadDeckIntoSteps(name);
+    }
+
     /// <summary>Rebuilds the step buttons from the selected deck's <c>Run page</c> programs (in deck order).</summary>
     private void OnDeckSelected(object sender, SelectionChangedEventArgs e)
     {
@@ -147,6 +163,14 @@ public partial class ProcessStepsPanel : UserControl
             UpdateNoDeckBanner();
             return;
         }
+
+        LoadDeckIntoSteps(name);
+    }
+
+    /// <summary>Loads the named deck (making it active) and rebuilds the Run-page buttons from its <c>Run page</c> entries.</summary>
+    private void LoadDeckIntoSteps(string name)
+    {
+        if (_host == null) return;
 
         var loaded = _host.Process.LoadDeck(name);   // also makes it the active deck
         if (!loaded.IsSuccess) { Log(LogLevel.Warning, loaded.Message); return; }

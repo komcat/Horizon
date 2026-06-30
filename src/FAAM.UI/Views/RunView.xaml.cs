@@ -120,6 +120,11 @@ public partial class RunView : UserControl
         if (_active) return;
         _active = true;
 
+        // Re-sync the process-steps deck from disk: a deck edited and saved in the
+        // Engineer page (same product, same name) won't have refreshed the Run-page
+        // buttons, so reload the selected deck's current Run-page entries on every show.
+        StepsPanel.SyncDeck();
+
         // Fire-and-forget: each camera grabs independently. Already-grabbing
         // cameras are a harmless no-op.
         foreach (var cam in _cameras)
