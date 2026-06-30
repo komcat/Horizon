@@ -13,6 +13,8 @@ public interface IIODevice
     IOError SetOutput(int pin, bool state);
     IOError SetOutputByName(string pinName, bool state);
     IOError ReadAllOutputs(out uint outputs);
+    /// <summary>Reads the current state of a single output pin, resolved by its configured name.</summary>
+    IOError ReadOutputByName(string pinName, out bool state);
 
     string DeviceName { get; }
     int InputCount { get; }

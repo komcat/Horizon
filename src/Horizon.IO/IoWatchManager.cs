@@ -129,7 +129,20 @@ public sealed class IoWatchManager : IDisposable
     private void FireBinding(IoBinding b)
     {
         var okey = $"{b.Output.Device}:{b.Output.PinName}";
-        bool next = !(_outputStates.TryGetValue(okey, out var cur) && cur);
+
+        // Toggle the ACTUAL current output state (read back from hardware), so the switch
+        // flips whatever the output is right now — rather than a possibly-stale internal
+        // guess that drifts when a workflow / another path drove the same pin. Fall back to
+        // the tracked state only if the read fails.
+        bool cur;
+        var dev = _ioManager.GetDevice(b.Output.Device);
+        if (dev != null && dev.IsConnected
+            && dev.ReadOutputByName(b.Output.PinName, out bool actual) == IOError.Success)
+            cur = actual;
+        else
+            cur = _outputStates.TryGetValue(okey, out var tracked) && tracked;
+
+        bool next = !cur;
 
         var err = _ioManager.SetOutputByName(b.Output.Device, b.Output.PinName, next);
         if (err != IOError.Success)

@@ -135,6 +135,21 @@ public sealed class EziIODevice : IIODevice
         return SetOutput(pin, state);
     }
 
+    public IOError ReadOutputByName(string pinName, out bool state)
+    {
+        state = false;
+        // Resolve via the OUTPUT map specifically (an input could share a name).
+        if (!_outputPinNames.TryGetValue(pinName, out var pin))
+        {
+            Log.Warning("[IO] ReadOutputByName unknown output '{PinName}' on {DeviceName}", pinName, DeviceName);
+            return IOError.InvalidPin;
+        }
+        var result = ReadAllOutputs(out uint outputs);   // already shifted so output pin N is at bit N
+        if (result != IOError.Success) return result;
+        state = (outputs & (1u << pin)) != 0;
+        return IOError.Success;
+    }
+
     public IOError ReadAllOutputs(out uint outputs)
     {
         return ReadAllOutputs(out outputs, out _);
