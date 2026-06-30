@@ -83,12 +83,23 @@
         <!-- Toolbar -->
         <WrapPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
             <TextBlock Text="Deck" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{StaticResource Text}" />
-            <TextBox Width="200" Height="28" Margin="0,0,10,0" VerticalContentAlignment="Center"
+            <TextBox Width="200" Height="28" Margin="0,0,8,0" VerticalContentAlignment="Center"
                      Text="{Binding DeckName, UpdateSourceTrigger=PropertyChanged}" />
-            <ComboBox Width="180" Height="28" Margin="0,0,10,0"
-                      ItemsSource="{Binding Decks}" SelectedItem="{Binding SelectedDeck}" />
+            <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                    CornerRadius="3" Padding="8,2" Margin="0,0,10,0" VerticalAlignment="Center"
+                    ToolTip="Latest committed version of this deck (Commit to bump it)">
+                <TextBlock Text="{Binding CurrentVersionText}" Foreground="{StaticResource Accent}" FontWeight="SemiBold" />
+            </Border>
+            <Button Content="Load" Style="{StaticResource ToolButton}" MinWidth="56" Click="OnLoad"
+                    ToolTip="Choose a deck to load from the product" />
             <Button Content="New" Style="{StaticResource ToolButton}" Command="{Binding NewCommand}" />
-            <Button Content="Save" Style="{StaticResource ToolButton}" Command="{Binding SaveCommand}" />
+            <Button Content="Save" Style="{StaticResource ToolButton}" Command="{Binding SaveCommand}"
+                    ToolTip="Save the working deck file (does not create a version)" />
+            <TextBox Width="130" Height="28" Margin="0,0,6,0" VerticalContentAlignment="Center"
+                     Text="{Binding CommitNote, UpdateSourceTrigger=PropertyChanged}"
+                     ToolTip="Optional note for the next commit (shows in the version repository)" />
+            <Button Content="Commit" Style="{StaticResource ToolButton}" MinWidth="64" Command="{Binding CommitCommand}"
+                    ToolTip="Save and record a new numbered version in the repository" />
             <Button Content="Save As" Style="{StaticResource ToolButton}" MinWidth="64" Click="OnSaveAs"
                     ToolTip="Save the current deck as a new, independent deck to edit for a product variation" />
             <Button Content="Import" Style="{StaticResource ToolButton}" MinWidth="60" Click="OnImport"

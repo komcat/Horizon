@@ -9,6 +9,8 @@ public sealed record DeckVersion
     public string? OperatorId { get; init; }
     public string? OperatorName { get; init; }
     public string? StationId { get; init; }
+    /// <summary>Optional operator-entered commit note for this revision (null = none).</summary>
+    public string? Note { get; init; }
     /// <summary>The full deck as saved at this revision.</summary>
     public WorkflowDeck Snapshot { get; init; } = new();
 }

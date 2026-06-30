@@ -24,6 +24,8 @@ public sealed class TimelineEditorViewModel : ObservableObject
     private readonly Dictionary<string, LaneViewModel> _laneById;
 
     private string _programName = "New Program";
+    private string _commitNote = string.Empty;
+    private string _currentVersionText = "—";
     private string? _selectedProgram;
     private ProcessBlockViewModel? _selectedBlock;
     private OpHelpViewModel? _selectedHelp;
@@ -70,6 +72,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
 
         NewProgramCommand = new RelayCommand(NewProgram);
         SaveProgramCommand = new RelayCommand(SaveProgram);
+        CommitProgramCommand = new RelayCommand(CommitProgram);
         AddStageCommand = new RelayCommand(() => { AddStage(); MarkDirty(); RecomputeConditionRegions(); });
         RemoveBlockCommand = new RelayCommand(RemoveSelectedBlock, () => _selectedBlock != null);
         CopyStagesCommand = new RelayCommand(CopySelectedStages, () => _selectedStages.Count > 0);
@@ -145,6 +148,18 @@ public sealed class TimelineEditorViewModel : ObservableObject
     }
 
     public string ProgramName { get => _programName; set { if (SetField(ref _programName, value)) MarkDirty(); } }
+
+    /// <summary>
+    /// Optional commit note recorded with the next save (the version repository shows
+    /// it on the revision). Cleared after each successful save. Blank = no note.
+    /// </summary>
+    public string CommitNote { get => _commitNote; set => SetField(ref _commitNote, value); }
+
+    /// <summary>
+    /// The loaded program's current committed version, e.g. <c>v10</c> — or
+    /// <c>uncommitted</c> when it has no committed revision yet. Shown next to the name.
+    /// </summary>
+    public string CurrentVersionText { get => _currentVersionText; private set => SetField(ref _currentVersionText, value); }
 
     /// <summary>True when the editor has unsaved changes vs the last save / load.</summary>
     public bool IsDirty { get => _isDirty; private set => SetField(ref _isDirty, value); }
@@ -262,6 +277,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
 
     public RelayCommand NewProgramCommand { get; }
     public RelayCommand SaveProgramCommand { get; }
+    public RelayCommand CommitProgramCommand { get; }
     public RelayCommand AddStageCommand { get; }
     public RelayCommand RemoveBlockCommand { get; }
     public RelayCommand CopyStagesCommand { get; }
@@ -331,6 +347,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public void Activate()
     {
         RefreshPrograms();
+        RefreshVersionText();
         if (_subscribed) return;
         _host.Process.StepEvent += OnStep;
         _host.Process.LogEmitted += OnLog;
@@ -629,7 +646,28 @@ public sealed class TimelineEditorViewModel : ObservableObject
         UpdateLaneVisibility();
         _suppressDirty = false;
         IsDirty = false;
+        RefreshVersionText();
         Status = "New program.";
+    }
+
+    /// <summary>
+    /// Loads a program by name into the editor (always reloads, even if it's already the
+    /// selected one — so the Load window can be used to discard edits). Used by the
+    /// custom Load picker.
+    /// </summary>
+    public void LoadProgramByName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        _selectedProgram = name;
+        OnPropertyChanged(nameof(SelectedProgram));
+        LoadProgram(name);
+    }
+
+    /// <summary>Refreshes <see cref="CurrentVersionText"/> from the named program's latest committed revision.</summary>
+    private void RefreshVersionText()
+    {
+        var latest = _host.Process.GetProgramHistory(ProgramName)?.Latest;
+        CurrentVersionText = latest != null ? $"v{latest.Version}" : "uncommitted";
     }
 
     private void LoadProgram(string name)
@@ -642,6 +680,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         LoadFrom(result.Value);
         _suppressDirty = false;
         IsDirty = false;
+        RefreshVersionText();
         Status = $"Loaded '{name}' — {Stages.Count} stage(s).";
     }
 
@@ -826,26 +865,62 @@ public sealed class TimelineEditorViewModel : ObservableObject
         return null;
     }
 
+    /// <summary>
+    /// Save writes the working <c>.hwf</c> only — it does not create a version. Commit
+    /// (below) is what records a numbered revision in the version repository.
+    /// </summary>
     private void SaveProgram()
     {
-        if (string.IsNullOrWhiteSpace(ProgramName)) { Status = "Program name is required."; return; }
+        var program = BuildValidatedProgram(out var bumped);
+        if (program == null) return;
+
+        var result = _host.Process.SaveProgram(program);
+        if (!result.IsSuccess) { Status = result.Message; return; }
+
+        Status = $"Saved '{program.Name}'." + WaitPopupBumpNote(bumped);
+        AfterPersisted(program.Name);
+    }
+
+    /// <summary>
+    /// Commit saves the working file <i>and</i> records a new numbered version (with the
+    /// optional <see cref="CommitNote"/>) in the version repository. The note is cleared
+    /// afterwards — it belongs to the revision just committed.
+    /// </summary>
+    private void CommitProgram()
+    {
+        var program = BuildValidatedProgram(out var bumped);
+        if (program == null) return;
+
+        var result = _host.Process.CommitProgram(program, CommitNote);
+        if (!result.IsSuccess) { Status = result.Message; return; }
+
+        Status = $"Committed '{program.Name}'." + WaitPopupBumpNote(bumped);
+        CommitNote = string.Empty;
+        AfterPersisted(program.Name);
+    }
+
+    /// <summary>Validates + compiles the timeline to a program, or null (with <see cref="Status"/> set) on failure.</summary>
+    private WorkflowProgram? BuildValidatedProgram(out int bumped)
+    {
+        bumped = 0;
+        if (string.IsNullOrWhiteSpace(ProgramName)) { Status = "Program name is required."; return null; }
 
         ClampVelocities();
-        var bumped = ClampWaitPopups();
+        bumped = ClampWaitPopups();
         var invalid = FirstInvalidBlock(out var why);
-        if (invalid != null) { SelectedBlock = invalid; Status = $"Can't save — {why}"; return; }
+        if (invalid != null) { SelectedBlock = invalid; Status = $"Can't save — {why}"; return null; }
 
-        var program = BuildProgram();
-        var result = _host.Process.SaveProgram(program);
-        Status = result.IsSuccess
-            ? $"Saved '{program.Name}'." + WaitPopupBumpNote(bumped)
-            : result.Message;
-        if (!result.IsSuccess) return;
+        return BuildProgram();
+    }
 
+    /// <summary>Refreshes the program list + selection and clears the dirty flag after a save/commit.</summary>
+    private void AfterPersisted(string programName)
+    {
         RefreshPrograms();
-        _selectedProgram = program.Name;
+        _selectedProgram = programName;
         OnPropertyChanged(nameof(SelectedProgram));
         IsDirty = false;
+        RefreshVersionText();   // a commit bumps the version; a plain save leaves it
     }
 
     /// <summary>

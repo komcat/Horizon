@@ -5,8 +5,10 @@ via `Microsoft.Data.Sqlite`; `ProgramHistoryDb` replaces the JSON store behind t
 unchanged `IProcessService` API; one-time import of the legacy JSON history; degrades
 to a no-op if the DB can't be opened). The normalized `block_revision` / `block_param`
 tables are populated now. **Phase B** — query methods on `IProcessService` + a FAAM
-history search panel (by UID / parameter / operator / device) — is next. Original plan
-below.
+history search panel (by UID / parameter / operator / device) — is also done. The
+"exact restore" the schema kept `snapshot_json` for is now built out as a **version
+repository** (optional commit notes + checkout/restore, on a dedicated Repository
+page) — see `docs/version-repository-design.md`. Original plan below.
 
 Today program revision history was JSON-per-program
 (`processes/history/{name}.json`, see `ProgramHistoryStore`). That's fine for "show

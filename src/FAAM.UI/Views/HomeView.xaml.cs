@@ -33,6 +33,9 @@ public partial class HomeView : UserControl
     /// <summary>Raised when the operator clicks Calibration.</summary>
     public event Action? CalibrationRequested;
 
+    /// <summary>Raised when the operator clicks Repository.</summary>
+    public event Action? RepositoryRequested;
+
     public HomeView() => InitializeComponent();
 
     /// <summary>Supplies the engine host and populates the product bar.</summary>
@@ -201,4 +204,6 @@ public partial class HomeView : UserControl
     private void OnScriptClick(object sender, RoutedEventArgs e) => ScriptRequested?.Invoke();
 
     private void OnCalibrationClick(object sender, RoutedEventArgs e) => CalibrationRequested?.Invoke();
+
+    private void OnRepositoryClick(object sender, RoutedEventArgs e) => RepositoryRequested?.Invoke();
 }

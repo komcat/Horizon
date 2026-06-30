@@ -1,0 +1,136 @@
+<UserControl x:Class="FAAM.UI.Views.RepositoryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource Bg}">
+    <UserControl.Resources>
+        <!-- Added / removed / changed chip — mirrors the History windows. -->
+        <Style x:Key="KindChip" TargetType="Border">
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="6,1" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Background" Value="{StaticResource Warn}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Kind}" Value="Added">
+                    <Setter Property="Background" Value="{StaticResource Ok}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="Removed">
+                    <Setter Property="Background" Value="{StaticResource Danger}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- ===== Top bar: Programs / Decks toggle + refresh ===== -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,10">
+            <TextBlock Text="Version Repository" Foreground="{StaticResource Accent}"
+                       FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                <RadioButton x:Name="ProgramsTab" Content="Programs" GroupName="Kind" IsChecked="True"
+                             Margin="0,0,14,0" VerticalAlignment="Center" Foreground="{StaticResource Text}"
+                             Checked="OnKindChanged" />
+                <RadioButton x:Name="DecksTab" Content="Decks" GroupName="Kind"
+                             Margin="0,0,18,0" VerticalAlignment="Center" Foreground="{StaticResource Text}"
+                             Checked="OnKindChanged" />
+                <Button Content="Refresh" Width="80" Height="26" Click="OnRefresh" />
+            </StackPanel>
+        </DockPanel>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="330" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ===== Items (programs or decks) ===== -->
+            <Border Grid.Column="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="3" Margin="0,0,8,0">
+                <DockPanel>
+                    <TextBlock x:Name="ItemsHeader" DockPanel.Dock="Top" Text="Programs"
+                               Foreground="{StaticResource Subtle}" FontSize="12" Margin="10,8,10,4" />
+                    <ListBox x:Name="ItemList" Background="Transparent" BorderThickness="0"
+                             Foreground="{StaticResource Text}" Margin="4"
+                             SelectionChanged="OnItemSelected" />
+                </DockPanel>
+            </Border>
+
+            <!-- ===== Version timeline + checkout ===== -->
+            <Border Grid.Column="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="3" Margin="0,0,8,0">
+                <DockPanel>
+                    <TextBlock x:Name="VersionsHeader" DockPanel.Dock="Top" Text="Select an item."
+                               Foreground="{StaticResource Text}" FontSize="13" FontWeight="SemiBold"
+                               Margin="10,8,10,6" TextWrapping="Wrap" />
+
+                    <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Edge}" BorderThickness="0,1,0,0"
+                            Padding="8">
+                        <StackPanel>
+                            <Button x:Name="CheckoutButton" Content="Revert to this version"
+                                    Height="30" IsEnabled="False" Click="OnCheckout" />
+                            <TextBlock x:Name="CheckoutStatus" Foreground="{StaticResource Subtle}"
+                                       FontSize="11" Margin="2,6,2,0" TextWrapping="Wrap"
+                                       Text="Pick a version to make it current." />
+                        </StackPanel>
+                    </Border>
+
+                    <ListBox x:Name="VersionListBox" Background="Transparent" BorderThickness="0"
+                             Foreground="{StaticResource Text}" Margin="4"
+                             SelectionChanged="OnVersionSelected">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="2,3">
+                                    <TextBlock Text="{Binding Title}" Foreground="{StaticResource Text}"
+                                               FontWeight="SemiBold" FontSize="12" />
+                                    <TextBlock Text="{Binding Note}" Foreground="{StaticResource Subtle}"
+                                               FontSize="11" FontStyle="Italic" TextWrapping="Wrap"
+                                               Visibility="{Binding NoteVisibility}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <!-- ===== Diff vs previous ===== -->
+            <Border Grid.Column="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="3">
+                <DockPanel Margin="8">
+                    <TextBlock x:Name="DiffHeader" DockPanel.Dock="Top" Foreground="{StaticResource Text}"
+                               FontSize="13" FontWeight="SemiBold" Margin="2,2,2,8"
+                               Text="Select a version to see what changed." />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="DiffList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
+                                            BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,6">
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border Style="{StaticResource KindChip}">
+                                                    <TextBlock Text="{Binding Kind}" Foreground="White"
+                                                               FontSize="10" FontWeight="SemiBold" />
+                                                </Border>
+                                                <TextBlock Text="{Binding Label}" Foreground="{StaticResource Text}"
+                                                           FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Uid}" Foreground="{StaticResource Subtle}"
+                                                           FontFamily="Consolas" FontSize="10" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding Detail}" Foreground="{StaticResource Subtle}"
+                                                       FontFamily="Consolas" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

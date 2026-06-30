@@ -42,6 +42,14 @@ public partial class DeckEditorView : UserControl
     private void OnHistory(object sender, RoutedEventArgs e)
         => new DeckHistoryWindow(_host, _vm.DeckUid, _vm.DeckName) { Owner = Window.GetWindow(this) }.Show();
 
+    /// <summary>Opens the deck picker (name + version + last-commit) and loads the chosen deck.</summary>
+    private void OnLoad(object sender, RoutedEventArgs e)
+    {
+        var dlg = new DeckPickerWindow(_host) { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() == true && dlg.SelectedDeckName is { } name)
+            _vm.LoadDeckByName(name);
+    }
+
     private void OnSaveAs(object sender, RoutedEventArgs e)
     {
         var name = PromptForName(

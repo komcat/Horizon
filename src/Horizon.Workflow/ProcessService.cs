@@ -589,27 +589,60 @@ public sealed class ProcessService : IProcessService
         if (_programs == null)
             return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
 
+        // Save writes the working file only — it does NOT create a version. A version is
+        // created explicitly via CommitProgram (git-style: working copy vs commits).
         _programs.Save(program);
-        Log(LogLevel.Info, $"Program saved: {program.Name}");
+        Log(LogLevel.Info, $"Program saved (working copy): {program.Name}");
         WarnMissingPositions(program);
+        return Result.Ok();
+    }
 
-        // Record an operator-stamped revision for history / traceability.
+    public Result CommitProgram(WorkflowProgram program, string? note)
+    {
+        // Commit = save the working file, then record an operator-stamped, numbered
+        // revision (with the optional note) into the version repository.
+        var saved = SaveProgram(program);
+        if (!saved.IsSuccess)
+            return saved;
+
         try
         {
             var product = _products.ActiveProduct;
             if (product != null)
             {
-                var version = _history.Append(product, program, _operator);
+                var version = _history.Append(product, program, _operator, NormalizeNote(note));
                 Log(LogLevel.Info,
-                    $"History: {program.Name} v{version.Version}" +
-                    (string.IsNullOrEmpty(version.OperatorName) ? "" : $" by {version.OperatorName}"));
+                    $"Committed: {program.Name} v{version.Version}" +
+                    (string.IsNullOrEmpty(version.OperatorName) ? "" : $" by {version.OperatorName}") +
+                    (string.IsNullOrEmpty(version.Note) ? "" : $" — \"{version.Note}\""));
             }
         }
         catch (Exception ex)
         {
-            Log(LogLevel.Warning, $"Program history not recorded for '{program.Name}': {ex.Message}");
+            Log(LogLevel.Warning, $"Commit not recorded for '{program.Name}': {ex.Message}");
         }
         return Result.Ok();
+    }
+
+    public Result RestoreProgramVersion(string program, int version)
+    {
+        if (_programs == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        var product = _products.ActiveProduct;
+        if (product == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        var snapshot = _history.LoadVersion(product, program, version);
+        if (snapshot == null)
+            return Result.Fail(ErrorCode.FileNotFound, $"Version v{version} of program '{program}' not found in history.");
+
+        // Checkout: set the working file to the chosen version's content. It does NOT
+        // create a new version — the operator commits afterwards if they want to keep it.
+        var saved = SaveProgram(snapshot.Snapshot);
+        if (saved.IsSuccess)
+            Log(LogLevel.Info, $"Checked out v{version} of program '{program}' into the working copy.");
+        return saved;
     }
 
     public ProgramHistory? GetProgramHistory(string name)
@@ -617,6 +650,10 @@ public sealed class ProcessService : IProcessService
         var product = _products.ActiveProduct;
         return product == null ? null : _history.Load(product, name);
     }
+
+    /// <summary>Trims a commit note to null when blank (so the DB stores NULL, not an empty string).</summary>
+    private static string? NormalizeNote(string? note)
+        => string.IsNullOrWhiteSpace(note) ? null : note.Trim();
 
     public IReadOnlyList<HistoryRow> QueryHistory(HistoryQuery query) => _history.Query(query);
 
@@ -1274,27 +1311,77 @@ public sealed class ProcessService : IProcessService
         if (isNew && existing.Count >= MaxDecks)
             return Result.Fail(ErrorCode.OperationFailed, $"Deck limit ({MaxDecks}) reached — delete one first.");
 
+        // Save writes the working file (and activates the deck) only — it does NOT create
+        // a version. A version is created explicitly via CommitDeck.
         _decks.Save(deck);
         _decks.SetActive(deck.Name);
-        Log(LogLevel.Info, $"Deck saved: {deck.Name}");
+        Log(LogLevel.Info, $"Deck saved (working copy): {deck.Name}");
+        return Result.Ok();
+    }
 
-        // Record an operator-stamped revision for history / traceability (UID-keyed).
+    public Result CommitDeck(WorkflowDeck deck, string? note)
+    {
+        // Commit = save the working deck, then record an operator-stamped, numbered
+        // revision (UID-keyed, with the optional note) into the version repository.
+        var saved = SaveDeck(deck);
+        if (!saved.IsSuccess)
+            return saved;
+
         try
         {
             var product = _products.ActiveProduct;
             if (product != null && !string.IsNullOrEmpty(deck.Uid))
             {
-                var version = _history.AppendDeck(product, deck, _operator);
+                var version = _history.AppendDeck(product, deck, _operator, NormalizeNote(note));
                 Log(LogLevel.Info,
-                    $"Deck history: {deck.Name} v{version.Version}" +
-                    (string.IsNullOrEmpty(version.OperatorName) ? "" : $" by {version.OperatorName}"));
+                    $"Committed deck: {deck.Name} v{version.Version}" +
+                    (string.IsNullOrEmpty(version.OperatorName) ? "" : $" by {version.OperatorName}") +
+                    (string.IsNullOrEmpty(version.Note) ? "" : $" — \"{version.Note}\""));
             }
         }
         catch (Exception ex)
         {
-            Log(LogLevel.Warning, $"Deck history not recorded for '{deck.Name}': {ex.Message}");
+            Log(LogLevel.Warning, $"Deck commit not recorded for '{deck.Name}': {ex.Message}");
         }
         return Result.Ok();
+    }
+
+    /// <summary>
+    /// Restores a past deck revision (by UID + version) into the working copy: writes the
+    /// stored snapshot back as the current deck and re-activates it. It does NOT create a
+    /// new version — the operator commits afterwards if they want to keep it.
+    /// </summary>
+    public Result RestoreDeckVersion(string deckUid, int version)
+    {
+        if (_decks == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        var product = _products.ActiveProduct;
+        if (product == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (string.IsNullOrEmpty(deckUid))
+            return Result.Fail(ErrorCode.InvalidParameter, "Deck has no UID — it has no version history to restore.");
+
+        var snapshot = _history.LoadDeckVersion(product, deckUid, version);
+        if (snapshot == null)
+            return Result.Fail(ErrorCode.FileNotFound, $"Version v{version} of this deck not found in history.");
+
+        var saved = SaveDeck(snapshot.Snapshot);
+        if (saved.IsSuccess)
+            Log(LogLevel.Info, $"Checked out v{version} of deck '{snapshot.Snapshot.Name}' into the working copy.");
+        return saved;
+    }
+
+    /// <summary>
+    /// The stable UID of a deck by name, read <b>without</b> activating it (unlike
+    /// <see cref="LoadDeck"/>) — so the version repository can look up a deck's history
+    /// while browsing without disturbing the active deck. Null if the deck / product is
+    /// missing or the deck has no UID (legacy).
+    /// </summary>
+    public string? GetDeckUid(string name)
+    {
+        var uid = _decks?.Load(name)?.Uid;
+        return string.IsNullOrEmpty(uid) ? null : uid;
     }
 
     /// <summary>Revision history of a deck by UID (operator + timestamp + snapshot per save), or null.</summary>
@@ -1367,7 +1454,7 @@ public sealed class ProcessService : IProcessService
             Name = newDeckName,
             Entries = deck.Entries.Select(e => e with { Uid = "dge-" + Guid.NewGuid().ToString("N") }).ToList(),
         };
-        var save = SaveDeck(imported);   // also sets active + records history
+        var save = SaveDeck(imported);   // working copy + sets active (untracked until first commit)
         if (!save.IsSuccess) return save;
 
         Log(LogLevel.Info,

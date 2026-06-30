@@ -251,6 +251,14 @@ public partial class TimelineEditorView : UserControl
     private void OnHistory(object sender, RoutedEventArgs e)
         => new ProgramHistoryWindow(_host, _vm.ProgramName) { Owner = Window.GetWindow(this) }.Show();
 
+    /// <summary>Opens the program picker (name + version + last-commit) and loads the chosen program.</summary>
+    private void OnLoad(object sender, RoutedEventArgs e)
+    {
+        var dlg = new ProgramPickerWindow(_host) { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() == true && dlg.SelectedProgramName is { } name)
+            _vm.LoadProgramByName(name);
+    }
+
     private void OnCopyUid(object sender, RoutedEventArgs e)
     {
         if (_vm.SelectedBlock is { } block)
