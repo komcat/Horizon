@@ -274,6 +274,17 @@ public interface IProcessService
     CameraNeedleCalibrationData GetCameraNeedleCalibration();
 
     /// <summary>
+    /// Overwrites the operator-editable camera→needle settings — XY offset (mm,
+    /// needle = cam + offset), slow-approach distance (mm), touch-Z tweak (mm), dispense
+    /// dwell (ms) and output debounce (ms) — and persists them to the machine-global
+    /// calibration file, without running a calibration. Lets the operator seed / hand-tune
+    /// these from the Machine Settings page.
+    /// </summary>
+    void SetCameraNeedleSettings(
+        double vcamneedleX, double vcamneedleY, double approachMm,
+        double touchZAdjustMm, int dwellMs, int outputDebounceMs);
+
+    /// <summary>
     /// Runs the camera→needle "dispense-and-look" calibration using the globally-registered
     /// <see cref="OperatorPrompt"/>. Measures the camera-needle XY offset and the
     /// focus-to-needle-tip Z, and persists them to the machine-global calibration file.

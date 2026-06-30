@@ -96,7 +96,7 @@ internal sealed class CameraNeedleCalibrationRoutine
         }
         catch (OperationCanceledException)
         {
-            await FailSafeAsync(g, o.DispenserSlide).ConfigureAwait(false);
+            await FailSafeAsync(o).ConfigureAwait(false);
             return Fail("Calibration cancelled.", ErrorCode.OperationFailed);
         }
     }
@@ -104,9 +104,9 @@ internal sealed class CameraNeedleCalibrationRoutine
     /// <summary>
     /// Deposits one epoxy dot and returns the gantry position where it was dispensed
     /// (its XY = dot location, its Z = needle-touch height). Isolated so the
-    /// extend / touch / dwell / lift-off ordering is easy to tune on the bench.
-    /// Dispense is pneumatic only (no IO shot pin): the head extends, the operator
-    /// touches the surface, the dwell is the epoxy window, then a slow lift-off.
+    /// extend / touch / shot / dwell / lift-off ordering is easy to tune on the bench.
+    /// The head extends, the needle reaches the surface, then the shot output fires:
+    /// ON → debounce → dwell (epoxy window) → OFF → debounce → slow lift-off.
     /// </summary>
     private async Task<Result<MotionPosition>> DispenseAsync(
         CameraNeedleOptions o, double focusZ, CancellationToken ct)
@@ -114,20 +114,62 @@ internal sealed class CameraNeedleCalibrationRoutine
         var g = o.GantryDevice;
 
         // Lower the dispenser head (sensor-confirmed).
+        _log(LogLevel.Info, $"Camera-needle: extending dispenser head '{o.DispenserSlide}'.");
         var ext = await _engine.Pneumatic.ExtendAndWaitAsync(o.DispenserSlide, ct).ConfigureAwait(false);
         if (!ext.IsSuccess)
             return Result<MotionPosition>.Fail(ext.Error, $"Dispenser extend: {ext.Message}");
 
-        // Operator jogs Z until the needle touches -> this is the dispense position.
-        if (!await _prompt!.ConfirmAsync("Needle touch",
-                "Jog Z down until the needle just touches the surface, then Confirm.", ct).ConfigureAwait(false))
-            return Result<MotionPosition>.Fail(ErrorCode.OperationFailed, "Operator declined at needle touch.");
-        var pos = await _engine.Motion.GetPositionAsync(g).ConfigureAwait(false);
-        if (!pos.IsSuccess) return Result<MotionPosition>.Fail(pos.Error, $"Read dispense position: {pos.Message}");
-        var gDispense = pos.Value;
+        // Reach the needle-touch height. First-time (no prior Z relationship): the operator
+        // jogs Z down to find it. On re-runs the touch height is known relative to focus, so
+        // we OFFER an auto-descent (fast to ApproachMm above touch, then crawl at SlowZVelocity);
+        // the operator can decline and jog manually instead.
+        Result<MotionPosition> reach;
+        if (Math.Abs(o.FocusToNeedleZmm) > 1e-6)
+        {
+            double touchZ = ComputeTouchZ(o, focusZ, out _);
+            bool auto = await _prompt!.ConfirmAsync("Auto needle touch?",
+                    $"Auto-descend to the known touch height (Z≈{touchZ:F3} mm)? " +
+                    "Confirm = auto-descend, Cancel = jog manually.", ct).ConfigureAwait(false);
+            if (auto)
+            {
+                reach = await AutoTouchAsync(o, focusZ, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                // A real routine-cancel also returns false here — distinguish it from a
+                // "no, I'll do it manually" by the token, and let cancel abort.
+                ct.ThrowIfCancellationRequested();
+                reach = await ManualTouchAsync(o, ct).ConfigureAwait(false);
+            }
+        }
+        else
+        {
+            reach = await ManualTouchAsync(o, ct).ConfigureAwait(false);
+        }
+        if (!reach.IsSuccess) return reach;
+        var gDispense = reach.Value;
 
-        // Dwell = the epoxy dispense window (head extended, needle on surface).
-        if (o.DwellMs > 0) await Task.Delay(o.DwellMs, ct).ConfigureAwait(false);
+        // Fire the shot: output ON -> debounce -> dwell (epoxy window) -> OFF -> debounce.
+        // A finally guarantees the output goes OFF even on cancel / error mid-dwell.
+        _log(LogLevel.Info,
+            $"Camera-needle: shot ON {o.ShotIoDevice}/{o.ShotPin} (debounce {o.OutputDebounceMs} ms, dwell {o.DwellMs} ms).");
+        var shotOn = await _engine.IO.SetOutputByNameAsync(o.ShotIoDevice, o.ShotPin, true, ct).ConfigureAwait(false);
+        if (!shotOn.IsSuccess)
+            return Result<MotionPosition>.Fail(shotOn.Error, $"Dispenser shot ON ({o.ShotIoDevice}/{o.ShotPin}): {shotOn.Message}");
+        try
+        {
+            if (o.OutputDebounceMs > 0) await Task.Delay(o.OutputDebounceMs, ct).ConfigureAwait(false);
+            if (o.DwellMs > 0) await Task.Delay(o.DwellMs, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Always de-energize; use None so an aborting token can't skip the OFF.
+            var shotOff = await _engine.IO.SetOutputByNameAsync(o.ShotIoDevice, o.ShotPin, false, CancellationToken.None)
+                .ConfigureAwait(false);
+            _log(shotOff.IsSuccess ? LogLevel.Info : LogLevel.Warning,
+                $"Camera-needle: shot OFF {o.ShotIoDevice}/{o.ShotPin}{(shotOff.IsSuccess ? "." : $" FAILED: {shotOff.Message}")}");
+        }
+        if (o.OutputDebounceMs > 0) await Task.Delay(o.OutputDebounceMs, ct).ConfigureAwait(false);
 
         // Slow lift-off, in the direction from touch toward focus (away from the surface).
         double upSign = Math.Sign(focusZ - gDispense.Z);
@@ -141,6 +183,62 @@ internal sealed class CameraNeedleCalibrationRoutine
             return Result<MotionPosition>.Fail(ret.Error, $"Dispenser retract: {ret.Message}");
 
         return Result<MotionPosition>.Ok(gDispense);
+    }
+
+    /// <summary>
+    /// First-time touch: the operator jogs Z down until the needle touches and confirms.
+    /// Returns the gantry position at touch.
+    /// </summary>
+    private async Task<Result<MotionPosition>> ManualTouchAsync(CameraNeedleOptions o, CancellationToken ct)
+    {
+        if (!await _prompt!.ConfirmAsync("Needle touch",
+                "Jog Z down until the needle just touches the surface, then Confirm.", ct).ConfigureAwait(false))
+            return Result<MotionPosition>.Fail(ErrorCode.OperationFailed, "Operator declined at needle touch.");
+        var pos = await _engine.Motion.GetPositionAsync(o.GantryDevice).ConfigureAwait(false);
+        if (!pos.IsSuccess) return Result<MotionPosition>.Fail(pos.Error, $"Read dispense position: {pos.Message}");
+        return Result<MotionPosition>.Ok(pos.Value);
+    }
+
+    /// <summary>
+    /// Automated touch on re-runs: the touch height is known relative to focus
+    /// (<c>touchZ = focusZ - FocusToNeedleZmm</c>). Fast-move to <see cref="CameraNeedleOptions.ApproachMm"/>
+    /// above it, then crawl the rest at <see cref="CameraNeedleOptions.SlowZVelocity"/>. Returns the
+    /// gantry position at touch.
+    /// </summary>
+    private async Task<Result<MotionPosition>> AutoTouchAsync(CameraNeedleOptions o, double focusZ, CancellationToken ct)
+    {
+        var g = o.GantryDevice;
+        double touchZ = ComputeTouchZ(o, focusZ, out double downSign);
+        double approach = Math.Abs(o.ApproachMm);
+        double approachZ = touchZ - downSign * approach;   // ApproachMm short of touch, on the focus side
+
+        _log(LogLevel.Info,
+            $"Camera-needle: auto-approach to touch Z={touchZ:F4} (fast to {approachZ:F4}, slow {approach:F1} mm @ {o.SlowZVelocity:F2} mm/s).");
+
+        // Fast descent to the approach point (still clear of the surface).
+        var fast = await _engine.Motion.MoveAbsoluteAsync(g, "Z", approachZ, ct).ConfigureAwait(false);
+        if (!fast.IsSuccess) return Result<MotionPosition>.Fail(fast.Error, $"Approach move: {fast.Message}");
+
+        // Slow final descent to the touch height.
+        var slow = await SlowZMoveAsync(g, downSign * approach, o.SlowZVelocity, ct).ConfigureAwait(false);
+        if (!slow.IsSuccess) return Result<MotionPosition>.Fail(slow.Error, slow.Message);
+
+        var pos = await _engine.Motion.GetPositionAsync(g).ConfigureAwait(false);
+        if (!pos.IsSuccess) return Result<MotionPosition>.Fail(pos.Error, $"Read dispense position: {pos.Message}");
+        return Result<MotionPosition>.Ok(pos.Value);
+    }
+
+    /// <summary>
+    /// The automated touch height: <c>focusZ - FocusToNeedleZmm</c>, then shifted by the
+    /// operator's <see cref="CameraNeedleOptions.TouchZAdjustMm"/> in the toward-surface
+    /// direction (+ deeper, − higher). <paramref name="downSign"/> is the focus→surface
+    /// direction, derived from the stored relationship so a tiny adjust can't flip it.
+    /// </summary>
+    private static double ComputeTouchZ(CameraNeedleOptions o, double focusZ, out double downSign)
+    {
+        downSign = Math.Sign(-o.FocusToNeedleZmm);
+        if (downSign == 0) downSign = -1;
+        return (focusZ - o.FocusToNeedleZmm) + downSign * o.TouchZAdjustMm;
     }
 
     /// <summary>Relative Z move at a slow velocity, restoring the prior axis velocity afterward.</summary>
@@ -175,13 +273,22 @@ internal sealed class CameraNeedleCalibrationRoutine
         return Result.Ok();
     }
 
-    /// <summary>On abort, raise the dispenser head so the needle is clear of the surface. Best-effort.</summary>
-    private async Task FailSafeAsync(string device, string dispenserSlide)
+    /// <summary>On abort, de-energize the shot output and raise the dispenser head so the
+    /// needle is clear of the surface. Best-effort.</summary>
+    private async Task FailSafeAsync(CameraNeedleOptions o)
     {
-        _ = device;
         try
         {
-            await _engine.Pneumatic.RetractAndWaitAsync(dispenserSlide, CancellationToken.None).ConfigureAwait(false);
+            await _engine.IO.SetOutputByNameAsync(o.ShotIoDevice, o.ShotPin, false, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log(LogLevel.Warning, $"Camera-needle fail-safe shot-off failed: {ex.Message}");
+        }
+        try
+        {
+            await _engine.Pneumatic.RetractAndWaitAsync(o.DispenserSlide, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

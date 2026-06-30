@@ -1110,6 +1110,27 @@ public sealed class ProcessService : IProcessService
 
     public CameraNeedleCalibrationData GetCameraNeedleCalibration() => _cameraNeedle.Current;
 
+    public void SetCameraNeedleSettings(
+        double vcamneedleX, double vcamneedleY, double approachMm,
+        double touchZAdjustMm, int dwellMs, int outputDebounceMs)
+    {
+        var cfg = _cameraNeedle.Current;
+        _cameraNeedle.Update(cfg with
+        {
+            VcamneedleX = vcamneedleX,
+            VcamneedleY = vcamneedleY,
+            ApproachMm = approachMm,
+            TouchZAdjustMm = touchZAdjustMm,
+            DwellMs = dwellMs,
+            OutputDebounceMs = outputDebounceMs,
+            SavedBy = _operator?.DisplayName,
+            SavedAt = DateTimeOffset.Now.ToString("o"),
+        });
+        Log(LogLevel.Info,
+            $"Camera-needle settings set: offset ({vcamneedleX:F4}, {vcamneedleY:F4}) mm, approach {approachMm:F2} mm, " +
+            $"touch-Z adjust {touchZAdjustMm:F3} mm, dwell {dwellMs} ms, debounce {outputDebounceMs} ms.");
+    }
+
     public Task<Result<CameraNeedleResult>> RunCameraNeedleCalibrationAsync(CancellationToken ct = default)
         => RunCameraNeedleCoreAsync(OperatorPrompt, ct);
 
@@ -1122,8 +1143,9 @@ public sealed class ProcessService : IProcessService
     {
         var cfg = _cameraNeedle.Current;
         var options = new CameraNeedleOptions(
-            cfg.GantryDevice, cfg.DispenserSlide, cfg.DwellMs, cfg.LiftoffMm, cfg.SlowZVelocity,
-            cfg.CalPosition, cfg.VcamneedleX, cfg.VcamneedleY);
+            cfg.GantryDevice, cfg.DispenserSlide, cfg.ShotIoDevice, cfg.ShotPin, cfg.OutputDebounceMs,
+            cfg.DwellMs, cfg.LiftoffMm, cfg.ApproachMm, cfg.SlowZVelocity, cfg.TouchZAdjustMm,
+            cfg.CalPosition, cfg.VcamneedleX, cfg.VcamneedleY, cfg.FocusToNeedleZmm);
 
         var routine = new CameraNeedleCalibrationRoutine(_engine, prompt, Log);
         Log(LogLevel.Info, $"Camera-needle calibration started: gantry '{cfg.GantryDevice}', dispenser '{cfg.DispenserSlide}'.");
