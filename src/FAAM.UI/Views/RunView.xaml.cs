@@ -61,6 +61,8 @@ public partial class RunView : UserControl
         StepsPanel.Attach(host);   // process panel logs + STOP via the engine host
         StepsPanel.InspectMotionRequested += OnInspectMotionRequested;
 
+        DispensePanel.Attach(host);   // operator point-and-shoot dispense of a saved routine
+
         // The alignment-utilities grid owns the SiPhOG connection panel (and its client).
         AppHost.Attach(host);
         var siphog = AppHost.SiphogClient;

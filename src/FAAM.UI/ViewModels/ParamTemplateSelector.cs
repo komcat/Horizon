@@ -23,7 +23,8 @@ public sealed class ParamTemplateSelector : DataTemplateSelector
                 ParamKind.Bool or ParamKind.SetClear => Bool,
                 ParamKind.PositionName or ParamKind.AxisName or ParamKind.OutputPin
                     or ParamKind.CameraName or ParamKind.SignalName
-                    or ParamKind.Operator or ParamKind.MotionDeviceName => Combo,
+                    or ParamKind.Operator or ParamKind.MotionDeviceName
+                    or ParamKind.DispenseRoutineName => Combo,
                 _ => Text,
             }
             : Text;

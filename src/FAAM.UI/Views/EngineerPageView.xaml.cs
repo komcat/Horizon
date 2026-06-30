@@ -14,6 +14,7 @@ public partial class EngineerPageView : UserControl
     private readonly TimelineEditorView _program;
     private readonly DeckEditorView _deck;
     private readonly FindFirstLightSettingsView _findFirstLight;
+    private readonly DispenseEditorView _dispense;
     private object? _activeChild;
     private bool _pageActive;
 
@@ -23,9 +24,11 @@ public partial class EngineerPageView : UserControl
         _program = new TimelineEditorView(host);
         _deck = new DeckEditorView(host);
         _findFirstLight = new FindFirstLightSettingsView(host);
+        _dispense = new DispenseEditorView(host);
         ProgramHost.Content = _program;
         DeckHost.Content = _deck;
         FindFirstLightHost.Content = _findFirstLight;
+        DispenseHost.Content = _dispense;
     }
 
     /// <summary>Called when the shell shows the Engineer page — activates the selected tab.</summary>
@@ -60,6 +63,7 @@ public partial class EngineerPageView : UserControl
         {
             1 => _deck,
             2 => _findFirstLight,
+            3 => _dispense,
             _ => _program,
         };
         if (ReferenceEquals(_activeChild, target)) return;
@@ -73,6 +77,7 @@ public partial class EngineerPageView : UserControl
         {
             case TimelineEditorView t: t.Activate(); break;
             case DeckEditorView d: d.Activate(); break;
+            case DispenseEditorView dv: dv.Activate(); break;
         }
         _activeChild = target;
     }

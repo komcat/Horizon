@@ -1,6 +1,7 @@
 using Horizon.Common;
 using Horizon.Engine;
 using Horizon.Workflow.Calibration;
+using Horizon.Workflow.Dispensing;
 using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Recipe;
@@ -25,6 +26,7 @@ public sealed class ProcessService : IProcessService
     private ScriptStore? _scripts;       // .moon Lua scripts; null when no product is active
     private DeckStore? _decks;           // null when no product is active
     private VisionProfileStore? _visionProfiles;   // null when no product is active
+    private DispenseStore? _dispense;    // per-product dispense routines; null when no product is active
     private TaskCompletionSource<bool>? _deckGate;   // set while a deck waits for operator activation
     private DutStore? _dut;              // null when no product is active
     private readonly ProgramHistoryDb _history = new();   // machine-global audit store (history.db)
@@ -54,6 +56,7 @@ public sealed class ProcessService : IProcessService
             _scripts = new ScriptStore(dir);
             _decks = new DeckStore(dir);
             _visionProfiles = new VisionProfileStore(dir);
+            _dispense = new DispenseStore(dir);
             _dut = new DutStore(dir, _products.ActiveProduct!);
         }
     }
@@ -145,6 +148,7 @@ public sealed class ProcessService : IProcessService
             _recipes = null;
             _scripts = null;
             _decks = null;
+            _dispense = null;
             _dut = null;
             SetActiveSerial(null);
             ProductChanged?.Invoke(null);
@@ -183,6 +187,7 @@ public sealed class ProcessService : IProcessService
         _scripts = new ScriptStore(dir);
         _decks = new DeckStore(dir);
         _visionProfiles = new VisionProfileStore(dir);
+        _dispense = new DispenseStore(dir);
         _dut = new DutStore(dir, name);
         SetActiveSerial(null);   // a serial belongs to a product — drop it on switch
         Log(LogLevel.Info, $"Product loaded: {name}");
@@ -204,6 +209,7 @@ public sealed class ProcessService : IProcessService
         _scripts = null;
         _decks = null;
         _visionProfiles = null;
+        _dispense = null;
         _dut = null;
         SetActiveSerial(null);
         Log(LogLevel.Info, "Product unloaded.");
@@ -719,6 +725,7 @@ public sealed class ProcessService : IProcessService
             (device, name) => _positions?.Get(device, name),
             SaveNamedPosition,
             RunVisionProfileByNameAsync,
+            RunDispenseRoutineAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,
             () => _siphogSheetSink,
@@ -1168,6 +1175,98 @@ public sealed class ProcessService : IProcessService
         return result;
     }
 
+    // --- Dispensing routines (per-product) ---
+
+    public IReadOnlyList<string> ListDispenseRoutines()
+        => _dispense?.List() ?? Array.Empty<string>();
+
+    public Result<DispenseRoutine> LoadDispenseRoutine(string name)
+    {
+        if (_dispense == null)
+            return Result<DispenseRoutine>.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        var routine = _dispense.Load(name);
+        return routine == null
+            ? Result<DispenseRoutine>.Fail(ErrorCode.FileNotFound, $"Dispense routine '{name}' not found.")
+            : Result<DispenseRoutine>.Ok(routine);
+    }
+
+    public Result SaveDispenseRoutine(DispenseRoutine routine)
+    {
+        if (_dispense == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (string.IsNullOrWhiteSpace(routine.Name))
+            return Result.Fail(ErrorCode.InvalidParameter, "Dispense routine needs a name.");
+        _dispense.Save(routine with { SavedBy = _operator?.DisplayName, SavedAt = DateTimeOffset.Now.ToString("o") });
+        Log(LogLevel.Info, $"Dispense routine saved: {routine.Name}");
+        return Result.Ok();
+    }
+
+    public Result DeleteDispenseRoutine(string name)
+    {
+        if (_dispense == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (!_dispense.Delete(name))
+            return Result.Fail(ErrorCode.FileNotFound, $"Dispense routine '{name}' not found.");
+        Log(LogLevel.Info, $"Dispense routine deleted: {name}");
+        return Result.Ok();
+    }
+
+    public DispenseRoutine NewDispenseRoutine(string name)
+    {
+        // Seed the shot params from the machine camera→needle calibration so a fresh routine
+        // dispenses with the already-tuned timing / motion.
+        var cal = _cameraNeedle.Current;
+        return new DispenseRoutine
+        {
+            Name = name,
+            GantryDevice = cal.GantryDevice,
+            DispenserSlide = cal.DispenserSlide,
+            Shot = new DispenseShot
+            {
+                DwellMs = cal.DwellMs,
+                OutputDebounceMs = cal.OutputDebounceMs,
+                LiftoffMm = cal.LiftoffMm,
+                ApproachMm = cal.ApproachMm,
+                SlowZVelocity = cal.SlowZVelocity,
+                TouchZAdjustMm = cal.TouchZAdjustMm,
+                ShotIoDevice = cal.ShotIoDevice,
+                ShotPin = cal.ShotPin,
+            },
+        };
+    }
+
+    public async Task<Result> RunDispenseRoutineAsync(string name, CancellationToken ct = default)
+    {
+        var load = LoadDispenseRoutine(name);
+        if (!load.IsSuccess) return Result.Fail(load.Error, load.Message);
+
+        var cal = _cameraNeedle.Current;
+        var runner = new DispenseRoutineRunner(_engine, Log);
+        Log(LogLevel.Info, $"Dispense routine started: {name}");
+        return await runner
+            .RunAsync(load.Value, cal.VcamneedleX, cal.VcamneedleY, cal.FocusToNeedleZmm, ct)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<Result> JogCameraNeedleOffsetAsync(bool toNeedle, CancellationToken ct = default)
+    {
+        var cal = _cameraNeedle.Current;
+        double sign = toNeedle ? 1.0 : -1.0;
+        double dx = sign * cal.VcamneedleX, dy = sign * cal.VcamneedleY;
+        Log(LogLevel.Info, $"Move to {(toNeedle ? "needle" : "camera")}: gantry '{cal.GantryDevice}' dX={dx:F3}, dY={dy:F3} mm.");
+        if (Math.Abs(dx) > 1e-6)
+        {
+            var rx = await _engine.Motion.MoveRelativeAsync(cal.GantryDevice, "X", dx, ct).ConfigureAwait(false);
+            if (!rx.IsSuccess) return rx;
+        }
+        if (Math.Abs(dy) > 1e-6)
+        {
+            var ry = await _engine.Motion.MoveRelativeAsync(cal.GantryDevice, "Y", dy, ct).ConfigureAwait(false);
+            if (!ry.IsSuccess) return ry;
+        }
+        return Result.Ok();
+    }
+
     // --- Recipes ---
 
     public IReadOnlyList<string> ListRecipes()
@@ -1513,6 +1612,7 @@ public sealed class ProcessService : IProcessService
             (device, name) => _positions?.Get(device, name),
             SaveNamedPosition,
             RunVisionProfileByNameAsync,
+            RunDispenseRoutineAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,
             () => _siphogSheetSink,

@@ -24,6 +24,9 @@ internal sealed class StepDispatcher
     private readonly Func<string, string, NamedPosition?> _getPosition;
     private readonly Func<string, string, MotionPosition, double, Result> _savePosition;
     private readonly Func<string, Task<Result<VisionDetectResult>>> _runVisionProfile;
+    // Runs a saved per-product dispense routine by name (loads it, applies the camera→needle
+    // calibration, lays down the pattern). Drives dispense.runRoutine.
+    private readonly Func<string, CancellationToken, Task<Result>> _runDispenseRoutine;
     // Supplies the hill-climb signal source (Layer 3 SiPhOG). Returns null when no head
     // has registered one — hillclimb.* steps then fail with a clear message rather than crash.
     private readonly Func<IHillClimbFeedback?> _hillClimbFeedback;
@@ -54,6 +57,7 @@ internal sealed class StepDispatcher
         Func<string, string, NamedPosition?> getPosition,
         Func<string, string, MotionPosition, double, Result> savePosition,
         Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
+        Func<string, CancellationToken, Task<Result>> runDispenseRoutine,
         Func<IHillClimbFeedback?> hillClimbFeedback,
         Func<IUtilityAppHost?> utilityAppHost,
         Func<ISiphogSheetSink?> siphogSheetSink,
@@ -66,6 +70,7 @@ internal sealed class StepDispatcher
         _getPosition = getPosition;
         _savePosition = savePosition;
         _runVisionProfile = runVisionProfile;
+        _runDispenseRoutine = runDispenseRoutine;
         _hillClimbFeedback = hillClimbFeedback;
         _utilityAppHost = utilityAppHost;
         _siphogSheetSink = siphogSheetSink;
@@ -456,6 +461,18 @@ internal sealed class StepDispatcher
                 return Bool(step, "requireMatch", ctx)
                     ? Result.Fail(r.Error, $"vision.runProfile '{profileName}': {why}")
                     : Result.Ok();
+            }
+
+            case "dispense.runroutine":
+            {
+                // Runs a saved per-product dispense routine at the current camera target:
+                // the camera→needle calibration places the needle, the routine's pattern
+                // (dot / grid / line) is laid down. The operator/program is expected to have
+                // the camera centred + focused on the target first.
+                var routineName = Str(step, "routine", ctx);
+                if (string.IsNullOrWhiteSpace(routineName))
+                    return Result.Fail(ErrorCode.InvalidParameter, "dispense.runRoutine: no routine name.");
+                return await _runDispenseRoutine(routineName, ct).ConfigureAwait(false);
             }
 
             case "io.setoutput":

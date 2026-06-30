@@ -105,6 +105,7 @@ internal sealed class ProductStore
         Directory.CreateDirectory(Path.Combine(dir, "processes"));
         Directory.CreateDirectory(Path.Combine(dir, "recipes"));
         Directory.CreateDirectory(Path.Combine(dir, "decks"));
+        Directory.CreateDirectory(Path.Combine(dir, "dispense"));
 
         var now = DateTime.UtcNow;
         WriteInfo(new ProductInfo { Name = name, DisplayName = name, CreatedUtc = now, ModifiedUtc = now });
@@ -128,7 +129,7 @@ internal sealed class ProductStore
         Create(newName);   // dirs + a default product.json
 
         CopyFile(Path.Combine(src, "positions.json"), Path.Combine(dst, "positions.json"));
-        foreach (var sub in new[] { "vision", "processes", "decks", "recipes" })
+        foreach (var sub in new[] { "vision", "processes", "decks", "recipes", "dispense" })
             CopyDirectory(Path.Combine(src, sub), Path.Combine(dst, sub));
 
         var s = ReadInfo(source);

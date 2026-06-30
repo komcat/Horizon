@@ -1,0 +1,26 @@
+<UserControl x:Class="FAAM.UI.Views.DispensePanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+            BorderThickness="1" CornerRadius="3" Padding="8">
+        <StackPanel>
+            <TextBlock Text="Dispense" Foreground="{StaticResource Text}" FontWeight="SemiBold" Margin="0,0,0,6" />
+            <StackPanel Orientation="Horizontal">
+                <ComboBox x:Name="RoutineCombo" Width="150" Height="26"
+                          DropDownOpened="OnDropDownOpened" SelectionChanged="OnSelectionChanged" />
+                <Button x:Name="DispenseButton" Content="Dispense" Width="80" Height="26"
+                        Margin="6,0,0,0" Click="OnDispense" />
+                <Button x:Name="CancelButton" Content="Cancel" Width="64" Height="26"
+                        Margin="6,0,0,0" Click="OnCancel" IsEnabled="False" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <Button x:Name="ToNeedleButton" Content="→ Needle" Width="90" Height="26" Click="OnToNeedle"
+                        ToolTip="Jog the gantry so the needle sits where the camera is centred (gantry += camera→needle offset)" />
+                <Button x:Name="ToCameraButton" Content="→ Camera" Width="90" Height="26" Margin="6,0,0,0" Click="OnToCamera"
+                        ToolTip="Jog the gantry so the camera returns over that point (gantry −= camera→needle offset)" />
+            </StackPanel>
+            <TextBlock x:Name="StatusText" Foreground="{StaticResource Subtle}" Margin="0,6,0,0"
+                       TextWrapping="Wrap" Text="Point the camera at the target, pick a routine, then Dispense." />
+        </StackPanel>
+    </Border>
+</UserControl>

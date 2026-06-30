@@ -1,6 +1,7 @@
 using Horizon.Common;
 using Horizon.Engine;
 using Horizon.Workflow.Calibration;
+using Horizon.Workflow.Dispensing;
 using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Recipe;
@@ -297,6 +298,39 @@ public interface IProcessService
     /// <paramref name="prompt"/> (the Calibration page's inline buttons + live camera).
     /// </summary>
     Task<Result<CameraNeedleResult>> RunCameraNeedleCalibrationAsync(IOperatorPrompt prompt, CancellationToken ct = default);
+
+    // --- Dispensing routines (per-product, reuse the camera→needle calibration) ---
+
+    /// <summary>Names of the active product's saved dispense routines (empty if no product).</summary>
+    IReadOnlyList<string> ListDispenseRoutines();
+
+    /// <summary>Loads a saved dispense routine by name.</summary>
+    Result<DispenseRoutine> LoadDispenseRoutine(string name);
+
+    /// <summary>Saves (creates / overwrites) a dispense routine in the active product.</summary>
+    Result SaveDispenseRoutine(DispenseRoutine routine);
+
+    /// <summary>Deletes a dispense routine from the active product.</summary>
+    Result DeleteDispenseRoutine(string name);
+
+    /// <summary>A new routine with the given name, its shot parameters seeded from the current
+    /// camera→needle calibration so it matches the tuned dispense behavior out of the box.</summary>
+    DispenseRoutine NewDispenseRoutine(string name);
+
+    /// <summary>
+    /// Runs a saved dispense routine at the current camera target: uses the machine
+    /// camera→needle calibration to place the needle where the camera is centred, then lays
+    /// down the routine's pattern. The camera→needle calibration must have been run.
+    /// </summary>
+    Task<Result> RunDispenseRoutineAsync(string name, CancellationToken ct = default);
+
+    /// <summary>
+    /// Relative XY jog of the camera→needle gantry by the calibrated offset:
+    /// <paramref name="toNeedle"/> = true moves the needle onto the point the camera is centred
+    /// on (gantry += vcamneedle); false moves the camera back over that point (gantry −= vcamneedle).
+    /// A quick manual aid to preview / return from where a dispense would land.
+    /// </summary>
+    Task<Result> JogCameraNeedleOffsetAsync(bool toNeedle, CancellationToken ct = default);
 
     // --- Recipes (.hrec scripts, operate on the active product) ---
 

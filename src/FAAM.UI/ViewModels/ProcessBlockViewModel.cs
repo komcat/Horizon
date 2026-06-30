@@ -276,6 +276,9 @@ public sealed class ProcessBlockViewModel : ObservableObject
                 case ParamKind.MotionDeviceName:
                     p.SetOptions(_host.Engine.Motion.DeviceNames);
                     break;
+                case ParamKind.DispenseRoutineName:
+                    p.SetOptions(_host.Process.ListDispenseRoutines());
+                    break;
             }
     }
 

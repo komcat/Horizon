@@ -14,5 +14,8 @@
         <TabItem Header="Find First Light">
             <ContentControl x:Name="FindFirstLightHost" />
         </TabItem>
+        <TabItem Header="Dispensing">
+            <ContentControl x:Name="DispenseHost" />
+        </TabItem>
     </TabControl>
 </UserControl>

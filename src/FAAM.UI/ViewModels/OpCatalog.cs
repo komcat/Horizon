@@ -12,7 +12,7 @@ public enum DeviceKind { None, Motion, Io, Pneumatic, Camera }
 /// options are filled by the block (positions from the chosen device, the axis
 /// list, or Set/Clear); the rest are a text box / number box / check box.
 /// </summary>
-public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName, SignalName, Operator, MotionDeviceName }
+public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName, SignalName, Operator, MotionDeviceName, DispenseRoutineName }
 
 /// <summary>One parameter of an op — its persisted key, a display label, the editor widget, and a default value.</summary>
 public sealed record ParamSpec(string Key, string Label, ParamKind Kind, string Default = "");
@@ -189,6 +189,14 @@ public static class OpCatalog
                 new ParamSpec("captureAs", "Capture prefix", ParamKind.Text, "vision"),
                 new ParamSpec("requireMatch", "Fail step if no match", ParamKind.Bool, "false"),
             }),
+
+        // ---- Dispense ----
+        // Runs a saved per-product dispense routine (dot / grid / line) at the current
+        // camera target. The camera→needle calibration places the needle where the camera
+        // is centred, so the program/operator must have the camera centred + focused on the
+        // target first. Device-less — the routine carries its own gantry / dispenser.
+        new("dispense.runRoutine", "Run Dispense Routine", "Dispense", DeviceKind.None,
+            new[] { new ParamSpec("routine", "Dispense routine", ParamKind.DispenseRoutineName) }),
 
         // ---- Scan ----
         // XY raster over a lattice about the start position: visits EVERY node and
