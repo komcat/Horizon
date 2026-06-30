@@ -48,7 +48,16 @@
         <Border Grid.Row="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1">
             <ListBox x:Name="LogList" ItemsSource="{Binding Log}"
                      Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
+                     SelectionMode="Extended"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Copy" InputGestureText="Ctrl+C" Click="OnCopyLog" />
+                        <MenuItem Header="Copy all" Click="OnCopyAllLog" />
+                        <Separator />
+                        <MenuItem Header="Select all" InputGestureText="Ctrl+A" Click="OnSelectAllLog" />
+                    </ContextMenu>
+                </ListBox.ContextMenu>
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
                         <Setter Property="Padding" Value="0" />
