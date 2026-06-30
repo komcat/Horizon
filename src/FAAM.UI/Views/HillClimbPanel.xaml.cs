@@ -415,6 +415,12 @@ public partial class HillClimbPanel : UserControl
     {
         _lastState = e.NewState;
         StateText.Text = e.NewState.ToString();
+
+        // Yellow panel while a climb is actively driving the hexapod; default panel colour otherwise.
+        bool running = e.NewState is HillClimbState.RecordingBaseline
+            or HillClimbState.Climbing or HillClimbState.MovingToPeak;
+        RootBorder.Background = (Brush)FindResource(running ? "Running" : "Panel");
+
         StateText.Foreground = e.NewState switch
         {
             HillClimbState.Idle => (Brush)FindResource("Subtle"),

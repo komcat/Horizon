@@ -75,7 +75,12 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     /// <summary>Current status line, surfaced to the launcher badge / app header.</summary>
     public string RunStatusDetail => StatusText.Text;
 
-    private void RaiseRunState() => RunStateChanged?.Invoke();
+    private void RaiseRunState()
+    {
+        // Yellow panel while a correction run is in progress; default panel colour otherwise.
+        RootBorder.Background = (Brush)FindResource(_running ? "Running" : "Panel");
+        RunStateChanged?.Invoke();
+    }
 
     /// <summary>Begins the chained U → FAU run (the <c>align</c> app id / Start button).</summary>
     public void RequestStart() => _ = RunSequenceAsync(runU: true, runFau: true);
@@ -618,24 +623,30 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         // The routine awaits us from a background thread — set up the UI on the dispatcher.
         Dispatcher.Invoke(() =>
         {
-            _pending = tcs;
-            _awaitingApply = title.Contains("Apply", System.StringComparison.OrdinalIgnoreCase);
-
-            if (_awaitingApply)
+            // The final apply step (Apply U / Move FAU) is auto-confirmed: once every reference
+            // point is captured, the correction is applied / the FAU is moved without waiting for
+            // an operator click. Only the per-point capture confirms still block on the operator.
+            if (title.Contains("Apply", System.StringComparison.OrdinalIgnoreCase))
             {
+                _pending = null;
+                _awaitingApply = false;
                 var msg = message.Replace("\n", " ");
-                SetStatus(_phase, msg);
-                ApplyButton.IsEnabled = true;
+                SetStatus(_phase, _phase == Phase.U ? "Auto-applying U…" : "Auto-moving FAU…");
+                Log(LogLevel.Info, $"Auto-{(_phase == Phase.U ? "applying U" : "moving FAU")}: {msg}");
+                ApplyButton.IsEnabled = false;
                 CaptureButton.IsEnabled = false;
-                _promptSurface?.Show(msg, _phase == Phase.U ? "Apply U" : "Move FAU", "Cancel");
+                _promptSurface?.Hide();
+                RaiseRunState();
+                tcs.TrySetResult(true);   // proceed without an operator click
+                return;
             }
-            else
-            {
-                SetStatus(_phase, message);
-                SetDot(_captureIndex, captured: false);   // highlight the point now being refined
-                CaptureButton.IsEnabled = true;
-                _promptSurface?.Show(message, "Capture", "Cancel");
-            }
+
+            _pending = tcs;
+            _awaitingApply = false;
+            SetStatus(_phase, message);
+            SetDot(_captureIndex, captured: false);   // highlight the point now being refined
+            CaptureButton.IsEnabled = true;
+            _promptSurface?.Show(message, "Capture", "Cancel");
             RaiseRunState();   // refresh the launcher badge / app-header status line
         });
 
