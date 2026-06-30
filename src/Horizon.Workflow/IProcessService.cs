@@ -332,6 +332,15 @@ public interface IProcessService
     /// </summary>
     Task<Result> JogCameraNeedleOffsetAsync(bool toNeedle, CancellationToken ct = default);
 
+    /// <summary>
+    /// Core "needle to point" routine: move the needle onto the camera-pointed location
+    /// (gantry += vcamneedle), extend the dispenser head, then approach the surface by
+    /// <paramref name="approachDistanceMm"/> at <paramref name="velocity"/> mm/s. Leaves the head
+    /// extended (no shot, no retract) — a positioning primitive for manual work / sequences.
+    /// Aborting retracts the head.
+    /// </summary>
+    Task<Result> RunNeedleApproachAsync(double approachDistanceMm, double velocity, CancellationToken ct = default);
+
     // --- Recipes (.hrec scripts, operate on the active product) ---
 
     /// <summary>Recipe names in the active product.</summary>

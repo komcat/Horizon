@@ -726,6 +726,7 @@ public sealed class ProcessService : IProcessService
             SaveNamedPosition,
             RunVisionProfileByNameAsync,
             RunDispenseRoutineAsync,
+            RunNeedleApproachAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,
             () => _siphogSheetSink,
@@ -1248,6 +1249,53 @@ public sealed class ProcessService : IProcessService
             .ConfigureAwait(false);
     }
 
+    public async Task<Result> RunNeedleApproachAsync(double approachDistanceMm, double velocity, CancellationToken ct = default)
+    {
+        var cal = _cameraNeedle.Current;
+        var g = cal.GantryDevice;
+        var head = new DispenseHead(_engine, Log, "Needle approach");
+        Log(LogLevel.Info,
+            $"Needle approach: gantry '{g}' move needle to camera point + extend '{cal.DispenserSlide}', " +
+            $"approach {approachDistanceMm:F2} mm @ {velocity:F2} mm/s.");
+        try
+        {
+            // 1) Move the needle onto the camera-pointed location (gantry += vcamneedle).
+            if (Math.Abs(cal.VcamneedleX) > 1e-6)
+            {
+                var rx = await _engine.Motion.MoveRelativeAsync(g, "X", cal.VcamneedleX, ct).ConfigureAwait(false);
+                if (!rx.IsSuccess) return rx;
+            }
+            if (Math.Abs(cal.VcamneedleY) > 1e-6)
+            {
+                var ry = await _engine.Motion.MoveRelativeAsync(g, "Y", cal.VcamneedleY, ct).ConfigureAwait(false);
+                if (!ry.IsSuccess) return ry;
+            }
+
+            // 2) Extend the dispenser head.
+            var ext = await head.ExtendAsync(cal.DispenserSlide, ct).ConfigureAwait(false);
+            if (!ext.IsSuccess) return ext;
+
+            // 3) Approach the surface by approachDistance at velocity (toward-surface direction
+            //    from the calibration; defaults to +Z when the touch relationship is unset).
+            if (Math.Abs(approachDistanceMm) > 1e-6)
+            {
+                double downSign = Math.Sign(-cal.FocusToNeedleZmm);
+                if (downSign == 0) downSign = 1;
+                double dz = downSign * Math.Abs(approachDistanceMm);
+                var z = velocity > 0
+                    ? await head.SlowZMoveAsync(g, dz, velocity, ct).ConfigureAwait(false)
+                    : await _engine.Motion.MoveRelativeAsync(g, "Z", dz, ct).ConfigureAwait(false);
+                if (!z.IsSuccess) return z;
+            }
+            return Result.Ok();
+        }
+        catch (OperationCanceledException)
+        {
+            await head.RetractAsync(cal.DispenserSlide, CancellationToken.None).ConfigureAwait(false);
+            return Result.Fail(ErrorCode.OperationFailed, "Needle approach cancelled.");
+        }
+    }
+
     public async Task<Result> JogCameraNeedleOffsetAsync(bool toNeedle, CancellationToken ct = default)
     {
         var cal = _cameraNeedle.Current;
@@ -1613,6 +1661,7 @@ public sealed class ProcessService : IProcessService
             SaveNamedPosition,
             RunVisionProfileByNameAsync,
             RunDispenseRoutineAsync,
+            RunNeedleApproachAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,
             () => _siphogSheetSink,

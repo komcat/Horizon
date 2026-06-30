@@ -27,6 +27,9 @@ internal sealed class StepDispatcher
     // Runs a saved per-product dispense routine by name (loads it, applies the camera→needle
     // calibration, lays down the pattern). Drives dispense.runRoutine.
     private readonly Func<string, CancellationToken, Task<Result>> _runDispenseRoutine;
+    // (approachDistanceMm, velocity, ct) — moves the needle to the camera point, extends the
+    // head, then approaches the surface. Drives needle.approach.
+    private readonly Func<double, double, CancellationToken, Task<Result>> _runNeedleApproach;
     // Supplies the hill-climb signal source (Layer 3 SiPhOG). Returns null when no head
     // has registered one — hillclimb.* steps then fail with a clear message rather than crash.
     private readonly Func<IHillClimbFeedback?> _hillClimbFeedback;
@@ -58,6 +61,7 @@ internal sealed class StepDispatcher
         Func<string, string, MotionPosition, double, Result> savePosition,
         Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
         Func<string, CancellationToken, Task<Result>> runDispenseRoutine,
+        Func<double, double, CancellationToken, Task<Result>> runNeedleApproach,
         Func<IHillClimbFeedback?> hillClimbFeedback,
         Func<IUtilityAppHost?> utilityAppHost,
         Func<ISiphogSheetSink?> siphogSheetSink,
@@ -71,6 +75,7 @@ internal sealed class StepDispatcher
         _savePosition = savePosition;
         _runVisionProfile = runVisionProfile;
         _runDispenseRoutine = runDispenseRoutine;
+        _runNeedleApproach = runNeedleApproach;
         _hillClimbFeedback = hillClimbFeedback;
         _utilityAppHost = utilityAppHost;
         _siphogSheetSink = siphogSheetSink;
@@ -474,6 +479,13 @@ internal sealed class StepDispatcher
                     return Result.Fail(ErrorCode.InvalidParameter, "dispense.runRoutine: no routine name.");
                 return await _runDispenseRoutine(routineName, ct).ConfigureAwait(false);
             }
+
+            case "needle.approach":
+                // Move the needle onto the camera-pointed location (gantry += vcamneedle),
+                // extend the dispenser head, then approach the surface by 'approachDistance'
+                // (mm) at 'velocity' (mm/s). Leaves the head extended.
+                return await _runNeedleApproach(
+                    Num(step, "approachDistance", ctx), Num(step, "velocity", ctx), ct).ConfigureAwait(false);
 
             case "io.setoutput":
                 return await _engine.IO.SetOutputAsync(step.Device, (int)Num(step, "pin", ctx), Bool(step, "state", ctx), ct);

@@ -197,6 +197,16 @@ public static class OpCatalog
         // target first. Device-less — the routine carries its own gantry / dispenser.
         new("dispense.runRoutine", "Run Dispense Routine", "Dispense", DeviceKind.None,
             new[] { new ParamSpec("routine", "Dispense routine", ParamKind.DispenseRoutineName) }),
+        // Moves the needle onto the camera-pointed location (gantry += camera→needle offset),
+        // extends the dispenser head, then approaches the surface by 'approachDistance' (mm) at
+        // 'velocity' (mm/s). Leaves the head extended — no shot. Device-less (uses the calibration's
+        // gantry / slide). The program/operator should have the camera centred on the target first.
+        new("needle.approach", "Needle to Point", "Dispense", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("approachDistance", "Approach distance (mm)", ParamKind.Number, "10"),
+                new ParamSpec("velocity", "Approach velocity (mm/s)", ParamKind.Number, "1"),
+            }),
 
         // ---- Scan ----
         // XY raster over a lattice about the start position: visits EVERY node and
