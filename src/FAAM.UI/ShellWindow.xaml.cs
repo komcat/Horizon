@@ -84,6 +84,13 @@ public partial class ShellWindow : Window
         _host.Process.ProductChanged += OnProductChanged;
         _host.Process.ActiveSerialChanged += OnActiveSerialChanged;
         _host.Activity.Changed += OnDutActivityChanged;   // gate Start DUT while an alignment/scan holds the hexapod
+
+        // Safety: a watchdog trip (E-Stop) raises a blocking acknowledge overlay; clearing
+        // the flag (Acknowledge, or any other surface) removes it.
+        _host.Engine.Safety.SafetyTripped += OnSafetyTripped;
+        _host.Engine.Safety.SafetyCleared += OnSafetyCleared;
+        RefreshSafetyOverlay();
+
         UpdateIdentity();
         OnActiveSerialChanged(_host.Process.ActiveSerial);
         RefreshDutButtons();
@@ -113,6 +120,51 @@ public partial class ShellWindow : Window
         // Auto-open main_camera unless a restored window already shows it.
         if (_host.Settings.Current.ShowMainCameraOnStartup && !IsCameraWindowOpen("main_camera"))
             ShowMainCameraWindow();
+    }
+
+    // --- Safety acknowledge overlay ---
+
+    private void OnSafetyTripped(SafetyTrip trip)
+        => Dispatcher.BeginInvoke(() => ShowSafetyOverlay(trip.Title, trip.Message));
+
+    private void OnSafetyCleared()
+        => Dispatcher.BeginInvoke(HideSafetyOverlay);
+
+    private void RefreshSafetyOverlay()
+    {
+        if (_host.Engine.Safety.GetState().FlagRaised)
+            ShowSafetyOverlay("Safety stop", "A safety flag is raised. Clear the hazard, then Acknowledge to resume.");
+        else
+            HideSafetyOverlay();
+    }
+
+    private void ShowSafetyOverlay(string title, string message)
+    {
+        SafetyTitle.Text = string.IsNullOrWhiteSpace(title) ? "⚠ SAFETY STOP" : "⚠ " + title;
+        SafetyMessage.Text = message;
+        SafetyHint.Text = "Clear the hazard and release the E-Stop, then Acknowledge to resume.";
+        AcknowledgeButton.IsEnabled = true;
+        SafetyOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void HideSafetyOverlay() => SafetyOverlay.Visibility = Visibility.Collapsed;
+
+    private async void OnAcknowledgeSafety(object sender, RoutedEventArgs e)
+    {
+        AcknowledgeButton.IsEnabled = false;
+        SafetyHint.Text = "Acknowledging…";
+        var r = await _host.Engine.Safety.AcknowledgeAsync();
+        if (r.IsSuccess)
+        {
+            // SafetyCleared hides the overlay; if the input is still tripped the watchdog
+            // re-raises and SafetyTripped shows it again.
+            HideSafetyOverlay();
+        }
+        else
+        {
+            AcknowledgeButton.IsEnabled = true;
+            SafetyHint.Text = $"Cannot acknowledge yet — {r.Message} Release the E-Stop and retry.";
+        }
     }
 
     /// <summary>Stops a page's background work (camera pipeline, status sampler) when leaving it.</summary>
@@ -493,6 +545,8 @@ public partial class ShellWindow : Window
         _host.Session.Changed -= UpdateIdentity;
         _host.Process.ProductChanged -= OnProductChanged;
         _host.Process.ActiveSerialChanged -= OnActiveSerialChanged;
+        _host.Engine.Safety.SafetyTripped -= OnSafetyTripped;
+        _host.Engine.Safety.SafetyCleared -= OnSafetyCleared;
         _run.Deactivate();         // stop frame routing before the engine tears down
         _machineVm.Dispose();      // stop the status sampler + detach UI hooks
         JogPanelControl.Stop();    // stop the jog-panel position poll

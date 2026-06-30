@@ -120,5 +120,28 @@
                 Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3">
             <ContentControl x:Name="PageHost" Margin="12" />
         </Border>
+
+        <!-- Safety / E-Stop acknowledge overlay — shown on a watchdog trip, dims and blocks
+             the whole shell until the operator clears the hazard and Acknowledges (which
+             clears the engine safety flag so steps / motion can run again). -->
+        <Border x:Name="SafetyOverlay" Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Grid.ColumnSpan="2"
+                Background="#CC000000" Visibility="Collapsed" Panel.ZIndex="1000">
+            <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Danger}" BorderThickness="2"
+                    CornerRadius="6" Padding="32" MaxWidth="580"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel>
+                    <TextBlock x:Name="SafetyTitle" Text="⚠ SAFETY STOP" Foreground="{StaticResource Danger}"
+                               FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,14" />
+                    <TextBlock x:Name="SafetyMessage" Foreground="{StaticResource Text}" FontSize="15"
+                               TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,22" />
+                    <Button x:Name="AcknowledgeButton" Content="Acknowledge" Width="200" Height="44" FontSize="16"
+                            HorizontalAlignment="Center" Click="OnAcknowledgeSafety"
+                            Background="{StaticResource Danger}" Foreground="White" BorderThickness="0" FontWeight="Bold" />
+                    <TextBlock x:Name="SafetyHint" Foreground="{StaticResource Subtle}" FontSize="12.5"
+                               HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0"
+                               Text="Clear the hazard and release the E-Stop, then Acknowledge to resume." />
+                </StackPanel>
+            </Border>
+        </Border>
     </Grid>
 </Window>
