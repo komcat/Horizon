@@ -56,6 +56,13 @@ internal sealed class DispenseRoutineRunner
                 $"Dispense '{routine.Name}': {points.Count} dot(s), pattern {routine.Pattern.Kind}, " +
                 $"anchor=({anchor.X:F3}, {anchor.Y:F3}), needle base=({baseX:F3}, {baseY:F3}), focus Z={focusZ:F3}.");
 
+            // Flat surface -> the touch height is the same for every dot, and so is the approach
+            // level just above it. Between dots the needle stays at the approach level (no full Z
+            // stroke back to focus): traverse XY there, then slow-descend the short approach gap.
+            double touchZ = DispenseHead.ComputeTouchZ(focusZ, focusToNeedleZmm, shot.TouchZAdjustMm, out double downSign);
+            double approach = Math.Abs(shot.ApproachMm);
+            double approachZ = touchZ - downSign * approach;
+
             // Move the needle over the FIRST dot at focus height with the head still UP, so the
             // long camera→needle traverse happens clear of the surface; only then lower the head.
             var firstXy = await MoveXyAsync(g, baseX + points[0].Dx, baseY + points[0].Dy, ct).ConfigureAwait(false);
@@ -64,34 +71,42 @@ internal sealed class DispenseRoutineRunner
             var ext = await _head.ExtendAsync(routine.DispenserSlide, ct).ConfigureAwait(false);
             if (!ext.IsSuccess) { await _head.RetractAsync(routine.DispenserSlide, CancellationToken.None).ConfigureAwait(false); return ext; }
 
+            // Fast pre-position to the approach level above the surface (head stays down for the run).
+            var preZ = await _engine.Motion.MoveAbsoluteAsync(g, "Z", approachZ, ct).ConfigureAwait(false);
+            if (!preZ.IsSuccess) return await AbortAsync(routine, shot, $"Approach pre-position: {preZ.Message}", preZ.Error);
+
             for (int i = 0; i < points.Count; i++)
             {
                 var p = points[i];
 
-                // Dots after the first: clear to focus height, then traverse to the next dot.
+                // Dots after the first: traverse to the next dot AT the approach level (no full lift).
                 if (i > 0)
                 {
-                    var zsafe = await _engine.Motion.MoveAbsoluteAsync(g, "Z", focusZ, ct).ConfigureAwait(false);
-                    if (!zsafe.IsSuccess) return await AbortAsync(routine, shot, $"Clearance Z move: {zsafe.Message}", zsafe.Error);
                     var xy = await MoveXyAsync(g, baseX + p.Dx, baseY + p.Dy, ct).ConfigureAwait(false);
                     if (!xy.IsSuccess) return await AbortAsync(routine, shot, $"Move (dot {i + 1}): {xy.Message}", xy.Error);
                 }
 
-                // Descend to touch, fire the shot, slow lift-off.
-                var touch = await _head.AutoTouchAsync(
-                    g, focusZ, focusToNeedleZmm, shot.ApproachMm, shot.SlowZVelocity, shot.TouchZAdjustMm, ct).ConfigureAwait(false);
-                if (!touch.IsSuccess) return await AbortAsync(routine, shot, $"Approach (dot {i + 1}): {touch.Message}", touch.Error);
+                // Slow-descend the approach gap to touch, fire, slow detach lift-off.
+                var down = await _head.SlowZMoveAsync(g, downSign * approach, shot.SlowZVelocity, ct).ConfigureAwait(false);
+                if (!down.IsSuccess) return await AbortAsync(routine, shot, $"Descend (dot {i + 1}): {down.Message}", down.Error);
 
                 var fire = await _head.FireShotAsync(shot.ShotIoDevice, shot.ShotPin, shot.OutputDebounceMs, shot.DwellMs, ct).ConfigureAwait(false);
                 if (!fire.IsSuccess) return await AbortAsync(routine, shot, $"Shot (dot {i + 1}): {fire.Message}", fire.Error);
 
-                var lift = await _head.LiftOffAsync(g, focusZ, touch.Value.Z, shot.LiftoffMm, shot.SlowZVelocity, ct).ConfigureAwait(false);
+                var lift = await _head.SlowZMoveAsync(g, -downSign * Math.Abs(shot.LiftoffMm), shot.SlowZVelocity, ct).ConfigureAwait(false);
                 if (!lift.IsSuccess) return await AbortAsync(routine, shot, $"Lift-off (dot {i + 1}): {lift.Message}", lift.Error);
+
+                // Back up to the approach level for the next traverse (skip after the last dot).
+                if (i < points.Count - 1)
+                {
+                    var up = await _engine.Motion.MoveAbsoluteAsync(g, "Z", approachZ, ct).ConfigureAwait(false);
+                    if (!up.IsSuccess) return await AbortAsync(routine, shot, $"Re-approach (dot {i + 1}): {up.Message}", up.Error);
+                }
 
                 _log(LogLevel.Info, $"Dispense '{routine.Name}': dot {i + 1}/{points.Count} done.");
             }
 
-            // Return to focus height and raise the head.
+            // Return to focus height and raise the head (once, at the end of the whole pattern).
             var zback = await _engine.Motion.MoveAbsoluteAsync(g, "Z", focusZ, ct).ConfigureAwait(false);
             if (!zback.IsSuccess) return await AbortAsync(routine, shot, $"Return to focus Z: {zback.Message}", zback.Error);
             var ret = await _head.RetractAsync(routine.DispenserSlide, ct).ConfigureAwait(false);
