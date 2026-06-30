@@ -13,6 +13,7 @@ public partial class EngineerPageView : UserControl
 {
     private readonly TimelineEditorView _program;
     private readonly DeckEditorView _deck;
+    private readonly FindFirstLightSettingsView _findFirstLight;
     private object? _activeChild;
     private bool _pageActive;
 
@@ -21,8 +22,10 @@ public partial class EngineerPageView : UserControl
         InitializeComponent();
         _program = new TimelineEditorView(host);
         _deck = new DeckEditorView(host);
+        _findFirstLight = new FindFirstLightSettingsView(host);
         ProgramHost.Content = _program;
         DeckHost.Content = _deck;
+        FindFirstLightHost.Content = _findFirstLight;
     }
 
     /// <summary>Called when the shell shows the Engineer page — activates the selected tab.</summary>
@@ -51,7 +54,14 @@ public partial class EngineerPageView : UserControl
 
     private void ActivateSelected()
     {
-        object target = Tabs.SelectedIndex == 1 ? _deck : _program;
+        // The Find First Light tab (index 2) is a static settings form with no background
+        // work, so it has no Activate/Deactivate — selecting it just stops the other two.
+        object target = Tabs.SelectedIndex switch
+        {
+            1 => _deck,
+            2 => _findFirstLight,
+            _ => _program,
+        };
         if (ReferenceEquals(_activeChild, target)) return;
 
         switch (_activeChild)

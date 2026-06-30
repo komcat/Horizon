@@ -209,7 +209,9 @@ public sealed class ProgramEditorPageViewModel : PageViewModel
         if (string.IsNullOrWhiteSpace(ProgramName)) { Status = "Program name is required."; return; }
 
         var program = BuildProgram();
-        var result = _host.Process.SaveProgram(program);
+        // Horizon.UI has no separate Commit UI yet, so Save records a version too
+        // (commit with no note) — preserves this head's prior auto-version behaviour.
+        var result = _host.Process.CommitProgram(program, null);
         Status = result.IsSuccess ? $"Saved program '{program.Name}'." : result.Message;
         if (!result.IsSuccess) return;
 

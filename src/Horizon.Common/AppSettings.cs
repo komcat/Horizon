@@ -111,6 +111,80 @@ public sealed record AppSettings
 
     /// <summary>Name of the last loaded / saved process program — reloaded on launch. Empty = none.</summary>
     public string LastProgram { get; init; } = string.Empty;
+
+    /// <summary>
+    /// "Find First Light" post-FAU grid search tunables, edited on the Engineer page's
+    /// Find First Light tab and mapped onto a <c>GridSearchConfig</c> when the Run-page
+    /// alignment panel runs the search.
+    /// </summary>
+    public FindFirstLightSettings FindFirstLight { get; init; } = new();
+}
+
+/// <summary>
+/// Operator-editable parameters for the post-FAU-pre-align "find first light" grid search
+/// (the two-stage X-line → XY-grid signal finder). Mirrors the tunable fields of
+/// <c>Horizon.Workflow.GridSearch.GridSearchConfig</c>; kept here in <c>Horizon.Common</c>
+/// (which must not reference Layer 2) and mapped to a <c>GridSearchConfig</c> at run time.
+/// Defaults match <c>GridSearchConfig</c>'s defaults.
+/// </summary>
+public sealed record FindFirstLightSettings
+{
+    /// <summary>Master switch — when false the whole find-first-light search is skipped after FAU pre-align.</summary>
+    public bool Enabled { get; init; } = true;
+
+    // --- Stage 1: X line search ---
+
+    /// <summary>Run Stage 1 (the X line search).</summary>
+    public bool Stage1Enabled { get; init; } = true;
+
+    /// <summary>Initial +X excursion from centre (µm) before the downward sweep — the line "apex".</summary>
+    public double LineJumpUm { get; init; } = 60;
+
+    /// <summary>Step size for the −X sweep (µm).</summary>
+    public double LineStepUm { get; init; } = 5;
+
+    /// <summary>Number of −X steps after the apex.</summary>
+    public int LineSteps { get; init; } = 24;
+
+    // --- Stage 2: Y+ line-scan fallback ---
+
+    /// <summary>Run Stage 2 (the Y+ line-scan fallback) when Stage 1 finds nothing.</summary>
+    public bool Stage2Enabled { get; init; } = true;
+
+    /// <summary>Number of Y+ rows to test; Stage 2 only steps Y in the + direction from centre.</summary>
+    public int GridYRows { get; init; } = 12;
+
+    /// <summary>Y+ pitch between rows (µm) — how far Y advances between successive X line scans.</summary>
+    public double GridStepUm { get; init; } = 5;
+
+    /// <summary>Hard cap on the total node count (runaway-sweep guard): GridYRows × (LineSteps + 1).</summary>
+    public int MaxGridNodes { get; init; } = 4096;
+
+    // --- Detection (shared by both stages) ---
+
+    /// <summary>Absolute rise over baseline (V) that counts as "signal seen".</summary>
+    public double DetectDeltaV { get; init; } = 0.02;
+
+    /// <summary>Stage-1 early-exit drop, as a fraction of the peak's height above baseline (0..1).</summary>
+    public double DropFraction { get; init; } = 0.3;
+
+    /// <summary>Consecutive past-crest readings required to confirm the Stage-1 early exit.</summary>
+    public int DropConfirmCount { get; init; } = 2;
+
+    // --- Hand-off chain (after the grid search finds signal) ---
+
+    /// <summary>Hand off to the hill climber once a grid stage finds signal. Default on.</summary>
+    public bool HillClimbEnabled { get; init; } = true;
+
+    /// <summary>Chain the Auto-W maximizer once after the hill climb parks at peak. Default off.</summary>
+    public bool AutoWEnabled { get; init; }
+
+    /// <summary>
+    /// Settle wait (ms) after the hill climber switches the SiPhOG SLED to its operating current at
+    /// the auto-SLED handoff, before re-baselining and continuing the climb. The SAG PWR voltage
+    /// drops on the current change, so this lets it stabilise first.
+    /// </summary>
+    public int AutoSledWaitMs { get; init; } = 4000;
 }
 
 /// <summary>Saved bounds + maximized state of a window.</summary>

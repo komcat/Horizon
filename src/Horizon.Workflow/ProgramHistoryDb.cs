@@ -49,14 +49,14 @@ public sealed class ProgramHistoryDb
     /// returns it. If the store is unavailable the version is returned but not
     /// persisted (so the caller's logging still works).
     /// </summary>
-    public ProgramVersion Append(string product, WorkflowProgram snapshot, OperatorContext? op)
+    public ProgramVersion Append(string product, WorkflowProgram snapshot, OperatorContext? op, string? note = null)
     {
         if (!_available)
             return new ProgramVersion
             {
                 Version = 1, SavedUtc = DateTime.UtcNow,
                 OperatorId = op?.UserId, OperatorName = op?.DisplayName, StationId = op?.StationId,
-                Snapshot = snapshot,
+                Note = note, Snapshot = snapshot,
             };
 
         using var conn = Open();
@@ -67,6 +67,7 @@ public sealed class ProgramHistoryDb
             OperatorId = op?.UserId,
             OperatorName = op?.DisplayName,
             StationId = op?.StationId,
+            Note = note,
             Snapshot = snapshot,
         };
         InsertVersion(conn, product, version);
@@ -82,7 +83,7 @@ public sealed class ProgramHistoryDb
         using var conn = Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            @"SELECT version, saved_utc, operator_id, operator_name, station_id, snapshot_json
+            @"SELECT version, saved_utc, operator_id, operator_name, station_id, snapshot_json, note
               FROM program_version WHERE product=$p AND program=$g ORDER BY version";
         cmd.Parameters.AddWithValue("$p", product);
         cmd.Parameters.AddWithValue("$g", program);
@@ -99,10 +100,40 @@ public sealed class ProgramHistoryDb
                 OperatorId = reader.IsDBNull(2) ? null : reader.GetString(2),
                 OperatorName = reader.IsDBNull(3) ? null : reader.GetString(3),
                 StationId = reader.IsDBNull(4) ? null : reader.GetString(4),
+                Note = reader.IsDBNull(6) ? null : reader.GetString(6),
                 Snapshot = snapshot,
             });
         }
         return history;
+    }
+
+    /// <summary>Reads a single program revision (its full snapshot), or null if it doesn't exist / the store is unavailable.</summary>
+    public ProgramVersion? LoadVersion(string product, string program, int version)
+    {
+        if (!_available) return null;
+
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            @"SELECT version, saved_utc, operator_id, operator_name, station_id, snapshot_json, note
+              FROM program_version WHERE product=$p AND program=$g AND version=$v";
+        cmd.Parameters.AddWithValue("$p", product);
+        cmd.Parameters.AddWithValue("$g", program);
+        cmd.Parameters.AddWithValue("$v", version);
+
+        using var reader = cmd.ExecuteReader();
+        if (!reader.Read()) return null;
+        return new ProgramVersion
+        {
+            Version = reader.GetInt32(0),
+            SavedUtc = DateTime.Parse(reader.GetString(1), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            OperatorId = reader.IsDBNull(2) ? null : reader.GetString(2),
+            OperatorName = reader.IsDBNull(3) ? null : reader.GetString(3),
+            StationId = reader.IsDBNull(4) ? null : reader.GetString(4),
+            Note = reader.IsDBNull(6) ? null : reader.GetString(6),
+            Snapshot = JsonSerializer.Deserialize<WorkflowProgram>(reader.GetString(5), JsonOptions)
+                       ?? new WorkflowProgram { Name = program },
+        };
     }
 
     /// <summary>
@@ -161,14 +192,14 @@ public sealed class ProgramHistoryDb
     /// its <see cref="WorkflowDeck.Uid"/>) and returns it. Unavailable store → returned
     /// but not persisted.
     /// </summary>
-    public DeckVersion AppendDeck(string product, WorkflowDeck snapshot, OperatorContext? op)
+    public DeckVersion AppendDeck(string product, WorkflowDeck snapshot, OperatorContext? op, string? note = null)
     {
         if (!_available)
             return new DeckVersion
             {
                 Version = 1, SavedUtc = DateTime.UtcNow,
                 OperatorId = op?.UserId, OperatorName = op?.DisplayName, StationId = op?.StationId,
-                Snapshot = snapshot,
+                Note = note, Snapshot = snapshot,
             };
 
         using var conn = Open();
@@ -179,6 +210,7 @@ public sealed class ProgramHistoryDb
             OperatorId = op?.UserId,
             OperatorName = op?.DisplayName,
             StationId = op?.StationId,
+            Note = note,
             Snapshot = snapshot,
         };
         InsertDeckVersion(conn, product, version);
@@ -194,7 +226,7 @@ public sealed class ProgramHistoryDb
         using var conn = Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            @"SELECT version, saved_utc, operator_id, operator_name, station_id, snapshot_json, deck_name
+            @"SELECT version, saved_utc, operator_id, operator_name, station_id, snapshot_json, deck_name, note
               FROM deck_version WHERE product=$p AND deck_uid=$u ORDER BY version";
         cmd.Parameters.AddWithValue("$p", product);
         cmd.Parameters.AddWithValue("$u", deckUid);
@@ -212,10 +244,39 @@ public sealed class ProgramHistoryDb
                 OperatorId = reader.IsDBNull(2) ? null : reader.GetString(2),
                 OperatorName = reader.IsDBNull(3) ? null : reader.GetString(3),
                 StationId = reader.IsDBNull(4) ? null : reader.GetString(4),
+                Note = reader.IsDBNull(7) ? null : reader.GetString(7),
                 Snapshot = snapshot,
             });
         }
         return history with { DeckName = name };
+    }
+
+    /// <summary>Reads a single deck revision (its full snapshot) by UID + version, or null if absent / unavailable.</summary>
+    public DeckVersion? LoadDeckVersion(string product, string deckUid, int version)
+    {
+        if (!_available || string.IsNullOrEmpty(deckUid)) return null;
+
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            @"SELECT version, saved_utc, operator_id, operator_name, station_id, snapshot_json, note
+              FROM deck_version WHERE product=$p AND deck_uid=$u AND version=$v";
+        cmd.Parameters.AddWithValue("$p", product);
+        cmd.Parameters.AddWithValue("$u", deckUid);
+        cmd.Parameters.AddWithValue("$v", version);
+
+        using var reader = cmd.ExecuteReader();
+        if (!reader.Read()) return null;
+        return new DeckVersion
+        {
+            Version = reader.GetInt32(0),
+            SavedUtc = DateTime.Parse(reader.GetString(1), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            OperatorId = reader.IsDBNull(2) ? null : reader.GetString(2),
+            OperatorName = reader.IsDBNull(3) ? null : reader.GetString(3),
+            StationId = reader.IsDBNull(4) ? null : reader.GetString(4),
+            Note = reader.IsDBNull(6) ? null : reader.GetString(6),
+            Snapshot = JsonSerializer.Deserialize<WorkflowDeck>(reader.GetString(5), JsonOptions) ?? new WorkflowDeck(),
+        };
     }
 
     /// <summary>
@@ -284,8 +345,8 @@ public sealed class ProgramHistoryDb
             ins.Transaction = tx;
             ins.CommandText =
                 @"INSERT OR IGNORE INTO deck_version
-                  (product, deck_uid, deck_name, version, saved_utc, operator_id, operator_name, station_id, snapshot_json)
-                  VALUES ($product,$uid,$name,$version,$saved,$opid,$opname,$station,$json)";
+                  (product, deck_uid, deck_name, version, saved_utc, operator_id, operator_name, station_id, note, snapshot_json)
+                  VALUES ($product,$uid,$name,$version,$saved,$opid,$opname,$station,$note,$json)";
             ins.Parameters.AddWithValue("$product", product);
             ins.Parameters.AddWithValue("$uid", v.Snapshot.Uid);
             ins.Parameters.AddWithValue("$name", v.Snapshot.Name);
@@ -294,6 +355,7 @@ public sealed class ProgramHistoryDb
             ins.Parameters.AddWithValue("$opid", (object?)v.OperatorId ?? DBNull.Value);
             ins.Parameters.AddWithValue("$opname", (object?)v.OperatorName ?? DBNull.Value);
             ins.Parameters.AddWithValue("$station", (object?)v.StationId ?? DBNull.Value);
+            ins.Parameters.AddWithValue("$note", (object?)v.Note ?? DBNull.Value);
             ins.Parameters.AddWithValue("$json", JsonSerializer.Serialize(v.Snapshot, JsonOptions));
             ins.ExecuteNonQuery();
         }
@@ -487,6 +549,27 @@ public sealed class ProgramHistoryDb
             CREATE INDEX IF NOT EXISTS ix_vision_ver ON vision_version(product, profile_uid);
             CREATE INDEX IF NOT EXISTS ix_vision_ver_operator ON vision_version(operator_id);";
         cmd.ExecuteNonQuery();
+
+        // Additive migrations for existing DBs (SQLite has no ADD COLUMN IF NOT EXISTS).
+        // The optional commit note rides alongside each revision (version repository).
+        EnsureColumn(conn, "program_version", "note", "TEXT");
+        EnsureColumn(conn, "deck_version", "note", "TEXT");
+    }
+
+    /// <summary>Adds <paramref name="column"/> to <paramref name="table"/> if it isn't already present (idempotent migration).</summary>
+    private static void EnsureColumn(SqliteConnection conn, string table, string column, string type)
+    {
+        using (var info = conn.CreateCommand())
+        {
+            info.CommandText = $"PRAGMA table_info({table})";
+            using var reader = info.ExecuteReader();
+            while (reader.Read())
+                if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                    return;   // already there
+        }
+        using var alter = conn.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {type}";
+        alter.ExecuteNonQuery();
     }
 
     private static int NextVersion(SqliteConnection conn, string product, string program)
@@ -508,8 +591,8 @@ public sealed class ProgramHistoryDb
             ins.Transaction = tx;
             ins.CommandText =
                 @"INSERT OR IGNORE INTO program_version
-                  (product, program, version, saved_utc, operator_id, operator_name, station_id, snapshot_json)
-                  VALUES ($product,$program,$version,$saved,$opid,$opname,$station,$json)";
+                  (product, program, version, saved_utc, operator_id, operator_name, station_id, note, snapshot_json)
+                  VALUES ($product,$program,$version,$saved,$opid,$opname,$station,$note,$json)";
             ins.Parameters.AddWithValue("$product", product);
             ins.Parameters.AddWithValue("$program", v.Snapshot.Name);
             ins.Parameters.AddWithValue("$version", v.Version);
@@ -517,6 +600,7 @@ public sealed class ProgramHistoryDb
             ins.Parameters.AddWithValue("$opid", (object?)v.OperatorId ?? DBNull.Value);
             ins.Parameters.AddWithValue("$opname", (object?)v.OperatorName ?? DBNull.Value);
             ins.Parameters.AddWithValue("$station", (object?)v.StationId ?? DBNull.Value);
+            ins.Parameters.AddWithValue("$note", (object?)v.Note ?? DBNull.Value);
             ins.Parameters.AddWithValue("$json", JsonSerializer.Serialize(v.Snapshot, JsonOptions));
             ins.ExecuteNonQuery();
         }

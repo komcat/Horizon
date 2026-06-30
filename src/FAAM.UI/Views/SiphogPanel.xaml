@@ -3,8 +3,19 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <!-- Vertical 280-wide panel matching its alignment-utility siblings (FAU / Hill
          Climber): accent border, centred title, everything stacked top-to-bottom. -->
-    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}"
+    <Border BorderBrush="{StaticResource Accent}"
             BorderThickness="2" CornerRadius="4" Width="280" VerticalAlignment="Top">
+        <Border.Style>
+            <Style TargetType="Border">
+                <!-- Orange while disconnected, green once connected. -->
+                <Setter Property="Background" Value="{StaticResource Warn}" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                        <Setter Property="Background" Value="{StaticResource Ok}" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
         <StackPanel Margin="10">
             <TextBlock Text="SiPhOG" Foreground="{StaticResource Accent}" FontSize="15" FontWeight="Bold"
                        HorizontalAlignment="Center" Margin="0,2,0,8" />

@@ -140,10 +140,16 @@
                 BorderThickness="1" CornerRadius="4" Padding="12,8">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="Program" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
-                <TextBox Width="180" Margin="8,0,12,0" VerticalAlignment="Center"
+                <TextBox Width="180" Margin="8,0,8,0" VerticalAlignment="Center"
                          Text="{Binding ProgramName, UpdateSourceTrigger=PropertyChanged}" />
-                <ComboBox Width="170" Margin="0,0,12,0" VerticalAlignment="Center"
-                          ItemsSource="{Binding Programs}" SelectedItem="{Binding SelectedProgram}" />
+                <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                        CornerRadius="3" Padding="8,2" Margin="0,0,10,0" VerticalAlignment="Center"
+                        ToolTip="Latest committed version of this program (Commit to bump it)">
+                    <TextBlock Text="{Binding CurrentVersionText}" Foreground="{StaticResource Accent}" FontWeight="SemiBold" />
+                </Border>
+                <Button Width="70" Height="28" Margin="0,0,12,0" Click="OnLoad" ToolTip="Choose a program to load from the product">
+                    <TextBlock Text="Load" VerticalAlignment="Center" />
+                </Button>
                 <Button Width="70" Height="28" Margin="0,0,6,0" Command="{Binding NewProgramCommand}" ToolTip="New program">
                     <StackPanel Orientation="Horizontal">
                         <Image Source="/assets/new-file.png" Width="16" Height="16" Margin="0,0,5,0"
@@ -151,12 +157,20 @@
                         <TextBlock Text="New" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
-                <Button Width="70" Height="28" Margin="0,0,6,0" Command="{Binding SaveProgramCommand}" ToolTip="Save program">
+                <Button Width="70" Height="28" Margin="0,0,6,0" Command="{Binding SaveProgramCommand}"
+                        ToolTip="Save the working program file (does not create a version)">
                     <StackPanel Orientation="Horizontal">
                         <Image Source="/assets/save-file.png" Width="16" Height="16" Margin="0,0,5,0"
                                RenderOptions.BitmapScalingMode="HighQuality" />
                         <TextBlock Text="Save" VerticalAlignment="Center" />
                     </StackPanel>
+                </Button>
+                <TextBox Width="150" Height="28" Margin="0,0,6,0" VerticalContentAlignment="Center"
+                         Text="{Binding CommitNote, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Optional note for the next commit (shows in the version repository)" />
+                <Button Width="80" Height="28" Margin="0,0,16,0" Command="{Binding CommitProgramCommand}"
+                        ToolTip="Save and record a new numbered version in the repository">
+                    <TextBlock Text="Commit" VerticalAlignment="Center" />
                 </Button>
                 <Button Width="80" Height="28" Margin="0,0,16,0" Click="OnHistory" ToolTip="Program history">
                     <StackPanel Orientation="Horizontal">

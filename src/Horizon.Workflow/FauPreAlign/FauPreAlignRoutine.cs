@@ -171,6 +171,17 @@ public sealed class FauPreAlignRoutine
         if (!applied.IsSuccess) return Fail($"Apply hex move: {applied.Message}");
 
         _log(LogLevel.Info, $"Applied hex move Y={hexY:F4}, Z={hexZ:F4} mm.");
+
+        // TEMP quick-fix (bench testing): waveguide-angle Y compensation. Over the
+        // TargetDistanceUm standoff the beam climbs by standoff·tan(7°); nudge the hex
+        // right Y+ by that amount so the FAU follows the up-tilted waveguide. Separate
+        // relative move so it's trivial to remove once the master-vector path carries it.
+        const double WaveguideAngleDeg = 7.0;
+        double yCompMm = (o.TargetDistanceUm * 0.001) * Math.Tan(WaveguideAngleDeg * Math.PI / 180.0);
+        var comp = await _engine.Motion.MoveRelativeAsync(o.HexapodDevice, "Y", yCompMm, ct).ConfigureAwait(false);
+        if (!comp.IsSuccess) return Fail($"Apply waveguide-angle Y comp: {comp.Message}");
+        _log(LogLevel.Info, $"Applied waveguide-angle Y+ comp = {yCompMm:F4} mm ({o.TargetDistanceUm:0} µm · tan {WaveguideAngleDeg:0.##}°).");
+
         return Ok(new FauPreAlignResult(corrX, corrY, hexY, hexZ, Applied: true));
     }
 

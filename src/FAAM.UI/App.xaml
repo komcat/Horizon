@@ -26,6 +26,7 @@
             <SolidColorBrush x:Key="Danger" Color="#E74C3C" />
             <SolidColorBrush x:Key="Warn"   Color="#FFB74D" />
             <SolidColorBrush x:Key="Ok"     Color="#81C784" />
+            <SolidColorBrush x:Key="Running" Color="#FFF176" />
 
             <!-- Fixed video-surface colours — theme-independent so overlays stay
                  high-contrast on arbitrary camera images. -->

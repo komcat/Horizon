@@ -15,9 +15,10 @@ namespace Horizon.Workflow.GridSearch;
 /// clearly walked off the crest (drop &gt; <c>DropFraction · (peak − vBase)</c> for
 /// <c>DropConfirmCount</c> readings). On signal, the stage parks at the line peak.</para>
 ///
-/// <para><b>Stage 2 — XY grid fallback.</b> Only if Stage 1 saw nothing: a serpentine raster over
-/// ±<c>GridExtentUm</c> at <c>GridStepUm</c> pitch (bounded by <c>MaxGridNodes</c>), stopping at the
-/// first node that clears the detect level and parking there.</para>
+/// <para><b>Stage 2 — Y+ line-scan fallback.</b> Only if Stage 1 saw nothing: step Y+ for
+/// <c>GridYRows</c> rows at <c>GridStepUm</c> pitch (centre upward only, never −Y) and run a
+/// Stage-1-style X line scan at each row (bounded by <c>MaxGridNodes</c>), stopping at the first row
+/// that clears the detect level and parking at that row's X peak.</para>
 ///
 /// <para>On a hit in either stage the run ends with <see cref="GridSearchResult.SignalFound"/> set
 /// so the caller (the Run-page panel) can hand off to the <see cref="HillClimbEngine"/> from the
@@ -115,7 +116,7 @@ public sealed class FauGridSearchEngine
             var deviceInfo = _engine.Motion.GetDevice(_device)
                 ?? throw new InvalidOperationException($"Motion device '{_device}' not found.");
             _axes = deviceInfo.Axes;
-            int maxAxis = Math.Max(_config.LineAxisIndex, Math.Max(_config.GridXAxisIndex, _config.GridYAxisIndex));
+            int maxAxis = Math.Max(_config.LineAxisIndex, _config.GridYAxisIndex);
             if (maxAxis >= _axes.Count)
                 throw new InvalidOperationException(
                     $"Hexapod '{_device}' has {_axes.Count} axes; configured axis indices exceed that.");
@@ -142,9 +143,17 @@ public sealed class FauGridSearchEngine
             _log(LogLevel.Info,
                 $"Grid search baseline: V={_vBase:F6}, σ={_baselineSigma:F6}, detect ≥ {_detectLevel:F6} V ({_feedback.Description}).");
 
-            // ---- Stage 1: X line ----
-            SetState(GridSearchState.LineSearch);
-            bool signalSeen = await LineSearchAsync(ct).ConfigureAwait(false);
+            // ---- Stage 1: X line (skipped when disabled) ----
+            bool signalSeen = false;
+            if (_config.Stage1Enabled)
+            {
+                SetState(GridSearchState.LineSearch);
+                signalSeen = await LineSearchAsync(_posCentre, GridSearchPhase.Line, string.Empty, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                _log(LogLevel.Info, "Grid search: Stage 1 (X line) disabled — skipping to Stage 2.");
+            }
 
             if (signalSeen)
             {
@@ -154,21 +163,29 @@ public sealed class FauGridSearchEngine
             }
             else
             {
-                // ---- Stage 2: XY grid fallback ----
-                SetState(GridSearchState.GridSearch);
-                double[]? hit = await GridSearchAsync(ct).ConfigureAwait(false);
+                // ---- Stage 2: XY grid fallback (skipped when disabled) ----
+                double[]? hit = null;
+                if (_config.Stage2Enabled)
+                {
+                    SetState(GridSearchState.GridSearch);
+                    hit = await GridSearchAsync(ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    _log(LogLevel.Info, "Grid search: Stage 2 (XY grid) disabled — not running grid fallback.");
+                }
 
                 if (hit != null)
                 {
                     await ParkAtAsync(hit, ct).ConfigureAwait(false);
                     FillResult(result, GridSearchStopReason.SignalFoundGrid, signalFound: true);
-                    result.Message = $"Stage 2: signal found — {_peakV:F6} V at grid node ({result.PointsMeasured} pts). Hand off to hill climb.";
+                    result.Message = $"Stage 2: signal found — {_peakV:F6} V in a Y+ row ({result.PointsMeasured} pts). Hand off to hill climb.";
                 }
                 else
                 {
                     await ParkAtAsync(_posPeak!, ct).ConfigureAwait(false);
                     FillResult(result, GridSearchStopReason.NoSignal, signalFound: false);
-                    result.Message = $"No signal found across line + grid ({result.PointsMeasured} pts); parked at best {_peakV:F6} V.";
+                    result.Message = $"No signal found ({result.PointsMeasured} pts); parked at best {_peakV:F6} V.";
                 }
             }
 
@@ -228,39 +245,42 @@ public sealed class FauGridSearchEngine
     }
 
     /// <summary>
-    /// Stage 1: jump +X to the apex, then sweep −X step by step. Tracks the peak, flags signal once
-    /// a reading clears the detect level, and exits early once the sweep has confirmedly walked off
-    /// the crest. Returns true when signal was seen.
+    /// One X line scan about <paramref name="rowCentre"/>: jump +X to the apex, then sweep −X step by
+    /// step. Tracks the peak, flags signal once a reading clears the detect level, and exits early
+    /// once the sweep has confirmedly walked off the crest. Returns true when signal was seen. Shared
+    /// by Stage 1 (row centre = the captured centre) and Stage 2 (one call per Y+ row, with the row's
+    /// Y already baked into <paramref name="rowCentre"/>). <paramref name="rowLabel"/> prefixes the
+    /// measured-event labels (empty for Stage 1).
     /// </summary>
-    private async Task<bool> LineSearchAsync(CancellationToken ct)
+    private async Task<bool> LineSearchAsync(double[] rowCentre, GridSearchPhase phase, string rowLabel, CancellationToken ct)
     {
         int axis = _config.LineAxisIndex;
-        double centreAxis = _posCentre[axis];
+        double centreAxis = rowCentre[axis];
         double jumpMm = _config.LineJumpUm / 1000.0;
         double stepMm = _config.LineStepUm / 1000.0;
 
         bool signalSeen = false;
         int dipCount = 0;
 
-        // Apex: absolute move to centre + jump (drift-free; one axis changed).
-        await MoveToPeakOrThrowAsync(WithAxis(_posCentre, axis, centreAxis + jumpMm), "line apex", ct).ConfigureAwait(false);
+        // Apex: absolute move to row centre + jump (drift-free; X set, the row Y already in rowCentre).
+        await MoveToPeakOrThrowAsync(WithAxis(rowCentre, axis, centreAxis + jumpMm), "line apex", ct).ConfigureAwait(false);
         await SettleAsync(ct).ConfigureAwait(false);
         {
             double v = await SampleAsync(ct).ConfigureAwait(false);
             double[] pos = await ReadPositionAsync(ct).ConfigureAwait(false);
             UpdatePeak(v, pos);
             if (v > _detectLevel) signalSeen = true;
-            RaiseMeasured(GridSearchPhase.Line, $"+{_config.LineJumpUm:0.#} µm", v, signalSeen);
+            RaiseMeasured(phase, RowLabel(rowLabel, $"+{_config.LineJumpUm:0.#} µm"), v, signalSeen);
         }
 
-        // Downward sweep: apex − k·step, in absolute coordinates from the captured centre.
+        // Downward sweep: apex − k·step, in absolute coordinates from the row centre.
         for (int k = 1; k <= _config.LineSteps; k++)
         {
             ct.ThrowIfCancellationRequested();
 
             double offsetUm = _config.LineJumpUm - (k * _config.LineStepUm);
             await MoveToPeakOrThrowAsync(
-                WithAxis(_posCentre, axis, centreAxis + jumpMm - (k * stepMm)), "line step", ct).ConfigureAwait(false);
+                WithAxis(rowCentre, axis, centreAxis + jumpMm - (k * stepMm)), "line step", ct).ConfigureAwait(false);
             await SettleAsync(ct).ConfigureAwait(false);
             double v = await SampleAsync(ct).ConfigureAwait(false);
             double[] pos = await ReadPositionAsync(ct).ConfigureAwait(false);
@@ -273,7 +293,7 @@ public sealed class FauGridSearchEngine
             if (signalSeen && (_peakV - v) > _config.DropFraction * (_peakV - _vBase))
             {
                 dipCount++;
-                RaiseMeasured(GridSearchPhase.Line, $"{offsetUm:+0.#;-0.#} µm", v, signalSeen);
+                RaiseMeasured(phase, RowLabel(rowLabel, $"{offsetUm:+0.#;-0.#} µm"), v, signalSeen);
                 if (dipCount >= _config.DropConfirmCount)
                 {
                     _log(LogLevel.Info, $"Grid search: crest passed at line offset {offsetUm:+0.#;-0.#} µm — ending sweep early.");
@@ -283,68 +303,50 @@ public sealed class FauGridSearchEngine
             }
 
             dipCount = 0;
-            RaiseMeasured(GridSearchPhase.Line, $"{offsetUm:+0.#;-0.#} µm", v, signalSeen);
+            RaiseMeasured(phase, RowLabel(rowLabel, $"{offsetUm:+0.#;-0.#} µm"), v, signalSeen);
         }
 
         return signalSeen;
     }
 
+    /// <summary>Prefixes an X-step label with the Y row (Stage 2); returns the X label alone for Stage 1.</summary>
+    private static string RowLabel(string rowLabel, string xLabel)
+        => string.IsNullOrEmpty(rowLabel) ? xLabel : $"{rowLabel} {xLabel}";
+
     /// <summary>
-    /// Stage 2: serpentine XY raster about the captured centre. Returns the pose of the first node
-    /// that clears the detect level (hand-off point), or null if no node did. Tracks the peak so the
-    /// caller can park at the best point on a total miss.
+    /// Stage 2: step Y+ row by row from the captured centre (never −Y) and run an X line scan
+    /// (Stage-1 params) at each row. Returns the peak pose of the first row that clears the detect
+    /// level (hand-off point), or null if no row did. The peak tracker keeps the best point so the
+    /// caller can park there on a total miss.
     /// </summary>
     private async Task<double[]?> GridSearchAsync(CancellationToken ct)
     {
-        int ax = _config.GridXAxisIndex, ay = _config.GridYAxisIndex;
-        double stepMm = _config.GridStepUm / 1000.0;
-        double cx = _posCentre[ax], cy = _posCentre[ay];
+        int rows = _config.GridYRows;
+        int ay = _config.GridYAxisIndex;
+        double yStepMm = _config.GridStepUm / 1000.0;
+        double cy = _posCentre[ay];
 
-        int n = (int)Math.Floor(_config.GridExtentUm / _config.GridStepUm);
-        int perAxis = (2 * n) + 1;
-        long totalNodes = (long)perAxis * perAxis;
+        // Bounded-loop guard (Power of 10 Rule 2): rows × (apex + LineSteps) must stay under the cap.
+        long totalNodes = (long)rows * (_config.LineSteps + 1);
         if (totalNodes > _config.MaxGridNodes)
             throw new InvalidOperationException(
-                $"Grid {perAxis}×{perAxis} = {totalNodes} nodes exceeds the {_config.MaxGridNodes}-node cap — " +
-                "increase GridStepUm or reduce GridExtentUm.");
+                $"Stage 2 {rows} Y rows × {_config.LineSteps + 1} X samples = {totalNodes} nodes exceeds the " +
+                $"{_config.MaxGridNodes}-node cap — reduce Y rows / line steps or raise the cap.");
 
         _log(LogLevel.Info,
-            $"Grid search Stage 2: {perAxis}×{perAxis} raster, {_config.GridStepUm:0.#} µm pitch, ±{_config.GridExtentUm:0.#} µm ({totalNodes} nodes).");
+            $"Grid search Stage 2: {rows} Y+ rows at {_config.GridStepUm:0.#} µm pitch, X line scan each row.");
 
-        // Serpentine raster: rows along Y, columns along X, flipping column direction each row.
-        for (int iy = -n; iy <= n; iy++)
+        for (int iy = 0; iy < rows; iy++)
         {
             ct.ThrowIfCancellationRequested();
-            bool forward = (iy + n) % 2 == 0;
 
-            for (int col = 0; col < perAxis; col++)
+            double yUm = iy * _config.GridStepUm;
+            double[] rowCentre = WithAxis(_posCentre, ay, cy + (iy * yStepMm));
+            bool seen = await LineSearchAsync(rowCentre, GridSearchPhase.Grid, $"Y+{yUm:0.#}µm", ct).ConfigureAwait(false);
+            if (seen)
             {
-                ct.ThrowIfCancellationRequested();
-                int ix = forward ? (-n + col) : (n - col);
-
-                double[] target = WithAxis(WithAxis(_posCentre, ax, cx + (ix * stepMm)), ay, cy + (iy * stepMm));
-                var move = await MoveAbsoluteAsync(target, ct).ConfigureAwait(false);
-                if (!move.IsSuccess)
-                {
-                    // A plain motion failure skips the node (matches GridScanStrategy); cancel surfaces above.
-                    ct.ThrowIfCancellationRequested();
-                    _log(LogLevel.Warning, $"Grid search: move to node ({ix},{iy}) failed — skipping ({move.Message}).");
-                    continue;
-                }
-
-                await SettleAsync(ct).ConfigureAwait(false);
-                double v = await SampleAsync(ct).ConfigureAwait(false);
-                double[] pos = await ReadPositionAsync(ct).ConfigureAwait(false);
-                UpdatePeak(v, pos);
-
-                bool hit = v > _detectLevel;
-                RaiseMeasured(GridSearchPhase.Grid, $"({ix},{iy})", v, hit);
-
-                if (hit)
-                {
-                    _log(LogLevel.Info, $"Grid search: signal at node ({ix},{iy}) = {v:F6} V — handing off to hill climb.");
-                    return pos;
-                }
+                _log(LogLevel.Info, $"Grid search: signal in the Y+{yUm:0.#} µm row = {_peakV:F6} V — handing off to hill climb.");
+                return _posPeak;
             }
         }
 

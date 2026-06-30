@@ -1,0 +1,153 @@
+<UserControl x:Class="FAAM.UI.Views.FindFirstLightSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <Style TargetType="TextBlock" x:Key="FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,10,0" />
+        </Style>
+        <Style TargetType="TextBlock" x:Key="Hint">
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="12,0,0,8" />
+        </Style>
+        <Style TargetType="TextBlock" x:Key="SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,16,0,8" />
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Width" Value="120" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
+        <StackPanel>
+            <TextBlock Text="Find First Light — post-FAU grid search" Foreground="{StaticResource Text}"
+                       FontSize="15" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBlock Text="After FAU pre-align, search hex-right XY for the SiPhOG signal, then hand off to hill climb."
+                       Foreground="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,0,0,8" />
+
+            <CheckBox Content="Enable Find First Light (run the search after FAU pre-align)"
+                      Foreground="{StaticResource Text}" FontWeight="SemiBold" Margin="0,4,0,0"
+                      IsChecked="{Binding Enabled}" />
+
+            <!-- ===== Stage 1: X line search ===== -->
+            <TextBlock Text="Stage 1 — X line search" Style="{StaticResource SectionHeader}" />
+            <CheckBox Content="Enable Stage 1" Foreground="{StaticResource Text}" Margin="0,0,0,8"
+                      IsChecked="{Binding Stage1Enabled}" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Line jump (µm)" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding LineJumpUm}" />
+                <TextBlock Grid.Row="0" Grid.Column="2" Text="initial +X excursion (apex) before the down-sweep" Style="{StaticResource Hint}" />
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Line step (µm)" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding LineStepUm}" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="−X sweep step size" Style="{StaticResource Hint}" />
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Line steps" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding LineSteps}" />
+                <TextBlock Grid.Row="2" Grid.Column="2" Text="number of −X steps after the apex" Style="{StaticResource Hint}" />
+            </Grid>
+
+            <!-- ===== Stage 2: Y+ line-scan fallback ===== -->
+            <TextBlock Text="Stage 2 — Y+ line scan" Style="{StaticResource SectionHeader}" />
+            <CheckBox Content="Enable Stage 2 (runs only when Stage 1 finds nothing)"
+                      Foreground="{StaticResource Text}" Margin="0,0,0,4"
+                      IsChecked="{Binding Stage2Enabled}" />
+            <TextBlock Text="Steps Y+ only; runs the Stage-1 X line scan at each row (move +X to apex, step down −X)."
+                       Foreground="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,0,0,8" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Y rows" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding GridYRows}" />
+                <TextBlock Grid.Row="0" Grid.Column="2" Text="how many Y+ rows to test (centre upward only)" Style="{StaticResource Hint}" />
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Y step (µm)" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding GridStepUm}" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="Y+ pitch between rows (each row runs an X line scan)" Style="{StaticResource Hint}" />
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Max grid nodes" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding MaxGridNodes}" />
+                <TextBlock Grid.Row="2" Grid.Column="2" Text="runaway-sweep cap: Y rows × (line steps + 1)" Style="{StaticResource Hint}" />
+            </Grid>
+
+            <!-- ===== Detection (shared) ===== -->
+            <TextBlock Text="Detection (shared by both stages)" Style="{StaticResource SectionHeader}" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Detect Δ (V)" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding DetectDeltaV}" />
+                <TextBlock Grid.Row="0" Grid.Column="2" Text="rise over baseline that counts as &quot;signal seen&quot;" Style="{StaticResource Hint}" />
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Drop fraction" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding DropFraction}" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="Stage-1 past-crest early-exit drop (0..1)" Style="{StaticResource Hint}" />
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Drop confirm" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DropConfirmCount}" />
+                <TextBlock Grid.Row="2" Grid.Column="2" Text="consecutive past-crest reads to confirm early exit" Style="{StaticResource Hint}" />
+            </Grid>
+
+            <!-- ===== Hand-off chain ===== -->
+            <TextBlock Text="Hand-off chain (after grid search finds signal)" Style="{StaticResource SectionHeader}" />
+            <CheckBox Content="Run hill climb after grid search" Foreground="{StaticResource Text}" Margin="0,0,0,4"
+                      IsChecked="{Binding HillClimbEnabled}" />
+            <CheckBox Content="Run Auto-W maximizer after hill climb" Foreground="{StaticResource Text}" Margin="0,0,0,8"
+                      IsChecked="{Binding AutoWEnabled}" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="SLED settle (ms)" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Column="1" Text="{Binding AutoSledWaitMs}" />
+                <TextBlock Grid.Column="2" Text="wait after the hill climber switches the SLED to 110 mA, before continuing the climb" Style="{StaticResource Hint}" />
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                <Button Content="Save" Width="90" Height="30" Command="{Binding SaveCommand}" />
+                <Button Content="Reload" Width="90" Height="30" Margin="8,0,0,0" Command="{Binding ReloadCommand}" />
+                <TextBlock Text="{Binding Status}" Foreground="{StaticResource Subtle}"
+                           VerticalAlignment="Center" Margin="14,0,0,0" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -292,6 +292,15 @@ public static class OpCatalog
             {
                 new ParamSpec("dataset", "Data set name", ParamKind.Text, "signals"),
             }),
+        // Finalises the DUT record this run opened (the bookend to DUT Entry): stamps the
+        // verdict, persists the record, and detaches it so later dut.* steps skip and the
+        // program's own end-of-run close doesn't double-record. A no-op if no DUT is open.
+        // Handled by WorkflowRunner (dut.close).
+        new("dut.close", "DUT Close", "DUT", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("verdict", "Verdict (Pass / Fail / Aborted)", ParamKind.Text, "Pass"),
+            }),
     };
 
     private static readonly Dictionary<string, OpSpec> ByKey =

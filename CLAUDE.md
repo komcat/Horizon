@@ -109,12 +109,18 @@ defines its own program/recipe/position formats.
   `IProcessService.SetOperator`). Beyond the program-driven path, an **interactive DUT
   session** (`BeginDutRun`/`RecordDutValue`/`EndDutRun`) brackets operator-driven
   processes that don't execute a `WorkflowProgram` (FAAM's hand-clicked Run page).
-- **Program history (SQLite)** — `ProgramHistoryDb` writes a *machine-global*
-  `%APPDATA%\Horizon\history.db` (`Microsoft.Data.Sqlite`): one operator-stamped
-  snapshot per `SaveProgram`, plus normalized `block_revision` / `block_param` tables
-  keyed by the block UID. `ProgramDiff` diffs two revisions; `IProcessService.QueryHistory`
-  queries saved params by UID / key / device / operator. Programs themselves stay
-  `.hwf` files. See `docs/program-history-sqlite-design.md`.
+- **Program history / version repository (SQLite)** — `ProgramHistoryDb` writes a
+  *machine-global* `%APPDATA%\Horizon\history.db` (`Microsoft.Data.Sqlite`): one
+  operator-stamped, numbered snapshot per **commit**, plus normalized `block_revision` /
+  `block_param` tables keyed by the block UID. **Save vs Commit is split (git-style)**:
+  `SaveProgram` / `SaveDeck` write the working `.hwf` / `.hwd` only; `CommitProgram` /
+  `CommitDeck` save *and* record a new version with an optional **note** (the only path
+  that bumps `vN`). `RestoreProgramVersion` / `RestoreDeckVersion` (**checkout**) write a
+  stored snapshot back as the working copy without adding a version. `ProgramDiff` /
+  `DeckDiff` diff two revisions; `IProcessService.QueryHistory` queries saved params by
+  UID / key / device / operator. The FAAM **Repository** page is the browse/checkout UI
+  (Commit lives on each editor's toolbar). Decks version the same way (keyed by deck
+  UID). See `docs/program-history-sqlite-design.md` + `docs/version-repository-design.md`.
 - Operator identity / login lives in Layer 3; Layer 2 only *receives* an
   `OperatorContext`. `users.json` (operator directory) + `AppSettings.StationId` are
   machine-global (`Horizon.Common`). See `docs/product-and-traceability-design.md`.
@@ -319,6 +325,7 @@ write code that won't trip them:
 - Product encapsulation + operator login + DUT traceability: `docs/product-and-traceability-design.md`.
 - Gantt timeline editor + `flow.parallel`: `docs/timeline-sequence-editor-design.md`.
 - Program history → SQLite: `docs/program-history-sqlite-design.md`.
+- Program / deck version repository (commit notes + checkout): `docs/version-repository-design.md`.
 - Vision Profile page (per-position vision recipes): `docs/vision-profile-design.md`.
 - Run-page utility-app launcher (phone-style springboard + L2→L3 app facet): `docs/utility-app-launcher-design.md`.
 - Engineer command help (palette help panel + `OpCatalogHelp` authoring): `docs/engineer-command-help.md`.

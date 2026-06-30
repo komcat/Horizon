@@ -25,6 +25,8 @@ public sealed class DeckEditorViewModel : ObservableObject
     private string _deckUid = NewDeckId();
     private string _deckName = "New Deck";
     private string? _selectedDeck;
+    private string _commitNote = string.Empty;
+    private string _currentVersionText = "—";
     private string _status = "—";
     private bool _isRunning;
     private bool _isAwaiting;
@@ -43,6 +45,7 @@ public sealed class DeckEditorViewModel : ObservableObject
 
         NewCommand = new RelayCommand(NewDeck, () => !_isRunning);
         SaveCommand = new RelayCommand(SaveDeck, () => !_isRunning);
+        CommitCommand = new RelayCommand(CommitDeck, () => !_isRunning);
         DeleteCommand = new RelayCommand(DeleteDeck, () => !_isRunning && !string.IsNullOrWhiteSpace(_selectedDeck));
         AddProgramCommand = new RelayCommand(AddProgram, () => !_isRunning);
         RunCommand = new AsyncRelayCommand(RunAsync, () => !_isRunning && Entries.Count > 0);
@@ -59,8 +62,20 @@ public sealed class DeckEditorViewModel : ObservableObject
 
     public string DeckName { get => _deckName; set { if (SetField(ref _deckName, value)) MarkDirty(); } }
 
+    /// <summary>
+    /// Optional commit note recorded with the next save (the version repository shows it
+    /// on the revision). Cleared after each successful save. Blank = no note.
+    /// </summary>
+    public string CommitNote { get => _commitNote; set => SetField(ref _commitNote, value); }
+
     /// <summary>Stable UID of the deck being edited (for history / diff / query).</summary>
     public string DeckUid => _deckUid;
+
+    /// <summary>
+    /// The loaded deck's current committed version, e.g. <c>v10</c> — or
+    /// <c>uncommitted</c> when it has no committed revision yet. Shown next to the name.
+    /// </summary>
+    public string CurrentVersionText { get => _currentVersionText; private set => SetField(ref _currentVersionText, value); }
 
     /// <summary>True when the editor has unsaved changes vs the last save / load.</summary>
     public bool IsDirty { get => _isDirty; private set => SetField(ref _isDirty, value); }
@@ -105,6 +120,7 @@ public sealed class DeckEditorViewModel : ObservableObject
             if (!SetField(ref _isRunning, value)) return;
             NewCommand.RaiseCanExecuteChanged();
             SaveCommand.RaiseCanExecuteChanged();
+            CommitCommand.RaiseCanExecuteChanged();
             DeleteCommand.RaiseCanExecuteChanged();
             AddProgramCommand.RaiseCanExecuteChanged();
             RunCommand.RaiseCanExecuteChanged();
@@ -123,6 +139,7 @@ public sealed class DeckEditorViewModel : ObservableObject
 
     public RelayCommand NewCommand { get; }
     public RelayCommand SaveCommand { get; }
+    public RelayCommand CommitCommand { get; }
     public RelayCommand DeleteCommand { get; }
     public RelayCommand AddProgramCommand { get; }
     public AsyncRelayCommand RunCommand { get; }
@@ -135,6 +152,7 @@ public sealed class DeckEditorViewModel : ObservableObject
     {
         RefreshPrograms();
         RefreshDecks();
+        RefreshVersionText();
         if (!_subscribed)
         {
             _host.Process.DeckStepEvent += OnDeckStep;
@@ -189,6 +207,7 @@ public sealed class DeckEditorViewModel : ObservableObject
         RunCommand.RaiseCanExecuteChanged();
         _suppressDirty = false;
         IsDirty = false;
+        RefreshVersionText();
         Status = "New deck.";
     }
 
@@ -266,6 +285,28 @@ public sealed class DeckEditorViewModel : ObservableObject
         }).ToList(),
     };
 
+    /// <summary>
+    /// Loads a deck by name into the editor (always reloads, even if it's already the
+    /// selected one — so the Load window can be used to discard edits). Used by the
+    /// custom Load picker.
+    /// </summary>
+    public void LoadDeckByName(string name)
+    {
+        if (_isRunning) { Status = "Stop the run before loading."; return; }
+        if (string.IsNullOrWhiteSpace(name)) return;
+        _selectedDeck = name;
+        OnPropertyChanged(nameof(SelectedDeck));
+        DeleteCommand.RaiseCanExecuteChanged();
+        LoadDeck(name);
+    }
+
+    /// <summary>Refreshes <see cref="CurrentVersionText"/> from the loaded deck's latest committed revision.</summary>
+    private void RefreshVersionText()
+    {
+        var latest = string.IsNullOrEmpty(_deckUid) ? null : _host.Process.GetDeckHistory(_deckUid)?.Latest;
+        CurrentVersionText = latest != null ? $"v{latest.Version}" : "uncommitted";
+    }
+
     private void LoadDeck(string name)
     {
         var result = _host.Process.LoadDeck(name);
@@ -295,27 +336,59 @@ public sealed class DeckEditorViewModel : ObservableObject
         RunCommand.RaiseCanExecuteChanged();
         _suppressDirty = false;
         IsDirty = false;
+        RefreshVersionText();
         Status = $"Loaded '{name}' — {Entries.Count} program(s).";
     }
 
+    /// <summary>Save writes the working <c>.hwd</c> only — it does not create a version (that's Commit).</summary>
     private void SaveDeck()
     {
-        if (string.IsNullOrWhiteSpace(DeckName)) { Status = "Deck name is required."; return; }
-        if (Entries.Any(r => string.IsNullOrWhiteSpace(r.Program)))
-        {
-            Status = "Every row needs a program selected.";
-            return;
-        }
+        if (!ValidateForSave()) return;
 
         var result = _host.Process.SaveDeck(BuildDeck());
         if (!result.IsSuccess) { Status = result.Message; return; }
 
+        AfterPersisted();
+        Status = $"Saved '{DeckName.Trim()}'.";
+    }
+
+    /// <summary>
+    /// Commit saves the working deck <i>and</i> records a new numbered version (with the
+    /// optional <see cref="CommitNote"/>) in the version repository; the note is cleared after.
+    /// </summary>
+    private void CommitDeck()
+    {
+        if (!ValidateForSave()) return;
+
+        var result = _host.Process.CommitDeck(BuildDeck(), CommitNote);
+        if (!result.IsSuccess) { Status = result.Message; return; }
+
+        CommitNote = string.Empty;
+        AfterPersisted();
+        Status = $"Committed '{DeckName.Trim()}'.";
+    }
+
+    /// <summary>Shared pre-save validation (name + every row has a program). Sets <see cref="Status"/> on failure.</summary>
+    private bool ValidateForSave()
+    {
+        if (string.IsNullOrWhiteSpace(DeckName)) { Status = "Deck name is required."; return false; }
+        if (Entries.Any(r => string.IsNullOrWhiteSpace(r.Program)))
+        {
+            Status = "Every row needs a program selected.";
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>Refreshes the deck list + selection and clears the dirty flag after a save/commit.</summary>
+    private void AfterPersisted()
+    {
         RefreshDecks();
         _selectedDeck = DeckName.Trim();
         OnPropertyChanged(nameof(SelectedDeck));
         DeleteCommand.RaiseCanExecuteChanged();
         IsDirty = false;
-        Status = $"Saved '{DeckName.Trim()}'.";
+        RefreshVersionText();   // a commit bumps the version; a plain save leaves it
     }
 
     /// <summary>
@@ -363,6 +436,7 @@ public sealed class DeckEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedDeck));
         DeleteCommand.RaiseCanExecuteChanged();
         IsDirty = false;
+        RefreshVersionText();   // a fresh independent deck — uncommitted until first commit
         Status = $"Saved as '{newName}'.";
         return true;
     }

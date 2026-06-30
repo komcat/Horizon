@@ -1,5 +1,6 @@
 using Horizon.Common;
 using Horizon.Engine;
+using Horizon.Workflow.Calibration;
 using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Recipe;
@@ -28,6 +29,7 @@ public sealed class ProcessService : IProcessService
     private DutStore? _dut;              // null when no product is active
     private readonly ProgramHistoryDb _history = new();   // machine-global audit store (history.db)
     private readonly DeviceLinkStore _deviceLinks = new();   // machine-global, not per-product
+    private readonly CameraNeedleCalibrationStore _cameraNeedle = new();   // machine-global camera->needle calibration
     private PauseController? _pause;     // non-null only while a program runs
     private OperatorContext? _operator;  // current operator, stamped onto DUT runs
     private (DutRecord Record, DutRun Run)? _interactiveDut;   // open operator-driven DUT run
@@ -587,27 +589,60 @@ public sealed class ProcessService : IProcessService
         if (_programs == null)
             return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
 
+        // Save writes the working file only — it does NOT create a version. A version is
+        // created explicitly via CommitProgram (git-style: working copy vs commits).
         _programs.Save(program);
-        Log(LogLevel.Info, $"Program saved: {program.Name}");
+        Log(LogLevel.Info, $"Program saved (working copy): {program.Name}");
         WarnMissingPositions(program);
+        return Result.Ok();
+    }
 
-        // Record an operator-stamped revision for history / traceability.
+    public Result CommitProgram(WorkflowProgram program, string? note)
+    {
+        // Commit = save the working file, then record an operator-stamped, numbered
+        // revision (with the optional note) into the version repository.
+        var saved = SaveProgram(program);
+        if (!saved.IsSuccess)
+            return saved;
+
         try
         {
             var product = _products.ActiveProduct;
             if (product != null)
             {
-                var version = _history.Append(product, program, _operator);
+                var version = _history.Append(product, program, _operator, NormalizeNote(note));
                 Log(LogLevel.Info,
-                    $"History: {program.Name} v{version.Version}" +
-                    (string.IsNullOrEmpty(version.OperatorName) ? "" : $" by {version.OperatorName}"));
+                    $"Committed: {program.Name} v{version.Version}" +
+                    (string.IsNullOrEmpty(version.OperatorName) ? "" : $" by {version.OperatorName}") +
+                    (string.IsNullOrEmpty(version.Note) ? "" : $" — \"{version.Note}\""));
             }
         }
         catch (Exception ex)
         {
-            Log(LogLevel.Warning, $"Program history not recorded for '{program.Name}': {ex.Message}");
+            Log(LogLevel.Warning, $"Commit not recorded for '{program.Name}': {ex.Message}");
         }
         return Result.Ok();
+    }
+
+    public Result RestoreProgramVersion(string program, int version)
+    {
+        if (_programs == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        var product = _products.ActiveProduct;
+        if (product == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        var snapshot = _history.LoadVersion(product, program, version);
+        if (snapshot == null)
+            return Result.Fail(ErrorCode.FileNotFound, $"Version v{version} of program '{program}' not found in history.");
+
+        // Checkout: set the working file to the chosen version's content. It does NOT
+        // create a new version — the operator commits afterwards if they want to keep it.
+        var saved = SaveProgram(snapshot.Snapshot);
+        if (saved.IsSuccess)
+            Log(LogLevel.Info, $"Checked out v{version} of program '{program}' into the working copy.");
+        return saved;
     }
 
     public ProgramHistory? GetProgramHistory(string name)
@@ -615,6 +650,10 @@ public sealed class ProcessService : IProcessService
         var product = _products.ActiveProduct;
         return product == null ? null : _history.Load(product, name);
     }
+
+    /// <summary>Trims a commit note to null when blank (so the DB stores NULL, not an empty string).</summary>
+    private static string? NormalizeNote(string? note)
+        => string.IsNullOrWhiteSpace(note) ? null : note.Trim();
 
     public IReadOnlyList<HistoryRow> QueryHistory(HistoryQuery query) => _history.Query(query);
 
@@ -689,6 +728,7 @@ public sealed class ProcessService : IProcessService
             // dut.promptSerial opens the DUT record mid-run into _runDut, which the
             // finally block persists with the run's verdict.
             (s, c) => SetRunDutSerial(s, program.Name, c),
+            CloseRunDut,   // dut.close finalises + persists the DUT mid-run
             pause,
             e => StepEvent?.Invoke(e),
             Log);
@@ -758,6 +798,40 @@ public sealed class ProcessService : IProcessService
         if (begun == null)
             return Result.Fail(ErrorCode.OperationFailed, "Could not open the DUT record.");
         _runDut = begun;
+        ctx.DutIsFallback = false;
+        return Result.Ok();
+    }
+
+    /// <summary>
+    /// Back-end for the <c>dut.close</c> step: finalises the DUT this run <em>owns</em>
+    /// (<see cref="_runDut"/> — an up-front serial or a <c>dut.promptSerial</c> step) with
+    /// <paramref name="verdict"/>, persists the record, and detaches it from
+    /// <paramref name="ctx"/> so later <c>dut.*</c> steps skip and the program's own
+    /// end-of-run close (the <c>RunAsync</c> finally) doesn't double-record. An open
+    /// operator session (<see cref="_interactiveDut"/>) keeps its own lifecycle — its
+    /// Pass/Fail belongs to the Run page — so a fallback DUT is detached, not ended.
+    /// No-op when no DUT is attached.
+    /// </summary>
+    private Result CloseRunDut(DutVerdict verdict, WorkflowContext ctx)
+    {
+        if (ctx.Dut == null) return Result.Ok();
+
+        if (_runDut != null && ReferenceEquals(ctx.Dut, _runDut.Value.Run))
+        {
+            EndDut(_runDut, verdict);   // adds the run to the record + persists
+            _runDut = null;
+        }
+        else
+        {
+            // An adopted operator session (or sticky-serial fallback the Run page owns):
+            // persist its entries so far, but leave the session open for its own Pass/Fail.
+            if (_interactiveDut != null && ReferenceEquals(ctx.Dut, _interactiveDut.Value.Run))
+                TrySaveDut(_interactiveDut.Value.Record, "dut.close (session left open)");
+            Log(LogLevel.Info, $"dut.close: DUT {ctx.DutSerial} is operator-owned — detached, not ended.");
+        }
+
+        ctx.Dut = null;
+        ctx.DutSerial = null;
         ctx.DutIsFallback = false;
         return Result.Ok();
     }
@@ -1032,6 +1106,46 @@ public sealed class ProcessService : IProcessService
         return await routine.RunAsync(options, ct).ConfigureAwait(false);
     }
 
+    // --- Calibration: camera <-> needle ---
+
+    public CameraNeedleCalibrationData GetCameraNeedleCalibration() => _cameraNeedle.Current;
+
+    public Task<Result<CameraNeedleResult>> RunCameraNeedleCalibrationAsync(CancellationToken ct = default)
+        => RunCameraNeedleCoreAsync(OperatorPrompt, ct);
+
+    public Task<Result<CameraNeedleResult>> RunCameraNeedleCalibrationAsync(
+        IOperatorPrompt prompt, CancellationToken ct = default)
+        => RunCameraNeedleCoreAsync(prompt, ct);
+
+    private async Task<Result<CameraNeedleResult>> RunCameraNeedleCoreAsync(
+        IOperatorPrompt? prompt, CancellationToken ct)
+    {
+        var cfg = _cameraNeedle.Current;
+        var options = new CameraNeedleOptions(
+            cfg.GantryDevice, cfg.DispenserSlide, cfg.DwellMs, cfg.LiftoffMm, cfg.SlowZVelocity,
+            cfg.CalPosition, cfg.VcamneedleX, cfg.VcamneedleY);
+
+        var routine = new CameraNeedleCalibrationRoutine(_engine, prompt, Log);
+        Log(LogLevel.Info, $"Camera-needle calibration started: gantry '{cfg.GantryDevice}', dispenser '{cfg.DispenserSlide}'.");
+
+        var result = await routine.RunAsync(options, ct).ConfigureAwait(false);
+        if (result.IsSuccess)
+        {
+            var r = result.Value;
+            _cameraNeedle.Update(cfg with
+            {
+                CalPosition = r.CalPosition,
+                VcamneedleX = r.VcamneedleX,
+                VcamneedleY = r.VcamneedleY,
+                FocusToNeedleZmm = r.FocusToNeedleZmm,
+                SavedBy = _operator?.DisplayName,
+                SavedAt = DateTimeOffset.Now.ToString("o"),
+            });
+            Log(LogLevel.Info, "Camera-needle calibration saved.");
+        }
+        return result;
+    }
+
     // --- Recipes ---
 
     public IReadOnlyList<string> ListRecipes()
@@ -1197,27 +1311,77 @@ public sealed class ProcessService : IProcessService
         if (isNew && existing.Count >= MaxDecks)
             return Result.Fail(ErrorCode.OperationFailed, $"Deck limit ({MaxDecks}) reached — delete one first.");
 
+        // Save writes the working file (and activates the deck) only — it does NOT create
+        // a version. A version is created explicitly via CommitDeck.
         _decks.Save(deck);
         _decks.SetActive(deck.Name);
-        Log(LogLevel.Info, $"Deck saved: {deck.Name}");
+        Log(LogLevel.Info, $"Deck saved (working copy): {deck.Name}");
+        return Result.Ok();
+    }
 
-        // Record an operator-stamped revision for history / traceability (UID-keyed).
+    public Result CommitDeck(WorkflowDeck deck, string? note)
+    {
+        // Commit = save the working deck, then record an operator-stamped, numbered
+        // revision (UID-keyed, with the optional note) into the version repository.
+        var saved = SaveDeck(deck);
+        if (!saved.IsSuccess)
+            return saved;
+
         try
         {
             var product = _products.ActiveProduct;
             if (product != null && !string.IsNullOrEmpty(deck.Uid))
             {
-                var version = _history.AppendDeck(product, deck, _operator);
+                var version = _history.AppendDeck(product, deck, _operator, NormalizeNote(note));
                 Log(LogLevel.Info,
-                    $"Deck history: {deck.Name} v{version.Version}" +
-                    (string.IsNullOrEmpty(version.OperatorName) ? "" : $" by {version.OperatorName}"));
+                    $"Committed deck: {deck.Name} v{version.Version}" +
+                    (string.IsNullOrEmpty(version.OperatorName) ? "" : $" by {version.OperatorName}") +
+                    (string.IsNullOrEmpty(version.Note) ? "" : $" — \"{version.Note}\""));
             }
         }
         catch (Exception ex)
         {
-            Log(LogLevel.Warning, $"Deck history not recorded for '{deck.Name}': {ex.Message}");
+            Log(LogLevel.Warning, $"Deck commit not recorded for '{deck.Name}': {ex.Message}");
         }
         return Result.Ok();
+    }
+
+    /// <summary>
+    /// Restores a past deck revision (by UID + version) into the working copy: writes the
+    /// stored snapshot back as the current deck and re-activates it. It does NOT create a
+    /// new version — the operator commits afterwards if they want to keep it.
+    /// </summary>
+    public Result RestoreDeckVersion(string deckUid, int version)
+    {
+        if (_decks == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        var product = _products.ActiveProduct;
+        if (product == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (string.IsNullOrEmpty(deckUid))
+            return Result.Fail(ErrorCode.InvalidParameter, "Deck has no UID — it has no version history to restore.");
+
+        var snapshot = _history.LoadDeckVersion(product, deckUid, version);
+        if (snapshot == null)
+            return Result.Fail(ErrorCode.FileNotFound, $"Version v{version} of this deck not found in history.");
+
+        var saved = SaveDeck(snapshot.Snapshot);
+        if (saved.IsSuccess)
+            Log(LogLevel.Info, $"Checked out v{version} of deck '{snapshot.Snapshot.Name}' into the working copy.");
+        return saved;
+    }
+
+    /// <summary>
+    /// The stable UID of a deck by name, read <b>without</b> activating it (unlike
+    /// <see cref="LoadDeck"/>) — so the version repository can look up a deck's history
+    /// while browsing without disturbing the active deck. Null if the deck / product is
+    /// missing or the deck has no UID (legacy).
+    /// </summary>
+    public string? GetDeckUid(string name)
+    {
+        var uid = _decks?.Load(name)?.Uid;
+        return string.IsNullOrEmpty(uid) ? null : uid;
     }
 
     /// <summary>Revision history of a deck by UID (operator + timestamp + snapshot per save), or null.</summary>
@@ -1290,7 +1454,7 @@ public sealed class ProcessService : IProcessService
             Name = newDeckName,
             Entries = deck.Entries.Select(e => e with { Uid = "dge-" + Guid.NewGuid().ToString("N") }).ToList(),
         };
-        var save = SaveDeck(imported);   // also sets active + records history
+        var save = SaveDeck(imported);   // working copy + sets active (untracked until first commit)
         if (!save.IsSuccess) return save;
 
         Log(LogLevel.Info,
@@ -1334,6 +1498,7 @@ public sealed class ProcessService : IProcessService
             _deviceLinks,
             OperatorPrompt,
             (s, c) => SetRunDutSerial(s, deck.Name, c),
+            CloseRunDut,   // dut.close finalises + persists the DUT mid-run
             pause,
             e => StepEvent?.Invoke(e),
             Log);

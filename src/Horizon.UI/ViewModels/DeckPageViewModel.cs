@@ -203,7 +203,9 @@ public sealed class DeckPageViewModel : PageViewModel
         if (string.IsNullOrWhiteSpace(DeckName)) { Status = "Deck name is required."; return; }
 
         var deck = BuildDeck();
-        var result = _host.Process.SaveDeck(deck);
+        // Horizon.UI has no separate Commit UI yet, so Save records a version too
+        // (commit with no note) — preserves this head's prior auto-version behaviour.
+        var result = _host.Process.CommitDeck(deck, null);
         Status = result.IsSuccess ? $"Saved deck '{deck.Name}'." : result.Message;
         if (!result.IsSuccess) return;
 

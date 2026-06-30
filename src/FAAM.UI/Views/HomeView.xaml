@@ -47,6 +47,7 @@
                 <RowDefinition Height="*" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
             <Button Grid.Row="0" Grid.Column="0" Content="RUN"
@@ -59,8 +60,11 @@
                     Style="{StaticResource Tile}" Click="OnVisionProfileClick" />
             <Button Grid.Row="2" Grid.Column="0" Content="Script"
                     Style="{StaticResource Tile}" Click="OnScriptClick" />
-            <Button Grid.Row="2" Grid.Column="1" Content="—"
-                    Style="{StaticResource ReserveTile}" />
+            <Button Grid.Row="2" Grid.Column="1" Content="Calibration"
+                    Style="{StaticResource Tile}" Click="OnCalibrationClick" />
+            <Button Grid.Row="3" Grid.Column="0" Content="Repository"
+                    Style="{StaticResource Tile}" Click="OnRepositoryClick"
+                    ToolTip="Browse program / deck versions and checkout an earlier one" />
         </Grid>
     </Grid>
 </UserControl>

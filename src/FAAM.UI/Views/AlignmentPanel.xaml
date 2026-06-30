@@ -51,7 +51,7 @@
         </Style>
     </UserControl.Resources>
 
-    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}" BorderThickness="2"
+    <Border x:Name="RootBorder" Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}" BorderThickness="2"
             CornerRadius="4" Width="280" VerticalAlignment="Top">
         <StackPanel Margin="10">
             <TextBlock Text="U CORR → FAU PRE-ALIGN" Foreground="{StaticResource Accent}" FontSize="14" FontWeight="Bold"

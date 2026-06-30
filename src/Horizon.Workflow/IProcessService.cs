@@ -1,5 +1,6 @@
 using Horizon.Common;
 using Horizon.Engine;
+using Horizon.Workflow.Calibration;
 using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Recipe;
@@ -196,6 +197,20 @@ public interface IProcessService
     /// </summary>
     Result SaveProgram(WorkflowProgram program);
 
+    /// <summary>
+    /// Commits the program: saves the working file <i>and</i> records a new numbered
+    /// revision in the version repository, with an optional operator <paramref name="note"/>
+    /// (blank → no note). Unlike <see cref="SaveProgram"/>, this is what bumps the version.
+    /// </summary>
+    Result CommitProgram(WorkflowProgram program, string? note);
+
+    /// <summary>
+    /// Checks out a past program revision into the working copy: writes the stored
+    /// snapshot back as the current program. Does <b>not</b> create a new version (commit
+    /// afterwards to keep it). Fails if no product is active or the version is unknown.
+    /// </summary>
+    Result RestoreProgramVersion(string program, int version);
+
     /// <summary>Revision history of a program (operator + timestamp + snapshot per save), or null.</summary>
     ProgramHistory? GetProgramHistory(string name);
 
@@ -253,6 +268,25 @@ public interface IProcessService
     /// </summary>
     Task<Result<FauPreAlignResult>> RunFauPreAlignAsync(FauPreAlignOptions options, IOperatorPrompt prompt, CancellationToken ct = default);
 
+    // --- Calibration (machine-global; camera <-> needle is the first) ---
+
+    /// <summary>The current camera→needle calibration (config + last measured results).</summary>
+    CameraNeedleCalibrationData GetCameraNeedleCalibration();
+
+    /// <summary>
+    /// Runs the camera→needle "dispense-and-look" calibration using the globally-registered
+    /// <see cref="OperatorPrompt"/>. Measures the camera-needle XY offset and the
+    /// focus-to-needle-tip Z, and persists them to the machine-global calibration file.
+    /// </summary>
+    Task<Result<CameraNeedleResult>> RunCameraNeedleCalibrationAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// As <see cref="RunCameraNeedleCalibrationAsync(CancellationToken)"/> but drives the focus /
+    /// needle-touch / center-the-dot confirmations through the supplied non-modal
+    /// <paramref name="prompt"/> (the Calibration page's inline buttons + live camera).
+    /// </summary>
+    Task<Result<CameraNeedleResult>> RunCameraNeedleCalibrationAsync(IOperatorPrompt prompt, CancellationToken ct = default);
+
     // --- Recipes (.hrec scripts, operate on the active product) ---
 
     /// <summary>Recipe names in the active product.</summary>
@@ -300,6 +334,21 @@ public interface IProcessService
     /// <summary>Saves a deck into the active product (refused once the deck limit is reached).</summary>
     Result SaveDeck(WorkflowDeck deck);
 
+    /// <summary>
+    /// Commits the deck: saves the working file (and activates it) <i>and</i> records a
+    /// new numbered revision (UID-keyed) in the version repository, with an optional
+    /// operator <paramref name="note"/>. Unlike <see cref="SaveDeck"/>, this bumps the version.
+    /// </summary>
+    Result CommitDeck(WorkflowDeck deck, string? note);
+
+    /// <summary>
+    /// Checks out a past deck revision (by UID + version) into the working copy: writes
+    /// the stored snapshot back as the current deck and re-activates it. Does <b>not</b>
+    /// create a new version (commit afterwards to keep it). Fails if no product is active
+    /// or the version is unknown.
+    /// </summary>
+    Result RestoreDeckVersion(string deckUid, int version);
+
     /// <summary>Deletes a deck from the active product.</summary>
     Result DeleteDeck(string name);
 
@@ -337,6 +386,13 @@ public interface IProcessService
 
     /// <summary>Releases a deck paused on a manual transition so it advances. No-op when none is waiting.</summary>
     void ActivateNextDeckProgram();
+
+    /// <summary>
+    /// The stable UID of a deck by name, read <b>without</b> activating it (unlike
+    /// <see cref="LoadDeck"/>). For the version repository to look up a deck's history
+    /// while browsing without changing the active deck. Null if missing / legacy UID-less.
+    /// </summary>
+    string? GetDeckUid(string name);
 
     /// <summary>Revision history of a deck by UID (operator + timestamp + snapshot per save), or null.</summary>
     DeckHistory? GetDeckHistory(string deckUid);

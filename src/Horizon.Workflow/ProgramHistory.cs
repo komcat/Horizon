@@ -9,6 +9,8 @@ public sealed record ProgramVersion
     public string? OperatorId { get; init; }
     public string? OperatorName { get; init; }
     public string? StationId { get; init; }
+    /// <summary>Optional operator-entered commit note for this revision (null = none).</summary>
+    public string? Note { get; init; }
     /// <summary>The full program as saved at this revision.</summary>
     public WorkflowProgram Snapshot { get; init; } = new();
 }
