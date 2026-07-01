@@ -405,8 +405,20 @@ public partial class VisionProfileView : UserControl
         if (r.IsSuccess)
         {
             var c = r.Value;
-            _lastFilterCrop = c;
-            _filterBmp = Blit(FilterPreviewImage, _filterBmp, c.Width, c.Height, c.Channels, c.Data);
+            _lastFilterCrop = c;   // overlay keeps the full-frame result (aligned over the live feed)
+
+            // Preview pane: ApplyFilterAsync returns a full-frame image with only the search ROI
+            // populated, so when an ROI is set, crop to it — the filtered region then fills the pane
+            // (Stretch=Uniform) instead of showing tiny inside a mostly-black frame.
+            if (_searchRoi is { } roi)
+            {
+                var cropped = CropBytes(c.Data, c.Width, c.Height, c.Channels, roi, out int cw, out int ch);
+                _filterBmp = Blit(FilterPreviewImage, _filterBmp, cw, ch, c.Channels, cropped);
+            }
+            else
+            {
+                _filterBmp = Blit(FilterPreviewImage, _filterBmp, c.Width, c.Height, c.Channels, c.Data);
+            }
         }
         else { Log($"Filter failed: {r.Message}"); }
     }
@@ -1047,16 +1059,22 @@ public partial class VisionProfileView : UserControl
     private static byte[] CropFrame(CameraFrame f, RoiSpec roi, out int w, out int h, out int channels)
     {
         channels = f.Channels;
-        int x = Math.Clamp(roi.X, 0, Math.Max(0, f.Width - 1));
-        int y = Math.Clamp(roi.Y, 0, Math.Max(0, f.Height - 1));
-        w = Math.Clamp(roi.Width, 1, f.Width - x);
-        h = Math.Clamp(roi.Height, 1, f.Height - y);
+        return CropBytes(f.Data, f.Width, f.Height, channels, roi, out w, out h);
+    }
 
-        int srcStride = f.Width * channels;
+    /// <summary>Copies the (clamped) ROI sub-rect out of a raw pixel buffer into a tight byte array.</summary>
+    private static byte[] CropBytes(byte[] data, int srcW, int srcH, int channels, RoiSpec roi, out int w, out int h)
+    {
+        int x = Math.Clamp(roi.X, 0, Math.Max(0, srcW - 1));
+        int y = Math.Clamp(roi.Y, 0, Math.Max(0, srcH - 1));
+        w = Math.Clamp(roi.Width, 1, srcW - x);
+        h = Math.Clamp(roi.Height, 1, srcH - y);
+
+        int srcStride = srcW * channels;
         int dstStride = w * channels;
         var dst = new byte[dstStride * h];
         for (int row = 0; row < h; row++)
-            Array.Copy(f.Data, (y + row) * srcStride + x * channels, dst, row * dstStride, dstStride);
+            Array.Copy(data, (y + row) * srcStride + x * channels, dst, row * dstStride, dstStride);
         return dst;
     }
 
