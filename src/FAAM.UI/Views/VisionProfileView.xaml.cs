@@ -829,6 +829,10 @@ public partial class VisionProfileView : UserControl
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
+        // Snapshot the camera's live exposure into the UI so the profile records the exact
+        // condition it was tuned under (auto flag + µs); the run-time apply then reproduces it.
+        LoadExposureFromCamera();
+
         var profile = BuildProfile();
         if (string.IsNullOrWhiteSpace(profile.Name)) { Log("Give the profile a name first."); return; }
 

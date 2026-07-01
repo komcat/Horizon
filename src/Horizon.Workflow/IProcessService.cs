@@ -255,6 +255,28 @@ public interface IProcessService
     Task<Result<UCorrectionResult>> RunUCorrectionAsync(UCorrectionOptions options, IOperatorPrompt prompt, CancellationToken ct = default);
 
     /// <summary>
+    /// Measures the vision-based U correction: drives the gantry through the four reference points,
+    /// runs each point's saved vision profile (Line detection → facet angle), and returns the PIC/FAU
+    /// angle averages and the resulting U delta. Applies <b>no</b> move — the caller decides whether
+    /// to apply (via <see cref="ApplyHexUCorrectionAsync"/>) based on the delta magnitude, and falls
+    /// back to the manual correction if a facet isn't detected.
+    /// </summary>
+    Task<Result<VisionUCorrectionResult>> MeasureVisionUCorrectionAsync(VisionUCorrectionOptions options, CancellationToken ct = default);
+
+    /// <summary>
+    /// Applies a vision U correction as a relative U move on the hexapod, with a fail-safe hard limit
+    /// on the rotation magnitude. Near-zero deltas are a no-op.
+    /// </summary>
+    Task<Result> ApplyHexUCorrectionAsync(string hexDevice, double deltaDeg, CancellationToken ct = default);
+
+    /// <summary>
+    /// Raised after a named vision profile runs (auto U-correction, <c>vision.runProfile</c>, etc.)
+    /// so a live front-end can briefly flash the detection on its camera feed. May fire on a
+    /// background thread — marshal to the UI before touching controls.
+    /// </summary>
+    event Action<VisionProfileDetection>? VisionProfileRan;
+
+    /// <summary>
     /// Runs the FAU pre-align teach + apply against the active product: drives the gantry through the
     /// four reference points (Out1·Out2·Fiber1·Fiber2), asks the operator to refine each, computes the
     /// gantry-XY correction toward the target offset, and applies it as a slow relative Y/Z move on the

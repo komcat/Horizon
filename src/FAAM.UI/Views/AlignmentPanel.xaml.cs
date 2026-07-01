@@ -37,7 +37,17 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     private static readonly string[] UOrder = { "P1", "P2", "F1", "F2" };
     private static readonly string[] FauOrder = { "Out1", "Out2", "Fiber1", "Fiber2" };
 
+    // Per-position vision profiles the auto vision U-correction reads the facet angle from
+    // (must match the saved .hvp names — note the P/F separator differs by how they were authored).
+    private const string P1Profile = "P1 Angle";
+    private const string P2Profile = "P2 Angle";
+    private const string F1Profile = "F1_Angle";
+    private const string F2Profile = "F2_Angle";
+
     private enum Phase { None, U, Fau, Grid }
+
+    /// <summary>Outcome of the automatic vision U-correction attempt.</summary>
+    private enum VisionUOutcome { Applied, Fallback, Cancelled }
 
     private EngineHost? _host;
     private readonly Ellipse[] _dots;
@@ -401,6 +411,16 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         bool handoffClimb = false;
         try
         {
+            // Optional automatic vision U-correction: measure the PIC/FAU facet angles and rotate hex U
+            // by the delta. On success skip the manual capture; on any failure fall back to it.
+            if (runU && _host.Settings.Current.FindFirstLight.AutoVisionUCorrection)
+            {
+                var outcome = await TryVisionUCorrectionAsync(cts.Token);
+                if (cts.IsCancellationRequested) return;
+                if (outcome == VisionUOutcome.Applied) runU = false;   // vision handled U — skip manual capture
+                // Fallback → leave runU true so the manual capture flow below runs.
+            }
+
             if (runU)
             {
                 BeginPhase(Phase.U, "Apply U");
@@ -521,6 +541,93 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         if (Dispatcher.CheckAccess()) action();
         else Dispatcher.BeginInvoke(action);
     }
+
+    /// <summary>
+    /// Runs the automatic vision U-correction: measures the PIC/FAU facet angles from their
+    /// per-position vision profiles, then applies the delta on hex U. Policy (from the Engineer
+    /// "Find First Light" tab): ≤ ConfirmDeg applies silently; between ConfirmDeg and MaxDeg asks
+    /// the operator to confirm; above MaxDeg — or if any facet isn't detected — falls back to the
+    /// manual capture correction. Returns whether U was applied, we should fall back, or the run
+    /// was cancelled.
+    /// </summary>
+    private async Task<VisionUOutcome> TryVisionUCorrectionAsync(CancellationToken ct)
+    {
+        if (_host == null) return VisionUOutcome.Fallback;
+
+        _phase = Phase.U;
+        ResetDots();
+        ApplyButton.Content = "Apply U";
+        SetStatus(Phase.U, "Vision U: measuring facet angles…");
+
+        var r = await _host.Process.MeasureVisionUCorrectionAsync(BuildVisionUOptions(), ct);
+        if (ct.IsCancellationRequested) return VisionUOutcome.Cancelled;
+
+        if (!r.IsSuccess)
+        {
+            SetStatus(Phase.U, $"Vision U failed: {r.Message} — manual capture");
+            Log(LogLevel.Warning, $"Vision U-correction failed ({r.Message}); falling back to manual capture.");
+            return VisionUOutcome.Fallback;
+        }
+
+        var v = r.Value;
+        if (!v.AllFound)
+        {
+            SetStatus(Phase.U, $"Vision U: {v.FailedPoint} not detected — manual capture");
+            Log(LogLevel.Warning, $"Vision U-correction: facet not detected at {v.FailedPoint}; falling back to manual capture.");
+            return VisionUOutcome.Fallback;
+        }
+
+        var ffl = _host.Settings.Current.FindFirstLight;
+        double mag = Math.Abs(v.DeltaDeg);
+        Log(LogLevel.Info,
+            $"Vision U: PIC {v.PicAvgDeg:F3}° (P1 {v.P1AngleDeg:F3}, P2 {v.P2AngleDeg:F3}), " +
+            $"FAU {v.FauAvgDeg:F3}° (F1 {v.F1AngleDeg:F3}, F2 {v.F2AngleDeg:F3}) → Δ {v.DeltaDeg:F3}°.");
+
+        if (mag > ffl.AutoVisionUMaxDeg)
+        {
+            SetStatus(Phase.U, $"Vision U Δ {v.DeltaDeg:F3}° > {ffl.AutoVisionUMaxDeg:0.###}° — manual capture");
+            Log(LogLevel.Warning, $"Vision U-correction Δ {v.DeltaDeg:F3}° exceeds fallback limit {ffl.AutoVisionUMaxDeg:0.###}°; using manual capture.");
+            return VisionUOutcome.Fallback;
+        }
+
+        if (mag > ffl.AutoVisionUConfirmDeg)
+        {
+            var answer = MessageBox.Show(
+                Window.GetWindow(this),
+                $"Vision U correction = {v.DeltaDeg:F3}°\n" +
+                $"PIC avg {v.PicAvgDeg:F3}°, FAU avg {v.FauAvgDeg:F3}°\n\n" +
+                "Apply this hex U rotation?",
+                "Confirm U correction", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes)
+            {
+                SetStatus(Phase.U, "Vision U declined — manual capture");
+                Log(LogLevel.Info, "Vision U-correction declined by operator; falling back to manual capture.");
+                return VisionUOutcome.Fallback;
+            }
+        }
+
+        SetStatus(Phase.U, $"Vision U: applying {v.DeltaDeg:F3}°…");
+        var mv = await _host.Process.ApplyHexUCorrectionAsync(HexDevice, v.DeltaDeg, ct);
+        if (ct.IsCancellationRequested) return VisionUOutcome.Cancelled;
+        if (!mv.IsSuccess)
+        {
+            SetStatus(Phase.U, $"Vision U apply failed: {mv.Message} — manual capture");
+            Log(LogLevel.Warning, $"Vision U-correction apply failed ({mv.Message}); falling back to manual capture.");
+            return VisionUOutcome.Fallback;
+        }
+
+        foreach (var dot in _dots) dot.Fill = (Brush)FindResource("Ok");
+        SetStatus(Phase.U, $"Vision U applied {v.DeltaDeg:F3}° (PIC {v.PicAvgDeg:F3}°, FAU {v.FauAvgDeg:F3}°)");
+        Log(LogLevel.Info, $"Vision U-correction applied {v.DeltaDeg:F3}° on {HexDevice}.");
+        return VisionUOutcome.Applied;
+    }
+
+    private VisionUCorrectionOptions BuildVisionUOptions() => new(
+        GantryDevice, HexDevice,
+        UName("P1"), P1Profile,
+        UName("P2"), P2Profile,
+        UName("F1"), F1Profile,
+        UName("F2"), F2Profile);
 
     private UCorrectionOptions BuildUOptions()
     {

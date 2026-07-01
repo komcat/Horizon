@@ -132,6 +132,7 @@ public static class MachineApiCatalog
         new("vision", "hasFrame", "machine.vision.hasFrame(camera) -> bool", "True if a frame is available for the camera."),
         new("vision", "analyze", "machine.vision.analyze(camera) -> {width,height,channels,minGray,meanGray,maxGray}", "Image statistics of the latest frame."),
         new("vision", "blobs", "machine.vision.blobs(camera, min, max) -> count", "Threshold + connected-component blob count."),
+        new("vision", "runProfile", "machine.vision.runProfile(name) -> {found, x, y, angle, length, ...}", "Runs a saved product vision profile against its camera's latest frame; returns found + all result values keyed by name."),
 
         // signal
         new("signal", "read", "machine.signal.read(key) -> number", "Read a unified signal (e.g. smu.PIC.ch1.current)."),

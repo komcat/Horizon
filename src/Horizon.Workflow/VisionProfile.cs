@@ -73,6 +73,13 @@ public sealed record VisionProfile
 }
 
 /// <summary>
+/// Fired after a named vision profile runs (<c>RunVisionProfileByNameAsync</c>) so a live
+/// front-end can flash the detection on its feed. Carries the profile's camera, its name, and
+/// the method-agnostic result (line endpoints / centre live in <see cref="VisionDetectResult.Values"/>).
+/// </summary>
+public sealed record VisionProfileDetection(string CameraId, string ProfileName, VisionDetectResult Result);
+
+/// <summary>
 /// A reference to a taught NCC template. The model (<c>.ncm</c>) and the template
 /// image (<c>.png</c>) live under <c>vision\templates\{Uid}\</c>; retaking the
 /// template mints a new <see cref="Uid"/>. The anchor is template-local (defaults

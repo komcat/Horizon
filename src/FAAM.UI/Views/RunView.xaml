@@ -101,6 +101,16 @@
                         <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center"
                                    Style="{StaticResource CrosshairLine}" />
 
+                        <!-- Vision detection flash — a yellow line drawn over the feed for a
+                             brief moment when a vision profile detects a facet line. Canvas is
+                             centred + sized to the image at draw time (see ShowDetectedLine). -->
+                        <Canvas x:Name="DetectionOverlay" IsHitTestVisible="False"
+                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Line x:Name="DetectedLine" Stroke="#FFFFD500" StrokeThickness="2.5"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Visibility="Collapsed" />
+                        </Canvas>
+
                         <!-- Cursor crosshair — follows the mouse while MoveClick is armed. -->
                         <Grid x:Name="MainCursor" Width="20" Height="20" IsHitTestVisible="False"
                               HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">

@@ -21,6 +21,15 @@ public delegate Task<Result> NamedPositionMover(string device, string position, 
 public delegate Task<Result<double>> SignalReader(string key, CancellationToken ct);
 
 /// <summary>
+/// Runs a saved per-product vision profile by name against the latest cached frame
+/// from the profile's camera, returning the method-agnostic detection result. Supplied
+/// by a Layer 2 host (<c>IProcessService</c>) so <c>machine.vision.runProfile</c> reaches
+/// the active product's profiles. Null in engine-only contexts (the console test host),
+/// where <c>runProfile</c> reports that product vision profiles are unavailable.
+/// </summary>
+public delegate Task<Result<VisionDetectResult>> VisionProfileRunner(string profileName);
+
+/// <summary>
 /// Builds the global <c>machine</c> Lua table and binds its functions straight to
 /// <see cref="IHorizonEngine"/> facet calls — the bridge between a <c>.moon</c>
 /// script and the hardware, modelled on <c>RecipeMethodRegistry</c>.
@@ -42,6 +51,7 @@ internal sealed class MachineApi
     private readonly IHorizonEngine _engine;
     private readonly NamedPositionMover? _mover;
     private readonly SignalReader? _signalReader;
+    private readonly VisionProfileRunner? _visionRunner;
     private readonly IOperatorPrompt? _prompt;
     private readonly Action<string> _log;
     private readonly CancellationToken _ct;
@@ -51,6 +61,7 @@ internal sealed class MachineApi
         IHorizonEngine engine,
         NamedPositionMover? mover,
         SignalReader? signalReader,
+        VisionProfileRunner? visionRunner,
         IOperatorPrompt? prompt,
         Action<string> log,
         CancellationToken ct)
@@ -59,6 +70,7 @@ internal sealed class MachineApi
         _engine = engine;
         _mover = mover;
         _signalReader = signalReader;
+        _visionRunner = visionRunner;
         _prompt = prompt;
         _log = log;
         _ct = ct;
@@ -524,6 +536,26 @@ internal sealed class MachineApi
             int max = (int)ReqNum(a, 2, "vision.blobs");
             var r = Val(_engine.Vision.CountBlobsAsync(id, min, max), $"vision.blobs({id})");
             return DynValue.NewNumber(r.BlobCount);
+        });
+
+        // Runs a saved product vision profile (NCC / circle / line) by name against its
+        // camera's latest frame and returns a table: 'found' (bool) plus every result
+        // value keyed by name (e.g. x, y, angle, length for a line profile).
+        v["runProfile"] = Cb(a =>
+        {
+            string name = ReqStr(a, 0, "vision.runProfile");
+            if (_visionRunner == null)
+                throw new ScriptRuntimeException(
+                    "vision.runProfile needs a Layer 2 host — product vision profiles are unavailable in this context");
+            var r = Block(_visionRunner(name));
+            if (!r.IsSuccess) throw new ScriptRuntimeException($"vision.runProfile({name}) failed: {r.Message}");
+
+            var t = new Table(_script);
+            t["found"] = DynValue.NewBoolean(r.Value.Found);
+            foreach (var val in r.Value.Values)
+                t[val.Key] = DynValue.NewNumber(val.Value);
+            _log($"vision.runProfile({name}) → found={r.Value.Found}");
+            return DynValue.NewTable(t);
         });
 
         return v;

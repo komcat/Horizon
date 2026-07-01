@@ -22,6 +22,11 @@
                   MouseLeftButtonDown="OnSurfaceDown" MouseMove="OnSurfaceMove" MouseLeftButtonUp="OnSurfaceUp"
                   Cursor="Cross">
                 <Image x:Name="FrameImage" Stretch="Uniform" />
+                <!-- Centered yellow crosshair guide lines (non-interactive). -->
+                <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                           Fill="#99FFD500" IsHitTestVisible="False" />
+                <Rectangle Width="1" VerticalAlignment="Stretch" HorizontalAlignment="Center"
+                           Fill="#99FFD500" IsHitTestVisible="False" />
                 <Rectangle x:Name="RoiRect" Visibility="Collapsed"
                            Stroke="{StaticResource Roi}" StrokeThickness="2"
                            HorizontalAlignment="Left" VerticalAlignment="Top"

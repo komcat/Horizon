@@ -5,6 +5,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using FAAM.UI.Siphog;
 using Horizon.Engine;
+using Horizon.Workflow;
 
 namespace FAAM.UI.Views;
 
@@ -41,6 +42,8 @@ public partial class RunView : UserControl
 
     private WriteableBitmap? _zoomBitmap;
     private readonly Queue<string> _logLines = new();
+
+    private DispatcherTimer? _detectionTimer;   // hides the vision-detection flash after a brief moment
 
     private string? _mainCamera;
     private bool _active;
@@ -135,6 +138,7 @@ public partial class RunView : UserControl
         if (!_subscribed)
         {
             _host.Engine.Camera.FrameReady += OnFrameReady;
+            _host.Process.VisionProfileRan += OnVisionProfileRan;   // flash detections on the feed
             _subscribed = true;
         }
 
@@ -159,6 +163,7 @@ public partial class RunView : UserControl
         if (_subscribed)
         {
             _host.Engine.Camera.FrameReady -= OnFrameReady;
+            _host.Process.VisionProfileRan -= OnVisionProfileRan;
             _subscribed = false;
         }
 
@@ -173,6 +178,73 @@ public partial class RunView : UserControl
         }
 
         _active = false;
+    }
+
+    // --- vision detection flash (yellow line over the main feed) ---
+
+    /// <summary>
+    /// Briefly draws the just-detected facet line over the main feed. Only reacts to the camera the
+    /// main feed shows and to Line results (needs x1/y1/x2/y2); other methods (NCC/circle) are ignored.
+    /// The event may arrive on a background thread, so marshal first.
+    /// </summary>
+    private void OnVisionProfileRan(VisionProfileDetection d)
+    {
+        if (!_dispatcher.CheckAccess()) { _dispatcher.BeginInvoke(() => OnVisionProfileRan(d)); return; }
+        if (!_active || _mainCamera == null) return;
+        if (!string.Equals(d.CameraId, _mainCamera, StringComparison.OrdinalIgnoreCase)) return;
+        if (!d.Result.Found) return;
+
+        double? x1 = Value("x1"), y1 = Value("y1"), x2 = Value("x2"), y2 = Value("y2");
+        if (x1 is null || y1 is null || x2 is null || y2 is null) return;   // not a line detection
+        ShowDetectedLine(x1.Value, y1.Value, x2.Value, y2.Value);
+
+        double? Value(string key)
+        {
+            foreach (var v in d.Result.Values)
+                if (string.Equals(v.Key, key, StringComparison.OrdinalIgnoreCase)) return v.Value;
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Maps the source-pixel line endpoints onto the feed's display and shows the yellow overlay,
+    /// then arms the auto-hide timer. Uses the same uniform-scale + centre mapping as MoveClick, so
+    /// the drawn line lines up with what the click maths would report.
+    /// </summary>
+    private void ShowDetectedLine(double sx1, double sy1, double sx2, double sy2)
+    {
+        if (_mainCamera == null || !_bitmaps.TryGetValue(_mainCamera, out var bmp)) return;
+        double srcW = bmp.PixelWidth, srcH = bmp.PixelHeight;
+        double availW = MainImage.ActualWidth, availH = MainImage.ActualHeight;
+        if (srcW <= 0 || srcH <= 0 || availW <= 0 || availH <= 0) return;
+
+        double scale = Math.Min(availW / srcW, availH / srcH);
+        double cx = availW / 2.0, cy = availH / 2.0;
+
+        // Size the overlay to the display box so its coordinates match the mapping below.
+        DetectionOverlay.Width = availW;
+        DetectionOverlay.Height = availH;
+
+        DetectedLine.X1 = cx + (sx1 - srcW / 2.0) * scale;
+        DetectedLine.Y1 = cy + (sy1 - srcH / 2.0) * scale;
+        DetectedLine.X2 = cx + (sx2 - srcW / 2.0) * scale;
+        DetectedLine.Y2 = cy + (sy2 - srcH / 2.0) * scale;
+        DetectedLine.Visibility = Visibility.Visible;
+
+        _detectionTimer ??= CreateDetectionTimer();
+        _detectionTimer.Stop();
+        _detectionTimer.Start();
+    }
+
+    private DispatcherTimer CreateDetectionTimer()
+    {
+        var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+        t.Tick += (_, _) =>
+        {
+            t.Stop();
+            DetectedLine.Visibility = Visibility.Collapsed;
+        };
+        return t;
     }
 
     // --- frame routing ---

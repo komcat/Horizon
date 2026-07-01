@@ -37,6 +37,33 @@
                       Foreground="{StaticResource Text}" FontWeight="SemiBold" Margin="0,4,0,0"
                       IsChecked="{Binding Enabled}" />
 
+            <!-- ===== Automatic vision U-correction (runs before the manual U phase) ===== -->
+            <TextBlock Text="Automatic PIC/FAU vision U-correction" Style="{StaticResource SectionHeader}" />
+            <CheckBox Content="Auto-run vision U-correction on Start correction"
+                      Foreground="{StaticResource Text}" FontWeight="SemiBold" Margin="0,0,0,4"
+                      IsChecked="{Binding AutoVisionUCorrection}" />
+            <TextBlock Text="Measures the PIC/FAU facet angles from their per-position vision profiles and rotates hex U by the delta. If any facet isn't detected, or the delta is too large, it falls back to the manual P1/P2/F1/F2 capture correction."
+                       Foreground="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,0,0,8" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Confirm above (deg)" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding AutoVisionUConfirmDeg}" />
+                <TextBlock Grid.Row="0" Grid.Column="2" Text="above this magnitude, ask the operator to confirm before applying" Style="{StaticResource Hint}" />
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Fallback above (deg)" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding AutoVisionUMaxDeg}" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="above this magnitude, reject the vision result and use manual capture" Style="{StaticResource Hint}" />
+            </Grid>
+
             <!-- ===== Stage 1: X line search ===== -->
             <TextBlock Text="Stage 1 — X line search" Style="{StaticResource SectionHeader}" />
             <CheckBox Content="Enable Stage 1" Foreground="{StaticResource Text}" Margin="0,0,0,8"

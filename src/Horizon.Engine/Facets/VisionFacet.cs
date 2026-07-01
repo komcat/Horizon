@@ -299,7 +299,11 @@ internal sealed class VisionFacet : IVisionFacet, IDisposable
                     double x2 = colEnd[best].D, y2 = rowEnd[best].D;
                     double cx = (x1 + x2) / 2.0, cy = (y1 + y2) / 2.0;
                     double bestLen = Math.Sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+                    // A line has no direction, and HALCON's endpoint order is arbitrary,
+                    // so fold the orientation into Q1 [0,180): horizontal (rightmost) = 0,
+                    // vertical = 90. This keeps near-vertical stable (91 and -89 both ~90).
                     double angle = Math.Atan2(-(y2 - y1), x2 - x1) * 180.0 / Math.PI;
+                    angle = ((angle % 180.0) + 180.0) % 180.0;
                     var values = new[]
                     {
                         new VisionResultValue("x", cx),

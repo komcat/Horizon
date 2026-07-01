@@ -34,6 +34,10 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
     private bool _autoWEnabled;
     private int _autoSledWaitMs = 4000;
 
+    private bool _autoVisionUCorrection;
+    private double _autoVisionUConfirmDeg = 1.0;
+    private double _autoVisionUMaxDeg = 3.0;
+
     private string _status = "—";
 
     public FindFirstLightSettingsViewModel(EngineHost host)
@@ -69,6 +73,11 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
     public bool AutoWEnabled { get => _autoWEnabled; set => SetField(ref _autoWEnabled, value); }
     public int AutoSledWaitMs { get => _autoSledWaitMs; set => SetField(ref _autoSledWaitMs, value); }
 
+    // --- Automatic vision U-correction (before the U phase of Start correction) ---
+    public bool AutoVisionUCorrection { get => _autoVisionUCorrection; set => SetField(ref _autoVisionUCorrection, value); }
+    public double AutoVisionUConfirmDeg { get => _autoVisionUConfirmDeg; set => SetField(ref _autoVisionUConfirmDeg, value); }
+    public double AutoVisionUMaxDeg { get => _autoVisionUMaxDeg; set => SetField(ref _autoVisionUMaxDeg, value); }
+
     public string Status { get => _status; private set => SetField(ref _status, value); }
 
     public RelayCommand SaveCommand { get; }
@@ -92,6 +101,9 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
         HillClimbEnabled = s.HillClimbEnabled;
         AutoWEnabled = s.AutoWEnabled;
         AutoSledWaitMs = s.AutoSledWaitMs;
+        AutoVisionUCorrection = s.AutoVisionUCorrection;
+        AutoVisionUConfirmDeg = s.AutoVisionUConfirmDeg;
+        AutoVisionUMaxDeg = s.AutoVisionUMaxDeg;
     }
 
     private FindFirstLightSettings BuildSettings() => new()
@@ -111,6 +123,9 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
         HillClimbEnabled = _hillClimbEnabled,
         AutoWEnabled = _autoWEnabled,
         AutoSledWaitMs = _autoSledWaitMs,
+        AutoVisionUCorrection = _autoVisionUCorrection,
+        AutoVisionUConfirmDeg = _autoVisionUConfirmDeg,
+        AutoVisionUMaxDeg = _autoVisionUMaxDeg,
     };
 
     private void Save()

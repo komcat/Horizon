@@ -21,11 +21,16 @@ second matched-crop panel is still stubbed.
 - **Circle** — threshold → `connection` → `select_shape` by circularity → `smallest_circle`;
   picks the qualifying circle closest to the search centre; reports x/y, radius, score.
   Params: min/max radius, min circularity.
-- **Line** — threshold → largest blob → `smallest_rectangle2` (oriented bbox major axis);
-  reports x/y, endpoints x1/y1/x2/y2, angle, length. Param: min length.
+- **Line** — sub-pixel Canny (`edges_sub_pix`) → keep contours ≥ min length → `fit_line_contour_xld`
+  (tukey) → among the fitted edges pick the one matching **direction + polarity** by the configured
+  **scan order** (first / last along the scan, or closest to the ROI centre); reports x/y, endpoints
+  x1/y1/x2/y2, angle, length. Params: min length, direction, polarity, scan order. The **angle is
+  normalized into Q1 `[0,180)`** (horizontal = 0°, vertical = 90°) — a line has no direction and
+  HALCON's endpoint order is arbitrary, so near-vertical edges no longer flip between +90 and −90.
 
 All three return a method-agnostic `VisionDetectResult` (ordered `VisionResultValue` list +
-crop), so one grid and one `vision.runProfile` step serve every method.
+crop), so one grid, one `vision.runProfile` step, one `machine.vision.runProfile` Lua call and one
+Run-page overlay serve every method.
 
 ## Layering
 
@@ -163,3 +168,37 @@ so recipes branch with `flow.if` on `{captureAs}_found`, mirroring `scan.hexapod
 camera must already be grabbing (e.g. on the Run page). Backed by
 `IProcessService.RunVisionProfileByNameAsync` → the facet's cameraId-based finders
 (latest cached frame).
+
+## Camera exposure captured on Save, replayed on Run
+
+A profile records the camera condition it was tuned under and reproduces it at detection time:
+
+- **Save** (`VisionProfileView.OnSave`) snapshots the camera's live exposure (auto flag + µs)
+  into the profile before writing the `.hvp`, so the file reflects the real condition — not a
+  stale text box.
+- **Run** — before every by-name detection, `ProcessService.RunDetectionAsync` calls
+  `ApplyProfileExposureAsync`: it pushes the profile's exposure to the camera (skips if already
+  matching), waits a configurable **settle delay** (`AppSettings.VisionExposureSettleMs`, default
+  200 ms), then waits for ≥2 fresh `CameraFrame`s (via `FrameReady`) so detection runs on a frame
+  captured under the settled exposure — never a mid-transition one. Best-effort: a failed apply is
+  logged, detection still runs on the cached frame. The explicit-frame (UI page) path is untouched.
+
+## Consumers of a by-name run
+
+`RunVisionProfileByNameAsync` is the single entry every automated caller shares. On success it
+also raises **`IProcessService.VisionProfileRan`** (`VisionProfileDetection(CameraId, ProfileName,
+VisionDetectResult)`) so a live front-end can react without having invoked the detection itself.
+The same `VisionDetectResult` fans out to:
+
+- **`.moon` scripts** — `machine.vision.runProfile(name)` returns a Lua table `{found, x, y, angle,
+  length, …}` (one field per `VisionResultValue`). See `docs/…` / the `.moon` scripting layer.
+- **Auto vision U-correction** — `MeasureVisionUCorrectionAsync` runs the per-position facet
+  profiles (`P1 Angle`/`P2 Angle`/`F1_Angle`/`F2_Angle`), reads each `angle`, and rotates hex U by
+  `PICavg − FAUavg`. Driven by "Start correction" on the Run page; toggled + thresholded on the
+  Engineer **Find First Light** tab (`AutoVisionUCorrection`, confirm/fallback degree limits). See
+  `docs/faam-ui.md`.
+- **Run-page detection flash** — `RunView` subscribes to `VisionProfileRan` and, for a **Line**
+  result on the main-feed camera, draws a **yellow line overlay** over the live feed for ~1.5 s
+  (`DetectionOverlay` canvas + `DetectedLine`). Source→display mapping mirrors MoveClick (uniform
+  min-scale + centre), so the flashed line aligns with the crosshair coordinate system. Other
+  methods (NCC/circle) raise the event but are ignored (no line endpoints).

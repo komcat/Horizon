@@ -91,6 +91,13 @@ public sealed record AppSettings
     public double[] ExposurePresets { get; init; } = { 0, 0, 0, 0 };
 
     /// <summary>
+    /// Settle wait (ms) after a vision profile pushes its saved exposure to the camera,
+    /// before the frame used for detection is grabbed — lets the sensor finish applying
+    /// the change so detection never runs on a mid-transition frame. 0 = no wait.
+    /// </summary>
+    public int VisionExposureSettleMs { get; init; } = 200;
+
+    /// <summary>
     /// Per-point camera exposure (µs) applied before moving to a named reference
     /// point, keyed by the full position name (e.g. <c>FauPre_Out1</c>,
     /// <c>UCorr_P1</c>). Used by the U-correction and FAU pre-align panels' Move-to
@@ -185,6 +192,27 @@ public sealed record FindFirstLightSettings
     /// drops on the current change, so this lets it stabilise first.
     /// </summary>
     public int AutoSledWaitMs { get; init; } = 4000;
+
+    // --- Automatic vision U-correction (runs before the U phase of Start correction) ---
+
+    /// <summary>
+    /// When on, "Start correction" first runs the vision-based U correction (measures the PIC/FAU
+    /// facet line angles from their per-position vision profiles and rotates hex U by the delta),
+    /// falling back to the manual P1/P2/F1/F2 capture flow if any facet isn't detected. Default off.
+    /// </summary>
+    public bool AutoVisionUCorrection { get; init; }
+
+    /// <summary>
+    /// Above this magnitude (deg) the auto vision U correction asks the operator to confirm before
+    /// applying; at or below it, it applies silently.
+    /// </summary>
+    public double AutoVisionUConfirmDeg { get; init; } = 1.0;
+
+    /// <summary>
+    /// Above this magnitude (deg) the auto vision U correction is rejected as untrustworthy and the
+    /// run falls back to the manual capture correction instead of applying.
+    /// </summary>
+    public double AutoVisionUMaxDeg { get; init; } = 3.0;
 }
 
 /// <summary>Saved bounds + maximized state of a window.</summary>

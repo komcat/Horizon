@@ -32,6 +32,7 @@ public sealed class ProcessService : IProcessService
     private readonly ProgramHistoryDb _history = new();   // machine-global audit store (history.db)
     private readonly DeviceLinkStore _deviceLinks = new();   // machine-global, not per-product
     private readonly CameraNeedleCalibrationStore _cameraNeedle = new();   // machine-global camera->needle calibration
+    private readonly AppSettingsStore _appSettings = new();   // machine-global app_settings.json (read-only here)
     private PauseController? _pause;     // non-null only while a program runs
     private OperatorContext? _operator;  // current operator, stamped onto DUT runs
     private (DutRecord Record, DutRun Run)? _interactiveDut;   // open operator-driven DUT run
@@ -498,14 +499,106 @@ public sealed class ProcessService : IProcessService
     /// </summary>
     public IReadOnlyList<SignalDescriptor> DescribeSignals() => _signals.Describe();
 
-    public Task<Result<VisionDetectResult>> RunVisionProfileByNameAsync(string profileName)
+    public event Action<VisionProfileDetection>? VisionProfileRan;
+
+    public async Task<Result<VisionDetectResult>> RunVisionProfileByNameAsync(string profileName)
     {
         if (_visionProfiles == null)
-            return Task.FromResult(Result<VisionDetectResult>.Fail(ErrorCode.OperationFailed, "No active product — load one first."));
+            return Result<VisionDetectResult>.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
         var profile = _visionProfiles.Load(profileName);
         if (profile == null)
-            return Task.FromResult(Result<VisionDetectResult>.Fail(ErrorCode.FileNotFound, $"Vision profile '{profileName}' not found."));
-        return RunDetectionAsync(profile, frame: null, cameraId: profile.CameraId);
+            return Result<VisionDetectResult>.Fail(ErrorCode.FileNotFound, $"Vision profile '{profileName}' not found.");
+
+        var r = await RunDetectionAsync(profile, frame: null, cameraId: profile.CameraId).ConfigureAwait(false);
+        if (r.IsSuccess)
+            VisionProfileRan?.Invoke(new VisionProfileDetection(profile.CameraId, profile.Name, r.Value));
+        return r;
+    }
+
+    /// <summary>
+    /// Measures the vision-based U correction: drives the gantry through the four reference points,
+    /// runs each point's saved vision profile (a Line detection reporting the facet angle), and
+    /// returns the PIC/FAU angle averages + the resulting U delta. Applies <b>no</b> move — the
+    /// caller inspects <see cref="VisionUCorrectionResult"/> and decides whether to apply
+    /// (via <see cref="ApplyHexUCorrectionAsync"/>) or fall back. Stops at the first undetected facet
+    /// (<see cref="VisionUCorrectionResult.AllFound"/> false, <c>FailedPoint</c> set).
+    /// </summary>
+    public async Task<Result<VisionUCorrectionResult>> MeasureVisionUCorrectionAsync(
+        VisionUCorrectionOptions o, CancellationToken ct = default)
+    {
+        if (_visionProfiles == null || _positions == null)
+            return Result<VisionUCorrectionResult>.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        var points = new[]
+        {
+            (o.P1Position, o.P1Profile),
+            (o.P2Position, o.P2Profile),
+            (o.F1Position, o.F1Profile),
+            (o.F2Position, o.F2Profile),
+        };
+        var angles = new double[4];
+        string? failedPoint = null;
+
+        for (int i = 0; i < points.Length; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var (position, profile) = points[i];
+
+            var mv = await MoveToNamedPositionCoreAsync(o.GantryDevice, position, new MoveOverrides(), ct).ConfigureAwait(false);
+            if (!mv.IsSuccess)
+                return Result<VisionUCorrectionResult>.Fail(mv.Error, $"Vision U: move to {position} failed — {mv.Message}");
+
+            if (o.MoveSettleMs > 0)
+                await Task.Delay(o.MoveSettleMs, ct).ConfigureAwait(false);
+
+            var det = await RunVisionProfileByNameAsync(profile).ConfigureAwait(false);
+            if (!det.IsSuccess)
+                return Result<VisionUCorrectionResult>.Fail(det.Error, $"Vision U: profile '{profile}' at {position} failed — {det.Message}");
+
+            var angleVal = det.Value.Found
+                ? det.Value.Values.FirstOrDefault(v => string.Equals(v.Key, "angle", StringComparison.OrdinalIgnoreCase))
+                : null;
+            if (angleVal == null)
+            {
+                // Not detected (or the profile isn't a Line profile) → stop; caller falls back.
+                failedPoint = position;
+                break;
+            }
+            angles[i] = angleVal.Value;
+            Log(LogLevel.Info, $"Vision U: {position} [{profile}] angle = {angles[i]:F3}°");
+        }
+
+        bool allFound = failedPoint == null;
+        double picAvg = (angles[0] + angles[1]) / 2.0;
+        double fauAvg = (angles[2] + angles[3]) / 2.0;
+        double delta = o.Sign * (picAvg - fauAvg);
+
+        return Result<VisionUCorrectionResult>.Ok(new VisionUCorrectionResult(
+            allFound, failedPoint,
+            angles[0], angles[1], angles[2], angles[3],
+            picAvg, fauAvg, delta));
+    }
+
+    /// <summary>Hard cap (deg) on a single applied vision U correction — a fail-safe against a bad measurement.</summary>
+    private const double VisionUHardLimitDeg = 5.0;
+
+    /// <summary>
+    /// Applies a vision U correction as a relative U move on the hexapod. Refuses a rotation larger
+    /// than <see cref="VisionUHardLimitDeg"/> (fail-safe) and treats a near-zero delta as a no-op.
+    /// </summary>
+    public async Task<Result> ApplyHexUCorrectionAsync(string hexDevice, double deltaDeg, CancellationToken ct = default)
+    {
+        if (double.IsNaN(deltaDeg))
+            return Result.Fail(ErrorCode.InvalidParameter, "Vision U: delta is NaN.");
+        if (Math.Abs(deltaDeg) > VisionUHardLimitDeg)
+            return Result.Fail(ErrorCode.InvalidParameter,
+                $"Vision U: correction {deltaDeg:F3}° exceeds the {VisionUHardLimitDeg:F1}° hard limit.");
+        if (Math.Abs(deltaDeg) < 1e-4)
+        {
+            Log(LogLevel.Info, "Vision U: delta ≈ 0°, no move applied.");
+            return Result.Ok();
+        }
+        return await _engine.Motion.MoveRelativeAsync(hexDevice, "U", deltaDeg, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -517,6 +610,12 @@ public sealed class ProcessService : IProcessService
     {
         if (_visionProfiles == null)
             return Result<VisionDetectResult>.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+
+        // When running against the live camera (workflow / script path), reproduce the
+        // exposure the profile was saved under, then wait for a frame captured with it —
+        // so detection sees the same condition the profile was tuned on.
+        if (cameraId != null)
+            await ApplyProfileExposureAsync(profile, cameraId).ConfigureAwait(false);
 
         var vision = _engine.Vision;
         switch ((profile.DetectionMethod ?? "ncc").ToLowerInvariant())
@@ -544,6 +643,64 @@ public sealed class ProcessService : IProcessService
                     ? Result<VisionDetectResult>.Ok(NccToResult(profile, r.Value))
                     : Result<VisionDetectResult>.Fail(r.Error, r.Message);
             }
+        }
+    }
+
+    /// <summary>
+    /// Pushes the profile's saved exposure (auto flag + µs) to its camera and waits for a
+    /// frame captured under it. No-op if the camera is disconnected or the exposure already
+    /// matches. Best-effort: a failed apply is logged, not fatal — detection still runs on
+    /// whatever frame is cached.
+    /// </summary>
+    private async Task ApplyProfileExposureAsync(VisionProfile profile, string cameraId)
+    {
+        if (!_engine.Camera.IsConnected(cameraId)) return;
+
+        var cur = _engine.Camera.GetState(cameraId).Exposure;
+        bool already = cur.AutoExposure == profile.AutoExposure &&
+            (profile.AutoExposure || Math.Abs(cur.ExposureUs - profile.ExposureUs) < 1.0);
+        if (already) return;
+
+        var exp = cur with { AutoExposure = profile.AutoExposure, ExposureUs = profile.ExposureUs };
+        var r = await _engine.Camera.ApplyExposureAsync(cameraId, exp).ConfigureAwait(false);
+        if (!r.IsSuccess)
+        {
+            Log(LogLevel.Warning, $"Vision '{profile.Name}': exposure apply failed ({r.Message}).");
+            return;
+        }
+
+        // Give the sensor time to complete the exposure change, then wait for a frame
+        // captured after the settle — so detection never runs on a mid-transition frame.
+        // Settle duration is operator-configurable (app_settings.json).
+        int settleMs = _appSettings.Current.VisionExposureSettleMs;
+        if (settleMs > 0)
+            await Task.Delay(settleMs).ConfigureAwait(false);
+        await WaitForFreshFrameAsync(cameraId).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Waits until the camera streams a frame newer than the one currently cached (so a
+    /// just-changed exposure has taken effect), bounded by a timeout. Requires the camera
+    /// to be grabbing; returns immediately once a newer frame arrives or the timeout lapses.
+    /// </summary>
+    private async Task WaitForFreshFrameAsync(string cameraId, int freshFrames = 2, int timeoutMs = 1500)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int seen = 0;
+        void OnFrame(CameraFrame f)
+        {
+            if (!string.Equals(f.Camera, cameraId, StringComparison.OrdinalIgnoreCase)) return;
+            if (Interlocked.Increment(ref seen) >= freshFrames) tcs.TrySetResult(true);
+        }
+
+        _engine.Camera.FrameReady += OnFrame;
+        try
+        {
+            await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs)).ConfigureAwait(false);
+        }
+        finally
+        {
+            _engine.Camera.FrameReady -= OnFrame;
         }
     }
 
@@ -1423,6 +1580,7 @@ public sealed class ProcessService : IProcessService
             namedPositionMover: (device, position, token) =>
                 MoveToNamedPositionCoreAsync(device, position, new MoveOverrides(), token),
             signalReader: (key, token) => _signals.ReadAsync(key, token),
+            visionRunner: RunVisionProfileByNameAsync,
             operatorPrompt: OperatorPrompt);
 
         void Sink(string line)
