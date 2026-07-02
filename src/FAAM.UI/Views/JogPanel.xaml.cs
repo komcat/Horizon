@@ -112,7 +112,7 @@ public partial class JogPanel : UserControl
         {
             Key.A => "X-", Key.D => "X+",
             Key.W => "Y-", Key.S => "Y+",
-            Key.R => "Z+", Key.F => "Z-",
+            Key.R => "Z-", Key.F => "Z+",
             _ => null,
         };
         if (jog != null) { _ = RequestJog(jog); e.Handled = true; return; }

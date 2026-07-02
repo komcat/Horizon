@@ -104,7 +104,7 @@
                            VerticalAlignment="Center" />
                 <ToggleButton x:Name="KeysToggle" Content="⌨ Keys (`)" Click="OnToggleKeys"
                               HorizontalAlignment="Right" FontSize="11" Padding="6,2" Cursor="Hand"
-                              ToolTip="Toggle keyboard jog (hotkey: ` ).&#x0a;A/D = X-/X+   W/S = Y-/Y+   R/F = Z-/Z+&#x0a;Q/E = step finer/coarser   Tab = next device" />
+                              ToolTip="Toggle keyboard jog (hotkey: ` ).&#x0a;A/D = X-/X+   W/S = Y-/Y+   R/F = Z-/Z+ (R above F = Z- above Z+)&#x0a;Q/E = step finer/coarser   Tab = next device" />
             </Grid>
 
             <!-- STOP — halts all motion. -->
@@ -176,11 +176,11 @@
                     <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Button Grid.Row="0" Grid.Column="1" Content="Y- (W)" Tag="Y-" Style="{StaticResource JogBtn}" />
-                <Button Grid.Row="0" Grid.Column="4" Content="Z- (F)" Tag="Z-" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="0" Grid.Column="4" Content="Z- (R)" Tag="Z-" Style="{StaticResource JogBtn}" />
                 <Button Grid.Row="1" Grid.Column="0" Content="X- (A)" Tag="X-" Style="{StaticResource JogBtn}" />
                 <Button Grid.Row="1" Grid.Column="1" Content="Y+ (S)" Tag="Y+" Style="{StaticResource JogBtn}" />
                 <Button Grid.Row="1" Grid.Column="2" Content="X+ (D)" Tag="X+" Style="{StaticResource JogBtn}" />
-                <Button Grid.Row="1" Grid.Column="4" Content="Z+ (R)" Tag="Z+" Style="{StaticResource JogBtn}" />
+                <Button Grid.Row="1" Grid.Column="4" Content="Z+ (F)" Tag="Z+" Style="{StaticResource JogBtn}" />
             </Grid>
 
             <!-- θ (U/V/W) step presets (left) + U / V / W jog (right). -->
