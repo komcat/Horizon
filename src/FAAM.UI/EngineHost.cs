@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using FAAM.UI.Process;
 using FAAM.UI.Telemetry;
+using FAAM.UI.Views;
 using Horizon.Common;
 using Horizon.Engine;
 using Horizon.Workflow;
@@ -45,6 +46,14 @@ public sealed class EngineHost : IAsyncDisposable
     /// the process panel blocks its step / DUT-start buttons while it is busy.
     /// </summary>
     public ActivityGate Activity { get; } = new();
+
+    /// <summary>
+    /// Fans one alignment capture/confirm prompt out to every open camera surface — the
+    /// Run-page main feed and any camera pop-out (<see cref="Views.DisplayWindow"/>) — so the
+    /// operator can Capture / Apply / Cancel from whichever view they are looking at. The Run
+    /// page passes this hub to the alignment panel; surfaces register themselves as they open.
+    /// </summary>
+    public CapturePromptHub CapturePrompts { get; } = new();
 
     /// <summary>
     /// Raised when the safety watchdog trips (E-Stop / watched input). Layer 3 run

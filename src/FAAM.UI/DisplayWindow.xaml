@@ -1,6 +1,7 @@
 <Window x:Class="FAAM.UI.DisplayWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:v="clr-namespace:FAAM.UI.Views"
         Title="Horizon — Camera"
         Height="620" Width="860"
         WindowStartupLocation="CenterScreen"
@@ -72,6 +73,15 @@
             <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch" Style="{StaticResource CrosshairLine}" />
             <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Style="{StaticResource CrosshairLine}" />
 
+            <!-- Vision detection flash — mirrors the Run feed: a yellow line drawn briefly when a
+                 vision profile detects a facet line on this window's camera (see ShowDetectedLine). -->
+            <Canvas x:Name="DetectionOverlay" IsHitTestVisible="False"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Line x:Name="DetectedLine" Stroke="#FFFFD500" StrokeThickness="2.5"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      Visibility="Collapsed" />
+            </Canvas>
+
             <!-- Short cursor crosshair — follows the mouse while MoveClick is armed. -->
             <Grid x:Name="MainCursor" Width="20" Height="20" IsHitTestVisible="False"
                   HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
@@ -95,6 +105,11 @@
                     Background="{StaticResource Overlay}" CornerRadius="3" Margin="6" Padding="8,3" Visibility="Collapsed">
                 <TextBlock x:Name="MoveReadout" Foreground="{StaticResource Roi}" FontFamily="Consolas" FontSize="12.5" />
             </Border>
+
+            <!-- Alignment capture/confirm prompt, mirrored from the Run page via the shared
+                 CapturePromptHub. Topmost child so its Capture/Cancel buttons are clickable;
+                 its centre is click-through so MoveClick still works underneath. -->
+            <v:CameraPromptOverlay x:Name="PopoutPrompt" />
         </Grid>
     </Grid>
 </Window>

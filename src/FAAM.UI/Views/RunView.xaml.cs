@@ -72,7 +72,9 @@ public partial class RunView : UserControl
 
         // Let the U/FAU capture prompts mirror onto the main-feed overlay (group 2), so the
         // operator can Capture/Apply from the camera view without looking at the side panel.
-        AppHost.SetCapturePromptSurface(MainPrompt);
+        // Registered on the shared hub so an open camera pop-out mirrors the same prompt.
+        host.CapturePrompts.Add(MainPrompt);
+        AppHost.SetCapturePromptSurface(host.CapturePrompts);
 
         // The SiPhOG chart (over the camera) shares that same client/connection.
         SiphogChartControl.Attach(siphog);
