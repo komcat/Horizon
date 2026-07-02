@@ -442,6 +442,181 @@ internal sealed class VisionFacet : IVisionFacet, IDisposable
         string cameraId, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, CornerParams p)
         => WithCachedFrame(cameraId, f => FindCornerAsync(f, filters, searchRoi, p));
 
+    public Task<Result<VisionDetectResult>> FindEdgeRegAsync(
+        CameraFrame frame, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, EdgeRegParams p)
+        => RunFrameAsync<VisionDetectResult>(frame, f =>
+        {
+            using var image = ToHImage(f);
+            using var gray = ToGray(image, f.Channels);
+            // measure_pos wants grayscale gradients — filter (e.g. gaussian) but do NOT reduce the
+            // domain: the calipers read raw gray values, positioned by the ROI below.
+            using var measImg = ApplyFilterChain(gray, filters, f.Width, f.Height);
+
+            var notFound = new VisionDetectResult(false, Array.Empty<VisionResultValue>(), null);
+            var (bx, by, bw, bh) = DetectionBounds(searchRoi, f.Width, f.Height);
+            if (bw < 4 || bh < 4) return Result<VisionDetectResult>.Ok(notFound);
+
+            // Auto-orient from the ROI shape when unset: a taller ROI ⇒ vertical edge.
+            bool vertical = p.Direction switch
+            {
+                LineDirection.Vertical => true,
+                LineDirection.Horizontal => false,
+                _ => bh >= bw,
+            };
+
+            int count = Math.Clamp(p.CaliperCount, 2, 200);
+            double half1 = Math.Max(2.0, p.CaliperLength / 2.0);   // along scan (across the edge)
+            double half2 = Math.Max(1.0, p.CaliperWidth / 2.0);    // along the edge (averaging)
+            double phi = vertical ? 0.0 : Math.PI / 2.0;           // scan horizontally / vertically
+            string transition = p.Polarity switch
+            {
+                LinePolarity.DarkToBright => "positive",
+                LinePolarity.BrightToDark => "negative",
+                _ => "all",
+            };
+            double sigma = Math.Max(0.4, p.Sigma);
+            double cx0 = bx + bw / 2.0, cy0 = by + bh / 2.0;       // expected edge centre-line
+
+            // Lay the calipers evenly along the edge and read one sub-pixel point from each.
+            // Keep them inside the ROI even when the averaging width is large vs the ROI span.
+            double span = vertical ? bh : bw;
+            double margin = Math.Min(half2, span / 3.0);
+            var pts = new List<(double X, double Y)>();
+            for (int i = 0; i < count; i++)
+            {
+                double t = count == 1 ? 0.5 : i / (double)(count - 1);
+                double along = (vertical ? by : bx) + margin + t * (span - 2 * margin);
+                double row = vertical ? along : cy0;
+                double col = vertical ? cx0 : along;
+
+                HOperatorSet.GenMeasureRectangle2(row, col, phi, half1, half2,
+                    f.Width, f.Height, "bilinear", out HTuple measure);
+                try
+                {
+                    HOperatorSet.MeasurePos(measImg, measure, sigma, p.MinAmplitude, transition, "all",
+                        out HTuple rowE, out HTuple colE, out HTuple amp, out _);
+                    int m = amp?.Length ?? 0;
+                    if (m == 0) continue;
+                    int best = 0;
+                    double bestAmp = -1;
+                    for (int k = 0; k < m; k++)
+                        if (Math.Abs(amp[k].D) > bestAmp) { bestAmp = Math.Abs(amp[k].D); best = k; }
+                    pts.Add((colE[best].D, rowE[best].D));
+                }
+                finally { HOperatorSet.CloseMeasure(measure); }
+            }
+            if (pts.Count < 2) return Result<VisionDetectResult>.Ok(notFound);
+
+            // Robust line fit on the axis that avoids an infinite slope: for a vertical edge fit
+            // x = m·y + b (independent = y), else y = m·x + b.
+            int n = pts.Count;
+            var u = new double[n];   // independent
+            var v = new double[n];   // dependent
+            for (int i = 0; i < n; i++)
+            {
+                u[i] = vertical ? pts[i].Y : pts[i].X;
+                v[i] = vertical ? pts[i].X : pts[i].Y;
+            }
+            if (!RobustLineFit(u, v, p.MaxOutlierDist, out double slope, out double intercept, out bool[] inlier))
+                return Result<VisionDetectResult>.Ok(notFound);
+
+            // Endpoints span the inliers along the edge; RMS is perpendicular distance.
+            double uMin = double.MaxValue, uMax = double.MinValue, sumSq = 0;
+            int inliers = 0;
+            double norm = Math.Sqrt(1 + slope * slope);
+            for (int i = 0; i < n; i++)
+            {
+                if (!inlier[i]) continue;
+                inliers++;
+                uMin = Math.Min(uMin, u[i]); uMax = Math.Max(uMax, u[i]);
+                double d = Math.Abs(v[i] - (slope * u[i] + intercept)) / norm;
+                sumSq += d * d;
+            }
+            if (inliers < 2) return Result<VisionDetectResult>.Ok(notFound);
+            double rms = Math.Sqrt(sumSq / inliers);
+
+            double x1, y1, x2, y2;
+            if (vertical) { y1 = uMin; x1 = slope * uMin + intercept; y2 = uMax; x2 = slope * uMax + intercept; }
+            else { x1 = uMin; y1 = slope * uMin + intercept; x2 = uMax; y2 = slope * uMax + intercept; }
+            double cx = (x1 + x2) / 2.0, cy = (y1 + y2) / 2.0;
+            double len = Math.Sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+            double angle = Math.Atan2(-(y2 - y1), x2 - x1) * 180.0 / Math.PI;
+            angle = ((angle % 180.0) + 180.0) % 180.0;
+
+            var values = new[]
+            {
+                new VisionResultValue("x", cx),
+                new VisionResultValue("y", cy),
+                new VisionResultValue("x1", x1),
+                new VisionResultValue("y1", y1),
+                new VisionResultValue("x2", x2),
+                new VisionResultValue("y2", y2),
+                new VisionResultValue("angle", angle),
+                new VisionResultValue("length", len),
+                new VisionResultValue("points", inliers),
+                new VisionResultValue("rms", rms),
+                new VisionResultValue("score", n > 0 ? inliers / (double)n : 0.0),
+            };
+            var outPts = new VisionPoint[n];
+            for (int i = 0; i < n; i++) outPts[i] = new VisionPoint(pts[i].X, pts[i].Y, inlier[i]);
+            return Result<VisionDetectResult>.Ok(new VisionDetectResult(
+                true, values, CropAround(gray, cx, cy, (int)(len + 40), f.Width, f.Height), outPts));
+        });
+
+    public Task<Result<VisionDetectResult>> FindEdgeRegAsync(
+        string cameraId, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, EdgeRegParams p)
+        => WithCachedFrame(cameraId, f => FindEdgeRegAsync(f, filters, searchRoi, p));
+
+    /// <summary>
+    /// Iteratively re-weighted line fit: OLS over the current inliers, then re-classify points
+    /// within <paramref name="maxDist"/> of the line, repeating until stable. Fits
+    /// <c>v = slope·u + intercept</c>. Returns false if it can't keep ≥2 inliers.
+    /// </summary>
+    private static bool RobustLineFit(
+        double[] u, double[] v, double maxDist, out double slope, out double intercept, out bool[] inlier)
+    {
+        int n = u.Length;
+        inlier = new bool[n];
+        for (int i = 0; i < n; i++) inlier[i] = true;
+        slope = 0; intercept = 0;
+        double bound = Math.Max(0.5, maxDist);
+        for (int iter = 0; iter < 5; iter++)
+        {
+            if (!OrdinaryLeastSquares(u, v, inlier, out slope, out intercept)) return false;
+            bool changed = false;
+            int cnt = 0;
+            for (int i = 0; i < n; i++)
+            {
+                bool inl = Math.Abs(v[i] - (slope * u[i] + intercept)) <= bound;
+                if (inl != inlier[i]) changed = true;
+                inlier[i] = inl;
+                if (inl) cnt++;
+            }
+            if (cnt < 2) return false;
+            if (!changed) break;
+        }
+        return true;
+    }
+
+    /// <summary>Least-squares fit of <c>v = slope·u + intercept</c> over the masked-in points.</summary>
+    private static bool OrdinaryLeastSquares(double[] u, double[] v, bool[] mask, out double slope, out double intercept)
+    {
+        double su = 0, sv = 0, suu = 0, suv = 0;
+        int n = 0;
+        for (int i = 0; i < u.Length; i++)
+        {
+            if (!mask[i]) continue;
+            su += u[i]; sv += v[i]; suu += u[i] * u[i]; suv += u[i] * v[i]; n++;
+        }
+        slope = 0; intercept = 0;
+        if (n < 2) return false;
+        double denom = n * suu - su * su;
+        if (Math.Abs(denom) < 1e-9) return false;
+        slope = (n * suv - su * sv) / denom;
+        intercept = (sv - slope * su) / n;
+        return true;
+    }
+
     /// <summary>
     /// Fits a line to each contour segment and returns those that are long enough and not lying
     /// flush against a detection-bound edge (those are ROI/frame artefacts, not die edges).

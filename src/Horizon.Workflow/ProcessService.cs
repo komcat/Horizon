@@ -635,6 +635,11 @@ public sealed class ProcessService : IProcessService
                     ? await vision.FindCornerAsync(frame, profile.Filters, profile.SearchRoi, profile.Corner).ConfigureAwait(false)
                     : await vision.FindCornerAsync(cameraId!, profile.Filters, profile.SearchRoi, profile.Corner).ConfigureAwait(false);
 
+            case "edgereg":
+                return frame != null
+                    ? await vision.FindEdgeRegAsync(frame, profile.Filters, profile.SearchRoi, profile.EdgeReg).ConfigureAwait(false)
+                    : await vision.FindEdgeRegAsync(cameraId!, profile.Filters, profile.SearchRoi, profile.EdgeReg).ConfigureAwait(false);
+
             default: // ncc
             {
                 if (profile.Template is not { } t || string.IsNullOrEmpty(t.Uid))

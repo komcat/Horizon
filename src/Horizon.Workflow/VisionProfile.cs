@@ -71,6 +71,9 @@ public sealed record VisionProfile
     /// <summary>Corner-detector parameters (used when <see cref="DetectionMethod"/> is <c>corner</c>).</summary>
     public CornerParams Corner { get; init; } = new();
 
+    /// <summary>Edge-regression parameters (used when <see cref="DetectionMethod"/> is <c>edgereg</c>).</summary>
+    public EdgeRegParams EdgeReg { get; init; } = new();
+
     /// <summary>The current template, or null if none has been taught yet (NCC only).</summary>
     public TemplateRef? Template { get; init; }
 }

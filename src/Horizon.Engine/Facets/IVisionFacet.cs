@@ -96,4 +96,19 @@ public interface IVisionFacet
     /// <summary>Cached-frame overload of corner detect.</summary>
     Task<Result<VisionDetectResult>> FindCornerAsync(
         string cameraId, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, CornerParams p);
+
+    /// <summary>
+    /// Measures a ragged / low-contrast edge in a frame after the filter chain, within
+    /// <paramref name="searchRoi"/> (null = whole frame): stacks caliper boxes along the edge
+    /// (<c>measure_pos</c> gives one sub-pixel point each), then robustly fits a line, rejecting
+    /// outliers. Returns the line (<c>x/y</c>, <c>x1/y1/x2/y2</c>, <c>angle</c>, <c>length</c>),
+    /// the inlier count (<c>points</c>), the fit <c>rms</c> and <c>score</c>, plus the sampled
+    /// <see cref="VisionDetectResult.Points"/> (inlier/outlier tagged) — or not-found.
+    /// </summary>
+    Task<Result<VisionDetectResult>> FindEdgeRegAsync(
+        CameraFrame frame, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, EdgeRegParams p);
+
+    /// <summary>Cached-frame overload of edge-regression detect.</summary>
+    Task<Result<VisionDetectResult>> FindEdgeRegAsync(
+        string cameraId, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, EdgeRegParams p);
 }

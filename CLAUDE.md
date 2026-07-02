@@ -186,7 +186,10 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   `smallest_rectangle2` major axis), **Corner** (threshold → largest blob →
   `gen_contour_region_xld` → `segment_contours_xld` → fit the two longest non-border
   perpendicular edges → intersect for a sub-pixel corner; auto-reports which of the 4
-  die corners via the region centroid). All return a method-agnostic
+  die corners via the region centroid), **Edge (regression)** (stack N caliper boxes
+  along the edge → `gen_measure_rectangle2`/`measure_pos` → one sub-pixel point each →
+  robust IRLS line fit rejecting outliers; for ragged/low-contrast edges, returns the
+  same line keys plus the tagged sample `Points`). All return a method-agnostic
   `VisionDetectResult` so one result grid and one `vision.runProfile` step serve
   every method. See `docs/vision-profile-design.md`.
 - **Engineer = the Gantt timeline editor** (`Views/TimelineEditorView`,

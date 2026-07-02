@@ -163,6 +163,7 @@
                             <ComboBoxItem Content="Circle" />
                             <ComboBoxItem Content="Line" />
                             <ComboBoxItem Content="Corner" />
+                            <ComboBoxItem Content="Edge (regression)" />
                         </ComboBox>
                     </StackPanel>
 
@@ -320,6 +321,57 @@
                                     <ComboBoxItem Content="Bottom-left" />
                                     <ComboBoxItem Content="Bottom-right" />
                                 </ComboBox>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Edge-regression params -->
+                        <StackPanel x:Name="EdgeRegPanel" Visibility="Collapsed" VerticalAlignment="Top">
+                            <TextBlock Text="Stacks caliper boxes along the edge, finds one sub-pixel point per box, and robustly fits a line (rejecting outliers). For ragged / low-contrast edges. Draw the Search ROI over the edge; use no filter or gaussian (not binary threshold)."
+                                       Foreground="{StaticResource Subtle}" FontSize="11" TextWrapping="Wrap"
+                                       Margin="0,0,0,6" />
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Direction" Style="{StaticResource Lbl}" Width="100" />
+                                <ComboBox x:Name="EdgeRegDirectionCombo" Width="120" Height="26"
+                                          VerticalContentAlignment="Center">
+                                    <ComboBoxItem Content="Auto" />
+                                    <ComboBoxItem Content="Horizontal" />
+                                    <ComboBoxItem Content="Vertical" IsSelected="True" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Caliper count" Style="{StaticResource Lbl}" Width="100" />
+                                <TextBox x:Name="EdgeRegCountBox" Width="64" Height="26" Text="15"
+                                         VerticalContentAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Caliper length" Style="{StaticResource Lbl}" Width="100" />
+                                <TextBox x:Name="EdgeRegLengthBox" Width="64" Height="26" Text="60"
+                                         VerticalContentAlignment="Center" />
+                                <TextBlock Text="Width" Style="{StaticResource Lbl}" Margin="12,0,6,0" />
+                                <TextBox x:Name="EdgeRegWidthBox" Width="56" Height="26" Text="20"
+                                         VerticalContentAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Polarity" Style="{StaticResource Lbl}" Width="100" />
+                                <ComboBox x:Name="EdgeRegPolarityCombo" Width="130" Height="26"
+                                          VerticalContentAlignment="Center">
+                                    <ComboBoxItem Content="Any" IsSelected="True" />
+                                    <ComboBoxItem Content="Black → White" />
+                                    <ComboBoxItem Content="White → Black" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Sigma" Style="{StaticResource Lbl}" Width="100" />
+                                <TextBox x:Name="EdgeRegSigmaBox" Width="64" Height="26" Text="1.0"
+                                         VerticalContentAlignment="Center" />
+                                <TextBlock Text="Min ampl." Style="{StaticResource Lbl}" Margin="12,0,6,0" />
+                                <TextBox x:Name="EdgeRegAmplBox" Width="56" Height="26" Text="20"
+                                         VerticalContentAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Max outlier px" Style="{StaticResource Lbl}" Width="100" />
+                                <TextBox x:Name="EdgeRegOutlierBox" Width="64" Height="26" Text="3"
+                                         VerticalContentAlignment="Center" />
                             </StackPanel>
                         </StackPanel>
                     </Grid>

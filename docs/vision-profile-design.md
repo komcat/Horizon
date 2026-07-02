@@ -5,8 +5,8 @@ to use, a pre-process filter, a detection method, and a taught template. It is
 authored on the FAAM.UI **Vision Profile** page (launched from the Home tile) and
 runs against a live camera frame to locate a feature.
 
-The page offers a **detection-method selector** — **Halcon NCC**, **Circle**, **Line** and
-**Corner** — each fed by an **ordered pre-process filter chain** (up to 3 stages, e.g. binary → canny)
+The page offers a **detection-method selector** — **Halcon NCC**, **Circle**, **Line**,
+**Corner** and **Edge (regression)** — each fed by an **ordered pre-process filter chain** (up to 3 stages, e.g. binary → canny)
 and an optional **search ROI** that restricts detection to a region. Filter kinds: **binary
 threshold**, **gaussian** (3×3 / 5×5) and **Canny edge** (`edges_image`). Results are shown
 as a **key→value grid** (centre x/y, score, method-specific fields) plus a status line; the
@@ -40,6 +40,20 @@ second matched-crop panel is still stubbed.
   edge length, max angle deviation, **expected orientation** (`Any` = auto-detect; a specific value
   rejects a corner of a different orientation). Draw the search ROI around the corner so only the
   two real edges are inside.
+- **Edge (regression)** — measures a **ragged / low-contrast** edge that a single contour fit can't
+  handle. Lays a stack of **caliper boxes** along the edge inside the search ROI; each is a HALCON
+  `gen_measure_rectangle2` + `measure_pos` that **projects across its width** to one sub-pixel edge
+  point (the averaging that suppresses noise). The points feed a **robust IRLS line fit**
+  (`col = m·row + b` for a vertical edge, `row = m·col + b` for horizontal — the axis that avoids an
+  infinite slope) that iteratively drops points beyond **max-outlier-px** of the line. Reports the
+  same **line keys** (x/y, x1/y1/x2/y2, angle `[0,180)`, length) as the Line method — so it reuses
+  the line overlay, `vision.runProfile` fan-out and Run-page flash — plus `points` (inliers used),
+  `rms` (perpendicular residual) and `score` (inlier fraction), and returns the sampled points via
+  `VisionDetectResult.Points` (each tagged inlier/outlier) so the page draws **green kept / red
+  rejected** dots under the fitted line. Params: direction (`Auto` picks from ROI aspect), caliper
+  count, caliper length (scan across the edge) / width (averaging along it), polarity, sigma, min
+  amplitude, max outlier px. Draw the ROI over the edge and use **no filter or gaussian** — a binary
+  threshold defeats the sub-pixel projection.
 
 All return a method-agnostic `VisionDetectResult` (ordered `VisionResultValue` list +
 crop), so one grid, one `vision.runProfile` step, one `machine.vision.runProfile` Lua call and one

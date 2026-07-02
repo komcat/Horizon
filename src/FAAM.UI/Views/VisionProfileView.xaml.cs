@@ -53,6 +53,7 @@ public partial class VisionProfileView : UserControl
     private WriteableBitmap? _overlayBmp;
     private byte[]? _overlayPx;             // reused edges-overlay pixel buffer (avoids LOH churn)
     private Dictionary<string, double>? _overlayValues;
+    private IReadOnlyList<VisionPoint>? _overlayPoints;   // per-caliper sample points (edge-regression)
     private string _overlayMethod = "ncc";
     private int _overlayTemplateW, _overlayTemplateH;
     private bool _overlayHasFilters;
@@ -100,7 +101,7 @@ public partial class VisionProfileView : UserControl
         TemplateImage.SizeChanged += (_, _) => RedrawAnchorFrame();
     }
 
-    private string MethodKey() => MethodCombo.SelectedIndex switch { 1 => "circle", 2 => "line", 3 => "corner", _ => "ncc" };
+    private string MethodKey() => MethodCombo.SelectedIndex switch { 1 => "circle", 2 => "line", 3 => "corner", 4 => "edgereg", _ => "ncc" };
 
     private void OnMethodChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -110,11 +111,13 @@ public partial class VisionProfileView : UserControl
         CirclePanel.Visibility = idx == 1 ? Visibility.Visible : Visibility.Collapsed;
         LinePanel.Visibility = idx == 2 ? Visibility.Visible : Visibility.Collapsed;
         CornerPanel.Visibility = idx == 3 ? Visibility.Visible : Visibility.Collapsed;
-        MethodHeader.Text = idx switch { 1 => "CIRCLE", 2 => "LINE", 3 => "CORNER", _ => "TEMPLATE (NCC)" };
+        EdgeRegPanel.Visibility = idx == 4 ? Visibility.Visible : Visibility.Collapsed;
+        MethodHeader.Text = idx switch { 1 => "CIRCLE", 2 => "LINE", 3 => "CORNER", 4 => "EDGE (REGRESSION)", _ => "TEMPLATE (NCC)" };
 
         // The previous result's geometry no longer matches the new method — drop it.
         _overlayValues = null;
         _overlayCrop = null;
+        _overlayPoints = null;
         RedrawOverlayCanvas();
     }
 
@@ -441,6 +444,7 @@ public partial class VisionProfileView : UserControl
     {
         _overlayValues = null;
         _overlayCrop = null;
+        _overlayPoints = null;
         _lastFilterCrop = null;
         OverlayImage.Source = null;
         OverlayCanvas.Children.Clear();
@@ -565,6 +569,17 @@ public partial class VisionProfileView : UserControl
                 if (Has(v, "x", "y")) AddDot(canvas, P(v["x"], v["y"]), red);
                 break;
             }
+            case "edgereg" when Has(v, "x1", "y1", "x2", "y2"):
+            {
+                var a = P(v["x1"], v["y1"]);
+                var b = P(v["x2"], v["y2"]);
+                // Sample points first, then the fitted line on top: green = inlier, red = rejected.
+                if (_overlayPoints is { } pts)
+                    foreach (var pt in pts)
+                        AddDot(canvas, P(pt.X, pt.Y), pt.Inlier ? lime : red, 5);
+                canvas.Children.Add(new Line { X1 = a.X, Y1 = a.Y, X2 = b.X, Y2 = b.Y, Stroke = orange, StrokeThickness = 1 });
+                break;
+            }
             case "corner" when Has(v, "x", "y", "ax", "ay", "bx", "by"):
             {
                 var corner = P(v["x"], v["y"]);
@@ -616,11 +631,12 @@ public partial class VisionProfileView : UserControl
 
     private static bool Has(Dictionary<string, double> v, params string[] keys) => keys.All(v.ContainsKey);
 
-    private static void AddDot(Canvas canvas, Point p, Brush brush)
+    private static void AddDot(Canvas canvas, Point p, Brush brush, double size = 7)
     {
-        var dot = new Ellipse { Width = 7, Height = 7, Fill = brush, Stroke = Brushes.Black, StrokeThickness = 1 };
-        Canvas.SetLeft(dot, p.X - 3.5);
-        Canvas.SetTop(dot, p.Y - 3.5);
+        double r = size / 2.0;
+        var dot = new Ellipse { Width = size, Height = size, Fill = brush, Stroke = Brushes.Black, StrokeThickness = 1 };
+        Canvas.SetLeft(dot, p.X - r);
+        Canvas.SetTop(dot, p.Y - r);
         canvas.Children.Add(dot);
     }
 
@@ -757,19 +773,21 @@ public partial class VisionProfileView : UserControl
                 _cropBmp = null;
                 _overlayValues = null;
                 _overlayCrop = null;
+                _overlayPoints = null;
                 RefreshOverlay();
                 Log($"{MethodKey().ToUpperInvariant()}: no detection.");
                 return;
             }
 
             foreach (var v in res.Values)
-                _results.Add(new ResultRow { Key = v.Key, Value = v.Value.ToString("0.###", CultureInfo.InvariantCulture) });
+                _results.Add(new ResultRow { Key = v.Key, Value = FormatResultValue(v.Key, v.Value) });
             if (res.Crop is { } c)
                 _cropBmp = Blit(MatchCrop1, _cropBmp, c.Width, c.Height, c.Channels, c.Data);
 
             // Capture the result for the live-feed + crop overlays.
             _overlayCrop = res.Crop;
             _overlayValues = res.Values.ToDictionary(v => v.Key, v => v.Value, StringComparer.OrdinalIgnoreCase);
+            _overlayPoints = res.Points;
             _overlayMethod = MethodKey();
             _overlayTemplateW = _template?.Width ?? 0;
             _overlayTemplateH = _template?.Height ?? 0;
@@ -907,6 +925,7 @@ public partial class VisionProfileView : UserControl
             "circle" => 1,
             "line" => 2,
             "corner" => 3,
+            "edgereg" => 4,
             _ => 0,
         };
         _searchRoi = p.SearchRoi;
@@ -943,6 +962,24 @@ public partial class VisionProfileView : UserControl
             CornerOrientation.BottomRight => 4,
             _ => 0,
         };
+        EdgeRegDirectionCombo.SelectedIndex = p.EdgeReg.Direction switch
+        {
+            LineDirection.Horizontal => 1,
+            LineDirection.Vertical => 2,
+            _ => 0,
+        };
+        EdgeRegCountBox.Text = p.EdgeReg.CaliperCount.ToString(CultureInfo.InvariantCulture);
+        EdgeRegLengthBox.Text = p.EdgeReg.CaliperLength.ToString("0.##", CultureInfo.InvariantCulture);
+        EdgeRegWidthBox.Text = p.EdgeReg.CaliperWidth.ToString("0.##", CultureInfo.InvariantCulture);
+        EdgeRegPolarityCombo.SelectedIndex = p.EdgeReg.Polarity switch
+        {
+            LinePolarity.DarkToBright => 1,
+            LinePolarity.BrightToDark => 2,
+            _ => 0,
+        };
+        EdgeRegSigmaBox.Text = p.EdgeReg.Sigma.ToString("0.##", CultureInfo.InvariantCulture);
+        EdgeRegAmplBox.Text = p.EdgeReg.MinAmplitude.ToString("0.##", CultureInfo.InvariantCulture);
+        EdgeRegOutlierBox.Text = p.EdgeReg.MaxOutlierDist.ToString("0.##", CultureInfo.InvariantCulture);
 
         MinScoreBox.Text = p.MinScore.ToString("0.00", CultureInfo.InvariantCulture);
         NccAngleRangeBox.Text = p.NccAngleRange.ToString("0.##", CultureInfo.InvariantCulture);
@@ -1043,6 +1080,25 @@ public partial class VisionProfileView : UserControl
                 4 => CornerOrientation.BottomRight,
                 _ => CornerOrientation.Any,
             }),
+        EdgeReg = new EdgeRegParams(
+            EdgeRegDirectionCombo.SelectedIndex switch
+            {
+                1 => LineDirection.Horizontal,
+                2 => LineDirection.Vertical,
+                _ => LineDirection.Any,
+            },
+            ParseInt(EdgeRegCountBox, 15),
+            ParseDouble(EdgeRegLengthBox, 60),
+            ParseDouble(EdgeRegWidthBox, 20),
+            EdgeRegPolarityCombo.SelectedIndex switch
+            {
+                1 => LinePolarity.DarkToBright,
+                2 => LinePolarity.BrightToDark,
+                _ => LinePolarity.Any,
+            },
+            ParseDouble(EdgeRegSigmaBox, 1.0),
+            ParseDouble(EdgeRegAmplBox, 20),
+            ParseDouble(EdgeRegOutlierBox, 3)),
         Template = _template,
     };
 
@@ -1109,6 +1165,19 @@ public partial class VisionProfileView : UserControl
             Array.Copy(data, (y + row) * srcStride + x * channels, dst, row * dstStride, dstStride);
         return dst;
     }
+
+    /// <summary>Formats one result value for the grid — the corner <c>orientation</c> code as a label.</summary>
+    private static string FormatResultValue(string key, double value)
+        => key.Equals("orientation", StringComparison.OrdinalIgnoreCase)
+            ? (int)Math.Round(value) switch
+            {
+                1 => "Top-left",
+                2 => "Top-right",
+                3 => "Bottom-left",
+                4 => "Bottom-right",
+                _ => value.ToString("0.###", CultureInfo.InvariantCulture),
+            }
+            : value.ToString("0.###", CultureInfo.InvariantCulture);
 
     private static int ParseInt(TextBox t, int fallback)
         => int.TryParse(t.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : fallback;

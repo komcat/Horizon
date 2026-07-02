@@ -75,14 +75,23 @@ public sealed record NccFindResult(NccMatch Match, NccCrop Crop);
 public sealed record VisionResultValue(string Key, double Value);
 
 /// <summary>
+/// One sampled point in a detection result, in source-frame pixels, tagged with whether the
+/// fit kept it (<see cref="Inlier"/>) — e.g. the per-caliper edge points of the edge-regression
+/// detector, so the UI can show which contributed to the line and which were rejected.
+/// </summary>
+public sealed record VisionPoint(double X, double Y, bool Inlier);
+
+/// <summary>
 /// Method-agnostic detection result: an ordered set of named values (so the UI can
-/// show them as a key→value grid) plus an optional crop around the hit. Used by all
-/// detection methods (NCC / circle / line).
+/// show them as a key→value grid) plus an optional crop around the hit and an optional
+/// set of sampled points. Used by all detection methods (NCC / circle / line / corner /
+/// edge-regression).
 /// </summary>
 public sealed record VisionDetectResult(
     bool Found,
     IReadOnlyList<VisionResultValue> Values,
-    NccCrop? Crop);
+    NccCrop? Crop,
+    IReadOnlyList<VisionPoint>? Points = null);
 
 /// <summary>Parameters for the circle detector (operates on the filtered foreground).</summary>
 public sealed record CircleParams(
@@ -135,6 +144,32 @@ public sealed record CornerParams(
     double MinEdgeLength = 20,
     double MaxAngleDevDeg = 25,
     CornerOrientation Expected = CornerOrientation.Any);
+
+/// <summary>
+/// Parameters for the edge-regression detector — measures a ragged / low-contrast edge by
+/// laying a stack of caliper boxes along it (each projects across its width to one sub-pixel
+/// edge point via HALCON <c>measure_pos</c>), then robustly fits a line through the points,
+/// rejecting outlier boxes. Best for edges where a single contour fit fails.
+/// </summary>
+/// <param name="Direction">Edge orientation. <see cref="LineDirection.Any"/> auto-picks from the
+/// search-ROI aspect (taller ⇒ vertical). Sets both the caliper orientation and the regression axis.</param>
+/// <param name="CaliperCount">How many caliper boxes to stack along the edge.</param>
+/// <param name="CaliperLength">Scan extent (px) across the edge — each caliper's long axis.</param>
+/// <param name="CaliperWidth">Averaging extent (px) along the edge — each caliper's short axis.</param>
+/// <param name="Polarity">Intensity transition to accept across the edge (maps to <c>measure_pos</c>
+/// transition along the scan: dark→bright = positive).</param>
+/// <param name="Sigma">Gaussian smoothing of each caliper's 1-D profile.</param>
+/// <param name="MinAmplitude">Minimum edge amplitude for a caliper crossing to count.</param>
+/// <param name="MaxOutlierDist">Max distance (px) from the fitted line for a point to stay an inlier.</param>
+public sealed record EdgeRegParams(
+    LineDirection Direction = LineDirection.Vertical,
+    int CaliperCount = 15,
+    double CaliperLength = 60,
+    double CaliperWidth = 20,
+    LinePolarity Polarity = LinePolarity.Any,
+    double Sigma = 1.0,
+    double MinAmplitude = 20,
+    double MaxOutlierDist = 3.0);
 
 /// <summary>Metadata returned when an NCC template/model is created from an ROI.</summary>
 public sealed record NccTemplateInfo(
