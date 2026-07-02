@@ -81,4 +81,19 @@ public interface IVisionFacet
     /// <summary>Cached-frame overload of line detect.</summary>
     Task<Result<VisionDetectResult>> FindLineAsync(
         string cameraId, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, LineParams p);
+
+    /// <summary>
+    /// Detects a die/rectangle corner in a frame after the filter chain, within
+    /// <paramref name="searchRoi"/> (null = whole frame): thresholds the foreground, fits
+    /// the two straight edges of its largest blob and intersects them. Returns the sub-pixel
+    /// corner (<c>x</c>, <c>y</c>), the two edge endpoints (<c>ax/ay</c>, <c>bx/by</c>), the
+    /// interior-facing <c>angle</c>, the 0..3 <c>orientation</c> code and a perpendicularity
+    /// <c>score</c>, with a crop — or not-found.
+    /// </summary>
+    Task<Result<VisionDetectResult>> FindCornerAsync(
+        CameraFrame frame, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, CornerParams p);
+
+    /// <summary>Cached-frame overload of corner detect.</summary>
+    Task<Result<VisionDetectResult>> FindCornerAsync(
+        string cameraId, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, CornerParams p);
 }

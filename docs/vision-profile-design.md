@@ -5,8 +5,8 @@ to use, a pre-process filter, a detection method, and a taught template. It is
 authored on the FAAM.UI **Vision Profile** page (launched from the Home tile) and
 runs against a live camera frame to locate a feature.
 
-The page offers a **detection-method selector** — **Halcon NCC**, **Circle** and **Line** —
-each fed by an **ordered pre-process filter chain** (up to 3 stages, e.g. binary → canny)
+The page offers a **detection-method selector** — **Halcon NCC**, **Circle**, **Line** and
+**Corner** — each fed by an **ordered pre-process filter chain** (up to 3 stages, e.g. binary → canny)
 and an optional **search ROI** that restricts detection to a region. Filter kinds: **binary
 threshold**, **gaussian** (3×3 / 5×5) and **Canny edge** (`edges_image`). Results are shown
 as a **key→value grid** (centre x/y, score, method-specific fields) plus a status line; the
@@ -27,8 +27,21 @@ second matched-crop panel is still stubbed.
   x1/y1/x2/y2, angle, length. Params: min length, direction, polarity, scan order. The **angle is
   normalized into Q1 `[0,180)`** (horizontal = 0°, vertical = 90°) — a line has no direction and
   HALCON's endpoint order is arbitrary, so near-vertical edges no longer flip between +90 and −90.
+- **Corner** — locates a die/rectangle corner by *line intersection*, not template matching:
+  threshold → `connection` → largest blob → `gen_contour_region_xld` (border) →
+  `segment_contours_xld` ('lines') → `fit_line_contour_xld` per segment. Segments lying flush
+  against a detection bound (the search-ROI/frame edge — ROI/frame artefacts, not die edges) are
+  dropped; among the rest it takes the **longest edge** plus the **longest other edge within
+  `MaxAngleDevDeg` of perpendicular**, and intersects their infinite lines analytically for a
+  **sub-pixel corner**. Reports x/y (corner), ax/ay + bx/by (the two edge rays' far endpoints,
+  which also draw the overlay), `angle` (bisector into the interior, continuous `[0,360)`),
+  `orientation` (1–4 = top-left / top-right / bottom-left / bottom-right, from where the filled
+  region sits relative to the corner) and `score` (perpendicularity, `1 − dev/90`). Params: min
+  edge length, max angle deviation, **expected orientation** (`Any` = auto-detect; a specific value
+  rejects a corner of a different orientation). Draw the search ROI around the corner so only the
+  two real edges are inside.
 
-All three return a method-agnostic `VisionDetectResult` (ordered `VisionResultValue` list +
+All return a method-agnostic `VisionDetectResult` (ordered `VisionResultValue` list +
 crop), so one grid, one `vision.runProfile` step, one `machine.vision.runProfile` Lua call and one
 Run-page overlay serve every method.
 

@@ -114,6 +114,28 @@ public sealed record LineParams(
     LinePolarity Polarity = LinePolarity.Any,
     LineScanOrder ScanOrder = LineScanOrder.Forward);
 
+/// <summary>
+/// Which corner of the die a detected corner is. Named by the die corner it represents:
+/// e.g. <see cref="TopLeft"/> means the filled region lies down-and-right of the corner
+/// point. Reported as a 0..3 code in the result (<c>orientation</c>); <see cref="Any"/> is
+/// only an input hint (auto-detect), never a result.
+/// </summary>
+public enum CornerOrientation { Any, TopLeft, TopRight, BottomLeft, BottomRight }
+
+/// <summary>
+/// Parameters for the corner detector — locates a die/rectangle corner by fitting the two
+/// straight edges of the thresholded foreground and intersecting them (sub-pixel). Operates
+/// on the filtered foreground.
+/// </summary>
+/// <param name="MinEdgeLength">Shortest contour segment (px) accepted as a die edge.</param>
+/// <param name="MaxAngleDevDeg">How far from 90° the two edges may deviate and still count as a corner.</param>
+/// <param name="Expected">If not <see cref="CornerOrientation.Any"/>, a detected corner of a
+/// different orientation is rejected — lets a profile pin down which of the four corners it wants.</param>
+public sealed record CornerParams(
+    double MinEdgeLength = 20,
+    double MaxAngleDevDeg = 25,
+    CornerOrientation Expected = CornerOrientation.Any);
+
 /// <summary>Metadata returned when an NCC template/model is created from an ROI.</summary>
 public sealed record NccTemplateInfo(
     int Width,

@@ -327,6 +327,203 @@ internal sealed class VisionFacet : IVisionFacet, IDisposable
         string cameraId, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, LineParams p)
         => WithCachedFrame(cameraId, f => FindLineAsync(f, filters, searchRoi, p));
 
+    /// <summary>One fitted edge segment (endpoints in source px + its length).</summary>
+    private readonly record struct EdgeSeg(double X1, double Y1, double X2, double Y2, double Length);
+
+    public Task<Result<VisionDetectResult>> FindCornerAsync(
+        CameraFrame frame, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, CornerParams p)
+        => RunFrameAsync<VisionDetectResult>(frame, f =>
+        {
+            using var image = ToHImage(f);
+            using var gray = ToGray(image, f.Channels);
+            using var search = ReduceFilterReduce(gray, searchRoi, filters, f.Width, f.Height);
+
+            var notFound = new VisionDetectResult(false, Array.Empty<VisionResultValue>(), null);
+
+            // Foreground (filters set the polarity: die = white), largest blob = the die.
+            HOperatorSet.Threshold(search, out HObject fg, 128.0, 255.0);
+            try
+            {
+                HOperatorSet.Connection(fg, out HObject conn);
+                try
+                {
+                    HOperatorSet.CountObj(conn, out HTuple nreg);
+                    if (nreg.I == 0) return Result<VisionDetectResult>.Ok(notFound);
+
+                    HOperatorSet.AreaCenter(conn, out HTuple areas, out HTuple rowc, out HTuple colc);
+                    int bi = 0;
+                    double bestArea = -1;
+                    for (int i = 0; i < nreg.I; i++)
+                        if (areas[i].D > bestArea) { bestArea = areas[i].D; bi = i; }
+                    double centroidX = colc[bi].D, centroidY = rowc[bi].D;
+
+                    HOperatorSet.SelectObj(conn, out HObject die, bi + 1);   // HALCON is 1-based
+                    try
+                    {
+                        // Trace the blob outline and break it into straight segments; the two
+                        // real die edges become the two longest non-border segments.
+                        HOperatorSet.GenContourRegionXld(die, out HObject contour, "border");
+                        try
+                        {
+                            HOperatorSet.SegmentContoursXld(contour, out HObject segments, "lines", 5, 4, 2);
+                            try
+                            {
+                                var (bx, by, bw, bh) = DetectionBounds(searchRoi, f.Width, f.Height);
+                                var edges = CollectEdges(segments, p.MinEdgeLength, bx, by, bw, bh);
+                                if (edges.Count < 2) return Result<VisionDetectResult>.Ok(notFound);
+
+                                // Longest edge, then the longest other edge ~perpendicular to it.
+                                edges.Sort((a, b) => b.Length.CompareTo(a.Length));
+                                var a = edges[0];
+                                double aAng = EdgeAngle(a);
+                                EdgeSeg? bOpt = null;
+                                for (int i = 1; i < edges.Count; i++)
+                                {
+                                    if (Math.Abs(90.0 - AngleBetween(aAng, EdgeAngle(edges[i]))) <= p.MaxAngleDevDeg)
+                                    { bOpt = edges[i]; break; }
+                                }
+                                if (bOpt is not { } b) return Result<VisionDetectResult>.Ok(notFound);
+                                double dev = Math.Abs(90.0 - AngleBetween(aAng, EdgeAngle(b)));
+
+                                if (!LineIntersection(a, b, out double px, out double py))
+                                    return Result<VisionDetectResult>.Ok(notFound);
+
+                                // Each edge extends from the corner along the die side: the ray
+                                // points to whichever endpoint is farther from the corner.
+                                var (axf, ayf) = FarEndpoint(a, px, py);
+                                var (bxf, byf) = FarEndpoint(b, px, py);
+
+                                // Orientation from where the filled region sits relative to the corner.
+                                bool right = centroidX > px, below = centroidY > py;
+                                int orientation = (right, below) switch
+                                {
+                                    (true, true) => 1,    // interior bottom-right → TopLeft
+                                    (false, true) => 2,   // interior bottom-left  → TopRight
+                                    (true, false) => 3,   // interior top-right    → BottomLeft
+                                    _ => 4,               // interior top-left     → BottomRight
+                                };
+                                if (p.Expected != CornerOrientation.Any && (int)p.Expected != orientation)
+                                    return Result<VisionDetectResult>.Ok(notFound);
+
+                                // Bisector: from the corner toward the interior (continuous 0..360,
+                                // math convention with y up), so the four corners read distinctly.
+                                double bis = Math.Atan2(-(centroidY - py), centroidX - px) * 180.0 / Math.PI;
+                                bis = ((bis % 360.0) + 360.0) % 360.0;
+                                double score = Math.Clamp(1.0 - dev / 90.0, 0.0, 1.0);
+
+                                var values = new[]
+                                {
+                                    new VisionResultValue("x", px),
+                                    new VisionResultValue("y", py),
+                                    new VisionResultValue("ax", axf),
+                                    new VisionResultValue("ay", ayf),
+                                    new VisionResultValue("bx", bxf),
+                                    new VisionResultValue("by", byf),
+                                    new VisionResultValue("angle", bis),
+                                    new VisionResultValue("orientation", orientation),
+                                    new VisionResultValue("score", score),
+                                };
+                                int cropSize = (int)(Math.Max(a.Length, b.Length) + 20);
+                                return Result<VisionDetectResult>.Ok(new VisionDetectResult(
+                                    true, values, CropAround(gray, px, py, cropSize, f.Width, f.Height)));
+                            }
+                            finally { segments.Dispose(); }
+                        }
+                        finally { contour.Dispose(); }
+                    }
+                    finally { die.Dispose(); }
+                }
+                finally { conn.Dispose(); }
+            }
+            finally { fg.Dispose(); }
+        });
+
+    public Task<Result<VisionDetectResult>> FindCornerAsync(
+        string cameraId, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, CornerParams p)
+        => WithCachedFrame(cameraId, f => FindCornerAsync(f, filters, searchRoi, p));
+
+    /// <summary>
+    /// Fits a line to each contour segment and returns those that are long enough and not lying
+    /// flush against a detection-bound edge (those are ROI/frame artefacts, not die edges).
+    /// </summary>
+    private static List<EdgeSeg> CollectEdges(
+        HObject segments, double minLength, double bx, double by, double bw, double bh)
+    {
+        var list = new List<EdgeSeg>();
+        HOperatorSet.CountObj(segments, out HTuple n);
+        for (int i = 1; i <= n.I; i++)
+        {
+            HOperatorSet.SelectObj(segments, out HObject seg, i);
+            try
+            {
+                HOperatorSet.FitLineContourXld(seg, "tukey", -1, 0, 5, 2.0,
+                    out HTuple rB, out HTuple cB, out HTuple rE, out HTuple cE, out _, out _, out _);
+                if ((rB?.Length ?? 0) == 0) continue;
+                double x1 = cB[0].D, y1 = rB[0].D, x2 = cE[0].D, y2 = rE[0].D;
+                double len = Math.Sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+                if (len < minLength) continue;
+                if (OnDetectionBorder(x1, y1, x2, y2, bx, by, bw, bh)) continue;
+                list.Add(new EdgeSeg(x1, y1, x2, y2, len));
+            }
+            finally { seg.Dispose(); }
+        }
+        return list;
+    }
+
+    /// <summary>Detection area (x,y,w,h) in source px — the clamped search ROI, or the whole frame.</summary>
+    private static (double X, double Y, double W, double H) DetectionBounds(RoiSpec? roi, int width, int height)
+    {
+        if (roi == null) return (0, 0, width, height);
+        var c = ClampRoi(roi, width, height);
+        return (c.X, c.Y, c.Width, c.Height);
+    }
+
+    /// <summary>True if both endpoints hug the same detection-bound edge (an ROI/frame artefact edge).</summary>
+    private static bool OnDetectionBorder(
+        double x1, double y1, double x2, double y2, double bx, double by, double bw, double bh)
+    {
+        const double m = 3.0;
+        bool leftBoth = x1 <= bx + m && x2 <= bx + m;
+        bool rightBoth = x1 >= bx + bw - 1 - m && x2 >= bx + bw - 1 - m;
+        bool topBoth = y1 <= by + m && y2 <= by + m;
+        bool botBoth = y1 >= by + bh - 1 - m && y2 >= by + bh - 1 - m;
+        return leftBoth || rightBoth || topBoth || botBoth;
+    }
+
+    /// <summary>Undirected edge orientation folded into [0,180) — for perpendicularity tests.</summary>
+    private static double EdgeAngle(EdgeSeg e)
+    {
+        double a = Math.Atan2(-(e.Y2 - e.Y1), e.X2 - e.X1) * 180.0 / Math.PI;
+        return ((a % 180.0) + 180.0) % 180.0;
+    }
+
+    /// <summary>Smallest angle (0..90) between two undirected orientations in [0,180).</summary>
+    private static double AngleBetween(double a, double b)
+    {
+        double d = Math.Abs(a - b) % 180.0;
+        return d > 90.0 ? 180.0 - d : d;
+    }
+
+    /// <summary>The endpoint of an edge farther from the corner — the ray direction along the die side.</summary>
+    private static (double X, double Y) FarEndpoint(EdgeSeg e, double px, double py)
+    {
+        double d1 = (e.X1 - px) * (e.X1 - px) + (e.Y1 - py) * (e.Y1 - py);
+        double d2 = (e.X2 - px) * (e.X2 - px) + (e.Y2 - py) * (e.Y2 - py);
+        return d2 >= d1 ? (e.X2, e.Y2) : (e.X1, e.Y1);
+    }
+
+    /// <summary>Intersection of the two infinite lines through the edges. False if near-parallel.</summary>
+    private static bool LineIntersection(EdgeSeg a, EdgeSeg b, out double x, out double y)
+    {
+        double denom = (a.X1 - a.X2) * (b.Y1 - b.Y2) - (a.Y1 - a.Y2) * (b.X1 - b.X2);
+        if (Math.Abs(denom) < 1e-9) { x = y = 0; return false; }
+        double ca = a.X1 * a.Y2 - a.Y1 * a.X2;
+        double cb = b.X1 * b.Y2 - b.Y1 * b.X2;
+        x = (ca * (b.X1 - b.X2) - (a.X1 - a.X2) * cb) / denom;
+        y = (ca * (b.Y1 - b.Y2) - (a.Y1 - a.Y2) * cb) / denom;
+        return true;
+    }
+
     public void Dispose()
     {
         _camera.FrameReady -= OnFrame;

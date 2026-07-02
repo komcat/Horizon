@@ -44,7 +44,7 @@ public sealed record VisionProfile
     /// </summary>
     public IReadOnlyList<VisionFilter> Filters { get; init; } = Array.Empty<VisionFilter>();
 
-    /// <summary>Detection method id: <c>ncc</c>, <c>circle</c> or <c>line</c>.</summary>
+    /// <summary>Detection method id: <c>ncc</c>, <c>circle</c>, <c>line</c> or <c>corner</c>.</summary>
     public string DetectionMethod { get; init; } = "ncc";
 
     /// <summary>Minimum NCC score (0..1) for a match to count.</summary>
@@ -67,6 +67,9 @@ public sealed record VisionProfile
 
     /// <summary>Line-detector parameters (used when <see cref="DetectionMethod"/> is <c>line</c>).</summary>
     public LineParams Line { get; init; } = new();
+
+    /// <summary>Corner-detector parameters (used when <see cref="DetectionMethod"/> is <c>corner</c>).</summary>
+    public CornerParams Corner { get; init; } = new();
 
     /// <summary>The current template, or null if none has been taught yet (NCC only).</summary>
     public TemplateRef? Template { get; init; }

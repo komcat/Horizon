@@ -100,7 +100,7 @@ public partial class VisionProfileView : UserControl
         TemplateImage.SizeChanged += (_, _) => RedrawAnchorFrame();
     }
 
-    private string MethodKey() => MethodCombo.SelectedIndex switch { 1 => "circle", 2 => "line", _ => "ncc" };
+    private string MethodKey() => MethodCombo.SelectedIndex switch { 1 => "circle", 2 => "line", 3 => "corner", _ => "ncc" };
 
     private void OnMethodChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -109,7 +109,8 @@ public partial class VisionProfileView : UserControl
         NccPanel.Visibility = idx == 0 ? Visibility.Visible : Visibility.Collapsed;
         CirclePanel.Visibility = idx == 1 ? Visibility.Visible : Visibility.Collapsed;
         LinePanel.Visibility = idx == 2 ? Visibility.Visible : Visibility.Collapsed;
-        MethodHeader.Text = idx switch { 1 => "CIRCLE", 2 => "LINE", _ => "TEMPLATE (NCC)" };
+        CornerPanel.Visibility = idx == 3 ? Visibility.Visible : Visibility.Collapsed;
+        MethodHeader.Text = idx switch { 1 => "CIRCLE", 2 => "LINE", 3 => "CORNER", _ => "TEMPLATE (NCC)" };
 
         // The previous result's geometry no longer matches the new method — drop it.
         _overlayValues = null;
@@ -564,6 +565,16 @@ public partial class VisionProfileView : UserControl
                 if (Has(v, "x", "y")) AddDot(canvas, P(v["x"], v["y"]), red);
                 break;
             }
+            case "corner" when Has(v, "x", "y", "ax", "ay", "bx", "by"):
+            {
+                var corner = P(v["x"], v["y"]);
+                var ea = P(v["ax"], v["ay"]);
+                var eb = P(v["bx"], v["by"]);
+                canvas.Children.Add(new Line { X1 = corner.X, Y1 = corner.Y, X2 = ea.X, Y2 = ea.Y, Stroke = red, StrokeThickness = 1 });
+                canvas.Children.Add(new Line { X1 = corner.X, Y1 = corner.Y, X2 = eb.X, Y2 = eb.Y, Stroke = red, StrokeThickness = 1 });
+                AddDot(canvas, corner, lime);
+                break;
+            }
             case "circle" when Has(v, "x", "y", "radius"):
             {
                 double rr = v["radius"] * scale;
@@ -895,6 +906,7 @@ public partial class VisionProfileView : UserControl
         {
             "circle" => 1,
             "line" => 2,
+            "corner" => 3,
             _ => 0,
         };
         _searchRoi = p.SearchRoi;
@@ -919,6 +931,16 @@ public partial class VisionProfileView : UserControl
         {
             LineScanOrder.Backward => 1,
             LineScanOrder.CenterOut => 2,
+            _ => 0,
+        };
+        CornerMinEdgeBox.Text = p.Corner.MinEdgeLength.ToString("0.##", CultureInfo.InvariantCulture);
+        CornerMaxDevBox.Text = p.Corner.MaxAngleDevDeg.ToString("0.##", CultureInfo.InvariantCulture);
+        CornerExpectedCombo.SelectedIndex = p.Corner.Expected switch
+        {
+            CornerOrientation.TopLeft => 1,
+            CornerOrientation.TopRight => 2,
+            CornerOrientation.BottomLeft => 3,
+            CornerOrientation.BottomRight => 4,
             _ => 0,
         };
 
@@ -1010,6 +1032,16 @@ public partial class VisionProfileView : UserControl
                 1 => LineScanOrder.Backward,
                 2 => LineScanOrder.CenterOut,
                 _ => LineScanOrder.Forward,
+            }),
+        Corner = new CornerParams(
+            ParseDouble(CornerMinEdgeBox, 20), ParseDouble(CornerMaxDevBox, 25),
+            CornerExpectedCombo.SelectedIndex switch
+            {
+                1 => CornerOrientation.TopLeft,
+                2 => CornerOrientation.TopRight,
+                3 => CornerOrientation.BottomLeft,
+                4 => CornerOrientation.BottomRight,
+                _ => CornerOrientation.Any,
             }),
         Template = _template,
     };

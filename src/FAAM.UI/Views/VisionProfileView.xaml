@@ -162,6 +162,7 @@
                             <ComboBoxItem Content="Halcon NCC" />
                             <ComboBoxItem Content="Circle" />
                             <ComboBoxItem Content="Line" />
+                            <ComboBoxItem Content="Corner" />
                         </ComboBox>
                     </StackPanel>
 
@@ -290,6 +291,34 @@
                                     <ComboBoxItem Content="Left → Right" IsSelected="True" />
                                     <ComboBoxItem Content="Right → Left" />
                                     <ComboBoxItem Content="Center out" />
+                                </ComboBox>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Corner params -->
+                        <StackPanel x:Name="CornerPanel" Visibility="Collapsed" VerticalAlignment="Top">
+                            <TextBlock Text="Threshold the die, then fit its two edges and intersect them. Draw the Search ROI around the corner so only the two real edges are inside."
+                                       Foreground="{StaticResource Subtle}" FontSize="11" TextWrapping="Wrap"
+                                       Margin="0,0,0,6" />
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Min edge len" Style="{StaticResource Lbl}" Width="90" />
+                                <TextBox x:Name="CornerMinEdgeBox" Width="64" Height="26" Text="20"
+                                         VerticalContentAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Max angle dev°" Style="{StaticResource Lbl}" Width="90" />
+                                <TextBox x:Name="CornerMaxDevBox" Width="64" Height="26" Text="25"
+                                         VerticalContentAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Expected" Style="{StaticResource Lbl}" Width="90" />
+                                <ComboBox x:Name="CornerExpectedCombo" Width="130" Height="26"
+                                          VerticalContentAlignment="Center">
+                                    <ComboBoxItem Content="Any" IsSelected="True" />
+                                    <ComboBoxItem Content="Top-left" />
+                                    <ComboBoxItem Content="Top-right" />
+                                    <ComboBoxItem Content="Bottom-left" />
+                                    <ComboBoxItem Content="Bottom-right" />
                                 </ComboBox>
                             </StackPanel>
                         </StackPanel>

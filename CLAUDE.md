@@ -183,7 +183,10 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   methods (HALCON): **NCC** (`find_ncc_model`, rotation-search → returns match
   angle; anchor is X/Y pixel + rotation), **Circle** (threshold → `connection` →
   `select_shape` by circularity → `smallest_circle`), **Line** (threshold → blob →
-  `smallest_rectangle2` major axis). All three return a method-agnostic
+  `smallest_rectangle2` major axis), **Corner** (threshold → largest blob →
+  `gen_contour_region_xld` → `segment_contours_xld` → fit the two longest non-border
+  perpendicular edges → intersect for a sub-pixel corner; auto-reports which of the 4
+  die corners via the region centroid). All return a method-agnostic
   `VisionDetectResult` so one result grid and one `vision.runProfile` step serve
   every method. See `docs/vision-profile-design.md`.
 - **Engineer = the Gantt timeline editor** (`Views/TimelineEditorView`,
