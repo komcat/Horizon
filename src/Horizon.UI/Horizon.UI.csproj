@@ -12,6 +12,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Horizon.UI</RootNamespace>
     <AssemblyName>Horizon.UI</AssemblyName>
+    <ApplicationIcon>..\..\assets\appicon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!-- HALCON native bundle — Horizon.Engine references MVTec.HalconDotNet (Vision facet). -->

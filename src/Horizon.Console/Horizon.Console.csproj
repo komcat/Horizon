@@ -9,6 +9,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Horizon.ConsoleHost</RootNamespace>
     <AssemblyName>Horizon.Console</AssemblyName>
+    <ApplicationIcon>..\..\assets\appicon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

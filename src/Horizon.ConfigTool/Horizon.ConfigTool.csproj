@@ -8,6 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>Horizon.ConfigTool</RootNamespace>
+    <ApplicationIcon>..\..\assets\appicon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

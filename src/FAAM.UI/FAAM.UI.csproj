@@ -12,6 +12,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>FAAM.UI</RootNamespace>
     <AssemblyName>FAAM.UI</AssemblyName>
+    <ApplicationIcon>..\..\assets\appicon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!-- HALCON native bundle — Horizon.Engine references the managed
