@@ -1053,6 +1053,13 @@ public sealed class ProcessService : IProcessService
 
     // --- Interactive DUT runs (operator-driven, no WorkflowProgram) ---
 
+    /// <summary>
+    /// Guards the interactive DUT session (append / flush / finalise). Layer 3 mirrors
+    /// operator activity from background threads (the jog pump, a debounced flush timer)
+    /// while the UI thread may end the run, so these must not tear the record mid-write.
+    /// </summary>
+    private readonly object _interactiveDutGate = new();
+
     public bool HasActiveDutRun => _interactiveDut != null;
 
     public Result BeginDutRun(string serial, string source)
@@ -1069,9 +1076,12 @@ public sealed class ProcessService : IProcessService
         var run = new DutRun { StartedUtc = DateTime.UtcNow, Source = source, Verdict = DutVerdict.InProgress };
         StampOperator(run);
         record.Runs.Add(run);            // persist the open run now so the file exists from Start
-        _interactiveDut = (record, run);
+        lock (_interactiveDutGate)
+        {
+            _interactiveDut = (record, run);
+            TrySaveDut(record, "run started");
+        }
         SetActiveSerial(record.Serial);
-        TrySaveDut(record, "run started");
         Log(LogLevel.Info, $"DUT run started: {record.Serial} [{source}]" +
             (_operator != null ? $" by {_operator.DisplayName}" : ""));
         return Result.Ok();
@@ -1079,38 +1089,57 @@ public sealed class ProcessService : IProcessService
 
     public void RecordDutValue(string key, string value, DutValueType type = DutValueType.String)
     {
-        if (_interactiveDut == null || string.IsNullOrWhiteSpace(key)) return;
-        _interactiveDut.Value.Run.Entries.Add(new DutEntry(DateTime.UtcNow, key, value, type));
+        if (string.IsNullOrWhiteSpace(key)) return;
+        lock (_interactiveDutGate)
+        {
+            if (_interactiveDut == null) return;
+            _interactiveDut.Value.Run.Entries.Add(new DutEntry(DateTime.UtcNow, key, value, type));
+        }
+    }
+
+    public void FlushDutRun()
+    {
+        lock (_interactiveDutGate)
+        {
+            if (_interactiveDut == null || _dut == null) return;
+            try { _dut.Save(_interactiveDut.Value.Record); }
+            catch (Exception ex) { Log(LogLevel.Warning, $"DUT flush failed: {ex.Message}"); }
+        }
     }
 
     public Result EndDutRun(DutVerdict verdict)
     {
-        if (_interactiveDut == null)
-            return Result.Fail(ErrorCode.OperationFailed, "No DUT run is open.");
+        // Serialised against RecordDutValue / FlushDutRun so a background flush cannot save a
+        // torn record while this finalises and clears the session.
+        lock (_interactiveDutGate)
+        {
+            if (_interactiveDut == null)
+                return Result.Fail(ErrorCode.OperationFailed, "No DUT run is open.");
 
-        var (record, run) = _interactiveDut.Value;
-        run.EndedUtc = DateTime.UtcNow;
-        run.Verdict = verdict;
-        // The run was added to record.Runs and persisted at Start (BeginDutRun); here we
-        // just finalise it in place — do NOT add it again.
-        _interactiveDut = null;
+            var (record, run) = _interactiveDut.Value;
+            run.EndedUtc = DateTime.UtcNow;
+            run.Verdict = verdict;
+            // The run was added to record.Runs and persisted at Start (BeginDutRun); here we
+            // just finalise it in place — do NOT add it again.
+            _interactiveDut = null;
 
-        if (_dut == null)
-        {
-            Log(LogLevel.Warning, $"DUT record for {record.Serial} not saved — product unloaded mid-run.");
-            return Result.Fail(ErrorCode.OperationFailed, "Product unloaded mid-run.");
-        }
-        try
-        {
-            _dut.Save(record);
-            Log(LogLevel.Info,
-                $"DUT record saved: {record.Serial} — run {verdict}, {run.Entries.Count} entry(ies).");
-            return Result.Ok();
-        }
-        catch (Exception ex)
-        {
-            Log(LogLevel.Error, $"DUT record save failed for {record.Serial}: {ex.Message}");
-            return Result.Fail(ErrorCode.OperationFailed, ex.Message);
+            if (_dut == null)
+            {
+                Log(LogLevel.Warning, $"DUT record for {record.Serial} not saved — product unloaded mid-run.");
+                return Result.Fail(ErrorCode.OperationFailed, "Product unloaded mid-run.");
+            }
+            try
+            {
+                _dut.Save(record);
+                Log(LogLevel.Info,
+                    $"DUT record saved: {record.Serial} — run {verdict}, {run.Entries.Count} entry(ies).");
+                return Result.Ok();
+            }
+            catch (Exception ex)
+            {
+                Log(LogLevel.Error, $"DUT record save failed for {record.Serial}: {ex.Message}");
+                return Result.Fail(ErrorCode.OperationFailed, ex.Message);
+            }
         }
     }
 

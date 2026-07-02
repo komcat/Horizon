@@ -551,6 +551,10 @@ public partial class JogPanel : UserControl
             // A cancelled move (superseded by a newer press) is expected — not a failure.
             if (!r.IsSuccess && !ct.IsCancellationRequested)
                 SetStatus($"Jog {tag} → {localAxis}{(dir > 0 ? "+" : "-")} failed: {r.Message}");
+            // Publish the actual executed move so the DUT log records what the operator did
+            // (and, via the mirror's signal probe, how the Sagnac signal responded).
+            else if (r.IsSuccess)
+                _host.Activities.Publish(OperatorActivity.Jog(_device, tag, localAxis, dir, step));
         }
         catch (Exception ex)
         {

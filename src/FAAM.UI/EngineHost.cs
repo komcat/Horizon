@@ -48,6 +48,14 @@ public sealed class EngineHost : IAsyncDisposable
     public ActivityGate Activity { get; } = new();
 
     /// <summary>
+    /// Publish/subscribe seam for operator actions (manual jogs + each section of the
+    /// "Start correction" chain). Publishers push an <see cref="OperatorActivity"/>; the
+    /// <see cref="DutActivityMirror"/> records them into the open DUT run. This is how
+    /// operator work reaches the DUT log without hardwiring logging into each routine.
+    /// </summary>
+    public OperatorActivityHub Activities { get; } = new();
+
+    /// <summary>
     /// Fans one alignment capture/confirm prompt out to every open camera surface — the
     /// Run-page main feed and any camera pop-out (<see cref="Views.DisplayWindow"/>) — so the
     /// operator can Capture / Apply / Cancel from whichever view they are looking at. The Run
@@ -70,6 +78,9 @@ public sealed class EngineHost : IAsyncDisposable
 
     /// <summary>Motion device whose legacy teach points migrate into the product.</summary>
     private const string TeachDevice = "gantry-main";
+
+    /// <summary>Mirrors published operator activities into the open interactive DUT run.</summary>
+    private readonly DutActivityMirror _dutActivityMirror;
 
     private bool _smuWired;
     private bool _measurementWired;
@@ -99,6 +110,10 @@ public sealed class EngineHost : IAsyncDisposable
         // (InitializeAsync) lines are not lost before the shell exists.
         Engine.LogEmitted += Log.Add;
         Process.LogEmitted += Log.Add;
+
+        // Mirror operator actions (jogs + correction-sequence sections) into the open DUT run.
+        // FAAM installs the Sagnac signal probe on the Run page, where the SiPhOG client lives.
+        _dutActivityMirror = new DutActivityMirror(Activities, Process, Log);
 
         // FAAM is a single-purpose head, but Layer 2 scopes named positions to a
         // product — so ensure ours exists and is active, and fold any legacy
@@ -131,6 +146,14 @@ public sealed class EngineHost : IAsyncDisposable
             Log.Add(new LogEntry(LogLevel.Info, DateTimeOffset.Now, "FAAM",
                 $"Migrated {imported} legacy teach point(s) into product '{ProductName}'."));
     }
+
+    /// <summary>
+    /// Installs (or clears) the live-signal probe used to enrich jog activities in the DUT
+    /// log. FAAM calls this from the Run page with a SiPhOG Sagnac reader; the generic
+    /// activity/DUT layer stays signal-agnostic. Pass null to clear.
+    /// </summary>
+    public void SetActivitySignalProbe(Func<KeyValuePair<string, double>?>? probe)
+        => _dutActivityMirror.SignalProbe = probe;
 
     private void OnSmuSampled(SmuSample s)
     {
@@ -289,6 +312,7 @@ public sealed class EngineHost : IAsyncDisposable
     {
         Engine.LogEmitted -= Log.Add;
         Process.LogEmitted -= Log.Add;
+        _dutActivityMirror.Dispose();
         if (_smuWired)
             Engine.Smu.Sampled -= OnSmuSampled;
         if (_measurementWired)

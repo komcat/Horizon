@@ -79,6 +79,15 @@ public partial class RunView : UserControl
         // The SiPhOG chart (over the camera) shares that same client/connection.
         SiphogChartControl.Attach(siphog);
 
+        // Enrich jog activities in the DUT log with the live Sagnac value. Installed here —
+        // where the SiPhOG client lives — so the generic activity/DUT layer stays signal-agnostic
+        // (Sagnac is application-specific to FAAM). Reuses the same SAG-PWR read as the hill
+        // climber; yields null when the SiPhOG isn't streaming so no stale value is recorded.
+        var sagProbe = new SiphogHillClimbFeedback(siphog);
+        host.SetActivitySignalProbe(() => sagProbe.HasSample
+            ? new KeyValuePair<string, double>("sagnacV", sagProbe.Read())
+            : (KeyValuePair<string, double>?)null);
+
         // Let app.* workflow steps drive the utility panels (start/stop a panel by id).
         host.Process.SetUtilityAppHost(AppHost);
 

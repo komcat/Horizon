@@ -190,6 +190,9 @@ public partial class HillClimbPanel : UserControl
         Log(LogLevel.Info,
             $"Hill climb starting: distance={distance:0.0} µm; auto-SLED handoff at peak ≥ {AutoSledTriggerV:0.###} V → {AutoSledCurrentMa} mA, then continue"
             + (target > 0 ? $" toward target V={target:0.######} (exit at ≥90% = {target * 0.9:0.######})." : "."));
+        _lastClimbResult = null;
+        _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.HillClimb, "started",
+            $"distance={distance:0.0} µm" + (target > 0 ? $", target V={target:0.######}" : "")));
         bool climbedOk = false;
         try
         {
@@ -231,6 +234,23 @@ public partial class HillClimbPanel : UserControl
             // Update the remaining lifetime travel now that this run consumed some Z.
             if (_lifetimeStartZmm is not null) await RefreshRemaining();
         }
+
+        var climbRes = _lastClimbResult;
+        _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.HillClimb,
+            climbedOk ? "completed" : "stopped",
+            climbRes != null
+                ? $"V {climbRes.VStart:F6} → {climbRes.VPeakGlobal:F6}, Z={climbRes.ZTotalTraveled_um:F1} µm ({climbRes.StopReason})"
+                : (climbedOk ? "completed" : "stopped"),
+            climbRes != null
+                ? new Dictionary<string, object?>
+                {
+                    ["vStart"] = climbRes.VStart,
+                    ["vPeak"] = climbRes.VPeakGlobal,
+                    ["zUm"] = climbRes.ZTotalTraveled_um,
+                    ["stopReason"] = climbRes.StopReason.ToString(),
+                    ["loops"] = climbRes.LoopsExecuted,
+                }
+                : null));
 
         // ---- One-shot Auto W maximizer: once per lifetime, re-armed on Set Start / Clear Distance. ----
         // The climb has parked at peak and released the hexapod (activity disposed in finally), so the
@@ -455,13 +475,22 @@ public partial class HillClimbPanel : UserControl
         ZCumText.Text = $"{e.ZCumulative_um:F1} / {_budgetUm:F1}";
     });
 
-    private void OnClimbCompleted(object? sender, HillClimbResult r) => Ui(() =>
+    /// <summary>Final result of the most recent completed <see cref="HillClimbEngine.RunAsync"/> —
+    /// with the SLED-handoff continuation this ends as the true parked result. Captured synchronously
+    /// (not on the UI marshal) so <see cref="OnStart"/>'s finally can read it without a race.</summary>
+    private HillClimbResult? _lastClimbResult;
+
+    private void OnClimbCompleted(object? sender, HillClimbResult r)
     {
-        VPeakText.Text = r.VPeakGlobal.ToString("F6");
-        ZCumText.Text = $"{r.ZTotalTraveled_um:F1} / {_budgetUm:F1}";
-        Log(LogLevel.Info,
-            $"Hill climb {r.StopReason}: V {r.VStart:F6} → {r.VPeakGlobal:F6}, Z={r.ZTotalTraveled_um:F1} µm, {r.LoopsExecuted} loops.");
-    });
+        _lastClimbResult = r;
+        Ui(() =>
+        {
+            VPeakText.Text = r.VPeakGlobal.ToString("F6");
+            ZCumText.Text = $"{r.ZTotalTraveled_um:F1} / {_budgetUm:F1}";
+            Log(LogLevel.Info,
+                $"Hill climb {r.StopReason}: V {r.VStart:F6} → {r.VPeakGlobal:F6}, Z={r.ZTotalTraveled_um:F1} µm, {r.LoopsExecuted} loops.");
+        });
+    }
 
     private void Ui(Action action)
     {

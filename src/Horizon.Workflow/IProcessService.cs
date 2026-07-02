@@ -541,6 +541,13 @@ public interface IProcessService
     void RecordDutValue(string key, string value, DutValueType type = DutValueType.String);
 
     /// <summary>
+    /// Persists the open interactive DUT run to disk in its current state (no-op if none is
+    /// open). <see cref="RecordDutValue"/> mutates only in memory, so callers that append
+    /// long-lived operator activity flush periodically to survive a mid-run crash. Thread-safe.
+    /// </summary>
+    void FlushDutRun();
+
+    /// <summary>
     /// Finalises the open interactive DUT run with a verdict, stamps the current
     /// operator + station, and persists it. Fails if no run is open.
     /// </summary>

@@ -44,6 +44,49 @@ selected step at the selected velocity. Jog buttons are in the **global** frame 
 converted to device-local via per-device transforms. Live X/Y/Z/U/V/W readout and a
 STOP that halts all motion.
 
+## Operator activity → DUT log
+
+Manual jogs and the external "Start correction" chain (U-correction → FAU pre-align
+→ grid search → hill climb → Auto W) used to leave **no trace** in a unit's DUT
+record, so cycle-time / operator-effort analysis had nothing to work from. A thin
+publish/subscribe seam mirrors those actions into the open DUT run **without
+hardwiring** DUT-logging into any routine.
+
+```
+Publishers (Layer 3)          OperatorActivityHub        Subscribers
+────────────────────          (EngineHost.Activities)    ───────────
+JogPanel.JogOnceAsync   ──┐        Publish() /            ┌─▶ LogHub (log panel + Serilog file)
+AlignmentPanel sections ──┼──▶  OperatorActivity ─event──┤
+HillClimb / AutoW panels ─┘     (Category, action, Data)  └─▶ DutActivityMirror ─▶ IProcessService.RecordDutValue
+```
+
+- **`OperatorActivityHub`** (`EngineHost.Activities`) — a plain `Publish()` / `event
+  Published` bus. Distinct from the busy-signal `ActivityGate Activity`. Publishers
+  stay ignorant of who listens; a routine emits to its natural sink only.
+- **`DutActivityMirror`** (owned by `EngineHost`) — the *only* component that couples
+  actions to the DUT log. On each activity it records a `DutEntry` (key
+  `"{Category}:{action}"`, JSON value, type `Object`) into the open interactive run,
+  or drops it for the record when none is open (`IProcessService.HasActiveDutRun`).
+  It also echoes **jogs** to `LogHub` (they were otherwise unlogged on success);
+  section boundaries are already logged by their panels, so those aren't echoed.
+- **What's published** — jogs (the *actually executed* move: device / local axis /
+  step; superseded rapid presses coalesce) and each correction **section**
+  (`started` / `completed` / `declined` / `failed`) with structured result fields
+  (U/FAU angles + offsets, hill-climb V-peak + Z travel, Auto-W W-offset, stop
+  reasons). Per-step engine measurements are **not** flooded into the record —
+  boundaries + results only. HillClimb brackets at the panel's `OnStart` level (not
+  its `ClimbCompleted` event, which fires twice for the SLED-handoff continuation).
+- **Sagnac is FAAM-specific** — the generic activity/DUT layer never learns about it.
+  The Run page installs a signal probe via `EngineHost.SetActivitySignalProbe(...)`
+  (reusing `SiphogHillClimbFeedback`'s SAG-PWR read), and `DutActivityMirror` attaches
+  the live value (`sagnacV`) to **jog** events only — so the record shows how an
+  operator's jog moved the signal. Yields nothing when the SiPhOG isn't streaming.
+- **Durability** — `RecordDutValue` only mutates in memory, so `IProcessService`
+  gained `FlushDutRun()` (Layer 2). The mirror flushes immediately on section
+  boundaries and on a 750 ms debounce for jog bursts. The interactive DUT session is
+  guarded by a lock (`_interactiveDutGate`) so the background flush timer can't tear
+  the record against a UI-thread `EndDutRun`.
+
 ## Config files (`%APPDATA%\Horizon\config\`)
 
 | File | Owner | Contents |
