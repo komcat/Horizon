@@ -28,6 +28,8 @@ public sealed class SettingsSectionViewModel : ObservableObject
     private double _moveClickYSign = 1.0;
     private string _hexVelocityPresetsText = "";
     private string _gantryVelocityPresetsText = "";
+    private string _hexStepPresetsText = "";
+    private string _gantryStepPresetsText = "";
     private bool _showMainCameraOnStartup = true;
     private bool _autoLoginOperator = true;
     private string _status = "—";
@@ -78,6 +80,12 @@ public sealed class SettingsSectionViewModel : ObservableObject
     /// <summary>ACS / gantry-family jog velocity presets (mm/s), comma-separated.</summary>
     public string GantryVelocityPresetsText { get => _gantryVelocityPresetsText; set => SetField(ref _gantryVelocityPresetsText, value); }
 
+    /// <summary>Hex-family jog step presets (µm), comma-separated. Stored as mm in AppSettings.</summary>
+    public string HexStepPresetsText { get => _hexStepPresetsText; set => SetField(ref _hexStepPresetsText, value); }
+
+    /// <summary>ACS / gantry-family jog step presets (mm), comma-separated.</summary>
+    public string GantryStepPresetsText { get => _gantryStepPresetsText; set => SetField(ref _gantryStepPresetsText, value); }
+
     /// <summary>Pop up the main_camera window automatically when the app starts.</summary>
     public bool ShowMainCameraOnStartup
     {
@@ -108,6 +116,8 @@ public sealed class SettingsSectionViewModel : ObservableObject
         MoveClickYSign = s.MoveClickYSign;
         HexVelocityPresetsText = string.Join(", ", s.HexVelocityPresets);
         GantryVelocityPresetsText = string.Join(", ", s.GantryVelocityPresets);
+        HexStepPresetsText = string.Join(", ", s.HexStepPresetsMm.Select(mm => Math.Round(mm * 1000.0, 4)));   // mm → µm for display
+        GantryStepPresetsText = string.Join(", ", s.GantryStepPresetsMm);                                       // already mm
         ShowMainCameraOnStartup = s.ShowMainCameraOnStartup;
         AutoLoginOperator = s.AutoLoginOperator;
 
@@ -134,6 +144,8 @@ public sealed class SettingsSectionViewModel : ObservableObject
             MoveClickYSign = _moveClickYSign,
             HexVelocityPresets = ParsePresets(_hexVelocityPresetsText, current.HexVelocityPresets),
             GantryVelocityPresets = ParsePresets(_gantryVelocityPresetsText, current.GantryVelocityPresets),
+            HexStepPresetsMm = ParseSteps(_hexStepPresetsText, 0.001, current.HexStepPresetsMm),   // µm entry → mm
+            GantryStepPresetsMm = ParseSteps(_gantryStepPresetsText, 1.0, current.GantryStepPresetsMm), // mm entry
             ShowMainCameraOnStartup = _showMainCameraOnStartup,
             AutoLoginOperator = _autoLoginOperator,
         });
@@ -165,6 +177,21 @@ public sealed class SettingsSectionViewModel : ObservableObject
         foreach (var part in (text ?? "").Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries))
             if (double.TryParse(part, out var v) && v > 0)
                 values.Add(v);
+        return values.Count > 0 ? values.ToArray() : fallback;
+    }
+
+    /// <summary>
+    /// Parses a comma/space-separated list of positive step sizes, multiplying each by
+    /// <paramref name="unitToMm"/> (1.0 if the entries are mm, 0.001 if they are µm) so the
+    /// result is always mm. Sorted ascending; keeps the old list if none parse.
+    /// </summary>
+    private static double[] ParseSteps(string text, double unitToMm, double[] fallback)
+    {
+        var values = new List<double>();
+        foreach (var part in (text ?? "").Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries))
+            if (double.TryParse(part, out var v) && v > 0)
+                values.Add(v * unitToMm);
+        values.Sort();
         return values.Count > 0 ? values.ToArray() : fallback;
     }
 }

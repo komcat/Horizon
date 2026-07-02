@@ -150,16 +150,10 @@
                 </Grid>
             </Border>
 
-            <!-- Velocity (speed) presets — applied to the selected device's controller. -->
-            <TextBlock Text="Velocity (mm/s)" Foreground="{StaticResource Subtle}" FontSize="11" Margin="2,8,0,2" />
-            <UniformGrid Columns="3" Rows="2">
-                <ToggleButton x:Name="Vel0" Style="{StaticResource VelBtn}" Click="OnVelocity" />
-                <ToggleButton x:Name="Vel1" Style="{StaticResource VelBtn}" Click="OnVelocity" />
-                <ToggleButton x:Name="Vel2" Style="{StaticResource VelBtn}" Click="OnVelocity" />
-                <ToggleButton x:Name="Vel3" Style="{StaticResource VelBtn}" Click="OnVelocity" />
-                <ToggleButton x:Name="Vel4" Style="{StaticResource VelBtn}" Click="OnVelocity" />
-                <ToggleButton x:Name="Vel5" Style="{StaticResource VelBtn}" Click="OnVelocity" />
-            </UniformGrid>
+            <!-- Step-size quick presets — set the linear X/Y/Z jog step (highlight tracks the current step).
+                 Rows auto-size to the per-family step count (5 across). -->
+            <TextBlock Text="Step presets" Foreground="{StaticResource Subtle}" FontSize="11" Margin="2,8,0,2" />
+            <UniformGrid x:Name="StepPresetList" Columns="5" />
 
             <!-- Step size — large readout; changed with Q (finer) / E (coarser) or the mouse wheel. -->
             <TextBlock Text="Step  (Q finer · E coarser · scroll)" Foreground="{StaticResource Subtle}" FontSize="11" Margin="2,8,0,2" />
@@ -213,6 +207,20 @@
                 <Button Grid.Row="1" Grid.Column="3" Content="V+" Tag="V+" Style="{StaticResource JogBtn}" />
                 <Button Grid.Row="2" Grid.Column="2" Content="W-" Tag="W-" Style="{StaticResource JogBtn}" />
                 <Button Grid.Row="2" Grid.Column="3" Content="W+" Tag="W+" Style="{StaticResource JogBtn}" />
+            </Grid>
+
+            <!-- Velocity (speed) for the selected device — applied immediately on select; flash confirms. -->
+            <TextBlock Text="Velocity (mm/s)" Foreground="{StaticResource Subtle}" FontSize="11" Margin="2,12,0,2" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ComboBox x:Name="VelocityCombo" Grid.Column="0" Height="32" VerticalContentAlignment="Center"
+                          FontSize="14" SelectionChanged="OnVelocityCombo"
+                          ToolTip="Select a speed — applied to the selected device immediately." />
+                <TextBlock x:Name="VelFlash" Grid.Column="1" Text="" Foreground="#2E9E2E" FontSize="12"
+                           FontWeight="SemiBold" VerticalAlignment="Center" Margin="8,0,2,0" Opacity="0" />
             </Grid>
 
             <TextBlock x:Name="JogStatus" Foreground="{StaticResource Subtle}" FontSize="11"

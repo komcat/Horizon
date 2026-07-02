@@ -50,6 +50,15 @@ public sealed record AppSettings
     /// <summary>Jog velocity presets for ACS / gantry-family devices (everything else).</summary>
     public double[] GantryVelocityPresets { get; init; } = { 1, 5, 10, 20, 40, 75 };
 
+    // --- Jog step presets (mm), shown as the jog-panel step quick-select buttons + scroll set ---
+
+    /// <summary>Jog step-size presets (mm) for hexapod-family devices (device id starts "hex").</summary>
+    public double[] HexStepPresetsMm { get; init; } =
+        { 0.0005, 0.001, 0.002, 0.0025, 0.005, 0.01, 0.02, 0.025, 0.05, 0.1, 0.2, 0.25, 0.5, 1.0 };
+
+    /// <summary>Jog step-size presets (mm) for ACS / gantry-family devices (everything else).</summary>
+    public double[] GantryStepPresetsMm { get; init; } = { 0.1, 0.2, 0.25, 0.5, 1.0, 2.0, 5.0 };
+
     // --- FAU-attach process (Run-page UV cure dwells, seconds) ---
 
     /// <summary>UV step 1 cure time (seconds) — drives the 4.2 "UV step1" dwell after the UV_PLC1 pulse.</summary>

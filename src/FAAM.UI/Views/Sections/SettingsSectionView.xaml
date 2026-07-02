@@ -77,6 +77,25 @@
                          ToolTip="Comma-separated, e.g. 1, 5, 10, 20, 40, 75" />
             </Grid>
 
+            <TextBlock Text="Jog step presets" Foreground="{StaticResource Text}"
+                       FontSize="14" FontWeight="SemiBold" Margin="0,14,0,8" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Hex family (µm)" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="0" Grid.Column="1" Width="Auto" Text="{Binding HexStepPresetsText}"
+                         ToolTip="Comma-separated µm, e.g. 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="ACS / gantry (mm)" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="1" Grid.Column="1" Width="Auto" Text="{Binding GantryStepPresetsText}"
+                         ToolTip="Comma-separated mm, e.g. 0.1, 0.2, 0.25, 0.5, 1, 2, 5" />
+            </Grid>
+
             <TextBlock Text="Camera → Needle offset (mm)" Foreground="{StaticResource Text}"
                        FontSize="14" FontWeight="SemiBold" Margin="0,14,0,8" />
             <Grid>

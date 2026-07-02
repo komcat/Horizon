@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Horizon.Engine;
 
@@ -17,16 +18,16 @@ namespace FAAM.UI.Views;
 /// </summary>
 public partial class JogPanel : UserControl
 {
-    /// <summary>Step-size presets (label, millimetres). Each jog click moves the selected step.</summary>
-    private static readonly (string Label, double Mm)[] StepSizes =
+    /// <summary>
+    /// Fallback linear step set (mm), used before a device is selected. Once a device
+    /// loads, its family's configured set (<c>HexStepPresetsMm</c> / <c>GantryStepPresetsMm</c>
+    /// in AppSettings) replaces this. Both the quick-select buttons and the scroll /
+    /// Q / E step cycling walk this same set.
+    /// </summary>
+    private static readonly double[] DefaultStepSet =
     {
-        ("0.1µm", 0.0001), ("0.2µm", 0.0002), ("0.5µm", 0.0005),
-        ("1µm", 0.001), ("2µm", 0.002), ("5µm", 0.005),
-        ("10µm", 0.01), ("25µm", 0.025), ("50µm", 0.05),
-        ("100µm", 0.1), ("250µm", 0.25),
-        ("1mm", 1.0), ("2mm", 2.0), ("5mm", 5.0),
+        0.0005, 0.001, 0.002, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 1.0,
     };
-    private const int DefaultStepIndex = 6;   // 10µm
 
     /// <summary>θ (U/V/W rotational) step presets — used only for the U/V/W jog buttons.</summary>
     private static readonly (string Label, double Step)[] ThetaSteps =
@@ -35,8 +36,11 @@ public partial class JogPanel : UserControl
     };
 
     private readonly JogTransformStore _transforms = new();
-    private readonly ToggleButton[] _velButtons;
-    private readonly double[] _velValues = new double[6];
+    private readonly List<ToggleButton> _stepButtons = new();
+    /// <summary>Velocity presets for the selected device (mm/s) — populates the velocity combo.</summary>
+    private double[] _velValues = Array.Empty<double>();
+    /// <summary>Suppresses the combo's apply-on-select while we set the selection programmatically.</summary>
+    private bool _suppressVelApply;
     private readonly List<ToggleButton> _thetaButtons = new();
     private readonly DispatcherTimer _poll;
 
@@ -46,8 +50,10 @@ public partial class JogPanel : UserControl
     /// <summary>Last-known camera exposure — gain / frame-rate preserved across edits.</summary>
     private CameraExposure _camExposure = new(0, 0, false, false, 0);
 
-    private int _stepIndex = DefaultStepIndex;
-    private double _stepMm = StepSizes[DefaultStepIndex].Mm;
+    /// <summary>The active linear step set (mm) for the selected device's family.</summary>
+    private double[] _stepSet = DefaultStepSet;
+    private int _stepIndex;
+    private double _stepMm = DefaultStepSet[0];
     private double _thetaStep = ThetaSteps[0].Step;   // U/V/W jog step (separate from the linear X/Y/Z step)
     private EngineHost? _host;
     private string? _device;
@@ -71,8 +77,7 @@ public partial class JogPanel : UserControl
     public JogPanel()
     {
         InitializeComponent();
-        _velButtons = new[] { Vel0, Vel1, Vel2, Vel3, Vel4, Vel5 };
-        UpdateStepDisplay();
+        SetStepSet(DefaultStepSet);   // builds the step buttons + selects a default step
         BuildThetaSteps();
         BuildExposurePresets();
         _poll = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
@@ -141,16 +146,70 @@ public partial class JogPanel : UserControl
     /// <summary>Moves the step selection <paramref name="delta"/> positions away (−1 finer, +1 coarser).</summary>
     private void StepBy(int delta)
     {
-        int next = Math.Clamp(_stepIndex + delta, 0, StepSizes.Length - 1);
+        if (_stepSet.Length == 0) return;
+        int next = Math.Clamp(_stepIndex + delta, 0, _stepSet.Length - 1);
         if (next == _stepIndex) return;
         _stepIndex = next;
-        _stepMm = StepSizes[next].Mm;
+        _stepMm = _stepSet[next];
         UpdateStepDisplay();
-        SetStatus($"Step {StepSizes[next].Label}");
+        SetStatus($"Step {FormatStep(_stepMm)}");
     }
 
-    /// <summary>Refreshes the large step-size readout to the current selection.</summary>
-    private void UpdateStepDisplay() => StepDisplay.Text = StepSizes[_stepIndex].Label;
+    /// <summary>Refreshes the large step-size readout + the preset-button highlight to the current selection.</summary>
+    private void UpdateStepDisplay()
+    {
+        StepDisplay.Text = FormatStep(_stepMm);
+        SyncStepButtons();
+    }
+
+    /// <summary>
+    /// Swaps in a new linear step set (mm): rebuilds the quick-select buttons and picks a
+    /// default selection (the step nearest 10µm, else the middle of the set). Called at
+    /// startup with the fallback set and on each device select with the family's set.
+    /// </summary>
+    private void SetStepSet(double[] set)
+    {
+        _stepSet = set is { Length: > 0 } ? set : DefaultStepSet;
+
+        _stepButtons.Clear();
+        StepPresetList.Children.Clear();
+        var style = (Style)FindResource("VelBtn");   // generic accent toggle chip
+        foreach (var mm in _stepSet)
+        {
+            var tb = new ToggleButton { Content = FormatStep(mm), Tag = mm, Style = style, FontSize = 12 };
+            tb.Click += OnStepPreset;
+            _stepButtons.Add(tb);
+            StepPresetList.Children.Add(tb);
+        }
+
+        // Default to the step nearest 10µm so behaviour matches the old fixed default.
+        int best = 0;
+        for (int i = 1; i < _stepSet.Length; i++)
+            if (Math.Abs(_stepSet[i] - 0.01) < Math.Abs(_stepSet[best] - 0.01)) best = i;
+        _stepIndex = best;
+        _stepMm = _stepSet[best];
+        UpdateStepDisplay();
+    }
+
+    private void OnStepPreset(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton tb || tb.Tag is not double mm) return;
+        int idx = Array.FindIndex(_stepSet, s => Math.Abs(s - mm) < 1e-9);
+        if (idx >= 0) { _stepIndex = idx; _stepMm = _stepSet[idx]; }
+        UpdateStepDisplay();   // syncs the highlight
+        SetStatus($"Step {FormatStep(_stepMm)}");
+    }
+
+    /// <summary>Formats a step in mm as a friendly label — µm below 1mm, mm at/above (rounded to kill fp noise).</summary>
+    private static string FormatStep(double mm)
+        => mm < 1.0 ? $"{Math.Round(mm * 1000.0, 4):g}µm" : $"{Math.Round(mm, 4):g}mm";
+
+    /// <summary>Highlights the preset button matching the current step (none if the step isn't a preset).</summary>
+    private void SyncStepButtons()
+    {
+        foreach (var b in _stepButtons)
+            b.IsChecked = b.Tag is double mm && Math.Abs(mm - _stepMm) < 1e-9;
+    }
 
     private void OnStepCoarser(object sender, MouseButtonEventArgs e) => StepBy(+1);
     private void OnStepFiner(object sender, MouseButtonEventArgs e) => StepBy(-1);
@@ -305,9 +364,7 @@ public partial class JogPanel : UserControl
             if (r.IsSuccess)
             {
                 SetStatus($"{device} · current velocity {r.Value:g} mm/s (unchanged)");
-                // Reflect the live velocity on the preset row if it matches one.
-                for (int i = 0; i < _velButtons.Length; i++)
-                    _velButtons[i].IsChecked = _velValues[i] > 0 && Math.Abs(_velValues[i] - r.Value) < 1e-6;
+                SelectVelocityInCombo(r.Value);   // reflect the live velocity if it matches a preset
             }
             else
             {
@@ -323,44 +380,78 @@ public partial class JogPanel : UserControl
 
     private void LoadPresets(string device)
     {
-        var presets = IsHexFamily(device)
+        bool hex = IsHexFamily(device);
+        var presets = hex
             ? _host?.Settings.Current.HexVelocityPresets
             : _host?.Settings.Current.GantryVelocityPresets;
         presets ??= Array.Empty<double>();
 
-        for (int i = 0; i < _velButtons.Length; i++)
-        {
-            double v = i < presets.Length ? presets[i] : 0;
-            _velValues[i] = v;
-            _velButtons[i].Content = v > 0 ? v.ToString("g") : "—";
-            _velButtons[i].IsChecked = false;
-            _velButtons[i].IsEnabled = v > 0;
-        }
+        _velValues = presets.Where(v => v > 0).ToArray();
+
+        // Rebuild the combo without triggering an apply.
+        _suppressVelApply = true;
+        VelocityCombo.Items.Clear();
+        foreach (var v in _velValues)
+            VelocityCombo.Items.Add(new ComboBoxItem { Content = $"{v:g} mm/s", Tag = v });
+        VelocityCombo.SelectedIndex = -1;
+        VelocityCombo.IsEnabled = _velValues.Length > 0;
+        _suppressVelApply = false;
+
+        // Swap the jog step set to this device family's configured steps (mm).
+        var steps = hex
+            ? _host?.Settings.Current.HexStepPresetsMm
+            : _host?.Settings.Current.GantryStepPresetsMm;
+        SetStepSet((steps ?? Array.Empty<double>()).Where(s => s > 0).OrderBy(s => s).ToArray());
     }
 
     private static bool IsHexFamily(string device)
         => device.StartsWith("hex", StringComparison.OrdinalIgnoreCase);
 
-    private void OnVelocity(object sender, RoutedEventArgs e)
+    /// <summary>Selects the preset matching <paramref name="v"/> (or clears) without applying it.</summary>
+    private void SelectVelocityInCombo(double v)
     {
-        if (sender is ToggleButton tb)
+        _suppressVelApply = true;
+        VelocityCombo.SelectedItem = VelocityCombo.Items.OfType<ComboBoxItem>()
+            .FirstOrDefault(it => it.Tag is double d && Math.Abs(d - v) < 1e-6);
+        _suppressVelApply = false;
+    }
+
+    private void OnVelocityCombo(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressVelApply) return;
+        if (VelocityCombo.SelectedItem is ComboBoxItem it && it.Tag is double v)
+            _ = ApplyVelocityAsync(v);
+    }
+
+    /// <summary>Pushes <paramref name="v"/> mm/s to the selected device and flashes a confirmation.</summary>
+    private async Task ApplyVelocityAsync(double v)
+    {
+        if (_host == null || _device == null || v <= 0) return;
+
+        var r = await _host.Engine.Motion.SetDeviceVelocityAsync(_device, v);
+        if (r.IsSuccess)
         {
-            int idx = Array.IndexOf(_velButtons, tb);
-            if (idx >= 0) _ = ApplyVelocityAsync(idx);
+            SetStatus($"Velocity {v:g} mm/s · {_device}");
+            FlashVel($"✓ {v:g} mm/s applied");
+        }
+        else
+        {
+            SetStatus($"Velocity failed: {r.Message}");
+            FlashVel("✗ failed");
         }
     }
 
-    private async Task ApplyVelocityAsync(int idx)
+    /// <summary>Shows a brief confirmation next to the velocity combo, then fades it out.</summary>
+    private void FlashVel(string text)
     {
-        if (_host == null || _device == null || idx < 0 || _velValues[idx] <= 0) return;
-
-        foreach (var b in _velButtons) b.IsChecked = false;
-        _velButtons[idx].IsChecked = true;   // single-select, stays selected
-
-        var r = await _host.Engine.Motion.SetDeviceVelocityAsync(_device, _velValues[idx]);
-        SetStatus(r.IsSuccess
-            ? $"Velocity {_velValues[idx]:g} mm/s · {_device}"
-            : $"Velocity failed: {r.Message}");
+        VelFlash.Text = text;
+        VelFlash.BeginAnimation(OpacityProperty, null);
+        VelFlash.Opacity = 1;
+        var fade = new DoubleAnimation(1, 0, new Duration(TimeSpan.FromSeconds(1.4)))
+        {
+            BeginTime = TimeSpan.FromMilliseconds(400),
+        };
+        VelFlash.BeginAnimation(OpacityProperty, fade);
     }
 
     private void OnJog(object sender, RoutedEventArgs e)
