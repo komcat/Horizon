@@ -155,6 +155,15 @@ public interface IProcessService
     void SetHillClimbFeedbackProvider(Func<IHillClimbFeedback?>? provider);
 
     /// <summary>
+    /// Returns the currently-registered alignment feedback (via the provider set by
+    /// <see cref="SetHillClimbFeedbackProvider"/>), or null when none is registered or the
+    /// provider yields none. Lets other Layer-3 alignment surfaces (e.g. the Engineer
+    /// Testing Ground spiral search) reuse the same signal source without re-plumbing the
+    /// SiPhOG client.
+    /// </summary>
+    IHillClimbFeedback? GetHillClimbFeedback();
+
+    /// <summary>
     /// Registers the Layer 3 utility-app host (the Run-page springboard) that
     /// <c>app.open</c> / <c>app.home</c> / <c>app.start</c> / <c>app.stop</c> steps drive.
     /// Pass null to unregister; with no host registered those steps fail with a clear

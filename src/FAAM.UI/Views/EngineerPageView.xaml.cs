@@ -3,11 +3,14 @@ using System.Windows.Controls;
 namespace FAAM.UI.Views;
 
 /// <summary>
-/// The Engineer page — a tab container around the two authoring surfaces:
-/// <b>Program</b> (the timeline / Gantt step editor, <see cref="TimelineEditorView"/>)
-/// and <b>Process Deck</b> (a collection of programs with transition rules,
-/// <see cref="DeckEditorView"/>). Both share the one engine stack; only the
-/// selected tab is activated so background subscriptions don't run for a hidden tab.
+/// The Engineer page — a tab container around the authoring surfaces:
+/// <b>Program</b> (the timeline / Gantt step editor, <see cref="TimelineEditorView"/>),
+/// <b>Process Deck</b> (a collection of programs with transition rules,
+/// <see cref="DeckEditorView"/>), <b>Find First Light</b>, <b>Dispensing</b>, and
+/// <b>Testing Ground</b> (<see cref="TestingGroundView"/> — a scratch area for
+/// experimental alignment routines such as the spiral search). All share the one
+/// engine stack; only the selected tab is activated so background subscriptions
+/// don't run for a hidden tab.
 /// </summary>
 public partial class EngineerPageView : UserControl
 {
@@ -15,6 +18,7 @@ public partial class EngineerPageView : UserControl
     private readonly DeckEditorView _deck;
     private readonly FindFirstLightSettingsView _findFirstLight;
     private readonly DispenseEditorView _dispense;
+    private readonly TestingGroundView _testing;
     private object? _activeChild;
     private bool _pageActive;
 
@@ -25,10 +29,12 @@ public partial class EngineerPageView : UserControl
         _deck = new DeckEditorView(host);
         _findFirstLight = new FindFirstLightSettingsView(host);
         _dispense = new DispenseEditorView(host);
+        _testing = new TestingGroundView(host);
         ProgramHost.Content = _program;
         DeckHost.Content = _deck;
         FindFirstLightHost.Content = _findFirstLight;
         DispenseHost.Content = _dispense;
+        TestingHost.Content = _testing;
     }
 
     /// <summary>Called when the shell shows the Engineer page — activates the selected tab.</summary>
@@ -44,6 +50,7 @@ public partial class EngineerPageView : UserControl
         _pageActive = false;
         _program.Deactivate();
         _deck.Deactivate();
+        _testing.Deactivate();
         _activeChild = null;
     }
 
@@ -64,6 +71,7 @@ public partial class EngineerPageView : UserControl
             1 => _deck,
             2 => _findFirstLight,
             3 => _dispense,
+            4 => _testing,
             _ => _program,
         };
         if (ReferenceEquals(_activeChild, target)) return;
@@ -72,12 +80,14 @@ public partial class EngineerPageView : UserControl
         {
             case TimelineEditorView t: t.Deactivate(); break;
             case DeckEditorView d: d.Deactivate(); break;
+            case TestingGroundView tg: tg.Deactivate(); break;
         }
         switch (target)
         {
             case TimelineEditorView t: t.Activate(); break;
             case DeckEditorView d: d.Activate(); break;
             case DispenseEditorView dv: dv.Activate(); break;
+            case TestingGroundView tg: tg.Activate(); break;
         }
         _activeChild = target;
     }

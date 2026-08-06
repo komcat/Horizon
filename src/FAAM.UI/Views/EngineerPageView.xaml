@@ -17,5 +17,8 @@
         <TabItem Header="Dispensing">
             <ContentControl x:Name="DispenseHost" />
         </TabItem>
+        <TabItem Header="Testing Ground">
+            <ContentControl x:Name="TestingHost" />
+        </TabItem>
     </TabControl>
 </UserControl>

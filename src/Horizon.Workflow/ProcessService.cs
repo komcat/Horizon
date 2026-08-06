@@ -478,6 +478,9 @@ public sealed class ProcessService : IProcessService
     public void SetHillClimbFeedbackProvider(Func<IHillClimbFeedback?>? provider)
         => _hillClimbFeedbackProvider = provider;
 
+    public IHillClimbFeedback? GetHillClimbFeedback()
+        => _hillClimbFeedbackProvider?.Invoke();
+
     public void SetUtilityAppHost(IUtilityAppHost? host)
         => _utilityAppHost = host;
 
