@@ -54,11 +54,12 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     private readonly Ellipse[] _dots;
 
     // Post-FAU XY signal finder (Stage 1 X line → Stage 2 grid). On a hit it hands off to the
-    // hill climber. Wired by UtilityAppHost via EnableGridSearch once the SiPhOG client + hill
-    // panel exist; left null (skipped) otherwise.
+    // Run-page climb panel (the raster climb, which took the hill climber's slot). Wired by
+    // UtilityAppHost via EnableGridSearch once the SiPhOG client + climb panel exist; left
+    // null (skipped) otherwise.
     private FauGridSearchEngine? _gridEngine;
     private IHillClimbFeedback? _gridFeedback;
-    private HillClimbPanel? _hill;
+    private RasterClimbPanel? _hill;
     private bool _gridEnabled;
 
     // FAU target "master" offset — persisted in AppSettings (loaded on Attach).
@@ -169,7 +170,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     /// if a stage finds signal, hands off to <paramref name="hill"/> (mirrors the hill-climb → Auto-W
     /// one-shot). Call after <see cref="Attach"/>.
     /// </summary>
-    public void EnableGridSearch(SiphogClient siphog, HillClimbPanel hill)
+    public void EnableGridSearch(SiphogClient siphog, RasterClimbPanel hill)
     {
         if (_host == null) return;
         _hill = hill;
@@ -507,19 +508,20 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
             _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.Sequence, "ended"));
         }
 
-        // Hand off to the hill climber once this run released the hexapod (alignment activity
-        // disposed in Finish), mirroring the hill-climb → Auto-W one-shot. Only fires when a grid
-        // stage actually found signal.
+        // Hand off to the climb once this run released the hexapod (alignment activity disposed
+        // in Finish), mirroring the climb → Auto-W one-shot. Only fires when a grid stage
+        // actually found signal. Still gated by the Find First Light HillClimbEnabled setting —
+        // the same operator switch, now governing the raster climb that replaced it.
         if (handoffClimb && _hill != null)
         {
             if (_host.Settings.Current.FindFirstLight.HillClimbEnabled)
             {
-                Log(LogLevel.Info, "Grid search found signal — handing off to hill climb.");
+                Log(LogLevel.Info, "Grid search found signal — handing off to the raster climb.");
                 _hill.RequestStart();
             }
             else
             {
-                Log(LogLevel.Info, "Grid search found signal — hill climb disabled in settings, stopping here.");
+                Log(LogLevel.Info, "Grid search found signal — climb disabled in settings, stopping here.");
             }
         }
     }

@@ -54,23 +54,28 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
 
         _siphogPanel = new SiphogPanel();          // self-attached (owns its client)
 
-        var hill = new HillClimbPanel();
-        hill.Attach(host, _siphogPanel.Client);
+        // The Z+/raster climb replaced the hill climber in this slot. Compact: readout plus
+        // Start / Stop only — it runs on its defaults here, and the Engineer Testing Ground
+        // copy is where those get tuned.
+        var climb = new RasterClimbPanel();
+        climb.SetCompact();
+        climb.Attach(host);
+        climb.AttachSiphog(_siphogPanel.Client);
 
         var autoW = new AutoWPanel();
         autoW.Attach(host, _siphogPanel.Client);
 
-        // After the climber parks at peak it auto-runs the Auto W maximizer once per lifetime
-        // (re-armed on the climber's Set Start / Clear Distance).
-        hill.SetAutoWPanel(autoW);
+        // After the climb reaches its target it auto-runs the Auto W maximizer once
+        // (re-armed on each Start press).
+        climb.SetAutoWPanel(autoW);
 
         // After FAU pre-align, the alignment panel runs the XY grid signal search and, on a hit,
-        // hands off to the hill climber (which then chains Auto-W). Completes the corrections chain.
-        align.EnableGridSearch(_siphogPanel.Client, hill);
+        // hands off to the climb (which then chains Auto-W). Completes the corrections chain.
+        align.EnableGridSearch(_siphogPanel.Client, climb);
 
         AlignHost.Content = align;
         SiphogHost.Content = _siphogPanel;
-        HillHost.Content = hill;
+        HillHost.Content = climb;
         AutoWHost.Content = autoW;
 
         // Thin adapters keep the id → panel + Start/Stop mapping for the app.* command seam.
@@ -79,7 +84,7 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
         _apps.Add(new AlignmentApp(align));
         _apps.Add(new UCorrectionApp(align));
         _apps.Add(new FauPreAlignApp(align));
-        _apps.Add(new HillClimbApp(hill));
+        _apps.Add(new RasterClimbApp(climb));
         _apps.Add(new AutoWApp(autoW));
     }
 

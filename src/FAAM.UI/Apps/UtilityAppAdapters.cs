@@ -112,18 +112,22 @@ public sealed class FauPreAlignApp : ObservableObject, IUtilityApp
     });
 }
 
-/// <summary>Hill Climber app (coordinate-descent FAU→PIC active alignment).</summary>
-public sealed class HillClimbApp : ObservableObject, IUtilityApp
+/// <summary>
+/// Raster Climb app (Z+ step → XY plane search → move to the plane's max). It took the
+/// hill climber's Run-page slot, and keeps the <c>hillclimb</c> id so authored
+/// <c>app.start hillclimb</c> / <c>app.stop hillclimb</c> steps keep working.
+/// </summary>
+public sealed class RasterClimbApp : ObservableObject, IUtilityApp
 {
-    private readonly HillClimbPanel _panel;
-    public HillClimbApp(HillClimbPanel panel)
+    private readonly RasterClimbPanel _panel;
+    public RasterClimbApp(RasterClimbPanel panel)
     {
         _panel = panel;
         _panel.RunStateChanged += Refresh;
     }
 
     public string Id => "hillclimb";
-    public string Title => "Hill Climber";
+    public string Title => "Raster Climb";
     public string Glyph => "⛰";
     public UIElement Content => _panel;
     public AppRunState State =>
