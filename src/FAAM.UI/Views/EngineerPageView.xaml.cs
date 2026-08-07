@@ -1,4 +1,5 @@
 using System.Windows.Controls;
+using FAAM.UI.Siphog;
 
 namespace FAAM.UI.Views;
 
@@ -36,6 +37,13 @@ public partial class EngineerPageView : UserControl
         DispenseHost.Content = _dispense;
         TestingHost.Content = _testing;
     }
+
+    /// <summary>
+    /// Hands the shared SiPhOG client (owned by the Run page's utility host) to the Testing
+    /// Ground widgets that need it — the raster climb reads the target SAG power from it and
+    /// drives the SLED guard over its command channel.
+    /// </summary>
+    public void AttachSiphog(SiphogClient siphog) => _testing.AttachSiphog(siphog);
 
     /// <summary>Called when the shell shows the Engineer page — activates the selected tab.</summary>
     public void Activate()

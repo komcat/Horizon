@@ -69,6 +69,10 @@ public partial class ShellWindow : Window
         // blocks on this until the operator answers a modal dialog.
         host.Process.OperatorPrompt = new OperatorPrompt(host);
 
+        // The Run page owns the one SiPhOG connection; hand it to the Engineer page so its
+        // Testing Ground widgets read the same stream and share its command channel.
+        _engineer.AttachSiphog(_run.Siphog);
+
         _home.MachineRequested += ShowMachine;
         _home.RunRequested += ShowRun;
         _home.EngineerRequested += ShowEngineer;

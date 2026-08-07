@@ -50,6 +50,13 @@ public partial class RunView : UserControl
     private bool _subscribed;
     private bool _logSubscribed;
 
+    /// <summary>
+    /// The shared SiPhOG client owned by the Run page's utility host — exposed so other
+    /// pages (the Engineer Testing Ground) reuse this one connection instead of opening a
+    /// second one. Valid once the constructor has run.
+    /// </summary>
+    public Siphog.SiphogClient Siphog => AppHost.SiphogClient;
+
     public RunView(EngineHost host)
     {
         _host = host;
