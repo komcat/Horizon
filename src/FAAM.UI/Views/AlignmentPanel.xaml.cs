@@ -37,12 +37,13 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     private static readonly string[] UOrder = { "P1", "P2", "F1", "F2" };
     private static readonly string[] FauOrder = { "Out1", "Out2", "Fiber1", "Fiber2" };
 
-    // Per-position vision profiles the auto vision U-correction reads the facet angle from
-    // (must match the saved .hvp names — note the P/F separator differs by how they were authored).
-    private const string P1Profile = "P1 Angle";
-    private const string P2Profile = "P2 Angle";
-    private const string F1Profile = "F1_Angle";
-    private const string F2Profile = "F2_Angle";
+    // Automatic vision U-correction: one look at the PIC facet, one at the FAU facet. Each is a
+    // taught gantry position paired with the saved vision profile (edge detection → "angle") that
+    // reads that facet's angle. Names must match the taught positions / saved .hvp profiles.
+    private const string PicFacetPosition = "visionFacet";
+    private const string PicFacetProfile = "edgePIC";
+    private const string FauFacetPosition = "visionFAUFacet";
+    private const string FauFacetProfile = "edgeFAU";
 
     private enum Phase { None, U, Fau, Grid }
 
@@ -585,8 +586,9 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     }
 
     /// <summary>
-    /// Runs the automatic vision U-correction: measures the PIC/FAU facet angles from their
-    /// per-position vision profiles, then applies the delta on hex U. Policy (from the Engineer
+    /// Runs the automatic vision U-correction: moves to <c>visionFacet</c> and runs the
+    /// <c>edgePIC</c> profile for the PIC facet angle, then to <c>visionFAUFacet</c> and runs
+    /// <c>edgeFAU</c> for the FAU facet angle, and applies the difference on hex U. Policy (from the Engineer
     /// "Find First Light" tab): ≤ ConfirmDeg applies silently; between ConfirmDeg and MaxDeg asks
     /// the operator to confirm; above MaxDeg — or if any facet isn't detected — falls back to the
     /// manual capture correction. Returns whether U was applied, we should fall back, or the run
@@ -622,8 +624,8 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         var ffl = _host.Settings.Current.FindFirstLight;
         double mag = Math.Abs(v.DeltaDeg);
         Log(LogLevel.Info,
-            $"Vision U: PIC {v.PicAvgDeg:F3}° (P1 {v.P1AngleDeg:F3}, P2 {v.P2AngleDeg:F3}), " +
-            $"FAU {v.FauAvgDeg:F3}° (F1 {v.F1AngleDeg:F3}, F2 {v.F2AngleDeg:F3}) → Δ {v.DeltaDeg:F3}°.");
+            $"Vision U: PIC {v.PicAngleDeg:F3}° [{PicFacetProfile} @ {PicFacetPosition}], " +
+            $"FAU {v.FauAngleDeg:F3}° [{FauFacetProfile} @ {FauFacetPosition}] → Δ {v.DeltaDeg:F3}°.");
 
         if (mag > ffl.AutoVisionUMaxDeg)
         {
@@ -637,7 +639,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
             var answer = MessageBox.Show(
                 Window.GetWindow(this),
                 $"Vision U correction = {v.DeltaDeg:F3}°\n" +
-                $"PIC avg {v.PicAvgDeg:F3}°, FAU avg {v.FauAvgDeg:F3}°\n\n" +
+                $"PIC facet {v.PicAngleDeg:F3}°, FAU facet {v.FauAngleDeg:F3}°\n\n" +
                 "Apply this hex U rotation?",
                 "Confirm U correction", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (answer != MessageBoxResult.Yes)
@@ -659,17 +661,15 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         }
 
         foreach (var dot in _dots) dot.Fill = (Brush)FindResource("Ok");
-        SetStatus(Phase.U, $"Vision U applied {v.DeltaDeg:F3}° (PIC {v.PicAvgDeg:F3}°, FAU {v.FauAvgDeg:F3}°)");
+        SetStatus(Phase.U, $"Vision U applied {v.DeltaDeg:F3}° (PIC {v.PicAngleDeg:F3}°, FAU {v.FauAngleDeg:F3}°)");
         Log(LogLevel.Info, $"Vision U-correction applied {v.DeltaDeg:F3}° on {HexDevice}.");
         return VisionUOutcome.Applied;
     }
 
     private VisionUCorrectionOptions BuildVisionUOptions() => new(
         GantryDevice, HexDevice,
-        UName("P1"), P1Profile,
-        UName("P2"), P2Profile,
-        UName("F1"), F1Profile,
-        UName("F2"), F2Profile);
+        PicFacetPosition, PicFacetProfile,
+        FauFacetPosition, FauFacetProfile);
 
     private UCorrectionOptions BuildUOptions()
     {

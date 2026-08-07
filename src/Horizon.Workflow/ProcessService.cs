@@ -519,12 +519,13 @@ public sealed class ProcessService : IProcessService
     }
 
     /// <summary>
-    /// Measures the vision-based U correction: drives the gantry through the four reference points,
-    /// runs each point's saved vision profile (a Line detection reporting the facet angle), and
-    /// returns the PIC/FAU angle averages + the resulting U delta. Applies <b>no</b> move — the
-    /// caller inspects <see cref="VisionUCorrectionResult"/> and decides whether to apply
-    /// (via <see cref="ApplyHexUCorrectionAsync"/>) or fall back. Stops at the first undetected facet
-    /// (<see cref="VisionUCorrectionResult.AllFound"/> false, <c>FailedPoint</c> set).
+    /// Measures the vision-based U correction: drives the gantry to the PIC facet point and runs
+    /// its saved vision profile, then to the FAU facet point and runs its profile (each an edge /
+    /// line detection reporting that facet's angle), and returns the two angles + the resulting U
+    /// delta. Applies <b>no</b> move — the caller inspects <see cref="VisionUCorrectionResult"/>
+    /// and decides whether to apply (via <see cref="ApplyHexUCorrectionAsync"/>) or fall back.
+    /// Stops at the first undetected facet (<see cref="VisionUCorrectionResult.AllFound"/> false,
+    /// <c>FailedPoint</c> set).
     /// </summary>
     public async Task<Result<VisionUCorrectionResult>> MeasureVisionUCorrectionAsync(
         VisionUCorrectionOptions o, CancellationToken ct = default)
@@ -534,12 +535,10 @@ public sealed class ProcessService : IProcessService
 
         var points = new[]
         {
-            (o.P1Position, o.P1Profile),
-            (o.P2Position, o.P2Profile),
-            (o.F1Position, o.F1Profile),
-            (o.F2Position, o.F2Profile),
+            (o.PicPosition, o.PicProfile),
+            (o.FauPosition, o.FauProfile),
         };
-        var angles = new double[4];
+        var angles = new double[2];
         string? failedPoint = null;
 
         for (int i = 0; i < points.Length; i++)
@@ -563,7 +562,7 @@ public sealed class ProcessService : IProcessService
                 : null;
             if (angleVal == null)
             {
-                // Not detected (or the profile isn't a Line profile) → stop; caller falls back.
+                // Not detected (or the profile reports no angle) → stop; caller falls back.
                 failedPoint = position;
                 break;
             }
@@ -572,14 +571,22 @@ public sealed class ProcessService : IProcessService
         }
 
         bool allFound = failedPoint == null;
-        double picAvg = (angles[0] + angles[1]) / 2.0;
-        double fauAvg = (angles[2] + angles[3]) / 2.0;
-        double delta = o.Sign * (picAvg - fauAvg);
+        double delta = allFound ? WrapHalfTurn(o.Sign * (angles[0] - angles[1])) : 0;
 
         return Result<VisionUCorrectionResult>.Ok(new VisionUCorrectionResult(
-            allFound, failedPoint,
-            angles[0], angles[1], angles[2], angles[3],
-            picAvg, fauAvg, delta));
+            allFound, failedPoint, angles[0], angles[1], delta));
+    }
+
+    /// <summary>
+    /// Wraps an angle difference into (−90, +90]. Facet angles are reported modulo 180°
+    /// (horizontal = 0°, vertical = 90°), so two nearly-parallel facets can read 179.9° and
+    /// 0.1° — a raw subtraction would call that a 179.8° error instead of −0.2°.
+    /// </summary>
+    private static double WrapHalfTurn(double deg)
+    {
+        double w = (deg + 90.0) % 180.0;
+        if (w < 0) w += 180.0;
+        return w - 90.0;
     }
 
     /// <summary>Hard cap (deg) on a single applied vision U correction — a fail-safe against a bad measurement.</summary>
@@ -918,11 +925,19 @@ public sealed class ProcessService : IProcessService
         try
         {
             var result = await runner.RunAsync(program, ctx, ct).ConfigureAwait(false);
-            verdict = result.IsSuccess ? DutVerdict.Pass : DutVerdict.Fail;
-            var summary = $"Program {(result.IsSuccess ? "completed" : "failed")}: {program.Name}";
+
+            // An operator Cancel on a flow.askUser gate stops the run like any other
+            // failure, but it is not a defect: record it as Aborted (not a DUT Fail)
+            // and log it as a warning.
+            var cancelled = !result.IsSuccess && result.Error == ErrorCode.ProcessCancelled;
+            verdict = result.IsSuccess ? DutVerdict.Pass
+                    : cancelled ? DutVerdict.Aborted
+                    : DutVerdict.Fail;
+
+            var summary = $"Program {(result.IsSuccess ? "completed" : cancelled ? "cancelled" : "failed")}: {program.Name}";
             if (!string.IsNullOrEmpty(result.Message))
                 summary += $" — {result.Message}";
-            Log(result.IsSuccess ? LogLevel.Info : LogLevel.Error, summary);
+            Log(result.IsSuccess ? LogLevel.Info : cancelled ? LogLevel.Warning : LogLevel.Error, summary);
             return result;
         }
         catch (OperationCanceledException)
