@@ -10,9 +10,10 @@ namespace FAAM.UI.Views;
 /// Non-modal editor for one process position — change the device velocity, the
 /// taught axis values, and the camera + exposure applied during a recall move.
 /// Axis fields are driven by the device's installed axes (an ACS 3-axis gantry
-/// shows X/Y/Z; a PI hexapod adds U/V/W). Applying does NOT command motion: it
+/// shows X/Y/Z; a PI hexapod adds U/V/W). Saving does NOT command motion: it
 /// hands the new settings back via the supplied callback (which persists them via
-/// Layer 2). A blank exposure means "leave the camera untouched".
+/// Layer 2) and closes; Cancel discards. A blank exposure means "leave the camera
+/// untouched".
 /// </summary>
 public partial class PositionEditorWindow : Window
 {
@@ -122,9 +123,11 @@ public partial class PositionEditorWindow : Window
             await _onApply(new PositionEditResult(
                 _ctx.Position, _ctx.Device, vel, pose, camera, exposureUs));
             StatusText.Text = "Saved.";
+            Close();
         }
         catch (Exception ex)
         {
+            // Stay open on failure so the operator can correct the values.
             StatusText.Text = $"Save failed: {ex.Message}";
         }
     }

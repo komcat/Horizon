@@ -102,19 +102,23 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="120" />
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <Button Grid.Column="0" Content="Move" Width="72" Height="28" Margin="0,0,14,0"
-                                            Command="{Binding MoveCommand}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Name}" Foreground="{StaticResource Accent}"
-                                               FontWeight="SemiBold" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="2" Text="{Binding Coordinates}" Foreground="{StaticResource Subtle}"
-                                               FontFamily="Consolas" VerticalAlignment="Center" />
-                                    <Button Grid.Column="3" Content="Save" Width="72" Height="28"
+                                    <Button Grid.Column="0" Content="Save" Width="72" Height="28" Margin="0,0,6,0"
                                             Command="{Binding SaveCommand}"
                                             ToolTip="Re-teach: save the device's current pose to this position" />
+                                    <Button Grid.Column="1" Content="Move" Width="72" Height="28" Margin="0,0,6,0"
+                                            Command="{Binding MoveCommand}" />
+                                    <Button Grid.Column="2" Content="Edit…" Width="72" Height="28" Margin="0,0,14,0"
+                                            Command="{Binding EditCommand}"
+                                            ToolTip="Edit this position's axis values, velocity and camera/exposure by hand" />
+                                    <TextBlock Grid.Column="3" Text="{Binding Name}" Foreground="{StaticResource Accent}"
+                                               FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="4" Text="{Binding Coordinates}" Foreground="{StaticResource Subtle}"
+                                               FontFamily="Consolas" VerticalAlignment="Center" />
                                 </Grid>
                             </Border>
                         </DataTemplate>

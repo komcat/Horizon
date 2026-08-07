@@ -10,13 +10,13 @@
         <TextBlock DockPanel.Dock="Top" x:Name="DeviceText" Foreground="{StaticResource Subtle}"
                    FontSize="12" Margin="0,2,0,10" />
 
-        <!-- Action row pinned to the bottom; Apply persists without closing. -->
+        <!-- Action row pinned to the bottom; Save persists then closes, Cancel discards. -->
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
             <TextBlock x:Name="StatusText" Foreground="{StaticResource Subtle}" VerticalAlignment="Center"
                        Margin="0,0,12,0" FontSize="12" />
-            <Button Content="Apply" Click="OnApply" Padding="14,4" Margin="0,0,8,0"
+            <Button Content="Save" Click="OnApply" Padding="14,4" Margin="0,0,8,0" IsDefault="True"
                     Background="#2E7D32" Foreground="White" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" />
-            <Button Content="Close" Click="OnClose" Padding="14,4" Cursor="Hand" />
+            <Button Content="Cancel" Click="OnClose" Padding="14,4" IsCancel="True" Cursor="Hand" />
         </StackPanel>
 
         <!-- Velocity + axis fields, populated in code-behind from the device's axes. -->
