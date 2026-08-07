@@ -981,7 +981,7 @@ internal sealed class ConsoleApp : IOperatorPrompt
             AnsiConsole.MarkupLineInterpolated($"[red]FAILED[/] — {action}: {result.Message}");
         else if (string.IsNullOrEmpty(result.Message))
             AnsiConsole.MarkupLineInterpolated($"[green]OK[/] — {action}");
-        else   // success with a message — e.g. a controlled "operator declined" abort
+        else   // success carrying a message — e.g. a run that ended early by design
             AnsiConsole.MarkupLineInterpolated($"[green]OK[/] — {action}: {result.Message}");
     }
 }

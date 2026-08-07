@@ -54,6 +54,12 @@ public partial class ProcessStepsPanel : UserControl
     private CancellationTokenSource? _runCts;   // cancels the in-flight step sequence on STOP
     private WorkflowDeck? _deck;                 // selected deck (null = built-in steps) — drives Auto-chain
 
+    // Set when a step was cancelled at an operator gate (or aborted part-way): the
+    // part is in an unknown state — the machine may have stopped mid-move with the
+    // gripper open — so nothing may run until the operator reloads the part and
+    // re-runs the first step, which re-homes and re-opens the gripper.
+    private bool _restartRequired;
+
     public ProcessStepsPanel()
     {
         InitializeComponent();
@@ -267,10 +273,25 @@ public partial class ProcessStepsPanel : UserControl
             return;
         }
 
+        var isFirstStep = ReferenceEquals(step, (StepList.ItemsSource as IEnumerable<ProcessStep>)?.FirstOrDefault());
+
+        // After a cancelled/aborted step the sequence may not be resumed part-way —
+        // the operator must reload the part and start again from the first step.
+        if (_restartRequired && !isFirstStep)
+        {
+            Log(LogLevel.Warning,
+                $"Step '{step.Label}' blocked — the previous step was cancelled. Reload the part and run step (1) first.");
+            Info("The previous step was cancelled.\n\nReload the part, then start again from step (1).");
+            return;
+        }
+
         // Clicking the first step starts a fresh run — clear every button back to idle
         // (default colour). Re-clicking any later step leaves the prior colours intact.
-        if (ReferenceEquals(step, (StepList.ItemsSource as IEnumerable<ProcessStep>)?.FirstOrDefault()))
+        if (isFirstStep)
+        {
             ResetStepStatuses();
+            _restartRequired = false;   // step (1) re-homes and re-opens the gripper
+        }
 
         if (!_running)
             StartTimer();
@@ -346,7 +367,10 @@ public partial class ProcessStepsPanel : UserControl
                     if (!result.IsSuccess)
                     {
                         step.Status = StepStatus.Failed;   // program reported failure → red
-                        Log(LogLevel.Error, $"Step '{step.Label}' failed: {result.Message}");
+                        if (result.Error == ErrorCode.ProcessCancelled)
+                            RequireRestart($"Step '{step.Label}' cancelled by the operator.");
+                        else
+                            Log(LogLevel.Error, $"Step '{step.Label}' failed: {result.Message}");
                         return;
                     }
 
@@ -365,9 +389,17 @@ public partial class ProcessStepsPanel : UserControl
             await RunBuiltInStepAsync(step, ct);
             step.Status = StepStatus.Success;              // built-in sequence completed → green
         }
+        catch (StepCancelledException ex)
+        {
+            step.Status = StepStatus.Failed;              // operator declined a gate → red
+            RequireRestart($"Step '{step.Label}' cancelled — {ex.Message}");
+        }
         catch (OperationCanceledException)
         {
-            step.Status = StepStatus.Failed;              // interrupted (STOP/safety/new click) → red
+            // STOP / safety / a superseding step click. No reload gate here: this path
+            // also fires on the step the operator deliberately clicked past, and STOP
+            // is already an explicit "I am taking over".
+            step.Status = StepStatus.Failed;              // interrupted → red
             Log(LogLevel.Warning, $"Step '{step.Label}' aborted (STOP).");
         }
         catch (Exception ex)
@@ -375,6 +407,19 @@ public partial class ProcessStepsPanel : UserControl
             step.Status = StepStatus.Failed;              // errored → red
             Log(LogLevel.Error, $"Step '{step.Label}' error: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Latches the reload gate after a step was cancelled or aborted part-way: the
+    /// part's state is no longer known (the gripper may be open over the fixture, a
+    /// stage stopped mid-travel), so only the first step — which re-homes and
+    /// re-opens the gripper — may run until the operator reloads the part.
+    /// </summary>
+    private void RequireRestart(string reason)
+    {
+        _restartRequired = true;
+        Log(LogLevel.Warning, $"{reason} Process stopped — reload the part and run step (1) to start again.");
+        Info($"{reason}\n\nProcess stopped. Reload the part, then run step (1) to start again.");
     }
 
     /// <summary>
@@ -444,7 +489,10 @@ public partial class ProcessStepsPanel : UserControl
                 if (!result.IsSuccess)
                 {
                     if (chained != null) chained.Status = StepStatus.Failed;
-                    Log(LogLevel.Error, $"Auto-chain stopped — '{label}' failed: {result.Message}.");
+                    if (result.Error == ErrorCode.ProcessCancelled)
+                        RequireRestart($"Auto-chain stopped — '{label}' cancelled by the operator.");
+                    else
+                        Log(LogLevel.Error, $"Auto-chain stopped — '{label}' failed: {result.Message}.");
                     return;
                 }
                 if (chained != null) chained.Status = StepStatus.Success;
@@ -523,34 +571,27 @@ public partial class ProcessStepsPanel : UserControl
     }
 
     // --- (2) Move to grip FAU & close gripper ---
+    // Both gates are hard stops: declining either one aborts the step outright — it
+    // must never fall through and grip / move anyway. Once the hexapod has been sent
+    // to FauGrip there is no safe "carry on from here", so the operator reloads the
+    // part and runs step (1).
     private async Task Step2GripFauAsync(CancellationToken ct)
     {
         Log(LogLevel.Info, "Step 2 — move to grip FAU (InProgress).");
 
-        if (Confirm("Do you want to move to grip FAU?"))
-        {
-            if (!await MoveNamedAsync(HexDevice, "ClearGrip", ct)) return;
-            if (!await MoveNamedAsync(HexDevice, "FauGrip", ct)) return;
-        }
-        else
-        {
-            Info("Move to grip FAU cancelled.");
-        }
+        ConfirmOrAbort("Do you want to move to grip FAU?", "move to grip FAU declined");
 
-        if (Confirm("Do you want to Grip the FAU?"))
-        {
-            await GripperAsync(close: true, ct);
-            await DwellAsync(5000, "grip settle", ct);
-            await VacuumBaseAsync(on: false, ct);
-            if (!await MoveNamedAsync(HexDevice, "FauHover", ct)) return;
-            _host!.Process.RecordDutValue("step1_grip", "FAU gripped");
-            Log(LogLevel.Info, "Step 2 — Completed.");
-        }
-        else
-        {
-            Info("Grip FAU cancelled.");
-            Log(LogLevel.Info, "Step 2 — Idle (grip cancelled).");
-        }
+        if (!await MoveNamedAsync(HexDevice, "ClearGrip", ct)) return;
+        if (!await MoveNamedAsync(HexDevice, "FauGrip", ct)) return;
+
+        ConfirmOrAbort("Do you want to Grip the FAU?", "grip the FAU declined");
+
+        await GripperAsync(close: true, ct);
+        await DwellAsync(5000, "grip settle", ct);
+        await VacuumBaseAsync(on: false, ct);
+        if (!await MoveNamedAsync(HexDevice, "FauHover", ct)) return;
+        _host!.Process.RecordDutValue("step1_grip", "FAU gripped");
+        Log(LogLevel.Info, "Step 2 — Completed.");
     }
 
     // --- (3) FAU gripped → move to SiPhog ---
@@ -791,6 +832,18 @@ public partial class ProcessStepsPanel : UserControl
     private static bool Confirm(string question)
         => MessageBox.Show(question, "FAU Attach", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
 
+    /// <summary>
+    /// Operator gate that <b>stops the step</b> when declined — for confirmations
+    /// that guard motion onto the part, where continuing past a No is never safe.
+    /// Throws <see cref="StepCancelledException"/>, which <see cref="RunStepAsync"/>
+    /// turns into a red step plus the reload gate.
+    /// </summary>
+    private static void ConfirmOrAbort(string question, string reason)
+    {
+        if (!Confirm(question))
+            throw new StepCancelledException(reason);
+    }
+
     /// <summary>Operator acknowledgement popup — faithful to the legacy success / cancel messages.</summary>
     private static void Info(string message)
         => MessageBox.Show(message, "FAU Attach", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -924,6 +977,17 @@ public partial class ProcessStepsPanel : UserControl
         // open) so each unit's serial carries its full, timestamped step history.
         _host?.Process.RecordDutValue("log", level == LogLevel.Info ? message : $"[{level}] {message}");
     }
+}
+
+/// <summary>
+/// Thrown by a built-in step sequence when the operator declines a gate that guards
+/// motion onto the part. Distinct from <see cref="OperationCanceledException"/> (STOP
+/// / safety / a superseding click) because it latches the Run page's reload gate:
+/// the part must be reloaded and the sequence restarted from step (1).
+/// </summary>
+public sealed class StepCancelledException : Exception
+{
+    public StepCancelledException(string reason) : base(reason) { }
 }
 
 /// <summary>Run state of a process step button — drives its fill colour.</summary>

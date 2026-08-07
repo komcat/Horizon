@@ -447,7 +447,15 @@ internal sealed class WorkflowRunner
     /// Handles a <c>flow.askUser</c> step: raises the step events around the
     /// blocking front-end confirmation. Returns <c>null</c> when the operator
     /// confirmed (the run continues); otherwise a terminating <see cref="Result"/>
-    /// — a controlled abort on decline, or a failure when no handler is set.
+    /// — a failure when no handler is set, or an <see cref="ErrorCode.ProcessCancelled"/>
+    /// failure on decline.
+    ///
+    /// Declining is reported as a <b>failure</b>, not a successful early stop:
+    /// this step guards physical actions (grip / move onto the part), so every
+    /// caller — the deck runner, the Run page's auto-chain, a parallel sibling
+    /// branch — must treat Cancel as "stop now", never as "this program finished".
+    /// Front-ends tell an operator Cancel apart from a real error by the
+    /// <see cref="ErrorCode.ProcessCancelled"/> code.
     /// </summary>
     private async Task<Result?> AskUserAsync(
         WorkflowStep step, int index, int total, string desc, string? lane, CancellationToken ct)
@@ -466,14 +474,14 @@ internal sealed class WorkflowRunner
         var message = step.Parameters.GetValueOrDefault("message", string.Empty);
         var confirmed = await _prompt.ConfirmAsync(title, message, ct).ConfigureAwait(false);
 
-        _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: true,
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: confirmed,
             Message: confirmed ? "confirmed" : "declined", Lane: lane));
 
         if (confirmed) return null;
 
-        var reason = $"operator declined at step {index + 1} '{desc}'";
+        var reason = $"operator cancelled at step {index + 1} '{desc}'";
         _log(LogLevel.Warning, $"Run stopped — {reason}.");
-        return Result.Ok($"Run stopped — {reason}.");
+        return Result.Fail(ErrorCode.ProcessCancelled, $"Run stopped — {reason}.");
     }
 
     /// <summary>

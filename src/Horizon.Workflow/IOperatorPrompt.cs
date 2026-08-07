@@ -1,3 +1,4 @@
+using Horizon.Common;
 using Horizon.Engine;
 
 namespace Horizon.Workflow;
@@ -36,9 +37,11 @@ public sealed record JogPopupRequest(
 public interface IOperatorPrompt
 {
     /// <summary>
-    /// Blocking yes/no confirmation. Returns <c>true</c> to continue the run,
-    /// <c>false</c> for a controlled abort ("operator declined"). Cancellation
-    /// of the run arrives via <paramref name="ct"/>.
+    /// Blocking yes/no confirmation. Returns <c>true</c> to continue the run;
+    /// <c>false</c> stops it — the <c>flow.askUser</c> step fails the run with
+    /// <see cref="ErrorCode.ProcessCancelled"/> so no caller mistakes an operator
+    /// Cancel for a completed program. Cancellation of the run itself arrives via
+    /// <paramref name="ct"/>.
     /// </summary>
     Task<bool> ConfirmAsync(string title, string message, CancellationToken ct);
 
