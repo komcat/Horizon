@@ -132,7 +132,13 @@ public sealed class RasterClimbResult
     public double BestOffsetB_um { get; set; }
     /// <summary>Total Z travel commanded during the run (µm).</summary>
     public double ZTravelled_um { get; set; }
+    /// <summary>Planes whose XY plane was actually searched.</summary>
     public int PlanesRastered { get; set; }
+    /// <summary>
+    /// Planes the Z probe skipped because the Z step alone was still gaining more than
+    /// <see cref="RasterClimbConfig.ZProbeSkipRasterFraction"/> — the fast path's saving.
+    /// </summary>
+    public int PlanesSkipped { get; set; }
     public int PointsSampled { get; set; }
     public double TargetV { get; set; }
     /// <summary><c>VBest / TargetV</c> — 0.70 is the default exit criterion.</summary>

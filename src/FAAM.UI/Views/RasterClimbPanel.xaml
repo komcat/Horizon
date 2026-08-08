@@ -102,6 +102,11 @@
                 <TextBox x:Name="ZStepBox" Text="1.0" Style="{StaticResource RcBox}" />
             </Grid>
             <Grid Margin="0,0,0,4">
+                <TextBlock Text="Z probe skip (%)" Style="{StaticResource RcLabel}" />
+                <TextBox x:Name="ZProbeBox" Text="5" Style="{StaticResource RcBox}"
+                         ToolTip="After each Z step, sample where the stage stands: if it gains more than this, skip the XY search and step Z again. 0 = raster every plane." />
+            </Grid>
+            <Grid Margin="0,0,0,4">
                 <TextBlock Text="XY step (µm)" Style="{StaticResource RcLabel}" />
                 <TextBox x:Name="XyStepBox" Text="0.5" Style="{StaticResource RcBox}" />
             </Grid>

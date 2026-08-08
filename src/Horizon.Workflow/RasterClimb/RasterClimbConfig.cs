@@ -61,6 +61,20 @@ public sealed class RasterClimbConfig
     /// <summary>How far the stage advances along Z between rasters (µm). Default 1 µm.</summary>
     public double ZStep_um { get; set; } = 1.0;
 
+    /// <summary>
+    /// Z-probe fast path: after a Z step, one sample is taken where the stage already stands
+    /// (the XY has not moved). If it beats the last value measured at that XY by more than
+    /// this fraction — 5% by default — the Z step alone is still buying signal, so the plane's
+    /// XY search is skipped and the climb steps Z again immediately. The XY plane is only
+    /// searched once the gain from Z flattens out (or the signal falls), which is where XY
+    /// misalignment starts to dominate. 0 disables the fast path (raster every plane).
+    ///
+    /// The comparison is only made against a positive reference: near first light the signal
+    /// can sit at or below zero, where a relative gain is meaningless, so those planes always
+    /// get rastered.
+    /// </summary>
+    public double ZProbeSkipRasterFraction { get; set; } = 0.05;
+
     /// <summary>Spacing between adjacent raster sample points in the XY plane (µm). Default 0.5 µm.</summary>
     public double XyStep_um { get; set; } = 0.5;
 
@@ -148,6 +162,7 @@ public sealed class RasterClimbConfig
         RingsWithoutImprovementStop = RingsWithoutImprovementStop,
         CrossPasses = CrossPasses,
         ZStep_um = ZStep_um,
+        ZProbeSkipRasterFraction = ZProbeSkipRasterFraction,
         XyStep_um = XyStep_um,
         XyStepsPerSide = XyStepsPerSide,
         TargetSagnacV = TargetSagnacV,
@@ -194,6 +209,8 @@ public sealed class RasterClimbConfig
             throw new ArgumentException("CrossPasses must be in 1..5.");
         if (ZStep_um <= 0)
             throw new ArgumentException("ZStep_um must be positive.");
+        if (ZProbeSkipRasterFraction is < 0 or >= 1)
+            throw new ArgumentException("ZProbeSkipRasterFraction must be in [0, 1).");
         if (XyStep_um <= 0)
             throw new ArgumentException("XyStep_um must be positive.");
         if (XyStepsPerSide is < 1 or > 100)

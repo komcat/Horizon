@@ -10,10 +10,17 @@ namespace Horizon.Workflow.RasterClimb;
 /// <see cref="HillClimbEngine"/> and <see cref="SpiralScan.SpiralSearchEngine"/> —
 /// pure code, no UI coupling; a front-end constructs it directly.
 ///
-/// One iteration = <b>step Z+, search the XY plane, then move to the plane's
-/// maximum</b>. The plane's verdict only exists once its scan has finished: no exit
-/// is taken part-way through a plane, because near first light the signal at a given
-/// Z is not knowable until the plane has been searched.
+/// One iteration = <b>step Z+, probe, and — unless the probe says otherwise — search the
+/// XY plane and move to its maximum</b>. The plane's verdict only exists once its scan has
+/// finished: no exit is taken part-way through a plane, because near first light the signal
+/// at a given Z is not knowable until the plane has been searched.
+///
+/// The <b>Z probe</b> is the fast path: one sample taken after the Z step, at the XY the
+/// stage is already standing on. While a step alone gains more than
+/// <see cref="RasterClimbConfig.ZProbeSkipRasterFraction"/> (5% by default), the gap — not
+/// the XY alignment — is what limits the coupling, so the plane is skipped and Z steps
+/// again. The XY search only runs once that gain flattens out or the signal falls, which is
+/// where XY misalignment starts to dominate. Set the fraction to 0 to raster every plane.
 ///
 /// How much of the plane gets measured is <see cref="RasterClimbConfig.PlaneScan"/>:
 /// <list type="bullet">
@@ -67,7 +74,10 @@ public sealed class RasterClimbEngine
     private double _zOffset_um;
     private int _planeIndex;
     private int _planesRastered;
+    private int _planesSkipped;
     private int _pointsSampled;
+    /// <summary>Last value measured at the XY the stage is standing on — the Z-probe's reference.</summary>
+    private double _vAtPoint;
 
     public event EventHandler<RasterClimbStateChangedEventArgs>? StateChanged;
     public event EventHandler<RasterClimbPointEventArgs>? PointSampled;
@@ -138,8 +148,19 @@ public sealed class RasterClimbEngine
             if (!_feedback.HasSample)
                 throw new InvalidOperationException($"Feedback '{_feedback.Description}' has no sample yet.");
 
+            // The engine is reused run to run (a front-end constructs it once), so every
+            // per-run counter starts from zero here rather than from the last climb's totals.
+            _zOffset_um = 0;
+            _bestZOffset_um = 0;
+            _bestOffsetA_um = 0;
+            _bestOffsetB_um = 0;
+            _planeIndex = 0;
+            _planesRastered = 0;
+            _planesSkipped = 0;
+
             _vStart = await SampleAsync(ct).ConfigureAwait(false);
             _vRunBest = _vStart;
+            _vAtPoint = _vStart;
             _posRunBest = await ReadPositionAsync(ct).ConfigureAwait(false);
             _pointsSampled = 1;
             result.VStart = _vStart;
@@ -150,6 +171,7 @@ public sealed class RasterClimbEngine
                 $"Z step {_config.ZStep_um:0.###} µm × {_config.EffectiveZSteps} " +
                 $"(budget {_config.MaxZTravel_um:0.#} µm), " +
                 $"{_config.PlaneScan} scan {_config.XyStep_um:0.###} µm ±{_config.XyStepsPerSide}, " +
+                $"Z-probe fast path {(_config.ZProbeSkipRasterFraction > 0 ? $"skip raster while Z gains >{_config.ZProbeSkipRasterFraction:P0}" : "off")}, " +
                 $"contact guard {(_config.ContactDropFraction > 0 ? $"-{_config.ContactDropFraction:P0} of peak" : "off")} " +
                 $"[{_feedback.Description}].");
 
@@ -163,7 +185,8 @@ public sealed class RasterClimbEngine
             FillResult(result, stopReason);
             result.Message =
                 $"Stopped: {stopReason}. Best {_vRunBest:F6} V ({result.TargetFraction:P1} of target) " +
-                $"at Z{_bestZOffset_um:+0.0;-0.0} µm, XY {_bestOffsetA_um:+0.0;-0.0}/{_bestOffsetB_um:+0.0;-0.0} µm.";
+                $"at Z{_bestZOffset_um:+0.0;-0.0} µm, XY {_bestOffsetA_um:+0.0;-0.0}/{_bestOffsetB_um:+0.0;-0.0} µm " +
+                $"({_planesRastered} plane(s) searched, {_planesSkipped} skipped on the Z probe).";
             _log(LogLevel.Info, $"RasterClimb: {result.Message}");
 
             SetState(RasterClimbState.Completed);
@@ -199,9 +222,11 @@ public sealed class RasterClimbEngine
 
     /// <summary>
     /// The climb proper: optionally scan the starting plane, then repeat
-    /// "step Z → scan the plane → move to its max" until the target is reached, the signal
-    /// collapses (suspected contact), or the Z travel budget is spent. The loop is bounded
+    /// "step Z → probe → (scan the plane → move to its max)" until the target is reached, the
+    /// signal collapses (suspected contact), or the Z travel budget is spent. The loop is bounded
     /// by <see cref="RasterClimbConfig.EffectiveZSteps"/> — a fixed count, Power of 10 Rule 2.
+    /// The probe is what lets a plane be skipped while Z alone is still paying; see
+    /// <see cref="ProbeAfterZStepAsync"/>.
     /// </summary>
     private async Task<RasterClimbStopReason> ClimbAsync(CancellationToken ct)
     {
@@ -223,6 +248,13 @@ public sealed class RasterClimbEngine
             if (_config.ZSettleMs > 0)
                 await Task.Delay(_config.ZSettleMs, ct).ConfigureAwait(false);
 
+            if (_config.ZProbeSkipRasterFraction > 0)
+            {
+                var probe = await ProbeAfterZStepAsync(ct).ConfigureAwait(false);
+                if (probe == ProbeOutcome.TargetReached) return RasterClimbStopReason.TargetReached;
+                if (probe == ProbeOutcome.SkipRaster) continue;
+            }
+
             var outcome = await RasterPlaneAsync(ct).ConfigureAwait(false);
             if (outcome != PlaneOutcome.Continue) return ToStopReason(outcome);
         }
@@ -240,6 +272,84 @@ public sealed class RasterClimbEngine
         PlaneOutcome.SignalDropped => RasterClimbStopReason.SignalDropped,
         _ => RasterClimbStopReason.ZBudgetSpent,
     };
+
+    /// <summary>What the post-Z-step probe tells the climb to do next.</summary>
+    private enum ProbeOutcome
+    {
+        /// <summary>Z alone has stopped paying — search the XY plane.</summary>
+        RasterPlane,
+        /// <summary>Z alone is still paying — skip the plane and step Z again.</summary>
+        SkipRaster,
+        /// <summary>The probe itself is at/above the exit level — the climb is done.</summary>
+        TargetReached,
+    }
+
+    /// <summary>
+    /// One sample taken straight after a Z step, where the stage already stands — the XY has
+    /// not moved since the previous plane's best (or the previous probe), so this compares
+    /// like with like: it is the same XY point, one Z step further in.
+    ///
+    /// While that step alone gains more than <see cref="RasterClimbConfig.ZProbeSkipRasterFraction"/>,
+    /// the coupling is still dominated by the gap and the XY search would only re-find the
+    /// same spot, so the plane is skipped and Z steps again — this is the fast path. Once the
+    /// gain flattens (or the signal falls) XY misalignment is what's left, and the plane gets
+    /// searched as before.
+    ///
+    /// The probe can only end the run by <i>reaching the target</i> — a measured point at the
+    /// exit level is the exit criterion, whatever the search was doing. It never stops on a
+    /// drop: a fall is exactly the case that hands over to a full plane scan, which is the
+    /// only thing entitled to declare a suspected contact.
+    /// </summary>
+    private async Task<ProbeOutcome> ProbeAfterZStepAsync(CancellationToken ct)
+    {
+        double reference = _vAtPoint;
+
+        if (_config.SettleMs > 0)
+            await Task.Delay(_config.SettleMs, ct).ConfigureAwait(false);
+
+        double v = await SampleAsync(ct).ConfigureAwait(false);
+        _pointsSampled++;
+        _vAtPoint = v;
+
+        // The probe stands at the plane's centre, so its XY offset within this plane is zero.
+        PointSampled?.Invoke(this, new RasterClimbPointEventArgs(_planeIndex, 0, 0, 0, v, false));
+        ProgressUpdated?.Invoke(this, new RasterClimbProgressEventArgs(
+            _planeIndex, 1, _config.PointsPerRaster, _zOffset_um, v, v, Math.Max(_vRunBest, v)));
+
+        // A probe is a real measured point: fold it in so the fail-safe park has it.
+        if (v > _vRunBest)
+        {
+            _vRunBest = v;
+            _posRunBest = await ReadPositionAsync(ct).ConfigureAwait(false);
+            _bestZOffset_um = _zOffset_um;
+            _bestOffsetA_um = 0;
+            _bestOffsetB_um = 0;
+        }
+
+        if (v >= ExitLevel)
+        {
+            _planeIndex++;
+            _log(LogLevel.Info,
+                $"RasterClimb probe at Z{_zOffset_um:+0.0;-0.0} µm: {v:F6} V reached the exit level " +
+                $"{ExitLevel:F6} V without an XY search.");
+            return ProbeOutcome.TargetReached;
+        }
+
+        // Only a positive reference can be grown by a fraction; at or below zero the ratio is
+        // meaningless (and would flip sign), so those planes are always rastered.
+        bool zStillPaying = reference > 0
+            && v > reference + reference * _config.ZProbeSkipRasterFraction;
+
+        if (!zStillPaying) return ProbeOutcome.RasterPlane;
+
+        _planesSkipped++;
+        _log(LogLevel.Debug,
+            $"RasterClimb plane {_planeIndex} (Z{_zOffset_um:+0.0;-0.0} µm): probe {reference:F6} → {v:F6} V " +
+            $"(+{(v - reference) / reference:P1} > {_config.ZProbeSkipRasterFraction:P0}) — Z is still paying, " +
+            "skipping the XY search.");
+        _planeIndex++;
+        return ProbeOutcome.SkipRaster;
+    }
 
     /// <summary>What a completed plane tells the climb to do next.</summary>
     private enum PlaneOutcome
@@ -274,12 +384,15 @@ public sealed class RasterClimbEngine
         await MoveToAbsoluteAsync(plane.BestPos, ct).ConfigureAwait(false);
 
         _planesRastered++;
+        _vAtPoint = plane.BestV;   // the stage now stands on the plane's best — the next probe's reference
 
         // Suspected contact: the plane's best collapsed well below the peak. Judge it against
         // the peak BEFORE folding this plane in, and only once a positive peak exists — a
-        // relative drop means nothing while the signal is still at/below zero.
+        // relative drop means nothing while the signal is still at/below zero. Planes skipped
+        // by the Z-probe count as prior measurement: they left a real sample behind, so a
+        // collapse on the first plane rastered after a run of skips is still judged.
         bool contact = _config.ContactDropFraction > 0
-            && _planesRastered > 1
+            && _planesRastered + _planesSkipped > 1
             && _vRunBest > 0
             && plane.BestV < _vRunBest - Math.Abs(_vRunBest) * _config.ContactDropFraction;
 
@@ -646,6 +759,7 @@ public sealed class RasterClimbEngine
         result.BestOffsetB_um = _bestOffsetB_um;
         result.ZTravelled_um = _zOffset_um;
         result.PlanesRastered = _planesRastered;
+        result.PlanesSkipped = _planesSkipped;
         result.PointsSampled = _pointsSampled;
         result.TargetV = _config.TargetSagnacV;
         result.TargetFraction = _config.TargetSagnacV > 0 ? _vRunBest / _config.TargetSagnacV : 0;

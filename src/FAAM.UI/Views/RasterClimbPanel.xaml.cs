@@ -185,6 +185,7 @@ public partial class RasterClimbPanel : UserControl
         }
 
         if (!TryReadDouble(ZStepBox, 0.05, 100.0, "0.0##", out double zStep)
+            || !TryReadDouble(ZProbeBox, 0, 99, "0.#", out double zProbePct)
             || !TryReadDouble(XyStepBox, 0.05, 100.0, "0.0##", out double xyStep)
             || !TryReadDouble(StepsBox, 1, 50, "0", out double steps)
             || !TryReadDouble(MaxZBox, 0.5, 500.0, "0.#", out double maxZTravel)
@@ -219,6 +220,7 @@ public partial class RasterClimbPanel : UserControl
             config.PlaneScan = ScanModeBox.SelectedIndex == 1 ? RasterPlaneScan.Spiral : RasterPlaneScan.Cross;
             config.PeakDropCount = (int)drops;
             config.ZStep_um = zStep;
+            config.ZProbeSkipRasterFraction = zProbePct / 100.0;
             config.XyStep_um = xyStep;
             config.XyStepsPerSide = (int)steps;
             config.MaxZTravel_um = maxZTravel;
@@ -229,7 +231,9 @@ public partial class RasterClimbPanel : UserControl
             TargetText.Text = $"{_targetV:0.000} / {_targetV * config.TargetReachedFraction:0.000}";
             Log(LogLevel.Info,
                 $"Raster climb starting on '{device}': Z+{zStep:0.###} µm up to {maxZTravel:0.#} µm " +
-                $"({config.EffectiveZSteps} steps), {config.PlaneScan} plane scan {xyStep:0.###} µm ±{(int)steps} " +
+                $"({config.EffectiveZSteps} steps), " +
+                $"Z probe {(zProbePct > 0 ? $"skips the XY search while a step gains >{zProbePct:0.#}%" : "off")}, " +
+                $"{config.PlaneScan} plane scan {xyStep:0.###} µm ±{(int)steps} " +
                 $"(≤{config.PointsPerRaster} pts/plane, past-peak after {(int)drops} drop(s)), " +
                 $"target {_targetV:0.###} V → exit at {exitPct:0.#}% ({_targetV * config.TargetReachedFraction:0.###} V), " +
                 $"contact guard {(contactPct > 0 ? $"-{contactPct:0.#}% of peak" : "off")}.");
@@ -444,7 +448,8 @@ public partial class RasterClimbPanel : UserControl
 
         Log(contact ? LogLevel.Warning : LogLevel.Info,
             $"Raster climb {r.StopReason}: V {r.VStart:F6} → {r.VBest:F6} ({r.TargetFraction:P1} of {r.TargetV:0.###} V), " +
-            $"{r.PlanesRastered} plane(s), {r.PointsSampled} points, Z travel {r.ZTravelled_um:+0.0;-0.0} µm" +
+            $"{r.PlanesRastered} plane(s) searched + {r.PlanesSkipped} skipped on the Z probe, " +
+            $"{r.PointsSampled} points, Z travel {r.ZTravelled_um:+0.0;-0.0} µm" +
             (contact ? $"; retreated to the peak at Z{r.BestZOffset_um:+0.0;-0.0} µm." : "."));
 
     });
