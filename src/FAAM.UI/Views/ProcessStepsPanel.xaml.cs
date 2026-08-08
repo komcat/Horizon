@@ -17,7 +17,7 @@ namespace FAAM.UI.Views;
 ///
 /// Device/pin mapping is hardcoded in the constants below — edit to match the rig.
 /// </summary>
-public partial class ProcessStepsPanel : UserControl
+public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
 {
     // --- Device / pin mapping (FAAM rig; mirrors acs_solution_saa PROCESS_BUTTONS.md) ---
     private const string GantryDevice = "gantry-main";       // ACS gantry (X/Y/Z)
@@ -35,16 +35,6 @@ public partial class ProcessStepsPanel : UserControl
     private const int GripperMs = 1000;                      // gripper open/close settle
     private const int VacuumMs = 300;                        // base-vacuum settle
     private const int PulseGapMs = 50;                       // UV-PLC pulse clear→set→clear gap
-
-    // Named positions the process traverses, in process order, across both devices —
-    // drives the Inspect-Motion table (each row is editable via the position editor).
-    private static readonly (string Device, string Position)[] ProcessPositions =
-    {
-        (HexDevice, "ClearGrip"), (HexDevice, "FauGrip"), (HexDevice, "FauHover"),
-        (HexDevice, "ClearLoad"), (HexDevice, "FauLoad"), (HexDevice, "Home"),
-        (GantryDevice, "ClearToDown"), (GantryDevice, "PreDispense"),
-        (GantryDevice, "PIC"), (GantryDevice, "UV"), (GantryDevice, "Home"),
-    };
 
     private readonly DispatcherTimer _timer;
     private EngineHost? _host;
@@ -744,40 +734,109 @@ public partial class ProcessStepsPanel : UserControl
 
 
     /// <summary>
-    /// Raised when a step's "Inspect Motion" context-menu item is chosen. Carries
-    /// one row per distinct process position; the host view (RunView) renders it as
-    /// a grid over the camera column.
+    /// Raised when a step's "Inspect Motion" context-menu item is chosen. Carries the
+    /// inspector session for <b>that step's program</b>; the host view (RunView) binds
+    /// it as a grid plus step-cursor controls over the camera column.
     /// </summary>
-    public event EventHandler<IReadOnlyList<MotionInspectRow>>? InspectMotionRequested;
+    public event EventHandler<MotionInspectSession>? InspectMotionRequested;
+
+    /// <summary>The inspector currently on screen, so a position edit can refresh its rows.</summary>
+    private MotionInspectSession? _inspect;
 
     /// <summary>
-    /// Builds the motion-inspection table for every named position the process
-    /// traverses (<see cref="ProcessPositions"/>, across both the gantry and the
-    /// hexapod) from the Layer 2 product: name, device, the position's stored
-    /// velocity, its taught X/Y/Z/U/V/W ("—" when not taught), and its camera /
-    /// exposure. Each row carries an <see cref="MotionInspectRow.Edit"/> action
-    /// that opens the per-position editor.
+    /// Builds the motion-inspection table for the right-clicked step: the named
+    /// positions <b>that step's program actually moves to</b>, in program order (see
+    /// <see cref="MotionInspectSession.Build"/>) — not every position the process
+    /// knows. Each row shows the point's velocity, taught X/Y/Z/U/V/W ("—" when not
+    /// taught) and camera / exposure, and can be stepped to and re-taught.
     /// </summary>
     private void OnInspectMotion(object sender, RoutedEventArgs e)
     {
         if (_host == null)
             return;
 
-        var rows = new List<MotionInspectRow>();
-        foreach (var (device, position) in ProcessPositions)
+        var step = StepOf(sender);
+        if (step == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(step.Program))
         {
-            var np = _host.Process.GetPosition(device, position);
-            var c = np?.Coordinates;
-            rows.Add(new MotionInspectRow(
-                position, device, Fmt(np?.Velocity),
-                Fmt(c?.X), Fmt(c?.Y), Fmt(c?.Z), Fmt(c?.U), Fmt(c?.V), Fmt(c?.W),
-                np?.Camera ?? "—", Fmt(np?.ExposureUs))
-            {
-                Edit = () => OpenPositionEditor(device, position, np),
-            });
+            Log(LogLevel.Warning,
+                $"Inspect Motion: step '{step.Label}' has no program — nothing to inspect.");
+            return;
         }
 
-        InspectMotionRequested?.Invoke(this, rows);
+        var session = MotionInspectSession.Build(this, step.Program, step.Label);
+        if (session == null)
+            return;
+
+        _inspect = session;
+        InspectMotionRequested?.Invoke(this, session);
+
+        // Find out where the machine already is, so the cursor opens on the right row.
+        session.SyncCommand.Execute(null);
+    }
+
+    /// <summary>
+    /// Resolves the step a context-menu click belongs to. The menu item's own
+    /// DataContext is inherited from the step button, but the button's
+    /// <c>Tag</c> (bound to the step) reached through the menu's
+    /// <c>PlacementTarget</c> is the reliable route, so try that first.
+    /// </summary>
+    private static ProcessStep? StepOf(object sender)
+    {
+        if (sender is MenuItem { Parent: ContextMenu { PlacementTarget: FrameworkElement { Tag: ProcessStep tagged } } })
+            return tagged;
+        return (sender as FrameworkElement)?.DataContext as ProcessStep;
+    }
+
+    // --- IMotionInspectHost (services the motion inspector borrows from this panel) ---
+
+    EngineHost IMotionInspectHost.Host => _host!;
+
+    void IMotionInspectHost.InspectorLog(LogLevel level, string message) => Log(level, message);
+
+    void IMotionInspectHost.OpenPositionEditor(string device, string position)
+        => OpenPositionEditor(device, position, _host?.Process.GetPosition(device, position));
+
+    /// <summary>
+    /// Runs one inspector move under the same guards as a process step: blocked while
+    /// an alignment/scan holds the hexapod or a safety flag is raised, marked on the
+    /// process side of the activity gate, and cancelled by STOP / a safety trip
+    /// (it shares the panel's <c>_runCts</c>).
+    /// </summary>
+    async Task<Result> IMotionInspectHost.RunInspectorMoveAsync(
+        string what, Func<CancellationToken, Task<Result>> body)
+    {
+        if (_host == null)
+            return Result.Fail(ErrorCode.OperationFailed, "Engine not attached.");
+
+        if (_alignmentBusy)
+            return Result.Fail(ErrorCode.OperationFailed,
+                "an alignment/scan is running — stop it first");
+
+        if (_host.Engine.Safety.GetState().FlagRaised)
+            return Result.Fail(ErrorCode.OperationFailed,
+                "a safety flag is raised — acknowledge it first");
+
+        _runCts?.Cancel();
+        _runCts?.Dispose();
+        _runCts = new CancellationTokenSource();
+        var ct = _runCts.Token;
+
+        using var gate = _host.Activity.Begin(ActivityKind.Process, what);
+        try
+        {
+            return await body(ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return Result.Fail(ErrorCode.ProcessCancelled, "move cancelled");
+        }
+        catch (Exception ex)
+        {
+            return Result.Fail(ErrorCode.OperationFailed, ex.Message);
+        }
     }
 
     /// <summary>Opens the non-modal per-position editor; on Apply the position is saved to the product via Layer 2.</summary>
@@ -819,11 +878,9 @@ public partial class ProcessStepsPanel : UserControl
                 ? $"Position '{result.Position}' saved (velocity {result.Velocity:0.###})."
                 : $"Save '{result.Position}' failed: {r.Message}");
 
-        OnInspectMotion(this, new RoutedEventArgs());   // rebuild rows with the new values
+        _inspect?.RefreshRows();   // re-read the open inspector's rows with the new values
         return Task.CompletedTask;
     }
-
-    private static string Fmt(double? v) => v.HasValue ? v.Value.ToString("0.###") : "—";
 
     /// <summary>Captures the device's current pose under the step's teach-target position name (Teach mode) and persists it.</summary>
     // --- Step-sequence primitives (shared by the RunStepAsync per-step methods) ---
@@ -1041,14 +1098,4 @@ public sealed class ProcessStep : Mvvm.ObservableObject
         get => _status;
         set => SetField(ref _status, value);
     }
-}
-
-/// <summary>One row of the motion inspector — a process position and its recall settings (values pre-formatted for display).</summary>
-public sealed record MotionInspectRow(
-    string Position, string Device, string Velocity,
-    string X, string Y, string Z, string U, string V, string W,
-    string Camera, string Exposure)
-{
-    /// <summary>Opens the per-position editor for this row (wired by the inspector builder).</summary>
-    public Action? Edit { get; init; }
 }
