@@ -21,21 +21,42 @@ public static class MoveClick
     }
 
     /// <summary>
-    /// Converts a click at <paramref name="click"/> on a uniform-stretched feed
+    /// Converts a click at <paramref name="click"/> on a stretched feed
     /// (<paramref name="availW"/>×<paramref name="availH"/> display px showing a
     /// <paramref name="srcW"/>×<paramref name="srcH"/> source image) into a mm
     /// offset from the image centre. Returns null for a degenerate geometry.
+    ///
+    /// <paramref name="cover"/> selects the stretch the surface is drawn with, and it
+    /// <b>must</b> match the XAML — <c>false</c> for <c>Stretch="Uniform"</c> (fit,
+    /// letterboxed), <c>true</c> for <c>Stretch="UniformToFill"</c> (cover, cropped).
+    /// Both centre the source on the surface, so only the scale differs; getting it
+    /// wrong silently mis-scales every jog.
     /// </summary>
-    public static Measurement? Measure(EngineHost host, Point click, double availW, double availH, int srcW, int srcH)
+    public static Measurement? Measure(EngineHost host, Point click, double availW, double availH,
+                                       int srcW, int srcH, bool cover = false)
     {
         if (availW <= 0 || availH <= 0 || srcW <= 0 || srcH <= 0) return null;
-        double scale = Math.Min(availW / srcW, availH / srcH);   // display px → source px
+        double scale = DisplayScale(availW, availH, srcW, srcH, cover);   // source px → display px
         if (scale <= 0) return null;
 
         double mmPerPixel = host.Settings.Current.MmPerPixel;
         double dxMm = ((click.X - availW / 2.0) / scale) * mmPerPixel;
         double dyMm = ((click.Y - availH / 2.0) / scale) * mmPerPixel;
         return new Measurement(dxMm, dyMm, Math.Sqrt(dxMm * dxMm + dyMm * dyMm));
+    }
+
+    /// <summary>
+    /// Source px → display px for a centred image: <c>Min</c> fits the whole frame
+    /// inside the surface (<c>Uniform</c>), <c>Max</c> covers the surface and crops
+    /// the overflow (<c>UniformToFill</c>). Shared by the click maths and by every
+    /// overlay that has to line up with the drawn pixels (ROI box, detection line).
+    /// </summary>
+    public static double DisplayScale(double availW, double availH, int srcW, int srcH, bool cover)
+    {
+        if (availW <= 0 || availH <= 0 || srcW <= 0 || srcH <= 0) return 0;
+        return cover
+            ? Math.Max(availW / srcW, availH / srcH)
+            : Math.Min(availW / srcW, availH / srcH);
     }
 
     /// <summary>

@@ -28,12 +28,41 @@ the hardware adapters or the legacy `Core`/`Process` stack.
   Status, Motion, IO, Pneumatic, Laser, TEC, Power supply, Measurement, SMU,
   Camera, **Settings**). Engine status + Reconnect live in the shell top bar.
 - **Run** — the production page:
-  - **Camera feed** — aspect-fit (≤ 1280×1024, no letterbox), crosshair + centre
-    ROI, **Zoom2×** inset (centre 200×200 px), a security-camera thumbnail wall.
+  - **Camera feed** — fills the camera column (`Stretch="UniformToFill"`, clipped):
+    the frame keeps its aspect ratio and covers the viewport, cropping the overflow,
+    so resizing the window changes how much of the frame you see, not its scale.
+    Crosshair + centre ROI, **Zoom2×** inset (centre 200×200 px, still aspect-fit), a
+    security-camera thumbnail wall. Every source-px ↔ display-px conversion on the
+    main feed (MoveClick, ROI box, vision-detection overlay) goes through
+    `MoveClick.DisplayScale(..., cover: true)` — the cover scale must match the XAML
+    stretch or jogs are silently mis-scaled.
+  - **Layout** — left column (process steps + alignment utilities) sizes to its
+    panels' natural width and runs full height; the camera column takes the rest,
+    with the **Log** beneath the feed.
   - **MoveClick** — arm the toggle, click the feed/zoom to measure mm from the
     crosshair centre (`mm/pixel`) and jog `gantry-main` (coordinated X+Y).
   - **Process steps panel** (left) — FAU-attach steps, process timer, STOP,
     **Teach/Run** toggle, Properties button.
+  - **Motion Inspector** — right-click a step button → *Inspect Motion*. Fills the
+    camera column with the named-position moves **that step's program actually
+    performs, in run order** (walking the `.hwf`: top-level `motion.moveToPosition` /
+    `motion.parallelMove`, `flow.parallel` branches, and `flow.subProgram` children;
+    disabled steps skipped) — not every position the product knows. Per row: the
+    velocity the move will use (step override, else the point's), taught X/Y/Z/U/V/W,
+    camera + exposure, and a `..` editor.
+    **Step forward / Step back** drive the machine one move at a time through that
+    sequence — the cursor only advances when the move succeeds, so a bad point is
+    found by watching the machine execute. Moves run under the same guards as a
+    process step (blocked by alignment-busy / a raised safety flag, held on the
+    process side of the activity gate, cancelled by STOP and by a safety trip).
+    A green **At** dot marks every row whose device is standing on that taught point
+    right now (±0.01 on each axis the device owns), and the cursor snaps to the first
+    match on open, so the inspector knows which step the machine is on. The active row
+    carries an **Update** button that re-teaches that point from the live pose (keeping
+    velocity / camera / exposure and the axes the device doesn't own) — teach the
+    sequence in place, step by step. Stepping onto an **untaught** point moves the
+    cursor but not the machine (there is nowhere to go): jog there, press Update, and
+    carry on — that is how a fresh product gets taught in program order.
   - **Log** — engine + process/jog log lines.
 
 ## Global jog panel (shell rail)

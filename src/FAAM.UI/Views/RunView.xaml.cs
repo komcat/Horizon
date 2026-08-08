@@ -28,6 +28,14 @@ public partial class RunView : UserControl
 
     /// <summary>Side length of the centre ROI sampled for the Zoom2x inset, in source pixels.</summary>
     private const int RoiSize = 200;
+
+    /// <summary>
+    /// The main feed is drawn <c>Stretch="UniformToFill"</c> (RunView.xaml): it keeps
+    /// the frame's aspect ratio, covers the whole viewport and crops the overflow, so
+    /// resizing the window changes how much of the frame is visible, not its scale.
+    /// Every source-px ↔ display-px conversion on that surface must use this flag.
+    /// </summary>
+    private const bool FeedCover = true;
     private const int MaxLogLines = 200;
 
     private readonly EngineHost _host;
@@ -116,10 +124,14 @@ public partial class RunView : UserControl
     /// <summary>Stops the process timer — called by the shell header when a DUT run ends.</summary>
     public void StopProcessTimer() => StepsPanel.StopProcessTimer();
 
-    /// <summary>Shows the motion-inspector grid (over the camera column) with the supplied position rows.</summary>
-    private void OnInspectMotionRequested(object? sender, IReadOnlyList<MotionInspectRow> rows)
+    /// <summary>
+    /// Shows the motion inspector (over the camera column) for the step whose program
+    /// the session was built from. The panel is bound to the session, so the grid, the
+    /// step cursor and its Back/Forward/Update commands all come from one object.
+    /// </summary>
+    private void OnInspectMotionRequested(object? sender, MotionInspectSession session)
     {
-        InspectorGrid.ItemsSource = rows;
+        InspectorPanel.DataContext = session;
         InspectorPanel.Visibility = Visibility.Visible;
     }
 
@@ -226,8 +238,9 @@ public partial class RunView : UserControl
 
     /// <summary>
     /// Maps the source-pixel line endpoints onto the feed's display and shows the yellow overlay,
-    /// then arms the auto-hide timer. Uses the same uniform-scale + centre mapping as MoveClick, so
-    /// the drawn line lines up with what the click maths would report.
+    /// then arms the auto-hide timer. Uses the same cover-scale + centre mapping as MoveClick, so
+    /// the drawn line lines up with what the click maths would report. Endpoints outside the
+    /// cropped viewport are clipped by the overlay canvas rather than painted over the chrome.
     /// </summary>
     private void ShowDetectedLine(double sx1, double sy1, double sx2, double sy2)
     {
@@ -236,7 +249,8 @@ public partial class RunView : UserControl
         double availW = MainImage.ActualWidth, availH = MainImage.ActualHeight;
         if (srcW <= 0 || srcH <= 0 || availW <= 0 || availH <= 0) return;
 
-        double scale = Math.Min(availW / srcW, availH / srcH);
+        double scale = MoveClick.DisplayScale(availW, availH, bmp.PixelWidth, bmp.PixelHeight, FeedCover);
+        if (scale <= 0) return;
         double cx = availW / 2.0, cy = availH / 2.0;
 
         // Size the overlay to the display box so its coordinates match the mapping below.
@@ -368,8 +382,8 @@ public partial class RunView : UserControl
         if (availW <= 0 || availH <= 0 || frame.Width <= 0 || frame.Height <= 0)
             return;   // not laid out yet — next frame will size it
 
-        // Uniform-stretch scale: source px → display px.
-        double scale = Math.Min(availW / frame.Width, availH / frame.Height);
+        // Source px → display px at the feed's cover stretch.
+        double scale = MoveClick.DisplayScale(availW, availH, frame.Width, frame.Height, FeedCover);
         RoiBox.Width = Math.Min(RoiSize, frame.Width) * scale;
         RoiBox.Height = Math.Min(RoiSize, frame.Height) * scale;
         RoiBox.Visibility = Visibility.Visible;
@@ -484,15 +498,17 @@ public partial class RunView : UserControl
     {
         if (MoveToggle.IsChecked != true || _mainCamera == null) return;
         if (!_bitmaps.TryGetValue(_mainCamera, out var bmp)) return;
+        // The main feed is UniformToFill (see RunView.xaml) — measure against the cover scale.
         await DoMoveClickAsync(e.GetPosition(MainImage), MainImage.ActualWidth, MainImage.ActualHeight,
-                               bmp.PixelWidth, bmp.PixelHeight, "feed");
+                               bmp.PixelWidth, bmp.PixelHeight, "feed", FeedCover);
     }
 
     private async void OnZoomClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         if (MoveToggle.IsChecked != true || _zoomBitmap == null) return;
+        // The Zoom2x inset stays Uniform (fit) — its ROI already matches the box aspect.
         await DoMoveClickAsync(e.GetPosition(ZoomImage), ZoomImage.ActualWidth, ZoomImage.ActualHeight,
-                               _zoomBitmap.PixelWidth, _zoomBitmap.PixelHeight, "zoom");
+                               _zoomBitmap.PixelWidth, _zoomBitmap.PixelHeight, "zoom", cover: false);
     }
 
     /// <summary>
@@ -503,9 +519,9 @@ public partial class RunView : UserControl
     /// has far fewer source px per display px, so its clicks are finer.
     /// </summary>
     private async Task DoMoveClickAsync(System.Windows.Point p, double availW, double availH,
-                                        int srcW, int srcH, string surface)
+                                        int srcW, int srcH, string surface, bool cover)
     {
-        var m = MoveClick.Measure(_host, p, availW, availH, srcW, srcH);
+        var m = MoveClick.Measure(_host, p, availW, availH, srcW, srcH, cover);
         if (m is not { } meas) return;
 
         MoveReadout.Text = meas.Readout;
