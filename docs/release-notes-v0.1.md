@@ -8,10 +8,13 @@ This is an **internal engineering release** for rig deployment, not a general
 distribution. It is a snapshot of `master` at the tag, published self-contained
 for `win-x64`.
 
-## Asset
+## Assets
 
-`FAAM.UI-v0.1-win-x64.zip` — extract anywhere (e.g. `C:\Horizon\FAAM.UI\`) and run
-`FAAM.UI.exe`. No .NET install needed: the .NET 8 Desktop runtime is bundled.
+| Asset | What it is |
+|---|---|
+| `FAAM.UI-v0.1.0-win-x64.zip` (102 MB) | The application. Extract anywhere (e.g. `C:\Horizon\FAAM.UI\`) and run `FAAM.UI.exe`. No .NET install needed — the .NET 8 Desktop runtime is bundled. |
+| `Horizon-appdata.zip` (2.4 MB) | The `%APPDATA%\Horizon` seed — `config\` + `products\`. See "Data / config" below. |
+| `restore-appdata.ps1` | Restores the seed on the target; travels standalone so the target doesn't need the repo. |
 
 The zip carries every DLL the build can legally and practically bundle:
 
@@ -52,13 +55,44 @@ Full procedure, rig IPs and the per-machine config checklist: `docs/deployment.m
 
 ## Data / config
 
-`%APPDATA%\Horizon\` (device configs, products, `users.json`, `history.db`) is
-**not** part of this release — it is rig-specific runtime data containing operator
-PINs and station identity. Seed it separately with `deploy/snapshot-appdata.ps1`
-on the golden box and `deploy/restore-appdata.ps1` on the target.
+The app reads its runtime data from `%APPDATA%\Horizon\` — device configs,
+products, programs, positions, vision profiles. That tree lives outside the repo,
+so **the application zip alone will not connect to anything**. Restore the seed
+first:
 
-At minimum, set a unique `stationId` in `app_settings.json` before first run —
-it stamps DUT traceability and must differ per machine.
+```powershell
+pwsh restore-appdata.ps1 -Zip .\Horizon-appdata.zip
+```
+
+Any existing `%APPDATA%\Horizon` is moved aside to `Horizon.bak-<timestamp>`,
+never overwritten.
+
+`Horizon-appdata.zip` contains 113 entries:
+
+- `config\` — 17 files: `motor_devices.json`, `camera-config.json`, `io_devices.json`,
+  `pneumatic_slides.json`, `safety_watch.json`, `io_watch.json`, `jog_transforms.json`,
+  `app_settings.json`, `users.json`, `camera_needle_calibration.json`, …
+- `products\` — **FAAM**, **SIPHOG**, **SIPHOG-Plus**: 26 `.hwf` programs, 4 decks,
+  3 `positions.json`, 34 vision profiles, and `FAAM\scripts\facet_u_correction.moon`.
+
+Deliberately **excluded** (built with `snapshot-appdata.ps1 -CleanHistory`), so the
+station starts with clean traceability: `history.db`, every product's `dut\`
+records, and `logs\`.
+
+There are no `.hrcp` recipes in this build — every `recipes\` folder is empty.
+
+### Set before first run
+
+| Field | File | Why |
+|---|---|---|
+| `stationId` | `config\app_settings.json` | Ships **blank**. Stamps DUT traceability — must be unique per machine. |
+| `SerialNumber` | `config\camera-config.json` | Per-unit Basler serial; update to the new camera's. |
+| `ipAddress` / `port` | `config\motor_devices.json` | Only if the new controllers aren't on the same `192.168.0.x` addresses. |
+| operators + PINs | `config\users.json` | Ships as the single default `Operator` entry. |
+| `mmPerPixel`, MoveClick, velocity presets | `config\app_settings.json` | Rig-tuned — keep for a true clone, re-calibrate if the camera mount differs. |
+
+Verify `safety_watch.json` / `io_devices.json` pin numbers against the new rig's
+harness **before first motion** — confirm E-Stop wiring first.
 
 ## What's in this build
 
