@@ -28,14 +28,20 @@
     <HAS_IDS_PEAK Condition="Exists('C:\Program Files\IDS\ids_peak\generic_sdk\api\binding\dotnet\x86_64\ids_peak_dotnet.dll')">true</HAS_IDS_PEAK>
   </PropertyGroup>
   <ItemGroup Condition="'$(HAS_IDS_PEAK)' == 'true'">
+    <!-- Private=true so the managed bindings land next to the .exe. Without it the
+         adapter compiles but throws FileNotFoundException at runtime on a target
+         that has no IDS Peak SDK installed (same contract as Basler.Pylon above). -->
     <Reference Include="ids_peak_dotnet">
       <HintPath>C:\Program Files\IDS\ids_peak\generic_sdk\api\binding\dotnet\x86_64\ids_peak_dotnet.dll</HintPath>
+      <Private>true</Private>
     </Reference>
     <Reference Include="ids_peak_ipl_dotnet">
       <HintPath>C:\Program Files\IDS\ids_peak\generic_sdk\ipl\binding\dotnet\x86_64\ids_peak_ipl_dotnet.dll</HintPath>
+      <Private>true</Private>
     </Reference>
     <Reference Include="ids_peak_afl_dotnet">
       <HintPath>C:\Program Files\IDS\ids_peak\generic_sdk\afl\binding\dotnet\x86_64\ids_peak_afl_dotnet.dll</HintPath>
+      <Private>true</Private>
     </Reference>
   </ItemGroup>
   <ItemGroup Condition="'$(HAS_IDS_PEAK)' != 'true'">

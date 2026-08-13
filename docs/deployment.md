@@ -31,11 +31,21 @@ the target. Install only what this rig actually uses.
 | **Vision** | HALCON 24.05 **runtime + license file** (x64) | Yes — vision facet. App runs without it (degrades), but vision ops need the license. |
 | **Motion (PI)** | PI Software Suite (GCS2) — provides the driver stack for `PI_GCS2_DLL_x64.dll` | Yes — `hex-right` hexapod |
 | **Motion (ACS)** | ACS SPiiPlus Runtime Kit (x64) | Yes — `gantry-main` gantry |
-| **Camera (Basler)** | Basler Pylon 8 | Yes — `main_camera` (SdkType 0 = Pylon) |
+| **Camera (Basler)** | Basler Pylon 8 — **drivers only**; the pylon *runtime DLLs* now ship in the publish output (§2) | Yes — `main_camera` (SdkType 0 = Pylon) |
 | **Camera (IDS)** | IDS Peak / IDS uEye | Only if an IDS camera is wired |
 | **IO (Fastech)** | Ezi-MOTION Plus-E V6 | Only if Ezi-IO is wired |
 | **Instruments (VISA)** | NI-VISA runtime | Only if Keithley/Keysight instruments are wired |
 | **TEC (Thorlabs)** | Thorlabs Kinesis | Only if a TED/TEC is wired |
+
+> **Why pylon is still listed** even though we now bundle its runtime: bundling
+> covers the *user-mode* DLLs the managed wrapper P/Invokes, so the app loads and
+> enumerates. It cannot cover **kernel-mode drivers** — USB3 Vision cameras require
+> the Basler USB3 driver, and GigE needs the pylon filter driver for full
+> throughput. Install pylon 8 on any rig with a real camera.
+>
+> Similarly, **native HALCON is never bundled**: the `MVTec.HalconDotNet-Windows`
+> NuGet package contains a managed shim only (~72 KB), not the ~2.3 GB licensed
+> native runtime. HALCON must be installed on the target for any vision op.
 
 Networking: this rig lives on **`192.168.0.x`**. Give the new PC's NIC a static
 address on that subnet (e.g. `192.168.0.10`) so it can reach the controllers:
@@ -66,12 +76,45 @@ native vendor DLLs picked up at build):
 
 ```
 C:\Horizon-deploy\
-  FAAM.UI\          FAAM.UI.exe + runtime + HALCON/PI/ACS/Basler DLLs
+  FAAM.UI\          FAAM.UI.exe + runtime + PI/ACS/Fastech/Thorlabs DLLs
+                    + the native Basler pylon runtime + vendor-runtime.txt
   Horizon.Console\  Horizon.Console.exe
   Horizon.ConfigTool\  Horizon.ConfigTool.exe + presets\*.json
 ```
 
 Copy `C:\Horizon-deploy\` to the target (any folder, e.g. `C:\Horizon\`).
+
+### Bundled vendor natives
+
+MSBuild copies most vendor natives itself, via `<None ... CopyToOutputDirectory>`
+items (`PI_GCS2_DLL_x64.dll`, `EziMOTIONPlusE.dll`, `Thorlabs.MotionControl.*`) or
+`<Private>true</Private>` managed references (`Basler.Pylon.dll`,
+`ACS.SPiiPlusNET6.dll`, `ids_peak_*.dll`) — **all `Exists(...)`-guarded**, so they
+appear only when the SDK is on the build box.
+
+Basler pylon is the exception: only the *managed* wrapper is referenced, while the
+*native* runtime it P/Invokes (`PylonC_v9.dll` → `PylonBase_v9.dll` → GenApi /
+GCBase / transport layers) lives in the SDK and was never copied. `publish.ps1`
+now calls `deploy/stage-vendor-runtime.ps1`, which copies that runtime (~26 MB,
+top-level `Runtime\x64` only — the 172 MB `pylonDataProcessingPlugins\` vTools
+tree is excluded) next to the `.exe`, where the Windows loader finds it first. The
+exact staged file list lands in `vendor-runtime.txt` beside the app.
+
+Not bundled, by nature: `visa64.dll` (resolved from `System32`), native HALCON
+(licensed, ~2.3 GB), and all kernel-mode camera drivers.
+
+### Cutting a versioned release
+
+To publish the operator app as a GitHub release instead of a hand-copied folder:
+
+```powershell
+pwsh deploy/publish.ps1 -Apps FAAM.UI -Zip       # -> artifacts\deploy\FAAM.UI-v0.1-win-x64.zip
+pwsh deploy/release.ps1 -Version 0.1 -DryRun     # verify the plan
+pwsh deploy/release.ps1 -Version 0.1 -PreRelease # tag v0.1, push, create the release
+```
+
+The version comes from `<Version>` in `src\FAAM.UI\FAAM.UI.csproj`; `release.ps1`
+refuses to tag if the two disagree. Release body = `docs/release-notes-v<n>.md`.
 
 ## 3. Data / config — `%APPDATA%\Horizon\` (bundled with the deploy)
 

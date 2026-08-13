@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-  Self-contained-publish the three deployable Horizon apps into one staging
-  folder ready to copy to a target machine.
+  Self-contained-publish the deployable Horizon apps into one staging folder
+  ready to copy to a target machine (or to attach to a GitHub release).
 
 .DESCRIPTION
   Publishes FAAM.UI, Horizon.Console and Horizon.ConfigTool for win-x64,
@@ -13,8 +13,17 @@
   Folder publish (PublishSingleFile stays off): WPF + native P/Invoke DLLs do not
   play well with single-file packing.
 
+  After each app is published, deploy/stage-vendor-runtime.ps1 copies the native
+  Basler pylon runtime alongside any app that carries the managed Basler.Pylon
+  wrapper. MSBuild never copies that runtime on its own. Suppress with
+  -NoVendorRuntime.
+
 .EXAMPLE
   pwsh deploy/publish.ps1 -Configuration Release -Output C:\Horizon-deploy
+
+.EXAMPLE
+  # Just the operator app, zipped for a GitHub release asset:
+  pwsh deploy/publish.ps1 -Apps FAAM.UI -Zip -Version 0.1
 
 .EXAMPLE
   # Publish the apps AND bundle the %APPDATA%\Horizon seed in one shot:
@@ -25,6 +34,19 @@ param(
     [string]$Configuration = 'Release',
     [string]$Runtime       = 'win-x64',
     [string]$Output        = (Join-Path $PSScriptRoot '..\artifacts\deploy'),
+
+    # Which apps to publish. Defaults to all three deployables.
+    [ValidateSet('FAAM.UI', 'Horizon.Console', 'Horizon.ConfigTool')]
+    [string[]]$Apps = @('FAAM.UI', 'Horizon.Console', 'Horizon.ConfigTool'),
+
+    # Skip staging the native Basler pylon runtime into the published folders.
+    [switch]$NoVendorRuntime,
+
+    # Zip each published app folder as <App>-v<Version>-<Runtime>.zip.
+    [switch]$Zip,
+    # Version string used in the zip name (e.g. 0.1). Defaults to FAAM.UI's <Version>.
+    [string]$Version,
+
     # Also snapshot %APPDATA%\Horizon (config + products + history) into the output.
     [switch]$Snapshot,
     # With -Snapshot: drop history.db + each product's dut\ for fresh traceability.
@@ -37,14 +59,24 @@ $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Output = [System.IO.Path]::GetFullPath($Output)
 
-$projects = @(
-    'src\FAAM.UI\FAAM.UI.csproj',
-    'src\Horizon.Console\Horizon.Console.csproj',
-    'src\Horizon.ConfigTool\Horizon.ConfigTool.csproj'
-)
+$projectFor = @{
+    'FAAM.UI'            = 'src\FAAM.UI\FAAM.UI.csproj'
+    'Horizon.Console'    = 'src\Horizon.Console\Horizon.Console.csproj'
+    'Horizon.ConfigTool' = 'src\Horizon.ConfigTool\Horizon.ConfigTool.csproj'
+}
+
+# Default the zip version to whatever FAAM.UI.csproj declares, so the release
+# asset name and the assembly version cannot drift apart.
+if ($Zip -and -not $Version) {
+    $faamProj = Join-Path $repo $projectFor['FAAM.UI']
+    $m = [regex]::Match((Get-Content -LiteralPath $faamProj -Raw), '<Version>([^<]+)</Version>')
+    if (-not $m.Success) { throw "-Zip needs -Version: no <Version> found in $faamProj" }
+    $Version = $m.Groups[1].Value
+}
 
 Write-Host "Repo:    $repo"
 Write-Host "Output:  $Output"
+Write-Host "Apps:    $($Apps -join ', ')"
 Write-Host "Config:  $Configuration  Runtime: $Runtime  (self-contained)`n"
 
 if (Test-Path $Output) {
@@ -53,9 +85,10 @@ if (Test-Path $Output) {
 }
 New-Item -ItemType Directory -Force -Path $Output | Out-Null
 
-foreach ($proj in $projects) {
-    $projPath = Join-Path $repo $proj
-    $name     = [System.IO.Path]::GetFileNameWithoutExtension($projPath)
+$staged = @()
+
+foreach ($name in $Apps) {
+    $projPath = Join-Path $repo $projectFor[$name]
     $dest     = Join-Path $Output $name
 
     Write-Host "==> Publishing $name" -ForegroundColor Cyan
@@ -70,10 +103,29 @@ foreach ($proj in $projects) {
     if ($LASTEXITCODE -ne 0) {
         throw "publish failed for $name (exit $LASTEXITCODE)"
     }
+
+    # The native pylon runtime is only relevant to an app that actually carries
+    # the managed wrapper, i.e. one that pulled in Horizon.Camera.
+    if (-not $NoVendorRuntime -and (Test-Path (Join-Path $dest 'Basler.Pylon.dll'))) {
+        & (Join-Path $PSScriptRoot 'stage-vendor-runtime.ps1') -Target $dest
+    }
+
+    $staged += [pscustomobject]@{ Name = $name; Path = $dest }
     Write-Host "    -> $dest`n"
 }
 
 Write-Host "Done. Staged apps under: $Output" -ForegroundColor Green
+
+if ($Zip) {
+    Write-Host "`n==> Zipping release assets (v$Version)" -ForegroundColor Cyan
+    foreach ($app in $staged) {
+        $zipPath = Join-Path $Output ("{0}-v{1}-{2}.zip" -f $app.Name, $Version, $Runtime)
+        if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+        Compress-Archive -Path (Join-Path $app.Path '*') -DestinationPath $zipPath -CompressionLevel Optimal
+        $mb = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
+        Write-Host ("    {0}  ({1} MB)" -f (Split-Path -Leaf $zipPath), $mb) -ForegroundColor Green
+    }
+}
 
 if ($Snapshot) {
     # Snapshot runs AFTER publish so the Output-folder clean above doesn't wipe the zip.

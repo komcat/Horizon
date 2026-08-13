@@ -6,9 +6,12 @@ up on a new machine as a **clone of an existing rig**. Full reference:
 
 ```
 deploy/
-  publish.ps1           DEV box  - self-contained publish the 3 apps (+ -Snapshot to bundle data)
-  snapshot-appdata.ps1  DEV box  - zip %APPDATA%\Horizon (config + products + history)
-  restore-appdata.ps1   TARGET   - unzip the seed into %APPDATA%\Horizon
+  publish.ps1              DEV box  - self-contained publish the 3 apps (+ -Snapshot to bundle data)
+  stage-vendor-runtime.ps1 DEV box  - copy the native Basler pylon runtime into a published folder
+                                      (called automatically by publish.ps1)
+  release.ps1              DEV box  - tag + publish a GitHub release with the zipped app
+  snapshot-appdata.ps1     DEV box  - zip %APPDATA%\Horizon (config + products + history)
+  restore-appdata.ps1      TARGET   - unzip the seed into %APPDATA%\Horizon
 ```
 
 Run scripts with `pwsh` (PowerShell 7+). All three are ASCII-only so they survive
@@ -44,7 +47,16 @@ C:\Horizon-deploy\
 
 > Build on the box where the vendor SDKs are installed (Basler / PI / ACS / etc.).
 > The hardware adapters pick up their native DLLs only when the SDKs are present,
-> so a build on a bare box would ship without them.
+> so a build on a bare box would ship without them. `Horizon.Camera` hard-references
+> `Basler.Pylon.dll` with no `Exists(...)` guard, so a box without pylon 8 cannot
+> even build the solution.
+
+`publish.ps1` also stages the **native Basler pylon runtime** (~26 MB) next to any
+published app that carries the managed `Basler.Pylon.dll` — MSBuild never copies it
+on its own, so without this step the camera dies with a `DllNotFoundException`. The
+staged file list is written to `vendor-runtime.txt` in the app folder. Suppress with
+`-NoVendorRuntime`; stage into an existing folder with `stage-vendor-runtime.ps1
+-Target <folder>`.
 
 Equivalent two-step form (same result):
 
@@ -102,8 +114,33 @@ pwsh restore-appdata.ps1 -Zip .\Horizon-appdata.zip
 |---|---|---|
 | publish.ps1 | `-Output <dir>` | staging folder (default `..\artifacts\deploy`) |
 | publish.ps1 | `-Configuration` | build config, default `Release` |
+| publish.ps1 | `-Apps <names>` | which of FAAM.UI / Horizon.Console / Horizon.ConfigTool to publish (default: all) |
+| publish.ps1 | `-Zip` | zip each app as `<App>-v<Version>-win-x64.zip` (release asset) |
+| publish.ps1 | `-Version` | version used in the zip name (default: `<Version>` from FAAM.UI.csproj) |
+| publish.ps1 | `-NoVendorRuntime` | skip staging the native pylon runtime |
 | publish.ps1 | `-Snapshot` | also bundle the %APPDATA%\Horizon seed |
 | publish.ps1 | `-CleanHistory` | with -Snapshot: drop history.db + dut\ |
+| stage-vendor-runtime.ps1 | `-Target <dir>` | published app folder to stage into (required) |
+| stage-vendor-runtime.ps1 | `-PylonRoot <dir>` | override pylon SDK autodetection |
+| stage-vendor-runtime.ps1 | `-RequirePylon` | error instead of warn when pylon is missing |
+| release.ps1 | `-Version <n>` | release version without `v` (required); tag becomes `v<n>` |
+| release.ps1 | `-DryRun` | print the plan, change nothing |
+| release.ps1 | `-Draft` / `-PreRelease` | publish as draft / mark as pre-release |
 | snapshot-appdata.ps1 | `-IncludeLogs` | also capture logs\ (normally skipped) |
 | snapshot-appdata.ps1 | `-CleanHistory` | drop history.db + dut\ |
 | restore-appdata.ps1 | `-Zip <file>` | seed zip to restore (required) |
+
+---
+
+## Cutting a GitHub release
+
+```powershell
+pwsh deploy/publish.ps1 -Apps FAAM.UI -Zip          # -> artifacts\deploy\FAAM.UI-v0.1-win-x64.zip
+pwsh deploy/release.ps1 -Version 0.1 -DryRun        # check the plan
+pwsh deploy/release.ps1 -Version 0.1 -PreRelease    # tag, push, create the release
+```
+
+`release.ps1` refuses to run on a dirty tree, if the tag exists, or if the tag
+disagrees with `<Version>` in `src\FAAM.UI\FAAM.UI.csproj`. Bump that property and
+add a `docs/release-notes-v<n>.md` (the release body) for each new version.
+Requires the GitHub CLI, authenticated once with `gh auth login`.
