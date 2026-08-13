@@ -106,9 +106,15 @@ try {
     $branch = (git rev-parse --abbrev-ref HEAD).Trim()
     $assetMb = [math]::Round((Get-Item -LiteralPath $Asset).Length / 1MB, 1)
 
+    # A tag whose commit is absent from origin gives a release page pointing at
+    # source GitHub cannot show, so the branch has to go up first.
+    git fetch origin $branch --quiet 2>&1 | Out-Null
+    $unpushed = @(git rev-list "origin/$branch..HEAD" 2>$null).Count
+
     Write-Host ""
     Write-Host "  tag        : $tag" -ForegroundColor Cyan
     Write-Host "  commit     : $sha (on $branch)"
+    Write-Host "  unpushed   : $unpushed commit(s)$(if ($unpushed) { ' - will push ' + $branch + ' first' })"
     Write-Host "  asset      : $Asset ($assetMb MB)"
     Write-Host "  notes      : $NotesFile"
     Write-Host "  draft      : $([bool]$Draft)   prerelease: $([bool]$PreRelease)"
@@ -117,6 +123,12 @@ try {
     if ($DryRun) {
         Write-Host "DryRun - nothing was tagged, pushed or created." -ForegroundColor Yellow
         return
+    }
+
+    if ($unpushed -gt 0) {
+        Write-Host "==> Pushing $branch to origin ($unpushed commit(s))" -ForegroundColor Cyan
+        git push origin $branch
+        if ($LASTEXITCODE -ne 0) { Fail "git push origin $branch failed" }
     }
 
     Write-Host "==> Tagging $tag" -ForegroundColor Cyan
