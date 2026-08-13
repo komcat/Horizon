@@ -48,19 +48,38 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Fail($msg) { throw $msg }
+
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $tag  = "v$Version"
 
 if (-not $Asset) {
-    $Asset = Join-Path $repo "artifacts\deploy\FAAM.UI-v$Version-win-x64.zip"
+    # The tag is coarse (v0.1) while the assembly version is a full triple
+    # (0.1.0), and publish.ps1 names the zip after the latter. Accept the exact
+    # name first, then any zip whose version refines the tag (0.1 -> 0.1.0).
+    $deployDir = Join-Path $repo 'artifacts\deploy'
+    $exact = Join-Path $deployDir "FAAM.UI-v$Version-win-x64.zip"
+    if (Test-Path -LiteralPath $exact) {
+        $Asset = $exact
+    }
+    else {
+        $candidates = @(Get-ChildItem -LiteralPath $deployDir -Filter "FAAM.UI-v$Version.*-win-x64.zip" -ErrorAction SilentlyContinue)
+        if ($candidates.Count -eq 1) {
+            $Asset = $candidates[0].FullName
+        }
+        elseif ($candidates.Count -gt 1) {
+            Fail ("Ambiguous release asset for v{0} - pass -Asset explicitly:`n  {1}" -f $Version, (($candidates.Name) -join "`n  "))
+        }
+        else {
+            $Asset = $exact   # let the not-found check below report it
+        }
+    }
 }
 if (-not $NotesFile) {
     $NotesFile = Join-Path $repo "docs\release-notes-v$Version.md"
 }
 
 # --- preflight ---------------------------------------------------------------
-
-function Fail($msg) { throw $msg }
 
 # PATH in an already-open shell predates a fresh winget install, so fall back to
 # the standard install locations before giving up.
