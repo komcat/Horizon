@@ -62,15 +62,29 @@ if (-not $NotesFile) {
 
 function Fail($msg) { throw $msg }
 
-$gh = Get-Command gh -ErrorAction SilentlyContinue
-if (-not $gh) {
+# PATH in an already-open shell predates a fresh winget install, so fall back to
+# the standard install locations before giving up.
+function Resolve-Gh {
+    $cmd = Get-Command gh -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    foreach ($p in @(
+            (Join-Path $env:ProgramFiles 'GitHub CLI\gh.exe'),
+            (Join-Path ${env:ProgramFiles(x86)} 'GitHub CLI\gh.exe'),
+            (Join-Path $env:LOCALAPPDATA 'Programs\GitHub CLI\gh.exe'))) {
+        if ($p -and (Test-Path -LiteralPath $p)) { return $p }
+    }
+    return $null
+}
+
+$ghExe = Resolve-Gh
+if (-not $ghExe) {
     Fail "GitHub CLI not found. Install it (winget install --id GitHub.cli) and run 'gh auth login'."
 }
 
 # gh auth status exits non-zero when not logged in.
-& gh auth status 2>&1 | Out-Null
+& $ghExe auth status 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    Fail "gh is not authenticated. Run 'gh auth login' (interactive), then re-run this script."
+    Fail "gh is not authenticated. Run '`"$ghExe`" auth login' (interactive), then re-run this script."
 }
 
 if (-not (Test-Path -LiteralPath $Asset)) {
@@ -152,11 +166,11 @@ try {
     if ($Draft)      { $ghArgs += '--draft' }
     if ($PreRelease) { $ghArgs += '--prerelease' }
 
-    & gh @ghArgs
+    & $ghExe @ghArgs
     if ($LASTEXITCODE -ne 0) { Fail "gh release create failed" }
 
     Write-Host "`nRelease $tag published." -ForegroundColor Green
-    & gh release view $tag --web
+    & $ghExe release view $tag --web
 }
 finally {
     Pop-Location
