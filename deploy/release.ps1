@@ -130,9 +130,16 @@ try {
         Fail "Working tree is not clean - commit or stash first:`n$dirty"
     }
 
-    $existing = git tag --list $tag
-    if ($existing) {
-        Fail "Tag $tag already exists locally. Delete it (git tag -d $tag) or pick a new version."
+    # A tag can already exist because an earlier run tagged and pushed but then
+    # failed at release creation. Resuming is fine as long as no release exists
+    # for it yet; a tag with a release is a genuine version collision.
+    $tagExists = [bool](git tag --list $tag)
+    if ($tagExists) {
+        & $ghExe release view $tag 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Fail "Release $tag already exists on GitHub. Pick a new version, or delete it with 'gh release delete $tag'."
+        }
+        Write-Host "Tag $tag already exists with no release - resuming at release creation." -ForegroundColor Yellow
     }
 
     $sha    = (git rev-parse --short HEAD).Trim()
@@ -164,9 +171,11 @@ try {
         if ($LASTEXITCODE -ne 0) { Fail "git push origin $branch failed" }
     }
 
-    Write-Host "==> Tagging $tag" -ForegroundColor Cyan
-    git tag -a $tag -m "FAAM.UI $tag"
-    if ($LASTEXITCODE -ne 0) { Fail "git tag failed" }
+    if (-not $tagExists) {
+        Write-Host "==> Tagging $tag" -ForegroundColor Cyan
+        git tag -a $tag -m "FAAM.UI $tag"
+        if ($LASTEXITCODE -ne 0) { Fail "git tag failed" }
+    }
 
     Write-Host "==> Pushing tag to origin" -ForegroundColor Cyan
     git push origin $tag
@@ -175,12 +184,13 @@ try {
         Fail "git push failed - the local tag $tag was kept, re-run after fixing the remote."
     }
 
+    # No --target: the tag is already on the remote, so GitHub resolves the commit
+    # from it. Passing a short SHA there is rejected as an invalid target_commitish.
     Write-Host "==> Creating GitHub release" -ForegroundColor Cyan
     $ghArgs = @(
         'release', 'create', $tag, $Asset,
         '--title', "FAAM.UI $tag",
-        '--notes-file', $NotesFile,
-        '--target', $sha
+        '--notes-file', $NotesFile
     )
     if ($Draft)      { $ghArgs += '--draft' }
     if ($PreRelease) { $ghArgs += '--prerelease' }
