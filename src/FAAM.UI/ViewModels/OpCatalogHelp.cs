@@ -22,7 +22,7 @@ public sealed class OpHelp
 /// to their parameter labels — no help is not an error.
 ///
 /// Authoring guide + structure: <c>docs/engineer-command-help.md</c>.
-/// Coverage so far: <b>App</b>, <b>DUT</b>, <b>Scan</b> categories. Other categories: TODO.
+/// Coverage so far: <b>App</b>, <b>DUT</b>, <b>Scan</b> categories plus <c>script.run</c>. Other categories: TODO.
 /// </summary>
 public static class OpCatalogHelp
 {
@@ -117,6 +117,18 @@ public static class OpCatalogHelp
                 ("velocity", "Move velocity during the scan (mm/s); 0 leaves the controller's current velocity."),
                 ("signal", "The feedback signal to maximise — pick from the catalog (any connected SMU / PSU / Measurement / TEC / Laser channel, or SiPhOG on FAAM.UI, e.g. siphog.sagPwrV). Same list as \"Read Out\"; the chosen signal must be available on this head."),
                 ("captureAs", "Prefix for the result variables ({prefix}_peak/_baseline/_snr/_significant/_state)."),
+            },
+        },
+
+        // ===== Flow — script =====
+
+        ["script.run"] = new()
+        {
+            Summary = "Run a saved .moon script from this product, to completion, as one step in the sequence.",
+            Usage = "Use it where a few lines of Lua say what a chain of blocks would: a measurement loop, a computed move, or an operator-facing touch such as capturing a picture into the Run page's snapshot box (machine.camera.snap + machine.ui.showImage). The script drives the same hardware through the 'machine' table and sees the active product's teach points, vision profiles and signals. Its output lines go to the log; a script error (or an operator Stop) fails the step, and so the program. Author and test scripts on the Script page first.",
+            ParamNotes = new[]
+            {
+                ("script", "Which .moon script to run — the drop-down lists this product's saved scripts."),
             },
         },
 

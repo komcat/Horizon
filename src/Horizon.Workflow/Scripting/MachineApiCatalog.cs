@@ -127,6 +127,10 @@ public static class MachineApiCatalog
         new("camera", "setExposure", "machine.camera.setExposure(camera, microseconds)", "Set the exposure time."),
         new("camera", "snap", "machine.camera.snap(camera) -> path", "Capture one frame to a file; returns the path."),
 
+        // ui (Layer 3 surfaces)
+        new("ui", "showImage", "machine.ui.showImage(path [, caption])", "Show a saved picture (e.g. camera.snap's path) in the head's image panel."),
+        new("ui", "clearImage", "machine.ui.clearImage()", "Clear the head's image panel back to empty."),
+
         // vision
         new("vision", "available", "machine.vision.available() -> bool", "True if HALCON is loaded and licensed."),
         new("vision", "hasFrame", "machine.vision.hasFrame(camera) -> bool", "True if a frame is available for the camera."),

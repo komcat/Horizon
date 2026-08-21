@@ -40,6 +40,7 @@ public sealed class MoonScriptEngine
     private readonly NamedPositionMover? _mover;
     private readonly SignalReader? _signalReader;
     private readonly VisionProfileRunner? _visionRunner;
+    private readonly IImageDisplaySink? _imageDisplay;
     private readonly IOperatorPrompt? _prompt;
 
     public MoonScriptEngine(
@@ -47,13 +48,15 @@ public sealed class MoonScriptEngine
         NamedPositionMover? namedPositionMover = null,
         SignalReader? signalReader = null,
         VisionProfileRunner? visionRunner = null,
-        IOperatorPrompt? operatorPrompt = null)
+        IOperatorPrompt? operatorPrompt = null,
+        IImageDisplaySink? imageDisplay = null)
     {
         _engine = engine;
         _mover = namedPositionMover;
         _signalReader = signalReader;
         _visionRunner = visionRunner;
         _prompt = operatorPrompt;
+        _imageDisplay = imageDisplay;
     }
 
     /// <summary>
@@ -78,7 +81,7 @@ public sealed class MoonScriptEngine
 
         var script = new Script(CoreModules.Preset_HardSandbox);
         script.Options.DebugPrint = Log;     // Lua print(...) → output
-        new MachineApi(script, _engine, _mover, _signalReader, _visionRunner, _prompt, Log, ct).Install();
+        new MachineApi(script, _engine, _mover, _signalReader, _visionRunner, _imageDisplay, _prompt, Log, ct).Install();
 
         DynValue function;
         try

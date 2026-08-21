@@ -180,6 +180,13 @@ public interface IProcessService
     void SetSiphogSheetSink(ISiphogSheetSink? sink);
 
     /// <summary>
+    /// Registers the Layer 3 image panel that <c>machine.ui.showImage</c> pushes a still
+    /// picture into (FAAM's Run-page snapshot box). Pass null to unregister; with none
+    /// registered the script call fails with a clear message rather than crash.
+    /// </summary>
+    void SetImageDisplaySink(IImageDisplaySink? sink);
+
+    /// <summary>
     /// Registers a product-specific signal source (e.g. FAAM's SiPhOG) so its values
     /// join the unified <c>signal.read</c> catalog alongside the built-in engine
     /// signals (SMU / PSU / Measurement / TEC / Laser).

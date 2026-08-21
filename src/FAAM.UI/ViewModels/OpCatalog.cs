@@ -12,7 +12,7 @@ public enum DeviceKind { None, Motion, Io, Pneumatic, Camera }
 /// options are filled by the block (positions from the chosen device, the axis
 /// list, or Set/Clear); the rest are a text box / number box / check box.
 /// </summary>
-public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName, SignalName, Operator, MotionDeviceName, DispenseRoutineName }
+public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName, SignalName, Operator, MotionDeviceName, DispenseRoutineName, ScriptName }
 
 /// <summary>One parameter of an op — its persisted key, a display label, the editor widget, and a default value.</summary>
 public sealed record ParamSpec(string Key, string Label, ParamKind Kind, string Default = "");
@@ -290,6 +290,13 @@ public static class OpCatalog
                 new ParamSpec("stage", "Stage (ACTUAL / WET / UV)", ParamKind.Text, "ACTUAL"),
                 new ParamSpec("completed", "Mark stage completed", ParamKind.Bool, "true"),
             }),
+
+        // ---- Script ----
+        // Runs a saved .moon script from the active product to completion, inline in the
+        // sequence. The script drives the same hardware through the 'machine' table and can
+        // push a captured still into the Run page's snapshot box (machine.ui.showImage).
+        new("script.run", "Run Script", "Flow", DeviceKind.None,
+            new[] { new ParamSpec("script", "Script (.moon)", ParamKind.ScriptName) }),
 
         // ---- DUT ----
         // Prompts the operator (modal) for a serial number and opens the DUT record

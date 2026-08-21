@@ -30,6 +30,8 @@ internal sealed class StepDispatcher
     // (approachDistanceMm, velocity, ct) — moves the needle to the camera point, extends the
     // head, then approaches the surface. Drives needle.approach.
     private readonly Func<double, double, CancellationToken, Task<Result>> _runNeedleApproach;
+    // (scriptName, ct) — runs a saved per-product .moon script to completion. Drives script.run.
+    private readonly Func<string, CancellationToken, Task<Result>> _runScript;
     // Supplies the hill-climb signal source (Layer 3 SiPhOG). Returns null when no head
     // has registered one — hillclimb.* steps then fail with a clear message rather than crash.
     private readonly Func<IHillClimbFeedback?> _hillClimbFeedback;
@@ -62,6 +64,7 @@ internal sealed class StepDispatcher
         Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
         Func<string, CancellationToken, Task<Result>> runDispenseRoutine,
         Func<double, double, CancellationToken, Task<Result>> runNeedleApproach,
+        Func<string, CancellationToken, Task<Result>> runScript,
         Func<IHillClimbFeedback?> hillClimbFeedback,
         Func<IUtilityAppHost?> utilityAppHost,
         Func<ISiphogSheetSink?> siphogSheetSink,
@@ -76,6 +79,7 @@ internal sealed class StepDispatcher
         _runVisionProfile = runVisionProfile;
         _runDispenseRoutine = runDispenseRoutine;
         _runNeedleApproach = runNeedleApproach;
+        _runScript = runScript;
         _hillClimbFeedback = hillClimbFeedback;
         _utilityAppHost = utilityAppHost;
         _siphogSheetSink = siphogSheetSink;
@@ -769,6 +773,12 @@ internal sealed class StepDispatcher
                     (string.IsNullOrWhiteSpace(captureAs) ? "" : $" -> {captureAs}"));
                 return Result.Ok();
             }
+
+            // Runs a saved .moon script from the active product, to completion, inside the
+            // step. The script reaches the same hardware through the 'machine' table and can
+            // push a picture to the head's image panel (machine.ui.showImage).
+            case "script.run":
+                return await _runScript(Str(step, "script", ctx), ct);
 
             case "flow.wait":
             {

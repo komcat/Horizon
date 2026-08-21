@@ -52,6 +52,7 @@ internal sealed class MachineApi
     private readonly NamedPositionMover? _mover;
     private readonly SignalReader? _signalReader;
     private readonly VisionProfileRunner? _visionRunner;
+    private readonly IImageDisplaySink? _imageDisplay;
     private readonly IOperatorPrompt? _prompt;
     private readonly Action<string> _log;
     private readonly CancellationToken _ct;
@@ -62,6 +63,7 @@ internal sealed class MachineApi
         NamedPositionMover? mover,
         SignalReader? signalReader,
         VisionProfileRunner? visionRunner,
+        IImageDisplaySink? imageDisplay,
         IOperatorPrompt? prompt,
         Action<string> log,
         CancellationToken ct)
@@ -71,6 +73,7 @@ internal sealed class MachineApi
         _mover = mover;
         _signalReader = signalReader;
         _visionRunner = visionRunner;
+        _imageDisplay = imageDisplay;
         _prompt = prompt;
         _log = log;
         _ct = ct;
@@ -93,6 +96,7 @@ internal sealed class MachineApi
         machine["camera"] = DynValue.NewTable(BuildCamera());
         machine["vision"] = DynValue.NewTable(BuildVision());
         machine["signal"] = DynValue.NewTable(BuildSignal());
+        machine["ui"] = DynValue.NewTable(BuildUi());
         _script.Globals["machine"] = DynValue.NewTable(machine);
     }
 
@@ -559,6 +563,41 @@ internal sealed class MachineApi
         });
 
         return v;
+    }
+
+    // --- operator-facing UI surfaces (Layer 3 sinks) ---
+
+    private Table BuildUi()
+    {
+        var u = new Table(_script);
+
+        // Pushes a still picture (typically the path camera.snap just returned) into
+        // the head's image panel, so the operator sees what the machine is looking at
+        // at this point in the process.
+        u["showImage"] = Cb(a =>
+        {
+            string path = ReqStr(a, 0, "ui.showImage");
+            string? caption = a.Count > 1 ? ReqStr(a, 1, "ui.showImage") : null;
+            if (_imageDisplay == null)
+                throw new ScriptRuntimeException(
+                    "ui.showImage needs a Layer 3 image panel (none registered)");
+            var r = _imageDisplay.Show(path, caption);
+            if (!r.IsSuccess) throw new ScriptRuntimeException($"ui.showImage failed: {r.Message}");
+            _log($"ui.showImage({path})" + (caption != null ? $" — {caption}" : string.Empty));
+            return DynValue.Nil;
+        });
+
+        u["clearImage"] = Cb(_ =>
+        {
+            if (_imageDisplay == null)
+                throw new ScriptRuntimeException(
+                    "ui.clearImage needs a Layer 3 image panel (none registered)");
+            var r = _imageDisplay.Clear();
+            if (!r.IsSuccess) throw new ScriptRuntimeException($"ui.clearImage failed: {r.Message}");
+            return DynValue.Nil;
+        });
+
+        return u;
     }
 
     // --- unified signal read (Layer 2: engine catalog + product sources) ---

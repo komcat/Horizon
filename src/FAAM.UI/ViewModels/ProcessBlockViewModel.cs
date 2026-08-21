@@ -139,6 +139,7 @@ public sealed class ProcessBlockViewModel : ObservableObject
                 "flow.ifposition" => $"if {Or(P("device"), "?")} {Or(P("axis"), "?")} {Or(P("op"), "?")} {Or(P("value"), "?")}",
                 "signal.read" => $"{Or(P("signal"), "?")} → {Or(P("storeAs"), P("signal"))}",
                 "dut.promptserial" => "ask DUT serial",
+                "script.run" => Or(P("script"), "(no script)"),
                 "flow.log" => Or(P("message"), "(message)"),
                 "pneumatic.extend" => "extend",
                 "pneumatic.retract" => "retract",
@@ -278,6 +279,9 @@ public sealed class ProcessBlockViewModel : ObservableObject
                     break;
                 case ParamKind.DispenseRoutineName:
                     p.SetOptions(_host.Process.ListDispenseRoutines());
+                    break;
+                case ParamKind.ScriptName:
+                    p.SetOptions(_host.Process.ListScripts());
                     break;
             }
     }

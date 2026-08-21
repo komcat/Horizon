@@ -172,11 +172,14 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
 - `ShellWindow` — fixed chrome (Home/jog rail/header) around a swappable page host:
   **Home** (launcher + product selector), **Machine** (ported wholesale from
   Horizon.UI), **Run** (the production page: camera feed + crosshair/Zoom2× inset,
-  **MoveClick** click-to-jog, process steps panel with Teach/Run toggle, serial-
-  bracketed DUT run with PASS/FAIL + a DUT results viewer, log), **Engineer**
+  **MoveClick** click-to-jog, process steps panel with Teach/Run toggle, a
+  **snapshot box** beside the Zoom2× inset (`SnapshotView`, FAAM's `IImageDisplaySink`
+  — a `.moon` script pushes a captured still into it with `machine.ui.showImage`),
+  serial-bracketed DUT run with PASS/FAIL + a DUT results viewer, log), **Engineer**
   (the Gantt editor below), and **Vision Profile** (per-position vision recipe
-  authoring, below). A SiPhOG TCP client + Skia chart live under `Siphog/`;
-  `MoveClick.cs` holds the shared `mm/pixel` jog maths.
+  authoring, below). A SiPhOG TCP client lives under `Siphog/` (its Skia chart,
+  `SiphogChart`, is no longer on the Run page); `MoveClick.cs` holds the shared
+  `mm/pixel` jog maths.
 - **Vision Profile page** — authors a saved, per-position vision recipe (camera +
   lighting, an ordered pre-process filter chain of up to 3 stages, a detection
   method, and a taught template) and runs it against a live frame. Detection

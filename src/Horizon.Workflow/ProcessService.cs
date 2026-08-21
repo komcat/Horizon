@@ -40,6 +40,7 @@ public sealed class ProcessService : IProcessService
     private Func<IHillClimbFeedback?>? _hillClimbFeedbackProvider;   // Layer 3 (SiPhOG) wires the hill-climb signal source
     private IUtilityAppHost? _utilityAppHost;   // Layer 3 Run-page springboard, driven by app.* steps
     private ISiphogSheetSink? _siphogSheetSink;   // Layer 3 SiPhOG -> Google Sheet writer, driven by siphog.updateSheet steps
+    private IImageDisplaySink? _imageDisplaySink;   // Layer 3 still-image panel, driven by machine.ui.showImage
     private readonly SignalRegistry _signals;   // built-in engine signals + any product source a head registers
 
     public ProcessService(IHorizonEngine engine)
@@ -487,6 +488,9 @@ public sealed class ProcessService : IProcessService
     public void SetSiphogSheetSink(ISiphogSheetSink? sink)
         => _siphogSheetSink = sink;
 
+    public void SetImageDisplaySink(IImageDisplaySink? sink)
+        => _imageDisplaySink = sink;
+
     /// <summary>
     /// Registers a product-specific signal source (e.g. FAAM's SiPhOG) so its values
     /// join the unified <c>signal.read</c> catalog. The built-in engine signals
@@ -904,6 +908,7 @@ public sealed class ProcessService : IProcessService
             RunVisionProfileByNameAsync,
             RunDispenseRoutineAsync,
             RunNeedleApproachAsync,
+            RunScriptByNameAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,
             () => _siphogSheetSink,
@@ -1638,7 +1643,8 @@ public sealed class ProcessService : IProcessService
                 MoveToNamedPositionCoreAsync(device, position, new MoveOverrides(), token),
             signalReader: (key, token) => _signals.ReadAsync(key, token),
             visionRunner: RunVisionProfileByNameAsync,
-            operatorPrompt: OperatorPrompt);
+            operatorPrompt: OperatorPrompt,
+            imageDisplay: _imageDisplaySink);
 
         void Sink(string line)
         {
@@ -1657,6 +1663,30 @@ public sealed class ProcessService : IProcessService
             Log(LogLevel.Error, $"Script error: {result.Error}");
 
         return result;
+    }
+
+    /// <summary>
+    /// Runs a saved <c>.moon</c> script from the active product by name — the back-end
+    /// for the <c>script.run</c> workflow step. Maps the script outcome onto a
+    /// <see cref="Result"/> so a failing script fails the program like any other step;
+    /// a cancelled run reports as a cancellation rather than a defect.
+    /// </summary>
+    private async Task<Result> RunScriptByNameAsync(string name, CancellationToken ct)
+    {
+        if (_scripts == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — cannot run a script.");
+        if (string.IsNullOrWhiteSpace(name))
+            return Result.Fail(ErrorCode.InvalidParameter, "Run Script: no script name given.");
+
+        var source = _scripts.Load(name);
+        if (source == null)
+            return Result.Fail(ErrorCode.FileNotFound, $"Script '{name}' not found in the active product.");
+
+        var result = await RunScriptAsync(source, onOutput: null, ct).ConfigureAwait(false);
+        if (result.Success) return Result.Ok();
+        return result.Cancelled
+            ? Result.Fail(ErrorCode.ProcessCancelled, $"Script '{name}' was cancelled.")
+            : Result.Fail(ErrorCode.OperationFailed, $"Script '{name}' failed: {result.Error}");
     }
 
     // --- Decks ---
@@ -1877,6 +1907,7 @@ public sealed class ProcessService : IProcessService
             RunVisionProfileByNameAsync,
             RunDispenseRoutineAsync,
             RunNeedleApproachAsync,
+            RunScriptByNameAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,
             () => _siphogSheetSink,

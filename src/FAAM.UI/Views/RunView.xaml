@@ -43,20 +43,23 @@
         </Style>
     </UserControl.Resources>
     <Grid>
-        <!-- Main area: left content + camera column, side by side, both full height.
-             The left column sizes to its panels' natural width; the camera column takes
-             everything that is left over and the feed FILLS it (cropping as needed), so
-             resizing the window changes how much of the frame you see, never its scale. -->
+        <!-- Main area: left content + camera column. The Log sits under the LEFT column
+             only (Row 1, Col 0); the camera column spans both rows so its feed / zoom /
+             chart area keeps the vertical space beside the log. -->
         <Grid>
             <Grid.ColumnDefinitions>
-                <!-- Auto: the process/alignment panels keep their natural width… -->
+                <ColumnDefinition Width="*" />
+                <!-- Auto so the camera column shrinks to the (aspect-correct) feed
+                     width instead of pillar-boxing it; the left column takes the rest. -->
                 <ColumnDefinition Width="Auto" />
-                <!-- …and the camera column claims the rest for the feed + log. -->
-                <ColumnDefinition Width="*" MinWidth="420" />
             </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
             <!-- Left column — process steps panel + the alignment utilities. -->
-            <Grid Grid.Column="0" Margin="0,0,8,0">
+            <Grid Grid.Row="0" Grid.Column="0" Margin="0,0,8,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -73,29 +76,26 @@
                 </DockPanel>
             </Grid>
 
-            <!-- Camera column. Row 0 = Zoom2x + chart + thumbnails; Row 1 = main live
-                 feed (takes all remaining height); Row 2 = the log. -->
-            <Grid Grid.Column="1">
+            <!-- Camera column — spans both rows so it extends down beside the log.
+                 Row 0 = Zoom2x + chart + thumbnails (on top); Row 1 = main live feed. -->
+            <Grid Grid.Row="0" Grid.RowSpan="2" Grid.Column="1">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- Main live feed with crosshair + center-ROI overlay. Clicking the
-                     surface while MoveClick is armed measures (and jogs) — see code-behind.
-                     The Border fills its cell (no Center alignment) and clips, so the feed
-                     is a fixed window onto the frame rather than a box that shrinks. -->
+                     surface while MoveClick is armed measures (and jogs) — see code-behind. -->
                 <Border Grid.Row="1" Background="{StaticResource VideoBg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
-                        CornerRadius="3" ClipToBounds="True" MouseLeftButtonDown="OnFeedClick"
-                        MouseMove="OnFeedMouseMove" MouseLeave="OnFeedMouseLeave">
-                    <Grid ClipToBounds="True">
-                        <!-- UniformToFill: the frame keeps its aspect ratio and covers the
-                             whole viewport, overflowing and being cropped rather than
-                             letterboxing. Clipped so the overflow can't paint outside.
-                             MoveClick / ROI / detection-overlay maths use the matching
-                             cover scale (Math.Max) — see the code-behind. -->
-                        <Image x:Name="MainImage" Stretch="UniformToFill" ClipToBounds="True" Margin="2" />
+                        CornerRadius="3" MouseLeftButtonDown="OnFeedClick"
+                        MouseMove="OnFeedMouseMove" MouseLeave="OnFeedMouseLeave"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Grid>
+                        <!-- Cap at the camera's max (1280×1024); Uniform keeps aspect, so the
+                             Border hugs the image with no black letterbox and the overlay
+                             crosshair sits on the frame's centre. MoveClick / ROI /
+                             detection-overlay maths use the matching fit scale (Math.Min). -->
+                        <Image x:Name="MainImage" Stretch="Uniform" Margin="2" MaxWidth="1280" MaxHeight="1024" />
 
                         <!-- Crosshair: full-span center lines. -->
                         <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch"
@@ -193,10 +193,10 @@
                         </Grid>
                     </Border>
 
-                    <!-- SAG / target chart — sits beside the Zoom2x inset (matched height).
-                         The SiPhOG connection + value panel lives in the alignment-utilities
-                         grid (left column); both share the one client. -->
-                    <v:SiphogChart Grid.Column="1" x:Name="SiphogChartControl" Height="300" Margin="8,0,0,0" />
+                    <!-- Snapshot box — sits beside the Zoom2x inset (matched height). A process
+                         pushes a still picture here (machine.ui.showImage from a .moon script)
+                         to show the operator what the machine is looking at at this step. -->
+                    <v:SnapshotView Grid.Column="1" x:Name="SnapshotPanel" Height="300" Margin="8,0,0,0" />
 
                     <ScrollViewer Grid.Column="2" Margin="8,0,0,0"
                                   HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
@@ -204,29 +204,9 @@
                     </ScrollViewer>
                 </Grid>
 
-                <!-- Log — under the feed in the camera column, so the left
-                     process/alignment panels keep the full window height. -->
-                <Border Grid.Row="2" Height="140" Margin="0,8,0,0"
-                        Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
-                        BorderThickness="1" CornerRadius="3">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Text="Log" Foreground="{StaticResource Subtle}" FontSize="11"
-                                   FontWeight="SemiBold" Margin="8,5,0,2" />
-                        <TextBox x:Name="LogBox" Grid.Row="1" IsReadOnly="True"
-                                 Background="Transparent" Foreground="{StaticResource Text}" BorderThickness="0"
-                                 FontFamily="Consolas" FontSize="11.5"
-                                 VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap"
-                                 Margin="6,0,2,4" />
-                    </Grid>
-                </Border>
-
                 <!-- Motion inspector — fills the camera column when a step's
                      "Inspect Motion" is chosen; Close returns to the live feed. -->
-                <Border x:Name="InspectorPanel" Grid.Row="0" Grid.RowSpan="3" Visibility="Collapsed"
+                <Border x:Name="InspectorPanel" Grid.Row="0" Grid.RowSpan="2" Visibility="Collapsed"
                         MinWidth="600" Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}"
                         BorderThickness="1" CornerRadius="3">
                     <DockPanel Margin="8">
@@ -365,6 +345,25 @@
                     </DockPanel>
                 </Border>
             </Grid>
+
+            <!-- Log area — under the left column only (Row 1, Col 0); the camera column
+                 (RowSpan 2) keeps the vertical space to its right. -->
+            <Border Grid.Row="1" Grid.Column="0" Height="120" Margin="0,8,8,0"
+                    Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="Log" Foreground="{StaticResource Subtle}" FontSize="11"
+                               FontWeight="SemiBold" Margin="8,5,0,2" />
+                    <TextBox x:Name="LogBox" Grid.Row="1" IsReadOnly="True"
+                             Background="Transparent" Foreground="{StaticResource Text}" BorderThickness="0"
+                             FontFamily="Consolas" FontSize="11.5"
+                             VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap"
+                             Margin="6,0,2,4" />
+                </Grid>
+            </Border>
         </Grid>
     </Grid>
 </UserControl>

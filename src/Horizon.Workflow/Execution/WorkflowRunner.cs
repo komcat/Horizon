@@ -36,6 +36,7 @@ internal sealed class WorkflowRunner
         Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
         Func<string, CancellationToken, Task<Result>> runDispenseRoutine,
         Func<double, double, CancellationToken, Task<Result>> runNeedleApproach,
+        Func<string, CancellationToken, Task<Result>> runScript,
         Func<IHillClimbFeedback?> hillClimbFeedback,
         Func<IUtilityAppHost?> utilityAppHost,
         Func<ISiphogSheetSink?> siphogSheetSink,
@@ -48,7 +49,7 @@ internal sealed class WorkflowRunner
         Action<WorkflowStepEvent> onStep,
         Action<LogLevel, string> log)
     {
-        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, runDispenseRoutine, runNeedleApproach, hillClimbFeedback, utilityAppHost, siphogSheetSink, signals, deviceLinks, log);
+        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, runDispenseRoutine, runNeedleApproach, runScript, hillClimbFeedback, utilityAppHost, siphogSheetSink, signals, deviceLinks, log);
         _loadProgram = loadProgram;
         _prompt = prompt;
         _setDutSerial = setDutSerial;

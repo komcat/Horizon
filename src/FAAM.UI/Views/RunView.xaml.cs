@@ -30,12 +30,13 @@ public partial class RunView : UserControl
     private const int RoiSize = 200;
 
     /// <summary>
-    /// The main feed is drawn <c>Stretch="UniformToFill"</c> (RunView.xaml): it keeps
-    /// the frame's aspect ratio, covers the whole viewport and crops the overflow, so
-    /// resizing the window changes how much of the frame is visible, not its scale.
-    /// Every source-px ↔ display-px conversion on that surface must use this flag.
+    /// The main feed is drawn <c>Stretch="Uniform"</c> (RunView.xaml): the whole frame
+    /// is fitted inside the viewport, so nothing is cropped and the overlay crosshair
+    /// sits on the frame's centre. Every source-px ↔ display-px conversion on that
+    /// surface must use this flag — it selects the fit scale (Math.Min); getting it
+    /// wrong silently mis-scales every MoveClick jog.
     /// </summary>
-    private const bool FeedCover = true;
+    private const bool FeedCover = false;
     private const int MaxLogLines = 200;
 
     private readonly EngineHost _host;
@@ -91,8 +92,10 @@ public partial class RunView : UserControl
         host.CapturePrompts.Add(MainPrompt);
         AppHost.SetCapturePromptSurface(host.CapturePrompts);
 
-        // The SiPhOG chart (over the camera) shares that same client/connection.
-        SiphogChartControl.Attach(siphog);
+        // The snapshot box beside the camera is the head's image panel: a .moon script
+        // (machine.ui.showImage) pushes a captured still into it — e.g. the frame grabbed
+        // at the Serial Number position, just before the DUT-serial prompt.
+        host.Process.SetImageDisplaySink(SnapshotPanel);
 
         // Enrich jog activities in the DUT log with the live Sagnac value. Installed here —
         // where the SiPhOG client lives — so the generic activity/DUT layer stays signal-agnostic

@@ -28,17 +28,26 @@ the hardware adapters or the legacy `Core`/`Process` stack.
   Status, Motion, IO, Pneumatic, Laser, TEC, Power supply, Measurement, SMU,
   Camera, **Settings**). Engine status + Reconnect live in the shell top bar.
 - **Run** — the production page:
-  - **Camera feed** — fills the camera column (`Stretch="UniformToFill"`, clipped):
-    the frame keeps its aspect ratio and covers the viewport, cropping the overflow,
-    so resizing the window changes how much of the frame you see, not its scale.
-    Crosshair + centre ROI, **Zoom2×** inset (centre 200×200 px, still aspect-fit), a
-    security-camera thumbnail wall. Every source-px ↔ display-px conversion on the
-    main feed (MoveClick, ROI box, vision-detection overlay) goes through
-    `MoveClick.DisplayScale(..., cover: true)` — the cover scale must match the XAML
+  - **Camera feed** — aspect-fit (`Stretch="Uniform"`, capped at the camera's
+    1280×1024): the whole frame is letterboxed into the viewport, so nothing is
+    cropped and the overlay crosshair sits on the frame's centre. Crosshair + centre
+    ROI, **Zoom2×** inset (centre 200×200 px, also aspect-fit), a security-camera
+    thumbnail wall. Every source-px ↔ display-px conversion on the main feed
+    (MoveClick, ROI box, vision-detection overlay) goes through
+    `MoveClick.DisplayScale(..., cover: false)` — the flag must match the XAML
     stretch or jogs are silently mis-scaled.
-  - **Layout** — left column (process steps + alignment utilities) sizes to its
-    panels' natural width and runs full height; the camera column takes the rest,
-    with the **Log** beneath the feed.
+  - **Layout** — left column (process steps + alignment utilities) takes the
+    remaining width with the **Log** beneath it; the camera column is `Auto`-sized to
+    the aspect-correct feed and spans both rows, so it runs full height beside the log.
+  - **Snapshot box** — the panel beside the Zoom2× inset (it replaced the SiPhOG SAG /
+    target chart, which the operators didn't use). `Views/SnapshotView` is FAAM's
+    implementation of the Layer 2 `IImageDisplaySink` seam, registered by `RunView` via
+    `IProcessService.SetImageDisplaySink`, so a `.moon` script can push a still into it
+    with `machine.ui.showImage(path [, caption])`. The picture is decoded
+    `OnLoad` + frozen off the UI thread, so the capture file is released immediately.
+    Used by the `capture_snapshot` script that a `script.run` step fires at the Serial
+    Number position, just before `dut.promptSerial` — the operator sees the unit the
+    serial they are typing belongs to.
   - **MoveClick** — arm the toggle, click the feed/zoom to measure mm from the
     crosshair centre (`mm/pixel`) and jog `gantry-main` (coordinated X+Y).
   - **Process steps panel** (left) — FAU-attach steps, process timer, STOP,
