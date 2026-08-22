@@ -62,6 +62,7 @@ public partial class JogPanel : UserControl
     /// <summary>Pale-green panel tint shown while keyboard jog is armed.</summary>
     private static readonly Brush ArmedBg = Freeze(new SolidColorBrush(Color.FromRgb(0xE3, 0xF2, 0xE3)));
     private bool _keysEnabled;
+    private bool _locked;
 
     // Latest-wins jog: a new press records itself as the pending jog and cancels the
     // in-flight move (the engine halts it within ~one 50 ms poll, then its await
@@ -106,7 +107,7 @@ public partial class JogPanel : UserControl
         // The enable/disable hotkey (` grave accent) works whether or not jog is armed.
         if (e.Key == Key.OemTilde) { ToggleKeys(); e.Handled = true; return; }
 
-        if (!_keysEnabled) return;
+        if (!_keysEnabled || _locked) return;
 
         string? jog = e.Key switch
         {
@@ -126,6 +127,23 @@ public partial class JogPanel : UserControl
     }
 
     private void OnToggleKeys(object sender, RoutedEventArgs e) => SetKeysEnabled(KeysToggle.IsChecked == true);
+
+    /// <summary>
+    /// Locks the rail when nobody is signed in (see <c>AccessPolicy.Jog</c>): every
+    /// control is disabled <b>except STOP</b>, which must stay live for whoever is
+    /// standing at the machine. Keyboard jog is disarmed too, since a disabled
+    /// ToggleButton would not otherwise stop the already-armed hotkeys.
+    /// </summary>
+    public void SetLocked(bool locked)
+    {
+        _locked = locked;
+        foreach (var child in RootStack.Children.OfType<UIElement>())
+            if (!ReferenceEquals(child, StopButton))
+                child.IsEnabled = !locked;
+
+        if (locked && _keysEnabled) SetKeysEnabled(false);
+        if (locked) SetStatus("Locked — sign in to jog. STOP stays available.");
+    }
 
     private void ToggleKeys()
     {

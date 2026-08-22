@@ -27,6 +27,12 @@ the hardware adapters or the legacy `Core`/`Process` stack.
 - **Machine** — the Horizon.UI Machine page ported wholesale (section rail:
   Status, Motion, IO, Pneumatic, Laser, TEC, Power supply, Measurement, SMU,
   Camera, **Settings**). Engine status + Reconnect live in the shell top bar.
+- **Sign-in gate** — nothing in the shell works until an operator signs in with
+  **level + employee number + level password**. Screens are gated by ranked
+  `AccessLevel` through `AccessPolicy` (Operator: Run · Technician: + Machine, Vision
+  Profile · Engineer: + Engineer, Repository, Script, Calibration · Admin: + the
+  Settings section). The jog rail locks with the station, except **STOP**, which stays
+  live at every level. See `docs/product-and-traceability-design.md`.
 - **Run** — the production page:
   - **Camera feed** — aspect-fit (`Stretch="Uniform"`, capped at the camera's
     1280×1024): the whole frame is letterboxed into the viewport, so nothing is

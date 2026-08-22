@@ -1071,7 +1071,11 @@ public sealed class ProcessService : IProcessService
         _operator = op;
         Log(LogLevel.Info, op == null
             ? "Operator cleared."
-            : $"Operator set: {op.DisplayName} ({op.UserId}) @ station {op.StationId}.");
+            : $"Operator set: {op.DisplayName} ({op.UserId})"
+              + (string.IsNullOrWhiteSpace(op.Level) ? "" : $" [{op.Level}]")
+              + $" @ station {op.StationId}"
+              + (string.IsNullOrWhiteSpace(op.MachineCredential) ? "" : $" / {op.MachineCredential}")
+              + ".");
     }
 
     // --- Interactive DUT runs (operator-driven, no WorkflowProgram) ---
@@ -1228,7 +1232,11 @@ public sealed class ProcessService : IProcessService
         if (_operator == null) return;
         run.OperatorId = _operator.UserId;
         run.OperatorName = _operator.DisplayName;
+        run.OperatorLevel = NullIfBlank(_operator.Level);
         run.StationId = _operator.StationId;
+        run.MachineCredential = NullIfBlank(_operator.MachineCredential);
+
+        static string? NullIfBlank(string? v) => string.IsNullOrWhiteSpace(v) ? null : v;
     }
 
     /// <summary>Finalises a DUT run with its verdict and persists the record.</summary>

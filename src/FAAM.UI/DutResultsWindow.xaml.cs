@@ -64,7 +64,9 @@ public partial class DutResultsWindow : Window
                 r.EndedUtc == default ? "—" : r.EndedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
                 r.Verdict.ToString(),
                 string.IsNullOrEmpty(r.OperatorName) ? (r.OperatorId ?? "—") : r.OperatorName,
+                r.OperatorLevel ?? "—",
                 string.IsNullOrEmpty(r.StationId) ? "—" : r.StationId!,
+                r.MachineCredential ?? "—",
                 r.Source,
                 r.Entries.Count));
         }
@@ -74,5 +76,6 @@ public partial class DutResultsWindow : Window
     /// <summary>One row of the runs grid — pre-formatted for display.</summary>
     private sealed record DutRunRow(
         string Started, string Ended, string Verdict,
-        string Operator, string Station, string Source, int Values);
+        string Operator, string Level, string Station, string Credential,
+        string Source, int Values);
 }

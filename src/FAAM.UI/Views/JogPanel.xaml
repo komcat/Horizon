@@ -97,7 +97,9 @@
     </UserControl.Resources>
 
     <Border x:Name="RootBorder" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="4">
-        <StackPanel Margin="8">
+        <!-- RootStack's direct children are what SetLocked disables when nobody is signed
+             in — all except StopButton, which stays live at every level. -->
+        <StackPanel x:Name="RootStack" Margin="8">
             <!-- Header: title + keyboard-jog enable toggle (hotkey: ` grave accent). -->
             <Grid Margin="2,0,0,6">
                 <TextBlock Text="JOG" Foreground="{StaticResource Subtle}" FontWeight="Bold" FontSize="12"
@@ -108,7 +110,7 @@
             </Grid>
 
             <!-- STOP — halts all motion. -->
-            <Button Click="OnStop" Height="36" Margin="0,0,0,8" ToolTip="STOP — halt all motion"
+            <Button x:Name="StopButton" Click="OnStop" Height="36" Margin="0,0,0,8" ToolTip="STOP — halt all motion"
                     Background="{StaticResource Danger}" BorderThickness="0" Cursor="Hand">
                 <Image Source="/assets/stop.png" Height="24" RenderOptions.BitmapScalingMode="HighQuality" />
             </Button>

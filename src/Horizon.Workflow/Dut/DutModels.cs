@@ -51,8 +51,17 @@ public sealed class DutRun
     /// <summary>Operator display name at run time; null if no operator was set.</summary>
     public string? OperatorName { get; set; }
 
-    /// <summary>Station / machine the run executed on; null if unknown.</summary>
+    /// <summary>Access level the operator signed in at; null if the head has no levels.</summary>
+    public string? OperatorLevel { get; set; }
+
+    /// <summary>Station / machine number the run executed on; null if unknown.</summary>
     public string? StationId { get; set; }
+
+    /// <summary>
+    /// The station's credential string (its signature) at run time — what the machine
+    /// was certified/tagged as when it ran this unit. Null if the station is unsigned.
+    /// </summary>
+    public string? MachineCredential { get; set; }
 
     /// <summary>Values recorded by <c>dut.*</c> steps, in execution order.</summary>
     public List<DutEntry> Entries { get; init; } = new();

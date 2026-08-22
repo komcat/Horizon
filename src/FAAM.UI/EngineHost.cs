@@ -99,12 +99,10 @@ public sealed class EngineHost : IAsyncDisposable
         Settings = new AppSettingsStore();
         Users = new UserStore();
 
-        // Station identity for DUT traceability: the configured id, or the Windows
-        // machine name when none is set. One machine = one station.
-        var stationId = string.IsNullOrWhiteSpace(Settings.Current.StationId)
-            ? Environment.MachineName
-            : Settings.Current.StationId;
-        Session = new Session(Process, stationId);
+        // The sign-in gate + traceability stamp. It reads the machine number and
+        // credential string from Settings at each login (not once here), so editing the
+        // station's identity takes effect on the next sign-in rather than a restart.
+        Session = new Session(Process, Settings);
 
         // Capture both logging surfaces from construction so startup-time
         // (InitializeAsync) lines are not lost before the shell exists.

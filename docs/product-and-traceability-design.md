@@ -16,7 +16,9 @@ The "System" layer (config, motion/other devices, transformation matrices,
 
 | Topic | Decision |
 |---|---|
-| Auth strength | **Traceability only** — operator picks their name + a short PIN. No real security, no roles, no access control. The point is to stamp who ran each DUT. |
+| Auth strength | ~~Traceability only~~ — **superseded** by `docs/access-control-design.md`. FAAM.UI now gates access by ranked level; Horizon.UI still uses the original name + PIN picker. |
+| Access levels (FAAM.UI) | **Level + employee number + level password.** Four ranked levels (`Operator` < `Technician` < `Engineer` < `Admin`); every screen declares a minimum. The employee number identifies the person and comes from `users.json`; the password is **shared per level**, not per person, so adding an employee never means issuing a credential. Still a shop-floor gate, not a security boundary — but nothing in the shell opens until somebody signs in. |
+| Machine identity | **Machine number + credential string**, both machine-global (`app_settings.json`), both stamped onto every `DutRun` alongside the operator. The credential is free text — the machine's signature on the record (calibration cert, asset tag, qualification id). |
 | Per-product settings | **Process params only.** Station calibration (`mm/pixel`, jog transforms, device links) stays machine-global. A product-settings store is stubbed but only populated when a concrete process param needs a home. |
 | FAAM.UI products | **Default + visible switch.** FAAM keeps defaulting to the `FAAM` product but gains a visible selector so load/switch is demonstrable. |
 | "Save product" | **Per-file saves** (already exist), made visible. Programs are the product's *process* and are inseparable from the positions they reference — both already live under the product directory and travel together on switch. No export/import bundle this round. |
@@ -88,21 +90,58 @@ mirroring the existing `IOperatorPrompt` seam (Layer 2 interface, Layer 3 impl).
 
 ### Horizon.Common
 
+- **`AccessLevel`** enum — `Operator` < `Technician` < `Engineer` < `Admin`, ranked;
+  screens compare with `>=`. The numeric values *are* the ordering.
 - **`User`** record + **`UserStore`** (`users.json`, machine-global, same config dir
-  as `app_settings.json`): `id`, `displayName`, `pin` (plain — traceability, not
-  security), `active`. Seeds a default operator on first run.
-- **`AppSettings.StationId`** — machine identity for the station; empty falls back to
-  the Windows machine name at login.
+  as `app_settings.json`): `id` (employee number), `displayName`, `level`, `active`,
+  plus the legacy `pin` that only Horizon.UI still reads.
+- **Level passwords** live in the same file (`levelPasswords`: level name → PBKDF2
+  verifier, salted, 100k iterations — never the password itself). An absent or empty
+  entry means that level has **no** password and signs in on the employee number
+  alone. `UserStore.SignIn(level, employeeId, password)` is the whole check: the
+  employee must exist, be active, be registered at *exactly* that level, and the
+  level password must match. Its failure message deliberately does not distinguish
+  "no such employee" from "wrong level", so the login screen cannot be used to
+  enumerate the directory.
+- **Schema upgrade.** A `users.json` written before levels existed has no
+  `schemaVersion`; every user in it is promoted to `Admin` on first load, because
+  those users had unrestricted access before the gate arrived. Locking the station
+  down is then an explicit act (demote people in Settings) rather than a silent
+  side effect of installing a build that would otherwise lock everyone out of the
+  very screen that manages access.
+- **`AppSettings.StationId`** — the station's **machine number**; empty falls back to
+  the Windows machine name at sign-in.
+- **`AppSettings.MachineCredential`** — the station's **credential string**, its
+  signature on the DUT record. Free text, empty = unsigned.
 
 ### Layer 3 — FAAM.UI (this phase's priority)
 
-- **`LoginWindow`** — pick operator from `UserStore`, enter PIN. On success: build an
-  `OperatorContext` (user + station id) and call `Process.SetOperator(...)`.
+- **`LoginWindow`** — three fields: **level**, **employee number**, **level password**
+  (the box says so when the chosen level has no password set). On success: build an
+  `OperatorContext` (employee + level + machine number + credential) and call
+  `Process.SetOperator(...)`.
 - **Flow:** `StartupWindow` (connect hardware) → **`LoginWindow`** → `ShellWindow`.
-  Login does **not** block engine bring-up. **Logout** returns to `LoginWindow` with
-  the engine still up; re-login restamps the operator.
-- **Shell chrome:** a persistent header chip showing **current product** + **operator**,
-  plus a **Logout** button.
+  Sign-in does **not** block engine bring-up, but it does gate the shell: cancelling
+  the first sign-in exits rather than opening a shell where every screen is locked.
+  **Logout** locks the station with the engine still up; re-login restamps.
+- **`AccessPolicy`** — the single table of which level each screen needs. Both the
+  Home tiles (which are clickable) and `ShellWindow` (which navigations are honoured)
+  read it, so a tile can never offer a screen the shell would refuse. The shell
+  re-checks on every navigation *and* after every identity change: a re-login at a
+  lower level evicts the operator from a page they can no longer see.
+- **Deliberately ungated:** the jog rail's **STOP** and the safety overlay's
+  **Acknowledge**. Motion must be stoppable by whoever is at the machine, signed in
+  or not — a lock that can swallow an emergency stop is worse than what it prevents.
+  `JogPanel.SetLocked` disables the rail *except* that button.
+- **Auto sign-in at startup** (`AppSettings.AutoLoginOperator`) only ever picks a user
+  whose **level has no password**. Once every level has one, startup always asks —
+  otherwise the setting would hand out a level for free and the gate would be
+  decorative.
+- **Shell chrome:** a persistent header chip showing **current product** +
+  **operator · level**, plus a **Logout / Sign In** button.
+- **Machine Settings (Admin only):** machine number + credential string, the employee
+  directory (add / delete), and the per-level passwords. Directory and password edits
+  write `users.json` immediately; the Save button covers `app_settings.json` only.
 - **Home:** a product selector (list + load/create), defaulting to `FAAM`.
 - **Run page:** a **serial** input that brackets a DUT run — `BeginDutRun` on start,
   **Pass/Fail** buttons calling `EndDutRun`. A few `RecordDutValue` calls capture

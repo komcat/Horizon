@@ -165,10 +165,20 @@ A second Layer 3 head purpose-built for the FAU-attach process — mirrors
 Horizon.UI's `EngineHost`/`ShellWindow`/`Telemetry`/`Mvvm` shape with its own
 fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.md`.
 
-- **Startup flow**: `StartupWindow` (connect hardware) → **`LoginWindow`** (pick
-  operator + PIN, `Session` pushes an `OperatorContext` to Layer 2 for traceability) →
-  `ShellWindow`. The shell header has an always-visible product + operator identity
-  chip and a Logout button.
+- **Startup flow**: `StartupWindow` (connect hardware) → **`LoginWindow`** (level +
+  employee number + that level's shared password; `Session` pushes an
+  `OperatorContext` — employee, level, machine number, machine credential — to Layer 2
+  for traceability) → `ShellWindow`. The shell header has an always-visible product +
+  operator·level identity chip and a Logout button.
+- **Access gate**: nothing in the shell works until sign-in. `AccessLevel`
+  (Operator < Technician < Engineer < Admin, in `Horizon.Common`) is ranked; every
+  screen's minimum lives in **`AccessPolicy`** (FAAM.UI), which both the Home tiles and
+  `ShellWindow`'s navigation read — the shell re-checks on navigation and evicts on a
+  level drop. **STOP and the safety Acknowledge are never gated.** The Machine page's
+  **Settings** section is Admin-only and holds the machine number + credential string,
+  the employee directory (add/delete), and the per-level passwords (PBKDF2 verifiers in
+  `users.json`; a level with none signs in on the employee number alone). See
+  `docs/product-and-traceability-design.md`.
 - `ShellWindow` — fixed chrome (Home/jog rail/header) around a swappable page host:
   **Home** (launcher + product selector), **Machine** (ported wholesale from
   Horizon.UI), **Run** (the production page: camera feed + crosshair/Zoom2× inset,
@@ -216,6 +226,9 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   `mm/pixel`, MoveClick mapping, jog velocity presets, `StationId`) and the engine
   device configs. Operator directory `users.json` and the program-history
   `history.db` live in `%APPDATA%\Horizon\` (machine-global, both heads share them).
+  `users.json` carries employee records (id = employee number, `level`) plus
+  `levelPasswords`; a file written before levels existed is upgraded on load by
+  promoting everyone to Admin, so a new build never locks the station out.
 - **Theme rule (both heads)**: use the Windows `SystemColors` palette via the
   `App.xaml` brushes (`Bg/Panel/Text/Subtle/Edge/Accent`), not hardcoded dark hex.
 
@@ -332,6 +345,7 @@ write code that won't trip them:
 - FAAM.UI (second Layer 3 head): `docs/faam-ui.md`, `docs/faam-handoff.md`.
 - SMU streaming: `docs/smu-streaming-design.md`.
 - Product encapsulation + operator login + DUT traceability: `docs/product-and-traceability-design.md`.
+- Access levels / sign-in gate + machine identity on the DUT record: `docs/access-control-design.md`.
 - Gantt timeline editor + `flow.parallel`: `docs/timeline-sequence-editor-design.md`.
 - Program history → SQLite: `docs/program-history-sqlite-design.md`.
 - Program / deck version repository (commit notes + checkout): `docs/version-repository-design.md`.

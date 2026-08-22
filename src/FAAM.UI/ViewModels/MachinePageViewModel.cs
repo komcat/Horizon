@@ -47,21 +47,10 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         PowerSupply = new PowerSupplySectionViewModel(host);
         Camera = new CameraSectionViewModel(host);
         Settings = new SettingsSectionViewModel(host);
-        Sections = new object[]
-        {
-            Status,
-            Motion,
-            Io,
-            Pneumatic,
-            Laser,
-            Tec,
-            PowerSupply,
-            Measurement,
-            Smu,
-            Camera,
-            Settings,
-        };
         _currentSection = Status;
+        Sections = new ObservableCollection<object>();
+        RebuildSections();
+        _host.Session.Changed += RebuildSections;
 
         // The log is global — capture buffered lines and subscribe for the page's lifetime.
         foreach (var entry in _host.Log.Snapshot())
@@ -71,8 +60,40 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     public override string Title => "Machine";
 
-    /// <summary>Section rail entries — only Status is live in Phase 2.</summary>
-    public IReadOnlyList<object> Sections { get; }
+    /// <summary>
+    /// Section rail entries. Rebuilt on sign-in / sign-out because Settings — machine
+    /// identity, the user directory, the level passwords — is Admin-only, so for anyone
+    /// else the rail simply does not offer it.
+    /// </summary>
+    public ObservableCollection<object> Sections { get; }
+
+    /// <summary>
+    /// Refills the rail for the signed-in level. If the section the operator was looking
+    /// at just disappeared (they signed out of Admin while on Settings), fall back to
+    /// Status rather than leaving a hidden section on screen.
+    /// </summary>
+    private void RebuildSections()
+    {
+        if (!_dispatcher.CheckAccess()) { _dispatcher.Invoke(RebuildSections); return; }
+
+        // Clearing the collection makes the rail's two-way SelectedItem binding push null
+        // into CurrentSection, so remember the section first and put the operator back on
+        // it. Only a section that actually disappeared sends them to Status.
+        var keep = CurrentSection;
+
+        Sections.Clear();
+        foreach (var section in new object[]
+                 {
+                     Status, Motion, Io, Pneumatic, Laser, Tec,
+                     PowerSupply, Measurement, Smu, Camera,
+                 })
+            Sections.Add(section);
+
+        if (_host.Session.Has(AccessPolicy.Settings))
+            Sections.Add(Settings);
+
+        CurrentSection = Sections.Contains(keep) ? keep : Status;
+    }
 
     /// <summary>The Status section, kept typed for the sampler to push snapshots into.</summary>
     public StatusSectionViewModel Status { get; }
@@ -228,6 +249,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
         OnDeactivated();
         _host.Log.Appended -= OnLogAppended;
+        _host.Session.Changed -= RebuildSections;
         Camera.Dispose();   // unsubscribes the camera FrameReady hook (UI cleanup, not teardown)
 
         // Pure UI cleanup only — no hardware teardown here. Stopping every

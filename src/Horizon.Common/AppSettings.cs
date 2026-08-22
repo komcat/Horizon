@@ -12,10 +12,20 @@ public sealed record AppSettings
     public double MmPerPixel { get; init; } = 0.0025;
 
     /// <summary>
-    /// Station identity stamped onto DUT runs for traceability. Empty falls back to
-    /// the Windows machine name at login. Machine-global (one machine = one station).
+    /// Machine / station number stamped onto DUT runs for traceability (shown as
+    /// "Machine number" in Settings). Empty falls back to the Windows machine name at
+    /// login. Machine-global — one machine is one station.
     /// </summary>
     public string StationId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The machine's credential string — a fixed signature the station stamps onto every
+    /// DUT run alongside <see cref="StationId"/>, so a unit's record says not just which
+    /// machine ran it but under what standing (calibration certificate, asset tag,
+    /// qualification id — whatever the line records). Free text, typed once in Settings
+    /// and persisted; empty means the station is unsigned and runs are stamped without it.
+    /// </summary>
+    public string MachineCredential { get; init; } = string.Empty;
 
     /// <summary>
     /// When true (default), the app signs in automatically as the first active operator

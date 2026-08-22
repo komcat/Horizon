@@ -50,19 +50,21 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Button Grid.Row="0" Grid.Column="0" Content="RUN"
+            <!-- Tiles are enabled per signed-in level by ApplyAccess (see AccessPolicy);
+                 a disabled tile carries a tooltip saying which level it needs. -->
+            <Button x:Name="RunTile" Grid.Row="0" Grid.Column="0" Content="RUN"
                     Style="{StaticResource Tile}" Click="OnRunClick" />
-            <Button Grid.Row="0" Grid.Column="1" Content="Engineer"
+            <Button x:Name="EngineerTile" Grid.Row="0" Grid.Column="1" Content="Engineer"
                     Style="{StaticResource Tile}" Click="OnEngineerClick" />
-            <Button Grid.Row="1" Grid.Column="0" Content="Machine"
+            <Button x:Name="MachineTile" Grid.Row="1" Grid.Column="0" Content="Machine"
                     Style="{StaticResource Tile}" Click="OnMachineClick" />
-            <Button Grid.Row="1" Grid.Column="1" Content="Vision Profile"
+            <Button x:Name="VisionProfileTile" Grid.Row="1" Grid.Column="1" Content="Vision Profile"
                     Style="{StaticResource Tile}" Click="OnVisionProfileClick" />
-            <Button Grid.Row="2" Grid.Column="0" Content="Script"
+            <Button x:Name="ScriptTile" Grid.Row="2" Grid.Column="0" Content="Script"
                     Style="{StaticResource Tile}" Click="OnScriptClick" />
-            <Button Grid.Row="2" Grid.Column="1" Content="Calibration"
+            <Button x:Name="CalibrationTile" Grid.Row="2" Grid.Column="1" Content="Calibration"
                     Style="{StaticResource Tile}" Click="OnCalibrationClick" />
-            <Button Grid.Row="3" Grid.Column="0" Content="Repository"
+            <Button x:Name="RepositoryTile" Grid.Row="3" Grid.Column="0" Content="Repository"
                     Style="{StaticResource Tile}" Click="OnRepositoryClick"
                     ToolTip="Browse program / deck versions and checkout an earlier one" />
         </Grid>

@@ -50,6 +50,13 @@ public partial class DisplayWindow : Window
 
         host.Process.VisionProfileRan += OnVisionProfileRan;   // flash detections on this feed
 
+        // This window is a separate top level, so the shell's rail lock and its
+        // page-eviction never reach it — and it is auto-opened at startup. Gate MoveClick
+        // on the sign-in here, or a logged-out station could still jog the gantry by
+        // clicking a pop-out feed.
+        host.Session.Changed += ApplyAccess;
+        ApplyAccess();
+
         // Mirror the alignment capture/confirm prompt only on the main-camera window.
         if (string.Equals(SelectedCamera, MainCameraId, StringComparison.OrdinalIgnoreCase))
             host.CapturePrompts.Add(PopoutPrompt);
@@ -60,9 +67,24 @@ public partial class DisplayWindow : Window
         if (Host is { } host)
         {
             host.Process.VisionProfileRan -= OnVisionProfileRan;
+            host.Session.Changed -= ApplyAccess;
             host.CapturePrompts.Remove(PopoutPrompt);   // no-op if never registered
         }
         _detectionTimer?.Stop();
+    }
+
+    /// <summary>
+    /// Enables MoveClick only for a signed-in operator (<c>AccessPolicy.Jog</c>), and
+    /// disarms it on logout so an already-armed toggle cannot outlive the session.
+    /// </summary>
+    private void ApplyAccess()
+    {
+        if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(ApplyAccess); return; }
+
+        var allowed = Host?.Session.Has(AccessPolicy.Jog) == true;
+        MoveToggle.IsEnabled = allowed;
+        MoveToggle.ToolTip = allowed ? null : "Sign in to jog from the camera view.";
+        if (!allowed) MoveToggle.IsChecked = false;
     }
 
     private void OnFeedMouseMove(object sender, MouseEventArgs e) => MoveCursor(e);
@@ -94,7 +116,8 @@ public partial class DisplayWindow : Window
     private async Task DoMoveClickAsync(Point p, double availW, double availH, int srcW, int srcH)
     {
         var host = Host;
-        if (host == null) return;
+        // Re-check rather than trusting the toggle: this is the call that moves metal.
+        if (host == null || !host.Session.Has(AccessPolicy.Jog)) return;
 
         var m = MoveClick.Measure(host, p, availW, availH, srcW, srcH);
         if (m is not { } meas) return;

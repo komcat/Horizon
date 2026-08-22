@@ -42,18 +42,20 @@ public partial class StartupWindow : Window
 
     private void HandOffToShell()
     {
-        // Auto-login (default on): sign in as the first active operator and skip the
-        // prompt, so unattended starts go straight to the shell. Disable in Settings to
-        // force an explicit, PIN-verified login.
+        // Auto sign-in, when enabled: only ever for a user whose LEVEL HAS NO PASSWORD.
+        // A level with a password must be typed in, or the setting would hand out that
+        // level for free and the whole gate would be decorative. Once every level is
+        // given a password, startup always asks - which is the point.
         if (_host.Settings.Current.AutoLoginOperator
             && !_host.Session.IsLoggedIn
-            && _host.Users.ActiveUsers.FirstOrDefault() is { } op)
+            && _host.Users.ActiveUsers.FirstOrDefault(u => !_host.Users.HasLevelPassword(u.Level)) is { } op)
         {
             _host.Session.LogIn(op);
         }
 
-        // Hardware is up; require an operator login before the shell so every DUT
-        // run is attributable. Cancelling the first login exits the app.
+        // Hardware is up; nothing in the shell works until somebody signs in, so gate it
+        // here. Cancelling the first sign-in exits the app rather than opening a shell
+        // where every screen is locked.
         if (!_host.Session.IsLoggedIn)
         {
             var login = new LoginWindow(_host) { Owner = this };

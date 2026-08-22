@@ -190,6 +190,24 @@ public partial class ShellWindow : Window
             _repository.Deactivate();
     }
 
+    /// <summary>
+    /// The navigation gate. Every <c>Show*</c> asks this first, so a screen can only be
+    /// reached by someone signed in at its <see cref="AccessPolicy"/> level — regardless
+    /// of how the navigation was triggered (a Home tile, a page's Back button, or a
+    /// future caller that forgets to check). Refused navigations are logged and drop the
+    /// operator on Home, which is safe at any level.
+    /// </summary>
+    private bool Allow(AccessLevel required, string screen)
+    {
+        if (_host.Session.Has(required)) return true;
+
+        Log(LogLevel.Warning, _host.Session.IsLoggedIn
+            ? $"{screen} needs {required} level — signed in as {_host.Session.Level}."
+            : $"{screen} needs a sign-in.");
+        ShowHome();
+        return false;
+    }
+
     private void ShowHome()
     {
         LeaveCurrent();
@@ -201,6 +219,7 @@ public partial class ShellWindow : Window
 
     private void ShowMachine()
     {
+        if (!Allow(AccessPolicy.Machine, "Machine")) return;
         LeaveCurrent();
         Header1Text.Text = "MACHINE";
         _machineVm.OnActivated();   // starts the ~5 Hz status sampler
@@ -211,6 +230,7 @@ public partial class ShellWindow : Window
 
     private void ShowRun()
     {
+        if (!Allow(AccessPolicy.Run, "Run")) return;
         LeaveCurrent();
         Header1Text.Text = "RUN";
         EngineHeader.Visibility = Visibility.Collapsed;
@@ -222,6 +242,7 @@ public partial class ShellWindow : Window
 
     private void ShowEngineer()
     {
+        if (!Allow(AccessPolicy.Engineer, "Engineer")) return;
         LeaveCurrent();
         Header1Text.Text = "ENGINEER";
         EngineHeader.Visibility = Visibility.Collapsed;
@@ -232,6 +253,7 @@ public partial class ShellWindow : Window
 
     private void ShowVisionProfile()
     {
+        if (!Allow(AccessPolicy.VisionProfile, "Vision Profile")) return;
         LeaveCurrent();
         Header1Text.Text = "VISION PROFILE";
         EngineHeader.Visibility = Visibility.Collapsed;
@@ -242,6 +264,7 @@ public partial class ShellWindow : Window
 
     private void ShowScript()
     {
+        if (!Allow(AccessPolicy.Script, "Script")) return;
         LeaveCurrent();
         Header1Text.Text = "SCRIPT";
         EngineHeader.Visibility = Visibility.Collapsed;
@@ -252,6 +275,7 @@ public partial class ShellWindow : Window
 
     private void ShowCalibration()
     {
+        if (!Allow(AccessPolicy.Calibration, "Calibration")) return;
         LeaveCurrent();
         Header1Text.Text = "CALIBRATION";
         EngineHeader.Visibility = Visibility.Collapsed;
@@ -261,6 +285,7 @@ public partial class ShellWindow : Window
 
     private void ShowRepository()
     {
+        if (!Allow(AccessPolicy.Repository, "Repository")) return;
         LeaveCurrent();
         Header1Text.Text = "REPOSITORY";
         EngineHeader.Visibility = Visibility.Collapsed;
@@ -271,6 +296,7 @@ public partial class ShellWindow : Window
 
     private void ShowCameraNeedle()
     {
+        if (!Allow(AccessPolicy.Calibration, "Camera → needle calibration")) return;
         LeaveCurrent();
         Header1Text.Text = "CALIBRATION — CAMERA → NEEDLE";
         EngineHeader.Visibility = Visibility.Collapsed;
@@ -443,12 +469,16 @@ public partial class ShellWindow : Window
     {
         bool hasRun = _host.Process.HasActiveDutRun;
         bool busy = _host.Activity.AlignmentBusy;
+        // Every DUT action is attributed to the signed-in operator, so a signed-out
+        // station can neither open nor close a run.
+        bool signedIn = _host.Session.Has(AccessPolicy.Run);
         if (hasRun && !string.IsNullOrEmpty(_host.Process.ActiveSerial))
             SerialBox.Text = _host.Process.ActiveSerial;   // keep the box in sync with the active run
-        SerialBox.IsEnabled = !hasRun;
-        StartDutButton.IsEnabled = !busy && !hasRun;       // Start stays disabled while a run is open
-        PassButton.IsEnabled = hasRun;
-        FailButton.IsEnabled = hasRun;
+        SerialBox.IsEnabled = signedIn && !hasRun;
+        StartDutButton.IsEnabled = signedIn && !busy && !hasRun;   // Start stays disabled while a run is open
+        PassButton.IsEnabled = signedIn && hasRun;
+        FailButton.IsEnabled = signedIn && hasRun;
+        ResultsButton.IsEnabled = signedIn;
         // The header clear-x is allowed only when a serial is shown and no run owns it.
         ClearSerialButton.Visibility = !hasRun && !string.IsNullOrWhiteSpace(_host.Process.ActiveSerial)
             ? Visibility.Visible : Visibility.Collapsed;
@@ -496,16 +526,59 @@ public partial class ShellWindow : Window
     private void Log(LogLevel level, string message)
         => _host.Log.Add(new LogEntry(level, System.DateTimeOffset.Now, "DUT", message));
 
-    /// <summary>Refreshes the product + operator chip and the login/logout button label.</summary>
+    /// <summary>
+    /// Refreshes the product + operator chip, the login/logout button, and everything
+    /// the sign-in gates: the jog rail and the DUT header. Runs on every
+    /// <see cref="Session.Changed"/>, so a logout locks the station immediately.
+    /// </summary>
     private void UpdateIdentity()
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(UpdateIdentity); return; }
 
         ProductRun.Text = _host.Process.ActiveProductInfo?.Label ?? "—";
         var op = _host.Session.Operator;
-        OperatorRun.Text = op?.DisplayName ?? "Not logged in";
+
+        // The chip carries the level as well as the name — on a shared station "who is
+        // signed in" is only half the answer; "as what" is the half that explains why a
+        // screen is missing.
+        OperatorRun.Text = op == null
+            ? "Not signed in"
+            : $"{op.DisplayName} · {op.Level}";
         OperatorRun.Foreground = (System.Windows.Media.Brush)FindResource(op != null ? "Text" : "Danger");
-        LogoutButton.Content = _host.Session.IsLoggedIn ? "Logout" : "Login";
+        LogoutButton.Content = _host.Session.IsLoggedIn ? "Logout" : "Sign In";
+
+        // Manual jogging needs a sign-in; STOP never does (JogPanel.SetLocked keeps it live).
+        JogPanelControl.SetLocked(!_host.Session.Has(AccessPolicy.Jog));
+
+        // A signed-out station must not be able to open or close a DUT run — the record
+        // would have nobody to attribute it to.
+        RefreshDutButtons();
+
+        // The current page may have just become off-limits (logout, or a re-login at a
+        // lower level). Send the operator home rather than leaving them on it.
+        EvictIfNotAllowed();
+    }
+
+    /// <summary>
+    /// Drops the operator back to Home when the page they are on needs more than the
+    /// level they now hold. Called after any identity change — the navigation gate only
+    /// covers going <i>to</i> a page, not still being on one when the level drops.
+    /// </summary>
+    private void EvictIfNotAllowed()
+    {
+        var required =
+            ReferenceEquals(PageHost.Content, _run) ? (AccessLevel?)AccessPolicy.Run :
+            ReferenceEquals(PageHost.Content, _machine) ? AccessPolicy.Machine :
+            ReferenceEquals(PageHost.Content, _engineer) ? AccessPolicy.Engineer :
+            ReferenceEquals(PageHost.Content, _visionProfile) ? AccessPolicy.VisionProfile :
+            ReferenceEquals(PageHost.Content, _scriptEditor) ? AccessPolicy.Script :
+            ReferenceEquals(PageHost.Content, _calibration) ? AccessPolicy.Calibration :
+            ReferenceEquals(PageHost.Content, _cameraNeedle) ? AccessPolicy.Calibration :
+            ReferenceEquals(PageHost.Content, _repository) ? AccessPolicy.Repository :
+            null;
+
+        if (required != null && !_host.Session.Has(required.Value))
+            ShowHome();
     }
 
     /// <summary>

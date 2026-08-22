@@ -5,15 +5,19 @@ using Horizon.Common;
 namespace FAAM.UI;
 
 /// <summary>
-/// Operator login — pick an operator from the station directory (<c>users.json</c>)
-/// and confirm with a PIN. On success the operator is pushed into
-/// <see cref="Session"/> (and so to Layer 2 for DUT traceability) and the dialog
-/// returns <c>true</c>.
+/// Sign-in — the gate in front of the whole shell. The operator declares a
+/// <see cref="AccessLevel"/>, types their employee number, and enters that
+/// <b>level's</b> shared password (see <see cref="UserStore.SignIn"/>): the number
+/// says who is at the machine, the level says what they may reach, and the password
+/// proves they are entitled to that level.
 ///
-/// Used two ways: as a gate after hardware connect (first login), and as a
-/// re-login dialog from the shell after logout. Either way the engine stays up —
-/// this window only sets identity. <see cref="ExitButton"/> returns <c>false</c>
-/// (the caller decides whether that exits the app or just stays logged out).
+/// On success the user is pushed into <see cref="Session"/> — which unlocks the shell
+/// and stamps Layer 2 for DUT traceability — and the dialog returns <c>true</c>.
+///
+/// Used two ways: as the gate after hardware connect (first sign-in), and as a
+/// re-login dialog from the shell after logout. Either way the engine stays up; this
+/// window only sets identity. <see cref="ExitButton"/> returns <c>false</c> and the
+/// caller decides whether that exits the app or just leaves the station locked.
 /// </summary>
 public partial class LoginWindow : Window
 {
@@ -24,45 +28,64 @@ public partial class LoginWindow : Window
         _host = host;
         InitializeComponent();
 
-        OperatorCombo.ItemsSource = host.Users.ActiveUsers;
-        if (OperatorCombo.Items.Count > 0)
-            OperatorCombo.SelectedIndex = 0;
+        LevelCombo.ItemsSource = Enum.GetValues<AccessLevel>();
+        LevelCombo.SelectedItem = AccessLevel.Operator;
+        UpdatePasswordHint();
 
-        Loaded += (_, _) => PinBox.Focus();
+        Loaded += (_, _) => EmployeeBox.Focus();
     }
 
-    private void OnOperatorChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    private AccessLevel SelectedLevel
+        => LevelCombo.SelectedItem is AccessLevel level ? level : AccessLevel.Operator;
+
+    private void OnLevelChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        ErrorText.Text = string.Empty;
-        PinBox.Clear();
-        PinBox.Focus();
+        ClearError();
+        PasswordBox.Clear();
+        UpdatePasswordHint();
     }
 
-    private void OnPinChanged(object sender, RoutedEventArgs e) => ErrorText.Text = string.Empty;
+    /// <summary>
+    /// A level with no password set signs in on the employee number alone — say so
+    /// rather than leaving the operator wondering what to type in an unused box.
+    /// </summary>
+    private void UpdatePasswordHint()
+    {
+        if (PasswordLabel == null) return;   // fires once during InitializeComponent
 
-    private void OnPinKeyDown(object sender, KeyEventArgs e)
+        var set = _host.Users.HasLevelPassword(SelectedLevel);
+        PasswordLabel.Text = set ? "Level password" : "Level password (none set for this level)";
+        PasswordBox.IsEnabled = set;
+    }
+
+    private void OnFieldChanged(object sender, RoutedEventArgs e) => ClearError();
+
+    private void OnPasswordChanged(object sender, RoutedEventArgs e) => ClearError();
+
+    private void OnFieldKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
             OnLogin(sender, e);
     }
 
+    private void ClearError()
+    {
+        if (ErrorText != null) ErrorText.Text = string.Empty;
+    }
+
     private void OnLogin(object sender, RoutedEventArgs e)
     {
-        if (OperatorCombo.SelectedItem is not User user)
+        var result = _host.Users.SignIn(SelectedLevel, EmployeeBox.Text, PasswordBox.Password);
+        if (!result.IsSuccess)
         {
-            ErrorText.Text = "Select an operator.";
+            ErrorText.Text = result.Message;
+            PasswordBox.Clear();
+            (string.IsNullOrWhiteSpace(EmployeeBox.Text) ? (System.Windows.Controls.Control)EmployeeBox : PasswordBox)
+                .Focus();
             return;
         }
 
-        if (!_host.Users.VerifyPin(user.Id, PinBox.Password))
-        {
-            ErrorText.Text = "Incorrect PIN.";
-            PinBox.Clear();
-            PinBox.Focus();
-            return;
-        }
-
-        _host.Session.LogIn(user);
+        _host.Session.LogIn(result.Value);
         DialogResult = true;
         Close();
     }

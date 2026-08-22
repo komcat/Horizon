@@ -53,7 +53,9 @@
                         <DataGridTextColumn Header="Ended" Binding="{Binding Ended}" Width="150" />
                         <DataGridTextColumn Header="Verdict" Binding="{Binding Verdict}" Width="80" />
                         <DataGridTextColumn Header="Operator" Binding="{Binding Operator}" Width="130" />
-                        <DataGridTextColumn Header="Station" Binding="{Binding Station}" Width="120" />
+                        <DataGridTextColumn Header="Level" Binding="{Binding Level}" Width="90" />
+                        <DataGridTextColumn Header="Machine" Binding="{Binding Station}" Width="120" />
+                        <DataGridTextColumn Header="Credential" Binding="{Binding Credential}" Width="140" />
                         <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="*" />
                         <DataGridTextColumn Header="Values" Binding="{Binding Values}" Width="60" />
                     </DataGrid.Columns>

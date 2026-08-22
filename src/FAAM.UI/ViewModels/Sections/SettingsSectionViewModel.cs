@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Horizon.Common;
 using FAAM.UI.Mvvm;
 
@@ -34,6 +35,16 @@ public sealed class SettingsSectionViewModel : ObservableObject
     private bool _autoLoginOperator = true;
     private string _status = "—";
 
+    private string _machineNumber = "";
+    private string _machineCredential = "";
+
+    private string _newUserId = "";
+    private string _newUserName = "";
+    private AccessLevel _newUserLevel = AccessLevel.Operator;
+    private User? _selectedUser;
+    private AccessLevel _passwordLevel = AccessLevel.Operator;
+    private string _directoryStatus = "—";
+
     public SettingsSectionViewModel(EngineHost host)
     {
         _store = host.Settings;
@@ -41,6 +52,9 @@ public sealed class SettingsSectionViewModel : ObservableObject
         LoadFromStore();
         SaveCommand = new RelayCommand(Save);
         ReloadCommand = new RelayCommand(Reload);
+        AddUserCommand = new RelayCommand(AddUser);
+        DeleteUserCommand = new RelayCommand(DeleteUser);
+        RefreshUsers();
     }
 
     /// <summary>Label shown in the Machine-page section rail.</summary>
@@ -102,6 +116,111 @@ public sealed class SettingsSectionViewModel : ObservableObject
 
     public string Status { get => _status; private set => SetField(ref _status, value); }
 
+    // --- Machine identity: stamped onto every DUT run (see Session / OperatorContext) ---
+
+    /// <summary>
+    /// This station's machine number. Blank falls back to the Windows machine name at
+    /// sign-in, so a run is never stamped with nothing.
+    /// </summary>
+    public string MachineNumber { get => _machineNumber; set => SetField(ref _machineNumber, value); }
+
+    /// <summary>
+    /// The machine's credential string — its signature on the DUT record (calibration
+    /// certificate, asset tag, qualification id — whatever the line records). Free text.
+    /// </summary>
+    public string MachineCredential { get => _machineCredential; set => SetField(ref _machineCredential, value); }
+
+    // --- User directory (Admin only — this section is not offered below that level) ---
+
+    /// <summary>Every registered employee, for the directory grid.</summary>
+    public ObservableCollection<User> Users { get; } = new();
+
+    /// <summary>The four access levels, for the level pickers.</summary>
+    public static IReadOnlyList<AccessLevel> Levels { get; } = Enum.GetValues<AccessLevel>();
+
+    /// <summary>Employee number for the row being added.</summary>
+    public string NewUserId { get => _newUserId; set => SetField(ref _newUserId, value); }
+
+    /// <summary>Display name for the row being added.</summary>
+    public string NewUserName { get => _newUserName; set => SetField(ref _newUserName, value); }
+
+    /// <summary>Level for the row being added.</summary>
+    public AccessLevel NewUserLevel { get => _newUserLevel; set => SetField(ref _newUserLevel, value); }
+
+    /// <summary>The directory row selected for deletion.</summary>
+    public User? SelectedUser { get => _selectedUser; set => SetField(ref _selectedUser, value); }
+
+    /// <summary>Which level's shared password the password box will set.</summary>
+    public AccessLevel PasswordLevel
+    {
+        get => _passwordLevel;
+        set { if (SetField(ref _passwordLevel, value)) OnPropertyChanged(nameof(PasswordLevelState)); }
+    }
+
+    /// <summary>Whether the selected level currently has a password (an unset level signs in freely).</summary>
+    public string PasswordLevelState
+        => _host.Users.HasLevelPassword(_passwordLevel) ? "password is set" : "NO password set — signs in freely";
+
+    /// <summary>Outcome of the last directory / password edit.</summary>
+    public string DirectoryStatus { get => _directoryStatus; private set => SetField(ref _directoryStatus, value); }
+
+    public RelayCommand AddUserCommand { get; }
+    public RelayCommand DeleteUserCommand { get; }
+
+    private void RefreshUsers()
+    {
+        Users.Clear();
+        foreach (var u in _host.Users.AllUsers)
+            Users.Add(u);
+        OnPropertyChanged(nameof(PasswordLevelState));
+    }
+
+    private void AddUser()
+    {
+        var result = _host.Users.AddUser(new User
+        {
+            Id = NewUserId,
+            DisplayName = NewUserName,
+            Level = NewUserLevel,
+        });
+        if (!result.IsSuccess) { DirectoryStatus = result.Message; return; }
+
+        _host.Users.Save();
+        RefreshUsers();
+        DirectoryStatus = $"Added {NewUserId} as {NewUserLevel}.";
+        NewUserId = string.Empty;
+        NewUserName = string.Empty;
+    }
+
+    private void DeleteUser()
+    {
+        if (SelectedUser == null) { DirectoryStatus = "Select an employee to remove."; return; }
+
+        var id = SelectedUser.Id;
+        var result = _host.Users.RemoveUser(id);
+        if (!result.IsSuccess) { DirectoryStatus = result.Message; return; }
+
+        _host.Users.Save();
+        RefreshUsers();
+        SelectedUser = null;
+        DirectoryStatus = $"Removed {id}. Past DUT runs keep the number they were stamped with.";
+    }
+
+    /// <summary>
+    /// Sets — or, with an empty <paramref name="password"/>, clears — the shared password
+    /// for <see cref="PasswordLevel"/>. Called from the view, which owns the
+    /// <c>PasswordBox</c> (WPF will not bind a password, by design).
+    /// </summary>
+    public void ApplyLevelPassword(string password)
+    {
+        _host.Users.SetLevelPassword(PasswordLevel, password);
+        _host.Users.Save();
+        OnPropertyChanged(nameof(PasswordLevelState));
+        DirectoryStatus = string.IsNullOrEmpty(password)
+            ? $"{PasswordLevel} password cleared — that level now signs in on the employee number alone."
+            : $"{PasswordLevel} password set.";
+    }
+
     public RelayCommand SaveCommand { get; }
     public RelayCommand ReloadCommand { get; }
 
@@ -120,6 +239,8 @@ public sealed class SettingsSectionViewModel : ObservableObject
         GantryStepPresetsText = string.Join(", ", s.GantryStepPresetsMm);                                       // already mm
         ShowMainCameraOnStartup = s.ShowMainCameraOnStartup;
         AutoLoginOperator = s.AutoLoginOperator;
+        MachineNumber = s.StationId;
+        MachineCredential = s.MachineCredential;
 
         var cn = _host.Process.GetCameraNeedleCalibration();
         CameraNeedleOffsetX = cn.VcamneedleX;
@@ -148,6 +269,8 @@ public sealed class SettingsSectionViewModel : ObservableObject
             GantryStepPresetsMm = ParseSteps(_gantryStepPresetsText, 1.0, current.GantryStepPresetsMm), // mm entry
             ShowMainCameraOnStartup = _showMainCameraOnStartup,
             AutoLoginOperator = _autoLoginOperator,
+            StationId = (_machineNumber ?? "").Trim(),
+            MachineCredential = (_machineCredential ?? "").Trim(),
         });
         try
         {
@@ -166,7 +289,9 @@ public sealed class SettingsSectionViewModel : ObservableObject
     private void Reload()
     {
         _store.Reload();
+        _host.Users.Reload();
         LoadFromStore();
+        RefreshUsers();
         Status = "Reloaded from disk";
     }
 

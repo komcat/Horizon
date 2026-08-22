@@ -15,6 +15,10 @@ public partial class HomeView : UserControl
 {
     private EngineHost? _host;
 
+    // Each gated tile's designed tooltip, captured before the access gate starts
+    // swapping in "needs level X" text, so it comes back when the tile is unlocked.
+    private readonly Dictionary<Button, object?> _tileTips = new();
+
     /// <summary>Raised when the operator clicks RUN.</summary>
     public event Action? RunRequested;
 
@@ -43,7 +47,49 @@ public partial class HomeView : UserControl
     {
         _host = host;
         _host.Process.ProductChanged += _ => RefreshProducts();
+        _host.Session.Changed += ApplyAccess;
         RefreshProducts();
+        ApplyAccess();
+    }
+
+    /// <summary>
+    /// Enables each tile for the signed-in level (see <see cref="AccessPolicy"/>) and
+    /// tells a locked-out operator what they would need. Logged out, everything is off —
+    /// including the product bar, since switching products re-scopes the whole station.
+    /// Re-run on every <see cref="Session.Changed"/>.
+    /// </summary>
+    private void ApplyAccess()
+    {
+        if (_host == null) return;
+        if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(ApplyAccess); return; }
+
+        var session = _host.Session;
+        Gate(RunTile, AccessPolicy.Run);
+        Gate(EngineerTile, AccessPolicy.Engineer);
+        Gate(MachineTile, AccessPolicy.Machine);
+        Gate(VisionProfileTile, AccessPolicy.VisionProfile);
+        Gate(ScriptTile, AccessPolicy.Script);
+        Gate(CalibrationTile, AccessPolicy.Calibration);
+        Gate(RepositoryTile, AccessPolicy.Repository);
+
+        // Switching to an existing product is floor work; creating one is authoring.
+        var canSwitch = session.Has(AccessPolicy.ProductSwitch);
+        ProductCombo.IsEnabled = canSwitch;
+        OpenButton.IsEnabled = canSwitch;
+        SaveAsButton.IsEnabled = session.Has(AccessPolicy.ProductCreate);
+
+        void Gate(Button tile, AccessLevel required)
+        {
+            if (!_tileTips.ContainsKey(tile)) _tileTips[tile] = tile.ToolTip;
+
+            var allowed = session.Has(required);
+            tile.IsEnabled = allowed;
+            tile.ToolTip = allowed
+                ? _tileTips[tile]
+                : session.IsLoggedIn
+                    ? $"Needs {required} level — you are signed in as {session.Level}."
+                    : "Sign in to use this station.";
+        }
     }
 
     /// <summary>Repopulates the product list and shows the active one.</summary>
