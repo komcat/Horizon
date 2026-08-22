@@ -14,8 +14,10 @@ deploy/
   restore-appdata.ps1      TARGET   - unzip the seed into %APPDATA%\Horizon
 ```
 
-Run scripts with `pwsh` (PowerShell 7+). All three are ASCII-only so they survive
-copy to a target with a different default code page.
+Run the **DEV box** scripts with `pwsh` (PowerShell 7+). `restore-appdata.ps1` runs
+on the **target**, which normally has only stock Windows PowerShell 5.1 — invoke it
+with `powershell`, not `pwsh`. All the scripts are ASCII-only so they survive copy
+to a target with a different default code page.
 
 ---
 
@@ -88,8 +90,11 @@ Set the NIC to a static address on the controller subnet (this rig: `192.168.0.x
 
 ```powershell
 cd C:\Horizon
-pwsh restore-appdata.ps1 -Zip .\Horizon-appdata.zip
+powershell -ExecutionPolicy Bypass -File .\restore-appdata.ps1 -Zip .\Horizon-appdata.zip
 ```
+
+Use `powershell` (Windows PowerShell 5.1, always present) — not `pwsh`, which is
+PowerShell 7 and is usually not installed on a target station.
 
 **4. Set the per-machine fields** (everything else is cloned as-is):
 
@@ -124,6 +129,9 @@ pwsh restore-appdata.ps1 -Zip .\Horizon-appdata.zip
 | stage-vendor-runtime.ps1 | `-PylonRoot <dir>` | override pylon SDK autodetection |
 | stage-vendor-runtime.ps1 | `-RequirePylon` | error instead of warn when pylon is missing |
 | release.ps1 | `-Version <n>` | release version without `v` (required); tag becomes `v<n>` |
+| release.ps1 | `-Assets <files>` | attach an explicit set instead of auto-resolving `artifacts\deploy` |
+| release.ps1 | `-NoAppData` | app zips only; skip the `Horizon-appdata.zip` seed |
+| release.ps1 | `-UploadOnly` | don't tag; add/replace assets on the existing release + refresh its body |
 | release.ps1 | `-DryRun` | print the plan, change nothing |
 | release.ps1 | `-Draft` / `-PreRelease` | publish as draft / mark as pre-release |
 | snapshot-appdata.ps1 | `-IncludeLogs` | also capture logs\ (normally skipped) |
@@ -135,9 +143,35 @@ pwsh restore-appdata.ps1 -Zip .\Horizon-appdata.zip
 ## Cutting a GitHub release
 
 ```powershell
-pwsh deploy/publish.ps1 -Apps FAAM.UI -Zip          # -> artifacts\deploy\FAAM.UI-v0.1-win-x64.zip
-pwsh deploy/release.ps1 -Version 0.1 -DryRun        # check the plan
-pwsh deploy/release.ps1 -Version 0.1 -PreRelease    # tag, push, create the release
+pwsh deploy/publish.ps1 -Zip -Snapshot -CleanHistory   # all 3 app zips + the appdata seed
+pwsh deploy/release.ps1 -Version 0.1 -DryRun           # check the plan
+pwsh deploy/release.ps1 -Version 0.1 -PreRelease       # tag, push, create the release
+```
+
+A release carries **all three apps**, not just the UI — that is what makes it
+usable on a bare station: `Horizon.ConfigTool` configures the target's hardware,
+`Horizon.Console` proves it, `FAAM.UI` runs the process. With no `-Assets`,
+`release.ps1` resolves them from `artifacts\deploy`:
+
+```
+FAAM.UI-v<n>-win-x64.zip             required
+Horizon.Console-v<n>-win-x64.zip     required
+Horizon.ConfigTool-v<n>-win-x64.zip  required
+Horizon-appdata.zip                  attached if snapshot-appdata.ps1 made one (-NoAppData to skip)
+restore-appdata.ps1                  ditto
+```
+
+A missing app zip is an error, not a silent omission — the tag is coarse (`v0.1`)
+while the zips carry the full triple (`0.1.0`), and both spellings resolve.
+
+To add an asset to a release that already shipped without it, rebuild just that
+app and top the release up in place (`--clobber`, and the body is refreshed from
+the notes file):
+
+```powershell
+pwsh deploy/publish.ps1 -Apps Horizon.ConfigTool -Zip
+pwsh deploy/release.ps1 -Version 0.1 -UploadOnly -DryRun
+pwsh deploy/release.ps1 -Version 0.1 -UploadOnly
 ```
 
 `release.ps1` refuses to run on a dirty tree, if the tag exists, or if the tag

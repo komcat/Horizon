@@ -12,7 +12,11 @@
   docs/deployment.md.
 
 .EXAMPLE
-  pwsh deploy/restore-appdata.ps1 -Zip .\Horizon-appdata.zip
+  powershell -ExecutionPolicy Bypass -File .\restore-appdata.ps1 -Zip .\Horizon-appdata.zip
+
+.NOTES
+  Runs on stock Windows PowerShell 5.1 - targets usually do not have pwsh
+  (PowerShell 7) installed. If pwsh is present, it works there too.
 #>
 [CmdletBinding()]
 param(

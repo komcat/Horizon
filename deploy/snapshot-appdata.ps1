@@ -71,4 +71,4 @@ if (Test-Path $restore) {
     Write-Host "Bundled restore-appdata.ps1 next to the zip." -ForegroundColor Green
 }
 
-Write-Host "On the target: pwsh restore-appdata.ps1 -Zip .\Horizon-appdata.zip"
+Write-Host "On the target: powershell -ExecutionPolicy Bypass -File .\restore-appdata.ps1 -Zip .\Horizon-appdata.zip"

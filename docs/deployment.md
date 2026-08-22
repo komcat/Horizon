@@ -105,13 +105,25 @@ Not bundled, by nature: `visa64.dll` (resolved from `System32`), native HALCON
 
 ### Cutting a versioned release
 
-To publish the operator app as a GitHub release instead of a hand-copied folder:
+To publish as a GitHub release instead of a hand-copied folder:
 
 ```powershell
-pwsh deploy/publish.ps1 -Apps FAAM.UI -Zip       # -> artifacts\deploy\FAAM.UI-v0.1-win-x64.zip
-pwsh deploy/release.ps1 -Version 0.1 -DryRun     # verify the plan
-pwsh deploy/release.ps1 -Version 0.1 -PreRelease # tag v0.1, push, create the release
+pwsh deploy/publish.ps1 -Zip -Snapshot -CleanHistory  # 3 app zips + Horizon-appdata.zip
+pwsh deploy/release.ps1 -Version 0.1 -DryRun          # verify the plan
+pwsh deploy/release.ps1 -Version 0.1 -PreRelease      # tag v0.1, push, create the release
 ```
+
+The release attaches **all three apps**, so a target can be brought up from the
+release page alone with nothing hand-copied: `Horizon.ConfigTool` to author and
+validate the device config, `Horizon.Console` to prove it against real hardware,
+`FAAM.UI` to run the process — plus `Horizon-appdata.zip` + `restore-appdata.ps1`
+for the data seed. `release.ps1` resolves them from `artifacts\deploy` and **fails
+if an app zip is missing** rather than shipping a partial release; pass `-Assets`
+to override the set, `-NoAppData` to drop the seed.
+
+`-UploadOnly` adds or replaces assets on an already-published release (and
+refreshes its body from the notes file) without tagging anything — the way to
+attach an app a release shipped without.
 
 The version comes from `<Version>` in `src\FAAM.UI\FAAM.UI.csproj`; `release.ps1`
 refuses to tag if the two disagree. Release body = `docs/release-notes-v<n>.md`.
@@ -157,8 +169,11 @@ On the **target**, restore the seed (existing data is moved aside to
 `Horizon.bak-<timestamp>`, never overwritten):
 
 ```powershell
-pwsh deploy/restore-appdata.ps1 -Zip .\Horizon-appdata.zip
+powershell -ExecutionPolicy Bypass -File .\restore-appdata.ps1 -Zip .\Horizon-appdata.zip
 ```
+
+Note `powershell`, not `pwsh` — this one runs on the target, which normally has
+only stock Windows PowerShell 5.1. (The DEV-box scripts above do want `pwsh`.)
 
 For a **same-rig clone** the snapshot copies `config\` and `products\` verbatim —
 rig geometry is identical. `logs\` is excluded by default. Then set the few
