@@ -37,14 +37,31 @@ public partial class HillClimbPanel : UserControl
 
     // --- Auto-SLED handoff (one-shot per Start press) ---
     // When the climb's SAG peak first reaches AutoSledTriggerV, switch the SiPhOG SLED to its
-    // operating current, let it settle, then re-baseline and continue the climb once from the
-    // current position. The continuation does NOT switch the current again.
+    // operating current, let it settle, trim it back down if that saturates the target SAG,
+    // then re-baseline and continue the climb once from the current position. The continuation
+    // does NOT switch the current again.
     private const double AutoSledTriggerV = 1.8;    // V — SAG PWR milestone that triggers the handoff
     private const int AutoSledCurrentMa = 110;      // mA — operating SLED current set at the milestone
     private const int AutoSledWaitMsFallback = 4000; // ms — settle time used when no host/settings are attached
     // Settle time after the current change is operator-tunable in the Find First Light settings
     // (FindFirstLightSettings.AutoSledWaitMs); read at handoff time so an edit takes effect next run.
     private int AutoSledWaitMs => Math.Max(0, _host?.Settings.Current.FindFirstLight.AutoSledWaitMs ?? AutoSledWaitMsFallback);
+
+    // --- SLED trim after the handoff ---
+    // The operating current can push the SiPhOG's TARGET SAG PWR into saturation, which flattens
+    // the feedback the continuation climbs on. Above the enter threshold, step the current down
+    // and re-measure until the target sits under the (lower) exit threshold — the gap between the
+    // two is deliberate hysteresis, so a target hovering at the trigger doesn't get trimmed for
+    // one noisy sample.
+    private const double AutoSledTrimEnterV = 2.7;   // V — target SAG above this starts the trim
+    private const double AutoSledTrimExitV = 2.1;    // V — trim until the target is below this
+    private const double AutoSledTrimStepMa = 10.0;  // mA — reduction per iteration (110 → 100 → …)
+    private const int AutoSledTrimSettleMs = 5000;   // ms — stabilise after each reduction, before measuring
+    // Refuse to drive the SLED below this: the trim lowers current, it must not walk the source
+    // down to nothing chasing a target that isn't responding (mirrors RasterClimbPanel's guard).
+    private const double AutoSledTrimMinMa = 40.0;
+    // Bounded retries (Power of 10 Rule 2 — a target that never comes down can't spin here forever).
+    private const int MaxAutoSledTrimAttempts = 10;
 
     // Lifetime Z anchor. When set, Z+ travel is metered against a single ceiling across
     // repeated runs, so a second climb only gets the budget the first one didn't consume.
@@ -188,7 +205,8 @@ public partial class HillClimbPanel : UserControl
         var activity = _host.Activity.Begin(ActivityKind.Alignment, "Hill climb");
 
         Log(LogLevel.Info,
-            $"Hill climb starting: distance={distance:0.0} µm; auto-SLED handoff at peak ≥ {AutoSledTriggerV:0.###} V → {AutoSledCurrentMa} mA, then continue"
+            $"Hill climb starting: distance={distance:0.0} µm; auto-SLED handoff at peak ≥ {AutoSledTriggerV:0.###} V → {AutoSledCurrentMa} mA "
+            + $"(trimmed −{AutoSledTrimStepMa:0.#} mA/{AutoSledTrimSettleMs / 1000.0:0.#} s while target SAG > {AutoSledTrimEnterV:0.###} V, until < {AutoSledTrimExitV:0.###} V), then continue"
             + (target > 0 ? $" toward target V={target:0.######} (exit at ≥90% = {target * 0.9:0.######})." : "."));
         _lastClimbResult = null;
         _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.HillClimb, "started",
@@ -269,8 +287,9 @@ public partial class HillClimbPanel : UserControl
     /// <summary>
     /// One-shot SLED handoff fired when the climb's SAG peak first reaches
     /// <see cref="AutoSledTriggerV"/>: set the SiPhOG SLED to <see cref="AutoSledCurrentMa"/> mA,
-    /// wait <see cref="AutoSledWaitMs"/> ms for it to settle, then re-baseline and continue the
-    /// climb once from the current position. A fresh <see cref="HillClimbEngine.RunAsync"/> records
+    /// wait <see cref="AutoSledWaitMs"/> ms for it to settle, trim the current back down if that
+    /// saturated the target SAG (see <see cref="TrimSledForTargetSagAsync"/>), then re-baseline and
+    /// continue the climb once from the current position. A fresh <see cref="HillClimbEngine.RunAsync"/> records
     /// a new baseline, so the operating-current signal isn't compared against the old baseline. The
     /// continuation honors the panel's Target V box and does NOT switch the current again.
     /// </summary>
@@ -298,7 +317,10 @@ public partial class HillClimbPanel : UserControl
         Log(LogLevel.Info, $"Auto-SLED: settling {settleMs} ms before re-baselining.");
         await System.Threading.Tasks.Task.Delay(settleMs, ct);
 
-        // 3) Budget for the continuation: remaining lifetime travel if anchored, else a fresh run.
+        // 3) Trim the current back down if the operating current saturated the target SAG.
+        await TrimSledForTargetSagAsync(ct);
+
+        // 4) Budget for the continuation: remaining lifetime travel if anchored, else a fresh run.
         double continueDistance = phase1Distance;
         if (_lifetimeStartZmm is not null)
         {
@@ -312,13 +334,96 @@ public partial class HillClimbPanel : UserControl
         }
         _budgetUm = continueDistance;
 
-        // 4) Re-baseline + continue climbing from the current position (one continuation, no further switch).
+        // 5) Re-baseline + continue climbing from the current position (one continuation, no further switch).
         Log(LogLevel.Info, $"Auto-SLED: re-baselining and continuing climb (distance={continueDistance:0.0} µm).");
         var phase2 = HillClimbConfig.Default;
         phase2.ZBudget_um = continueDistance;
         phase2.TargetSagnacV = continueTarget;   // 0 = run to budget/convergence
         var r2 = await _engine.RunAsync(HexDevice, _feedback, phase2, ct);
         return r2.StopReason;
+    }
+
+    /// <summary>
+    /// SLED trim, run once after the operating current has settled: while the SiPhOG reports a
+    /// TARGET SAG PWR above <see cref="AutoSledTrimEnterV"/>, lower the server's SLED current by
+    /// <see cref="AutoSledTrimStepMa"/> mA (110 → 100 → …), wait <see cref="AutoSledTrimSettleMs"/>
+    /// ms for it to stabilise and re-measure, until the target reads below
+    /// <see cref="AutoSledTrimExitV"/>. The enter/exit gap is hysteresis: the trim only starts on a
+    /// clearly saturated target, then keeps going to a comfortable margin.
+    ///
+    /// A trim that cannot finish (no frames, current floor, rejected command, attempts exhausted)
+    /// logs and returns — the SLED is already at a sane-or-lower current and the hexapod is parked
+    /// at the phase-1 peak, so the continuation still runs; it just climbs on the hotter signal.
+    /// </summary>
+    private async System.Threading.Tasks.Task TrimSledForTargetSagAsync(CancellationToken ct)
+    {
+        if (_siphog == null) return;
+
+        var entry = _siphog.Latest;
+        if (entry is null)
+        {
+            Log(LogLevel.Warning, "SLED trim: no SiPhOG frame — skipping the trim, continuing the climb.");
+            return;
+        }
+        if (entry.Value.TargetSagPwrV <= AutoSledTrimEnterV)
+        {
+            Log(LogLevel.Info,
+                $"SLED trim: target SAG {entry.Value.TargetSagPwrV:0.000} V ≤ {AutoSledTrimEnterV:0.###} V — no trim needed.");
+            return;
+        }
+
+        Log(LogLevel.Info,
+            $"SLED trim: target SAG {entry.Value.TargetSagPwrV:0.000} V > {AutoSledTrimEnterV:0.###} V — " +
+            $"stepping the SLED down {AutoSledTrimStepMa:0.#} mA at a time until it reads < {AutoSledTrimExitV:0.###} V.");
+
+        for (int attempt = 0; attempt < MaxAutoSledTrimAttempts; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var frame = _siphog.Latest;
+            if (frame is null)
+            {
+                Log(LogLevel.Warning, "SLED trim: SiPhOG stopped streaming — trim abandoned, continuing the climb.");
+                return;
+            }
+
+            double targetSag = frame.Value.TargetSagPwrV;
+            if (targetSag < AutoSledTrimExitV)
+            {
+                Log(LogLevel.Info,
+                    $"SLED trim: target SAG {targetSag:0.000} V < {AutoSledTrimExitV:0.###} V after {attempt} reduction(s) " +
+                    $"(SLED now {frame.Value.SledCurrentMa:0.0} mA).");
+                return;
+            }
+
+            double next = frame.Value.SledCurrentMa - AutoSledTrimStepMa;
+            if (next < AutoSledTrimMinMa)
+            {
+                Log(LogLevel.Warning,
+                    $"SLED trim: target SAG {targetSag:0.000} V still ≥ {AutoSledTrimExitV:0.###} V, but the next reduction " +
+                    $"({next:0.0} mA) is below the {AutoSledTrimMinMa:0.0} mA floor — trim stopped, continuing the climb.");
+                return;
+            }
+
+            StateText.Text = $"SLED trim: {next:0.0} mA";
+            var reply = await _siphog.SendCommandAsync(
+                "SET_CURRENT:" + next.ToString("0.###", CultureInfo.InvariantCulture), ct);
+            Log(LogLevel.Info,
+                $"SLED trim: target SAG {targetSag:0.000} V ≥ {AutoSledTrimExitV:0.###} V — " +
+                $"SLED {frame.Value.SledCurrentMa:0.0} → {next:0.0} mA ({reply}); waiting {AutoSledTrimSettleMs} ms.");
+            if (reply.StartsWith("ERR:", StringComparison.Ordinal))
+            {
+                Log(LogLevel.Warning,
+                    $"SLED trim: the SiPhOG server rejected the current change ({reply}) — trim stopped, continuing the climb.");
+                return;
+            }
+
+            await System.Threading.Tasks.Task.Delay(AutoSledTrimSettleMs, ct);
+        }
+
+        Log(LogLevel.Warning,
+            $"SLED trim: target SAG still ≥ {AutoSledTrimExitV:0.###} V after {MaxAutoSledTrimAttempts} reductions — " +
+            "trim gave up, continuing the climb.");
     }
 
     // --- Lifetime Z anchor ---
