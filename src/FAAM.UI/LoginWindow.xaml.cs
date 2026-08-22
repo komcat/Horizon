@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using Horizon.Common;
+using Horizon.Engine;
 
 namespace FAAM.UI;
 
@@ -46,16 +47,20 @@ public partial class LoginWindow : Window
     }
 
     /// <summary>
-    /// A level with no password set signs in on the employee number alone — say so
-    /// rather than leaving the operator wondering what to type in an unused box.
+    /// A level with no password set signs in on the employee number alone — say so in
+    /// the label rather than leaving the operator wondering what to type. The box itself
+    /// stays enabled regardless, because the built-in recovery Admin needs its own
+    /// password typed even when the Admin level has none set.
     /// </summary>
     private void UpdatePasswordHint()
     {
         if (PasswordLabel == null) return;   // fires once during InitializeComponent
 
         var set = _host.Users.HasLevelPassword(SelectedLevel);
-        PasswordLabel.Text = set ? "Level password" : "Level password (none set for this level)";
-        PasswordBox.IsEnabled = set;
+        PasswordLabel.Text = set ? "Level password" : "Level password (none set for this level — leave blank)";
+
+        // The box stays enabled either way: the built-in recovery Admin still needs its
+        // own password typed even when the Admin level itself has none set.
     }
 
     private void OnFieldChanged(object sender, RoutedEventArgs e) => ClearError();
@@ -84,6 +89,15 @@ public partial class LoginWindow : Window
                 .Focus();
             return;
         }
+
+        // A recovery sign-in bypasses the level password by design, so it must never be
+        // silent: warn in the log, and note that the DUT runs it produces carry the
+        // reserved employee number rather than a real person.
+        if (UserStore.IsBuiltInAdmin(result.Value.Id))
+            _host.Log.Add(new LogEntry(LogLevel.Warning, DateTimeOffset.Now, "Login",
+                "Signed in with the BUILT-IN RECOVERY ADMIN. Set a real Admin employee "
+                + "and level password in Machine > Settings; runs made now are stamped "
+                + $"'{UserStore.BuiltInAdminId}', not a person."));
 
         _host.Session.LogIn(result.Value);
         DialogResult = true;

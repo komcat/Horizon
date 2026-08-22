@@ -189,7 +189,9 @@
             <TextBlock Text="Users" Foreground="{StaticResource Text}"
                        FontSize="15" FontWeight="SemiBold" Margin="0,0,0,4" />
             <TextBlock Text="Employees registered at this station. Sign-in needs the employee number AND the password of the level they are registered at. Changes here save straight to users.json."
-                       Foreground="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,0,0,10" />
+                       Foreground="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,0,0,6" />
+            <TextBlock Text="The first row is the built-in recovery Admin (employee 'admin', password 'admin'). It is fixed in the software, always signs in whatever this directory says, and cannot be removed — it is the way back in if the Admin level password is lost. It is a known credential, not a secret: anyone standing at this station can use it, and runs made under it are stamped 'admin' rather than a person."
+                       Foreground="{StaticResource Danger}" TextWrapping="Wrap" Margin="0,0,0,10" />
 
             <DataGrid ItemsSource="{Binding Users}" SelectedItem="{Binding SelectedUser}"
                       AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"

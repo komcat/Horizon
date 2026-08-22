@@ -56,7 +56,9 @@ public sealed record LevelCredential
 /// Sign-in (<see cref="SignIn"/>) takes all three fields the login screen collects —
 /// level, employee number, level password — and only succeeds when the employee
 /// exists, is active, is registered at exactly that level, and the level's password
-/// matches.
+/// matches. The one exception is the <b>built-in recovery Admin</b>
+/// (<see cref="BuiltInAdminId"/> / <see cref="BuiltInAdminPassword"/>), which is
+/// checked first and answers whatever the file contains.
 ///
 /// <para><b>Upgrade from the pre-level directory.</b> A file written before levels
 /// existed has no <c>SchemaVersion</c>; every user in it is promoted to
@@ -71,6 +73,41 @@ public sealed class UserStore
 
     /// <summary>Current on-disk schema. 0 / absent = the pre-level directory.</summary>
     private const int CurrentSchema = 1;
+
+    /// <summary>
+    /// Employee number of the built-in recovery Admin. Reserved: it cannot be added to
+    /// the directory, and the sign-in below answers to it whatever <c>users.json</c> says.
+    /// </summary>
+    public const string BuiltInAdminId = "admin";
+
+    /// <summary>
+    /// The built-in recovery Admin's password. Fixed in source on purpose — a recovery
+    /// account that configuration can disable is not a recovery account.
+    ///
+    /// <para><b>This is a known credential, not a secret.</b> It is in the source, in
+    /// the docs, and identical on every station. It exists so an Admin who forgets the
+    /// Admin level password can still get into Settings without hand-editing
+    /// <c>users.json</c> — not to protect anything. Treat physical access to the station
+    /// as Admin access, because it is.</para>
+    /// </summary>
+    public const string BuiltInAdminPassword = "admin";
+
+    /// <summary>
+    /// The built-in recovery Admin as a <see cref="User"/>. Never stored in
+    /// <c>users.json</c> — it is synthesised on each successful recovery sign-in. Its
+    /// <see cref="User.Id"/> is what lands on the DUT run, so a unit run under the
+    /// recovery account says so in its own record.
+    /// </summary>
+    public static User BuiltInAdmin { get; } = new()
+    {
+        Id = BuiltInAdminId,
+        DisplayName = "Built-in Admin (recovery)",
+        Level = AccessLevel.Admin,
+    };
+
+    /// <summary>True when <paramref name="id"/> is the reserved built-in Admin number.</summary>
+    public static bool IsBuiltInAdmin(string? id)
+        => string.Equals(id?.Trim(), BuiltInAdminId, StringComparison.OrdinalIgnoreCase);
 
     // PBKDF2 work factor. High enough to be worth doing, low enough that the login
     // dialog stays instant on a shop-floor PC.
@@ -119,6 +156,15 @@ public sealed class UserStore
     {
         if (string.IsNullOrWhiteSpace(employeeId))
             return Result<User>.Fail(ErrorCode.InvalidParameter, "Enter your employee number.");
+
+        // Recovery first, and independent of everything else in the file: this is the way
+        // back in when the Admin level password has been forgotten or the directory has
+        // been edited into a state nobody can sign in to. Checked before the directory so
+        // no amount of configuration can shadow or disable it.
+        if (level == AccessLevel.Admin
+            && IsBuiltInAdmin(employeeId)
+            && string.Equals(password, BuiltInAdminPassword, StringComparison.Ordinal))
+            return Result<User>.Ok(BuiltInAdmin);
 
         var user = Find(employeeId.Trim());
 
@@ -189,6 +235,9 @@ public sealed class UserStore
     {
         if (user == null || string.IsNullOrWhiteSpace(user.Id))
             return Result.Fail(ErrorCode.InvalidParameter, "Employee number is required.");
+        if (IsBuiltInAdmin(user.Id))
+            return Result.Fail(ErrorCode.InvalidParameter,
+                $"'{BuiltInAdminId}' is reserved for the built-in recovery Admin.");
         if (Find(user.Id) != null)
             return Result.Fail(ErrorCode.InvalidParameter, $"Employee {user.Id} is already registered.");
 
@@ -207,6 +256,10 @@ public sealed class UserStore
     /// </summary>
     public Result RemoveUser(string id)
     {
+        if (IsBuiltInAdmin(id))
+            return Result.Fail(ErrorCode.OperationFailed,
+                "The built-in recovery Admin cannot be removed — it is not in the directory.");
+
         var user = Find(id);
         if (user == null)
             return Result.Fail(ErrorCode.FileNotFound, $"Employee {id} is not registered.");

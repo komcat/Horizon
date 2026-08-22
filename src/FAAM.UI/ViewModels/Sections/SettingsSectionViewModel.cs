@@ -170,6 +170,12 @@ public sealed class SettingsSectionViewModel : ObservableObject
     private void RefreshUsers()
     {
         Users.Clear();
+
+        // The built-in recovery Admin is not in users.json, so list it explicitly:
+        // an Admin managing access needs to see that it exists rather than discover it
+        // in the source. It cannot be added, removed or edited.
+        Users.Add(UserStore.BuiltInAdmin);
+
         foreach (var u in _host.Users.AllUsers)
             Users.Add(u);
         OnPropertyChanged(nameof(PasswordLevelState));
@@ -195,6 +201,11 @@ public sealed class SettingsSectionViewModel : ObservableObject
     private void DeleteUser()
     {
         if (SelectedUser == null) { DirectoryStatus = "Select an employee to remove."; return; }
+        if (UserStore.IsBuiltInAdmin(SelectedUser.Id))
+        {
+            DirectoryStatus = "The built-in recovery Admin cannot be removed.";
+            return;
+        }
 
         var id = SelectedUser.Id;
         var result = _host.Users.RemoveUser(id);

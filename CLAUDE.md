@@ -177,8 +177,10 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   level drop. **STOP and the safety Acknowledge are never gated.** The Machine page's
   **Settings** section is Admin-only and holds the machine number + credential string,
   the employee directory (add/delete), and the per-level passwords (PBKDF2 verifiers in
-  `users.json`; a level with none signs in on the employee number alone). See
-  `docs/product-and-traceability-design.md`.
+  `users.json`; a level with none signs in on the employee number alone). A **built-in
+  recovery Admin** (`admin` / `admin`, fixed in `UserStore`) is checked before the
+  directory and always signs in — it is a known credential, not a secret, and every use
+  is logged. See `docs/access-control-design.md`.
 - `ShellWindow` — fixed chrome (Home/jog rail/header) around a swappable page host:
   **Home** (launcher + product selector), **Machine** (ported wholesale from
   Horizon.UI), **Run** (the production page: camera feed + crosshair/Zoom2× inset,

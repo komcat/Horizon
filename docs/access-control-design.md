@@ -2,7 +2,8 @@
 
 Status: **v1 done** — FAAM.UI only. Nothing in the shell works until an operator signs
 in with **level + employee number + level password**; every screen declares a minimum
-level. The station's **machine number + credential string** are stamped onto every DUT
+level. There is a **built-in recovery Admin** (`admin` / `admin`) that always signs in.
+The station's **machine number + credential string** are stamped onto every DUT
 run alongside the operator. Supersedes the "traceability only, no access control" row
 in `docs/product-and-traceability-design.md`.
 
@@ -23,7 +24,8 @@ changes rarely. Keeping them separate means adding an employee never involves is
 or distributing a credential — an Admin types a number and a name, and that person
 signs in with the level password their shift already knows.
 
-`UserStore.SignIn(level, employeeId, password)` is the entire check:
+`UserStore.SignIn(level, employeeId, password)` is the entire check (after the
+built-in recovery Admin below, which is tried first):
 
 1. the employee number exists in `users.json`,
 2. that record is `active`,
@@ -125,13 +127,53 @@ mean "I installed it and nothing changed" is the expected first impression.
 If `users.json` is missing entirely, it is seeded with a single `0000 / Administrator`
 Admin and no passwords.
 
+## The built-in recovery Admin
+
+```
+Level:    Admin
+Employee: admin
+Password: admin
+```
+
+Fixed in source (`UserStore.BuiltInAdminId` / `BuiltInAdminPassword`), checked
+**before** the directory, and answering whatever `users.json` contains — including a
+file with no Admin in it, a forgotten Admin level password, or a directory edited into
+a state nobody can sign in to. That is the point: **a recovery account that
+configuration can disable is not a recovery account.**
+
+It is deliberately not a secret:
+
+- It is in the source, in this doc, and on the Settings screen (first row of the user
+  directory, in the danger colour, with the credential printed).
+- It is identical on every station, and cannot be changed or turned off without a
+  rebuild.
+- **Physical access to a station is therefore Admin access.** The gate stops the wrong
+  person changing the process by accident or convenience; it does not stop anyone who
+  knows this page.
+
+What keeps it honest rather than invisible:
+
+- The reserved id cannot be added to the directory (`AddUser` refuses `admin`) or
+  removed from it (`RemoveUser` refuses), so nothing can shadow or delete it.
+- It is **synthesised, never stored** — it does not appear in `users.json`.
+- Every recovery sign-in writes a **warning** to the log naming what happened.
+- Its `User.Id` is `admin`, so any DUT run made under it is stamped `admin` in the
+  record rather than a person. A unit run on the recovery account says so, permanently,
+  in its own file.
+
+The intended use is: sign in as `admin`/`admin` → Machine → Settings → set the Admin
+level password and register a real Admin employee → stop using it.
+
 ### Lost password
 
-There is no recovery path inside the app — verifiers are one-way. Delete the level's
-entry from `levelPasswords` in `users.json` (or delete the file to re-seed). This is a
-shop-floor gate, not a security boundary: the app runs as the logged-in Windows user
-and the config file is readable on the machine. It stops the wrong person changing the
-process; it does not stop a determined one.
+Sign in with the built-in recovery Admin above, then reset the level password in
+Settings. Failing that (or to remove a password without the app), delete the level's
+entry from `levelPasswords` in `users.json`, or delete the file to re-seed — verifiers
+are one-way, so the old password cannot be read back.
+
+This is a shop-floor gate, not a security boundary: the app runs as the logged-in
+Windows user and the config file is readable on the machine. It stops the wrong person
+changing the process; it does not stop a determined one.
 
 ## Layer 2 (`Horizon.Workflow`)
 
@@ -209,7 +251,11 @@ ShellWindow   ── Logout ─→ station locks, engine stays up, STOP still li
 ## Edge cases
 
 - **Removing the last Admin is refused** — it would lock the station out of Settings.
-  Add another Admin first.
+  Add another Admin first. (The built-in recovery Admin would in fact still get you in,
+  but relying on the backdoor for a routine edit is not a workflow worth allowing.)
+- **The password box is never disabled**, even for a level with no password set —
+  otherwise `admin`/`admin` could not be typed when the Admin level itself is unset.
+  The label carries the hint instead.
 - **Deleting an employee does not damage history.** A `DutRun` stores the employee
   number as a plain string, so past records keep what they were stamped with.
 - **A corrupt verifier** (unparseable base64) fails closed — `VerifyLevelPassword`
@@ -222,7 +268,11 @@ ShellWindow   ── Logout ─→ station locks, engine stays up, STOP still li
 - Per-level passwords are shared, so they cannot attribute *authority* to an individual
   the way the employee number attributes *identity*. Per-user credentials would, at the
   cost of an issuing process.
-- No lockout / retry throttle on failed sign-ins.
+- No lockout / retry throttle on failed sign-ins — which matters more than it
+  otherwise would, given a known fixed credential.
+- The built-in Admin's password cannot be changed or the account disabled without a
+  rebuild. Making it settable-once (say, cleared after the first real Admin is
+  registered) would trade some recoverability for a lot less exposure.
 - No audit log of sign-in, sign-out, or directory edits (the log lines exist; nothing
   persists them separately from the general app log).
 - Horizon.UI still uses the old name + PIN picker and is not gated.
