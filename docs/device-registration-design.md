@@ -182,3 +182,12 @@ drops a **yellow crosshair** at that spot with **Confirm / Cancel** floated besi
 operator may re-click to move it, and nothing is committed until Confirm. Cancel discards the
 placement and leaves the mark armed. The owner view routes its click to `Place`, and commits
 the image point on `Confirmed` exactly as a direct click used to.
+
+**`.moon` scripts.** `machine.part.run(part)` runs the alignment (vision points only; a manual
+point makes that object fall back to its taught position) and returns the snapshot table
+`{originX, originY, angleDeg, e1, e2, objects = { {name, kind, measured, x, y, targetX,
+targetY, points} }}` (x/y = reference, targetX/Y = reference + offset); `machine.part.snapshot`
+reads it without motion; `machine.part.cameraToFiducial(part, 1|2)` and
+`machine.part.cameraToObject(part, object [, applyOffset])` and
+`machine.part.cameraToObjectPoint(part, object, index)` move the camera. Example:
+`products\FAAM\scripts\part_alignment_bench_siphog.moon`.

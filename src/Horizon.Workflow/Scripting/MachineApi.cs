@@ -30,6 +30,18 @@ public delegate Task<Result<double>> SignalReader(string key, CancellationToken 
 public delegate Task<Result<VisionDetectResult>> VisionProfileRunner(string profileName);
 
 /// <summary>
+/// The part-alignment seam a Layer 2 host hands to scripts: run the alignment (vision points
+/// only — no operator), read the part snapshot, and the two camera moves. Null in engine-only
+/// contexts, where <c>machine.part.*</c> reports that part alignment is unavailable.
+/// </summary>
+public sealed record PartAlignmentScriptHost(
+    Func<string, CancellationToken, Task<Result<Registration.PartMeasurement>>> Run,
+    Func<string, Result<Registration.PartSnapshot>> Snapshot,
+    Func<string, int, CancellationToken, Task<Result>> CameraToFiducial,
+    Func<string, string, bool, CancellationToken, Task<Result>> CameraToObject,
+    Func<string, string, int, CancellationToken, Task<Result>> CameraToObjectPoint);
+
+/// <summary>
 /// Builds the global <c>machine</c> Lua table and binds its functions straight to
 /// <see cref="IHorizonEngine"/> facet calls — the bridge between a <c>.moon</c>
 /// script and the hardware, modelled on <c>RecipeMethodRegistry</c>.
@@ -54,6 +66,7 @@ internal sealed class MachineApi
     private readonly VisionProfileRunner? _visionRunner;
     private readonly IImageDisplaySink? _imageDisplay;
     private readonly IOperatorPrompt? _prompt;
+    private readonly PartAlignmentScriptHost? _part;
     private readonly Action<string> _log;
     private readonly CancellationToken _ct;
 
@@ -66,7 +79,8 @@ internal sealed class MachineApi
         IImageDisplaySink? imageDisplay,
         IOperatorPrompt? prompt,
         Action<string> log,
-        CancellationToken ct)
+        CancellationToken ct,
+        PartAlignmentScriptHost? part = null)
     {
         _script = script;
         _engine = engine;
@@ -75,6 +89,7 @@ internal sealed class MachineApi
         _visionRunner = visionRunner;
         _imageDisplay = imageDisplay;
         _prompt = prompt;
+        _part = part;
         _log = log;
         _ct = ct;
     }
@@ -97,6 +112,7 @@ internal sealed class MachineApi
         machine["vision"] = DynValue.NewTable(BuildVision());
         machine["signal"] = DynValue.NewTable(BuildSignal());
         machine["ui"] = DynValue.NewTable(BuildUi());
+        machine["part"] = DynValue.NewTable(BuildPart());
         _script.Globals["machine"] = DynValue.NewTable(machine);
     }
 
@@ -618,6 +634,116 @@ internal sealed class MachineApi
         });
 
         return s;
+    }
+
+    // --- part alignment (fiducials + local objects, taught on Vision Alignment) ---
+
+    private Table BuildPart()
+    {
+        var p = new Table(_script);
+
+        PartAlignmentScriptHost Host(string fn)
+            => _part ?? throw new ScriptRuntimeException($"part.{fn} needs a Layer 2 host — part alignment is unavailable in this context");
+
+        // Runs the alignment (camera -> E1, E2, rebuild the frame, re-measure every object;
+        // every point must have a vision profile) and returns the resulting snapshot table.
+        p["run"] = Cb(a =>
+        {
+            string name = ReqStr(a, 0, "part.run");
+            var host = Host("run");
+            var r = Block(host.Run(name, _ct));
+            if (!r.IsSuccess) throw new ScriptRuntimeException($"part.run({name}) failed: {r.Message}");
+            int measured = r.Value.Objects.Count(o => o.Measured);
+            _log($"part.run({name}) → frame origin ({r.Value.Frame.OriginX:F4}, {r.Value.Frame.OriginY:F4}), X axis {r.Value.Frame.AngleDeg:F3}°, {measured}/{r.Value.Objects.Length} object(s) detected");
+            var snap = host.Snapshot(name);
+            if (!snap.IsSuccess) throw new ScriptRuntimeException($"part.run({name}): {snap.Message}");
+            return DynValue.NewTable(SnapshotTable(snap.Value));
+        });
+
+        // The part as it stands now (measured after a run, taught otherwise) — no motion.
+        p["snapshot"] = Cb(a =>
+        {
+            string name = ReqStr(a, 0, "part.snapshot");
+            var snap = Host("snapshot").Snapshot(name);
+            if (!snap.IsSuccess) throw new ScriptRuntimeException($"part.snapshot({name}) failed: {snap.Message}");
+            return DynValue.NewTable(SnapshotTable(snap.Value));
+        });
+
+        p["cameraToFiducial"] = Cb(a =>
+        {
+            string name = ReqStr(a, 0, "part.cameraToFiducial");
+            int which = (int)ReqNum(a, 1, "part.cameraToFiducial");
+            return Do(Host("cameraToFiducial").CameraToFiducial(name, which, _ct), $"part.cameraToFiducial({name}, E{which})");
+        });
+
+        // machine.part.cameraToObject(part, object [, applyOffset = true])
+        p["cameraToObject"] = Cb(a =>
+        {
+            string name = ReqStr(a, 0, "part.cameraToObject");
+            string obj = ReqStr(a, 1, "part.cameraToObject");
+            bool applyOffset = a.Count > 2 ? ReqBool(a, 2, "part.cameraToObject") : true;
+            return Do(Host("cameraToObject").CameraToObject(name, obj, applyOffset, _ct),
+                $"part.cameraToObject({name}, {obj}{(applyOffset ? " + offset" : "")})");
+        });
+
+        // machine.part.cameraToObjectPoint(part, object, index) — index 1-based (a line: 1 or 2)
+        p["cameraToObjectPoint"] = Cb(a =>
+        {
+            string name = ReqStr(a, 0, "part.cameraToObjectPoint");
+            string obj = ReqStr(a, 1, "part.cameraToObjectPoint");
+            int index = (int)ReqNum(a, 2, "part.cameraToObjectPoint");
+            return Do(Host("cameraToObjectPoint").CameraToObjectPoint(name, obj, index, _ct),
+                $"part.cameraToObjectPoint({name}, {obj}, P{index})");
+        });
+
+        return p;
+    }
+
+    /// <summary>
+    /// A snapshot as a Lua table: {name, measured, originX, originY, angleDeg, e1={x,y},
+    /// e2={x,y}, objects={ {name, kind, measured, x, y, targetX, targetY, points={{x,y},...}}, ... }}.
+    /// x/y = the object's reference (a point; a line's midpoint); targetX/Y = reference + its offset.
+    /// </summary>
+    private Table SnapshotTable(Registration.PartSnapshot snap)
+    {
+        var t = new Table(_script);
+        t["name"] = DynValue.NewString(snap.Name);
+        t["measured"] = DynValue.NewBoolean(snap.FromMeasurement);
+        if (snap.Frame is { } f)
+        {
+            t["originX"] = DynValue.NewNumber(f.OriginX);
+            t["originY"] = DynValue.NewNumber(f.OriginY);
+            t["angleDeg"] = DynValue.NewNumber(f.AngleDeg);
+        }
+        if (snap.E1 is { } e1) t["e1"] = DynValue.NewTable(Xy(e1.X, e1.Y));
+        if (snap.E2 is { } e2) t["e2"] = DynValue.NewTable(Xy(e2.X, e2.Y));
+
+        var objects = new Table(_script);
+        foreach (var o in snap.Objects)
+        {
+            var ot = new Table(_script);
+            ot["name"] = DynValue.NewString(o.Name);
+            ot["kind"] = DynValue.NewString(o.IsLine ? "line" : "point");
+            ot["measured"] = DynValue.NewBoolean(o.Measured);
+            ot["x"] = DynValue.NewNumber(o.Reference.X);
+            ot["y"] = DynValue.NewNumber(o.Reference.Y);
+            ot["targetX"] = DynValue.NewNumber(o.Target.X);
+            ot["targetY"] = DynValue.NewNumber(o.Target.Y);
+            var pts = new Table(_script);
+            foreach (var pt in o.Points) pts.Append(DynValue.NewTable(Xy(pt.X, pt.Y)));
+            ot["points"] = DynValue.NewTable(pts);
+            objects.Append(DynValue.NewTable(ot));
+        }
+        t["objects"] = DynValue.NewTable(objects);
+        return t;
+
+        Table Xy(double x, double y)
+        {
+            var xy = new Table(_script);
+            xy["x"] = DynValue.NewNumber(x);
+            xy["y"] = DynValue.NewNumber(y);
+            return xy;
+        }
     }
 
     // --- shared plumbing ---

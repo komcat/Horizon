@@ -499,6 +499,9 @@ public interface IProcessService
     /// <summary>Camera → a local object's reference point, plus its local-frame offset when <paramref name="applyOffset"/>.</summary>
     Task<Result> MoveCameraToPartObjectAsync(string name, string objectName, bool applyOffset = true, CancellationToken ct = default);
 
+    /// <summary>Camera → one point of a local object (1-based; a line has 2) — measured after a run, taught otherwise.</summary>
+    Task<Result> MoveCameraToPartObjectPointAsync(string name, string objectName, int pointIndex, CancellationToken ct = default);
+
     // --- Recipes (.hrec scripts, operate on the active product) ---
 
     /// <summary>Recipe names in the active product.</summary>

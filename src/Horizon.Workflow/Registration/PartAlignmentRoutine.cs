@@ -222,6 +222,25 @@ internal sealed class PartAlignmentRoutine
         return await _engine.Motion.MoveToPositionAsync(part.CameraDevice, pose, ct).ConfigureAwait(false);
     }
 
+    /// <summary>Camera → one point of a local object (1-based; a line has 2), effective position, at that point's taught camera Z.</summary>
+    public async Task<Result> MoveCameraToObjectPointAsync(PartAlignment part, string objectName, int pointIndex, CancellationToken ct)
+    {
+        var obj = part.Objects.FirstOrDefault(o => string.Equals(o.Name, objectName, StringComparison.OrdinalIgnoreCase));
+        if (obj == null || !obj.IsComplete)
+            return Result.Fail(ErrorCode.InvalidParameter, $"Object '{objectName}' of part '{part.Name}' is not taught.");
+        if (pointIndex < 1 || pointIndex > obj.RequiredPoints)
+            return Result.Fail(ErrorCode.InvalidParameter, $"Object '{objectName}' has point(s) 1..{obj.RequiredPoints}; {pointIndex} is out of range.");
+        var so = Snapshot(part).Objects.FirstOrDefault(o => string.Equals(o.Name, objectName, StringComparison.OrdinalIgnoreCase));
+        if (so == null || so.Points.Length < pointIndex)
+            return Result.Fail(ErrorCode.InvalidParameter, $"Part '{part.Name}' has no frame yet — teach / run E1 and E2 first.");
+        var (tx, ty) = so.Points[pointIndex - 1];
+        double z = obj.Points[pointIndex - 1].CamZ;
+        var cur = await _engine.Motion.GetPositionAsync(part.CameraDevice).ConfigureAwait(false);
+        if (!cur.IsSuccess) return Result.Fail(cur.Error, $"Read '{part.CameraDevice}' failed: {cur.Message}");
+        _log(LogLevel.Info, $"Camera → '{objectName}' P{pointIndex} of '{part.Name}' → ({tx:F4}, {ty:F4}, Z {z:F4}){(so.Measured ? " [measured]" : " [taught]")}.");
+        return await _engine.Motion.MoveToPositionAsync(part.CameraDevice, cur.Value with { X = tx, Y = ty, Z = z }, ct).ConfigureAwait(false);
+    }
+
     /// <summary>Camera → a local object's reference point (+ its local-frame offset when asked); Z = the taught points' mean camera Z.</summary>
     public async Task<Result> MoveCameraToObjectAsync(PartAlignment part, string objectName, bool applyOffset, CancellationToken ct)
     {

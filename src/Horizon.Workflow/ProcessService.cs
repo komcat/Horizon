@@ -1798,6 +1798,14 @@ public sealed class ProcessService : IProcessService
         return PartRoutine().MoveCameraToObjectAsync(part, objectName, applyOffset, ct);
     }
 
+    public Task<Result> MoveCameraToPartObjectPointAsync(string name, string objectName, int pointIndex, CancellationToken ct = default)
+    {
+        var part = GetPartAlignment(name);
+        if (part == null)
+            return Task.FromResult(Result.Fail(ErrorCode.FileNotFound, $"Part alignment '{name}' not found."));
+        return PartRoutine().MoveCameraToObjectPointAsync(part, objectName, pointIndex, ct);
+    }
+
     public async Task<Result> JogCameraNeedleOffsetAsync(bool toNeedle, CancellationToken ct = default)
     {
         var cal = _cameraNeedle.Current;
@@ -1927,7 +1935,13 @@ public sealed class ProcessService : IProcessService
             signalReader: (key, token) => _signals.ReadAsync(key, token),
             visionRunner: RunVisionProfileByNameAsync,
             operatorPrompt: OperatorPrompt,
-            imageDisplay: _imageDisplaySink);
+            imageDisplay: _imageDisplaySink,
+            partAlignment: new PartAlignmentScriptHost(
+                (n, c) => RunPartAlignmentAsync(n, null, c),
+                GetPartSnapshot,
+                MoveCameraToPartFiducialAsync,
+                MoveCameraToPartObjectAsync,
+                MoveCameraToPartObjectPointAsync));
 
         void Sink(string line)
         {

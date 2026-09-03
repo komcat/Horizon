@@ -140,5 +140,12 @@ public static class MachineApiCatalog
 
         // signal
         new("signal", "read", "machine.signal.read(key) -> number", "Read a unified signal (e.g. smu.PIC.ch1.current)."),
+
+        // part alignment (fiducials + local objects taught on Vision Alignment)
+        new("part", "run", "machine.part.run(part) -> snapshot", "Camera to E1 / E2, detect, rebuild the frame, re-measure every object (vision profiles only); returns the snapshot {originX, originY, angleDeg, e1, e2, objects={ {name, kind, measured, x, y, targetX, targetY, points} }}."),
+        new("part", "snapshot", "machine.part.snapshot(part) -> snapshot", "The part as it stands now (measured after a run, taught otherwise); no motion."),
+        new("part", "cameraToFiducial", "machine.part.cameraToFiducial(part, 1|2)", "Move the camera over E1 or E2."),
+        new("part", "cameraToObject", "machine.part.cameraToObject(part, object [, applyOffset])", "Move the camera over a local object (+ its XY offset unless applyOffset is false)."),
+        new("part", "cameraToObjectPoint", "machine.part.cameraToObjectPoint(part, object, index)", "Move the camera over one point of a local object (1-based; a line has P1 and P2)."),
     };
 }
