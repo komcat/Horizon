@@ -130,5 +130,12 @@ centre** (camera pose − `LocateTool`, Z included when the registration has a f
 centre* (step 1) is the reference move. **Step 7 — Run object detect procedure** re-teaches
 the object from wherever the tool stands: capture the tool pose, camera → tool centre, then
 per point: camera by its offset → detect with the profile (anchor preferred) or wait for the
-operator's Mark click → save, keeping the outline size + offset from the centre. The object
-marker is purple, its outline green.
+operator's Mark click → save, keeping the outline size + offset from the centre. Each move
+is followed by the object's **settle** wait (`SettleMs`, 100 ms default). The object marker
+is purple, its outline green.
+
+**Step 8 — Object → camera centre** (`MoveGrippedObjectToCameraAsync`, block
+`object.toCamera`): the gripper moves so the object's centre sits under the camera centre;
+with Z its focus plane lands at the camera Z + a **Z offset** (`ToCameraZOffsetMm`, camera
+frame: negative = higher = hex-right X+, positive = lower = hex-right X−). Bounded like the
+tool moves.

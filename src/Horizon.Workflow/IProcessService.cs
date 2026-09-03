@@ -453,6 +453,14 @@ public interface IProcessService
     /// </summary>
     Result<ToolLocation> LocateGrippedObject(string name);
 
+    /// <summary>
+    /// Moves the tool device so a gripped object's centre sits where the camera is centred (the
+    /// mapped tool axes; with <paramref name="includeZ"/> also the Z-mapped axis so the object's
+    /// focus plane lands at the camera's Z + <paramref name="zOffsetMm"/>, null = the object's
+    /// stored offset, negative = higher). Bounded like the tool moves — refused, never clamped.
+    /// </summary>
+    Task<Result> MoveGrippedObjectToCameraAsync(string name, double maxDistanceMm = 0, bool includeZ = false, double? zOffsetMm = null, CancellationToken ct = default);
+
     // --- Recipes (.hrec scripts, operate on the active product) ---
 
     /// <summary>Recipe names in the active product.</summary>

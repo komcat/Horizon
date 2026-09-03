@@ -36,6 +36,8 @@ internal sealed class StepDispatcher
     private readonly Func<string, double, bool, double?, CancellationToken, Task<Result>> _moveToolToCamera;
     // (toolDevice, ct) — send the tool device back to its registered pose. Drives tool.toPose.
     private readonly Func<string, CancellationToken, Task<Result>> _moveToolToPose;
+    // (objectName, maxDistanceMm, includeZ, zOffsetMm, ct) — put a gripped object under the camera. Drives object.toCamera.
+    private readonly Func<string, double, bool, double?, CancellationToken, Task<Result>> _moveObjectToCamera;
     // (scriptName, ct) — runs a saved per-product .moon script to completion. Drives script.run.
     private readonly Func<string, CancellationToken, Task<Result>> _runScript;
     // Supplies the hill-climb signal source (Layer 3 SiPhOG). Returns null when no head
@@ -73,6 +75,7 @@ internal sealed class StepDispatcher
         Func<string, double, bool, CancellationToken, Task<Result>> moveCameraToTool,
         Func<string, double, bool, double?, CancellationToken, Task<Result>> moveToolToCamera,
         Func<string, CancellationToken, Task<Result>> moveToolToPose,
+        Func<string, double, bool, double?, CancellationToken, Task<Result>> moveObjectToCamera,
         Func<string, CancellationToken, Task<Result>> runScript,
         Func<IHillClimbFeedback?> hillClimbFeedback,
         Func<IUtilityAppHost?> utilityAppHost,
@@ -91,6 +94,7 @@ internal sealed class StepDispatcher
         _moveCameraToTool = moveCameraToTool;
         _moveToolToCamera = moveToolToCamera;
         _moveToolToPose = moveToolToPose;
+        _moveObjectToCamera = moveObjectToCamera;
         _runScript = runScript;
         _hillClimbFeedback = hillClimbFeedback;
         _utilityAppHost = utilityAppHost;
@@ -524,6 +528,16 @@ internal sealed class StepDispatcher
             case "tool.topose":
                 // Send the tool device back to the pose captured in its registration.
                 return await _moveToolToPose(Str(step, "tool", ctx), ct).ConfigureAwait(false);
+
+            case "object.tocamera":
+            {
+                // Put a gripped object (per product, e.g. "FAU") under the camera centre by moving
+                // its tool device; 'zOffset' (mm, camera frame, − = higher) blank = the object's stored offset.
+                var zText = Str(step, "zOffset", ctx).Trim();
+                double? zOffset = zText.Length == 0 ? null : Num(step, "zOffset", ctx);
+                return await _moveObjectToCamera(
+                    Str(step, "object", ctx), Num(step, "maxDistance", ctx), Bool(step, "includeZ", ctx), zOffset, ct).ConfigureAwait(false);
+            }
 
             case "io.setoutput":
                 return await _engine.IO.SetOutputAsync(step.Device, (int)Num(step, "pin", ctx), Bool(step, "state", ctx), ct);

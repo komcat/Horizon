@@ -288,8 +288,26 @@
                                Text="Wherever the tool is: camera → tool centre, then camera → point 1 by its offset and detect (vision profile, or wait for your Mark click), same for point 2, then save — the outline is redrawn at the new place." />
                     <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                         <Button Content="Run procedure" Height="28" Padding="12,0" Margin="0,0,6,0" FontWeight="SemiBold" Command="{Binding RunProcedureCommand}" />
-                        <Button Content="Cancel" Height="28" Padding="10,0" Command="{Binding CancelProcedureCommand}" />
+                        <Button Content="Cancel" Height="28" Padding="10,0" Margin="0,0,10,0" Command="{Binding CancelProcedureCommand}" />
+                        <TextBlock Text="Settle (ms)" Style="{StaticResource FieldLabel}" />
+                        <TextBox Style="{StaticResource Small}" Width="56" Text="{Binding SettleMs}"
+                                 ToolTip="Motion settling wait after each move in the procedure (saved with the object)" />
                     </StackPanel>
+
+                    <!-- 8 -->
+                    <TextBlock Text="8 · Object → camera centre" Style="{StaticResource StepTitle}" />
+                    <TextBlock Foreground="{StaticResource Subtle}" TextWrapping="Wrap" FontSize="11.5"
+                               Text="Move the gripper so the object's centre sits under the camera centre (bounded move). With Z, its focus plane lands at the camera Z + offset." />
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <TextBlock Text="Z offset (mm)" Style="{StaticResource FieldLabel}" />
+                        <TextBox Style="{StaticResource Small}" Text="{Binding ToCameraZOffset}"
+                                 ToolTip="Negative = higher (hex-right X+), positive = lower (hex-right X−). Saved with the object." />
+                        <CheckBox Content="include Z" Foreground="{StaticResource Text}" VerticalAlignment="Center" IsChecked="{Binding ToCameraIncludeZ}" />
+                    </StackPanel>
+                    <TextBlock Foreground="{StaticResource Subtle}" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap"
+                               Text="Negative = object higher than the camera focus (hex-right X+); positive = lower (hex-right X−)." />
+                    <Button Content="Object → camera" Height="28" Padding="12,0" Margin="0,4,0,0" HorizontalAlignment="Left" FontWeight="SemiBold"
+                            Command="{Binding ObjectToCameraCommand}" />
                 </StackPanel>
             </ScrollViewer>
         </Border>

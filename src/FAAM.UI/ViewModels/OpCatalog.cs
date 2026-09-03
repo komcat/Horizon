@@ -234,6 +234,16 @@ public static class OpCatalog
         // Sends the tool device back to the pose captured in its registration (all axes).
         new("tool.toPose", "Tool to Pose", "Tool", DeviceKind.None,
             new[] { new ParamSpec("tool", "Tool device", ParamKind.MotionDeviceName, "hex-right") }),
+        // Moves the tool so the named gripped object (taught on the Gripped FAU page, per product)
+        // sits under the camera centre; Z brings its focus plane to the camera Z + zOffset.
+        new("object.toCamera", "Object to Camera", "Tool", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("object", "Gripped object", ParamKind.Text, "FAU"),
+                new ParamSpec("maxDistance", "Max move (mm, 0 = registration bound)", ParamKind.Number, "10"),
+                new ParamSpec("includeZ", "Include Z (to focus plane)", ParamKind.Bool, "true"),
+                new ParamSpec("zOffset", "Z offset (mm, blank = object's; − = higher)", ParamKind.Text),
+            }),
 
         // ---- Scan ----
         // XY raster over a lattice about the start position: visits EVERY node and

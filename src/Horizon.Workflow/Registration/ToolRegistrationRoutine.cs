@@ -78,13 +78,67 @@ internal sealed class ToolRegistrationRoutine
             return Result<ToolLocation>.Fail(ErrorCode.OperationFailed,
                 $"No motion state yet for '{(tool.Valid ? reg.CameraDevice : reg.ToolDevice)}'.");
 
-        var now = ToolCentreAt(reg, tool.Position);
-        var then = ToolCentreAt(reg, obj.ToolPose);
+        return Result<ToolLocation>.Ok(BuildObject(reg, obj, tool.Position, cam.Position));
+    }
+
+    /// <summary>Object location for given tool / camera poses (the same maths as <see cref="LocateObject"/>).</summary>
+    private static ToolLocation BuildObject(ToolRegistration reg, GrippedObject obj, MotionPosition toolPose, MotionPosition camPose)
+    {
+        var now = ToolCentreAt(reg, toolPose);
+        var then = ToolCentreAt(reg, obj.ToolPose ?? toolPose);
         double x = obj.CentreX + (now.X - then.X);
         double y = obj.CentreY + (now.Y - then.Y);
         double? z = obj.FocusZ is { } fz && now.Z is { } nz && then.Z is { } tz ? fz + (nz - tz) : null;
-        return Result<ToolLocation>.Ok(new ToolLocation(obj.Name, x, y, cam.Position.X, cam.Position.Y,
-            x - cam.Position.X, y - cam.Position.Y, z, cam.Position.Z, z is { } zz ? zz - cam.Position.Z : 0));
+        return new ToolLocation(obj.Name, x, y, camPose.X, camPose.Y,
+            x - camPose.X, y - camPose.Y, z, camPose.Z, z is { } zz ? zz - camPose.Z : 0);
+    }
+
+    /// <summary>
+    /// Moves the tool device so the gripped object's centre sits where the camera is centred —
+    /// the object-flavoured twin of <see cref="MoveToolToCameraAsync"/>: the mapped tool axes
+    /// move by the inverted delta; with <paramref name="includeZ"/> the Z-mapped axis brings the
+    /// object's focus plane to the camera's Z + <paramref name="zOffsetMm"/> (null = the object's
+    /// stored offset; negative = higher). Same bound rule.
+    /// </summary>
+    public async Task<Result> MoveObjectToCameraAsync(ToolRegistration reg, GrippedObject obj, double maxDistanceMm, bool includeZ, double? zOffsetMm, CancellationToken ct)
+    {
+        if (obj.ToolPose == null)
+            return Result.Fail(ErrorCode.InvalidParameter, $"Gripped object '{obj.Name}' has no tool pose.");
+        var live = await ReadLiveAsync(reg).ConfigureAwait(false);
+        if (!live.IsSuccess) return Result.Fail(ErrorCode.OperationFailed, live.Message);
+        var (_, toolPose, camPose) = live.Value;
+        var loc = BuildObject(reg, obj, toolPose, camPose);
+
+        if (includeZ && !loc.HasZ)
+            return Result.Fail(ErrorCode.InvalidParameter, $"{obj.Name} → camera: no focus Z known (the object or the tool registration lacks Z) — move XY only.");
+        if (includeZ && (string.Equals(reg.MapZ.ToolAxis, reg.MapX.ToolAxis, StringComparison.OrdinalIgnoreCase)
+                         || string.Equals(reg.MapZ.ToolAxis, reg.MapY.ToolAxis, StringComparison.OrdinalIgnoreCase)))
+            return Result.Fail(ErrorCode.InvalidParameter, $"{obj.Name} → camera: the Z axis map reuses an XY tool axis — fix the registration.");
+
+        double zOffset = zOffsetMm ?? obj.ToCameraZOffsetMm;
+        double needZ = includeZ ? zOffset - loc.DzMm : 0;
+        double bound = Bound(reg, maxDistanceMm);
+        double dist = Math.Sqrt(loc.DxMm * loc.DxMm + loc.DyMm * loc.DyMm + needZ * needZ);
+        if (dist > bound)
+            return Result.Fail(ErrorCode.InvalidParameter,
+                $"{obj.Name} → camera: required move {dist:F3} mm exceeds the {bound:F1} mm bound — refused.");
+
+        double dAxisX = -loc.DxMm * reg.MapX.Sign;
+        double dAxisY = -loc.DyMm * reg.MapY.Sign;
+        var target = WithAxis(WithAxis(toolPose, reg.MapX.ToolAxis, dAxisX), reg.MapY.ToolAxis, dAxisY);
+        double dAxisZ = 0;
+        if (includeZ)
+        {
+            dAxisZ = needZ * reg.MapZ.Sign;
+            target = WithAxis(target, reg.MapZ.ToolAxis, dAxisZ);
+        }
+
+        _log(LogLevel.Info,
+            $"{obj.Name} → camera: '{reg.ToolDevice}' {reg.MapX.ToolAxis} {dAxisX:+0.0000;-0.0000}, " +
+            $"{reg.MapY.ToolAxis} {dAxisY:+0.0000;-0.0000}" +
+            (includeZ ? $", {reg.MapZ.ToolAxis} {dAxisZ:+0.0000;-0.0000} (Z offset {zOffset:+0.000;-0.000})" : "") +
+            $" mm (camera-frame Δ {dist:F3} mm).");
+        return await _engine.Motion.MoveToPositionAsync(reg.ToolDevice, target, ct).ConfigureAwait(false);
     }
 
     /// <summary>

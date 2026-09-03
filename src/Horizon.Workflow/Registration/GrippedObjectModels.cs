@@ -89,6 +89,16 @@ public sealed record GrippedObject
     public double OutlineOffsetXmm { get; init; }
     public double OutlineOffsetYmm { get; init; }
 
+    /// <summary>Settle wait after each move in the detect procedure (ms).</summary>
+    public int SettleMs { get; init; } = 100;
+
+    /// <summary>
+    /// Default Z offset (mm, camera-device frame) for object → camera when Z is included: the
+    /// object's focus plane is parked at the camera's Z + this. Negative = higher (gantry Z− is
+    /// up; for hex-right that is tool X+), positive = lower (tool X−).
+    /// </summary>
+    public double ToCameraZOffsetMm { get; init; }
+
     public string? SavedBy { get; init; }
     public string? SavedAt { get; init; }
 

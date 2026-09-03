@@ -47,6 +47,9 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
     private bool _pickOutlineArmed;
     private readonly List<(double X, double Y)> _outlineCorners = new();
     private string _outlineWidth = "2", _outlineLength = "6", _outlineOffsetX = "0", _outlineOffsetY = "0";
+    private string _settleMs = "100";
+    private string _toCameraZOffset = "0";
+    private bool _toCameraIncludeZ = true;
     private string _status = "—";
     private bool _statusWarn;
     private string _liveText = "—";
@@ -66,6 +69,7 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
         CameraToToolCommand = new AsyncRelayCommand(CameraToToolAsync, () => !_busy && _toolDevice != null);
         RunProcedureCommand = new AsyncRelayCommand(RunProcedureAsync, () => !_busy && _toolDevice != null && _camOff1 != null && _camOff2 != null);
         CancelProcedureCommand = new RelayCommand(CancelProcedure, () => _procCts != null);
+        ObjectToCameraCommand = new AsyncRelayCommand(ObjectToCameraAsync, () => !_busy && IsSaved);
         ReadExposureCommand = new RelayCommand(ReadExposure, () => Camera.SelectedCamera != null);
         ApplyExposureCommand = new AsyncRelayCommand(ApplyExposureAsync, () => !_busy && Camera.SelectedCamera != null);
         TeachCamera1Command = new AsyncRelayCommand(() => TeachCameraAsync(1), () => !_busy && _toolPose != null);
@@ -151,6 +155,15 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
 
     /// <summary>True while the step-7 procedure is running.</summary>
     public bool ProcedureRunning => _procCts != null;
+
+    /// <summary>Settle wait after each move in the procedure (ms). Saved with the object.</summary>
+    public string SettleMs { get => _settleMs; set => SetField(ref _settleMs, value); }
+
+    /// <summary>Step 8: Z offset (mm, camera frame) for object → camera. Negative = higher (hex-right X+), positive = lower (hex-right X−).</summary>
+    public string ToCameraZOffset { get => _toCameraZOffset; set => SetField(ref _toCameraZOffset, value); }
+
+    /// <summary>Step 8: whether object → camera also drives Z.</summary>
+    public bool ToCameraIncludeZ { get => _toCameraIncludeZ; set => SetField(ref _toCameraIncludeZ, value); }
     public string Point1Text => PointText(_pt1);
     public string Point2Text => PointText(_pt2);
 
@@ -206,6 +219,7 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
     public AsyncRelayCommand CameraToToolCommand { get; }
     public AsyncRelayCommand RunProcedureCommand { get; }
     public RelayCommand CancelProcedureCommand { get; }
+    public AsyncRelayCommand ObjectToCameraCommand { get; }
     public RelayCommand ReadExposureCommand { get; }
     public AsyncRelayCommand ApplyExposureCommand { get; }
     public AsyncRelayCommand TeachCamera1Command { get; }
@@ -442,6 +456,7 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
                 SetStatus("Procedure: camera → tool centre…");
                 var c2t = await _host.Process.MoveCameraToToolAsync(_toolDevice, includeZ: reg?.HasZ == true, ct: ct).ConfigureAwait(true);
                 if (!c2t.IsSuccess) { SetStatus($"Procedure: camera → tool: {c2t.Message}", true); return; }
+                await SettleAsync(ct).ConfigureAwait(true);
 
                 // 3. Each point: relative move, then detect (auto) or wait for the operator's click (manual).
                 for (int i = 1; i <= 2; i++)
@@ -450,6 +465,7 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
                     SetStatus($"Procedure: camera → point {i} (offset from the tool centre)…");
                     var mv = await MoveCameraToPointAsync(i).ConfigureAwait(true);
                     if (!mv.IsSuccess) { SetStatus($"Procedure: camera → point {i}: {mv.Message}", true); return; }
+                    await SettleAsync(ct).ConfigureAwait(true);
 
                     var profile = i == 1 ? _profile1 : _profile2;
                     if (profile.Length > 0)
@@ -490,6 +506,28 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(ProcedureRunning));
                 CancelProcedureCommand.RaiseCanExecuteChanged();
             }
+        });
+    }
+
+    /// <summary>Motion settling wait after a procedure move (the page's Settle field, ≥ 0 ms).</summary>
+    private Task SettleAsync(CancellationToken ct)
+    {
+        int ms = TryNum(_settleMs, out var v) && v > 0 ? (int)Math.Min(v, 60_000) : 0;
+        return ms > 0 ? Task.Delay(ms, ct) : Task.CompletedTask;
+    }
+
+    // --- step 8: gripped object → camera centre ---
+
+    private async Task ObjectToCameraAsync()
+    {
+        if (!IsSaved) return;
+        await RunBusyAsync($"{_name} → camera", async () =>
+        {
+            if (!TryNum(_toCameraZOffset, out var zOff)) { SetStatus("Z offset must be a number.", true); return; }
+            var r = await _host.Process.MoveGrippedObjectToCameraAsync(_name, includeZ: _toCameraIncludeZ, zOffsetMm: zOff).ConfigureAwait(true);
+            SetStatus(r.IsSuccess
+                ? $"{_name} is under the camera centre" + (_toCameraIncludeZ ? $" (Z offset {zOff:+0.000;-0.000} mm)." : " (XY only).")
+                : r.Message, !r.IsSuccess);
         });
     }
 
@@ -675,6 +713,8 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
             OutlineLengthMm = l,
             OutlineOffsetXmm = ox,
             OutlineOffsetYmm = oy,
+            SettleMs = TryNum(_settleMs, out var settle) && settle >= 0 ? (int)settle : 100,
+            ToCameraZOffsetMm = TryNum(_toCameraZOffset, out var tz) ? tz : 0,
         };
         var r = _host.Process.SaveGrippedObject(obj);
         SetStatus(r.IsSuccess ? $"'{obj.Name}' saved into product {_host.Process.ActiveProduct}. It now tracks on the camera views." : r.Message, !r.IsSuccess);
@@ -753,6 +793,8 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
                 OutlineLength = obj.OutlineLengthMm.ToString("0.###", CultureInfo.InvariantCulture);
                 OutlineOffsetX = obj.OutlineOffsetXmm.ToString("0.####", CultureInfo.InvariantCulture);
                 OutlineOffsetY = obj.OutlineOffsetYmm.ToString("0.####", CultureInfo.InvariantCulture);
+                SettleMs = obj.SettleMs.ToString(CultureInfo.InvariantCulture);
+                ToCameraZOffset = obj.ToCameraZOffsetMm.ToString("0.###", CultureInfo.InvariantCulture);
                 OnPropertyChanged(nameof(CamPose1Text)); OnPropertyChanged(nameof(CamPose2Text));
                 OnPropertyChanged(nameof(OutlineSummary));
                 PointsChanged();
@@ -812,6 +854,7 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
         CameraToToolCommand.RaiseCanExecuteChanged();
         RunProcedureCommand.RaiseCanExecuteChanged();
         CancelProcedureCommand.RaiseCanExecuteChanged();
+        ObjectToCameraCommand.RaiseCanExecuteChanged();
         ReadExposureCommand.RaiseCanExecuteChanged();
         ApplyExposureCommand.RaiseCanExecuteChanged();
         TeachCamera1Command.RaiseCanExecuteChanged();

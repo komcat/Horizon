@@ -158,6 +158,19 @@ public static class OpCatalogHelp
             ParamNotes = new[] { ("tool", "The registered tool device (hex-right = the gripper).") },
         },
 
+        ["object.toCamera"] = new()
+        {
+            Summary = "Move the gripper (hex-right) so the gripped object's centre — the FAU taught on the Gripped FAU page — sits where the camera is centred.",
+            Usage = "Same rules as Tool to Camera, but for the object the gripper holds: the object's live position comes from its teach plus the hexapod's move since. With 'includeZ' the object's focus plane is brought to the camera's current Z + 'zOffset'. Bounded — a required travel beyond 'maxDistance' fails the step.",
+            ParamNotes = new[]
+            {
+                ("object", "The gripped object's name in the active product (default FAU)."),
+                ("maxDistance", "Hard bound in mm; longer is refused. 0 = the tool registration's bound."),
+                ("includeZ", "Also move the Z-mapped hexapod axis so the object's focus plane reaches the camera Z + zOffset."),
+                ("zOffset", "Z offset (mm, camera frame). Negative = higher (hex-right X+), positive = lower (hex-right X−). Blank = the offset stored on the object."),
+            },
+        },
+
         ["script.run"] = new()
         {
             Summary = "Run a saved .moon script from this product, to completion, as one step in the sequence.",

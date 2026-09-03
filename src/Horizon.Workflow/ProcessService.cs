@@ -917,6 +917,7 @@ public sealed class ProcessService : IProcessService
             MoveCameraToToolAsync,
             MoveToolToCameraAsync,
             MoveToolToPoseAsync,
+            MoveGrippedObjectToCameraAsync,
             RunScriptByNameAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,
@@ -1673,6 +1674,17 @@ public sealed class ProcessService : IProcessService
         return new ToolRegistrationRoutine(_engine, Log).LocateObject(reg, obj);
     }
 
+    public Task<Result> MoveGrippedObjectToCameraAsync(string name, double maxDistanceMm = 0, bool includeZ = false, double? zOffsetMm = null, CancellationToken ct = default)
+    {
+        var obj = GetGrippedObject(name);
+        if (obj == null)
+            return Task.FromResult(Result.Fail(ErrorCode.FileNotFound, $"Gripped object '{name}' not found — teach it on the Gripped FAU page first."));
+        var reg = GetToolRegistration(obj.ToolDevice);
+        if (reg == null)
+            return Task.FromResult(Result.Fail(ErrorCode.FileNotFound, $"Tool '{obj.ToolDevice}' is not registered."));
+        return new ToolRegistrationRoutine(_engine, Log).MoveObjectToCameraAsync(reg, obj, maxDistanceMm, includeZ, zOffsetMm, ct);
+    }
+
     public async Task<Result> JogCameraNeedleOffsetAsync(bool toNeedle, CancellationToken ct = default)
     {
         var cal = _cameraNeedle.Current;
@@ -2068,6 +2080,7 @@ public sealed class ProcessService : IProcessService
             MoveCameraToToolAsync,
             MoveToolToCameraAsync,
             MoveToolToPoseAsync,
+            MoveGrippedObjectToCameraAsync,
             RunScriptByNameAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,
