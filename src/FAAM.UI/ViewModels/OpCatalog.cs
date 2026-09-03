@@ -236,6 +236,23 @@ public static class OpCatalog
             new[] { new ParamSpec("tool", "Tool device", ParamKind.MotionDeviceName, "hex-right") }),
         // Moves the tool so the named gripped object (taught on the Gripped FAU page, per product)
         // sits under the camera centre; Z brings its focus plane to the camera Z + zOffset.
+        // ---- Part alignment (fiducials E1/E2 + local objects, taught on Vision Alignment) ----
+        new("part.runAlignment", "Run Part Alignment", "Part", DeviceKind.None,
+            new[] { new ParamSpec("part", "Part alignment", ParamKind.Text, "Part") }),
+        new("part.cameraToFiducial", "Camera to Fiducial", "Part", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("part", "Part alignment", ParamKind.Text, "Part"),
+                new ParamSpec("fiducial", "Fiducial (1 = E1, 2 = E2)", ParamKind.Number, "1"),
+            }),
+        new("part.cameraToObject", "Camera to Part Object", "Part", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("part", "Part alignment", ParamKind.Text, "Part"),
+                new ParamSpec("object", "Local object", ParamKind.Text),
+                new ParamSpec("applyOffset", "Apply the object's XY offset", ParamKind.Bool, "true"),
+            }),
+
         new("object.toCamera", "Object to Camera", "Tool", DeviceKind.None,
             new[]
             {

@@ -158,6 +158,35 @@ public static class OpCatalogHelp
             ParamNotes = new[] { ("tool", "The registered tool device (hex-right = the gripper).") },
         },
 
+        // ===== Part — part alignment (fiducials + local objects) =====
+        ["part.runAlignment"] = new()
+        {
+            Summary = "Locate the loaded part: camera to E1 and E2, detect both, rebuild the part frame, then re-measure every local object.",
+            Usage = "Run it after the operator loads a part so the program knows exactly where it sits on the fixture. Every point must have a vision profile — manual (click) points cannot be served from a program and fail the step. An object that is not detected keeps its taught position through the new frame (flagged on the overlay) and the step fails with a message, though the frame itself is measured and kept.",
+            ParamNotes = new[] { ("part", "The part alignment profile name in the active product (default Part).") },
+        },
+        ["part.cameraToFiducial"] = new()
+        {
+            Summary = "Move the camera over fiducial E1 or E2 of a part — its measured position if a run happened, the taught one otherwise.",
+            Usage = "Goes to the taught camera Z for that fiducial. Not distance-bounded (it is a taught position, like Move to Position).",
+            ParamNotes = new[]
+            {
+                ("part", "The part alignment profile name."),
+                ("fiducial", "1 = E1 (origin), 2 = E2 (X axis)."),
+            },
+        },
+        ["part.cameraToObject"] = new()
+        {
+            Summary = "Move the camera over a local object of a part (a point, or a line's midpoint), optionally plus the object's XY offset in the part frame.",
+            Usage = "Uses the measured object position from the last run (taught through the measured frame if that object was not detected). Z = the mean camera Z the object's points were taught at.",
+            ParamNotes = new[]
+            {
+                ("part", "The part alignment profile name."),
+                ("object", "The local object's name on that part."),
+                ("applyOffset", "On: go to reference + the object's local-frame offset (the usual work point). Off: the reference itself."),
+            },
+        },
+
         ["object.toCamera"] = new()
         {
             Summary = "Move the gripper (hex-right) so the gripped object's centre — the FAU taught on the Gripped FAU page — sits where the camera is centred.",

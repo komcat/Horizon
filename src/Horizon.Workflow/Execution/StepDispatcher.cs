@@ -38,6 +38,11 @@ internal sealed class StepDispatcher
     private readonly Func<string, CancellationToken, Task<Result>> _moveToolToPose;
     // (objectName, maxDistanceMm, includeZ, zOffsetMm, ct) — put a gripped object under the camera. Drives object.toCamera.
     private readonly Func<string, double, bool, double?, CancellationToken, Task<Result>> _moveObjectToCamera;
+    // Part alignment: re-find the fiducials + re-measure the objects (part.runAlignment), camera to
+    // a fiducial (part.cameraToFiducial) / to a local object + offset (part.cameraToObject).
+    private readonly Func<string, CancellationToken, Task<Result<Registration.PartMeasurement>>> _runPartAlignment;
+    private readonly Func<string, int, CancellationToken, Task<Result>> _moveCameraToPartFiducial;
+    private readonly Func<string, string, bool, CancellationToken, Task<Result>> _moveCameraToPartObject;
     // (scriptName, ct) — runs a saved per-product .moon script to completion. Drives script.run.
     private readonly Func<string, CancellationToken, Task<Result>> _runScript;
     // Supplies the hill-climb signal source (Layer 3 SiPhOG). Returns null when no head
@@ -76,6 +81,9 @@ internal sealed class StepDispatcher
         Func<string, double, bool, double?, CancellationToken, Task<Result>> moveToolToCamera,
         Func<string, CancellationToken, Task<Result>> moveToolToPose,
         Func<string, double, bool, double?, CancellationToken, Task<Result>> moveObjectToCamera,
+        Func<string, CancellationToken, Task<Result<Registration.PartMeasurement>>> runPartAlignment,
+        Func<string, int, CancellationToken, Task<Result>> moveCameraToPartFiducial,
+        Func<string, string, bool, CancellationToken, Task<Result>> moveCameraToPartObject,
         Func<string, CancellationToken, Task<Result>> runScript,
         Func<IHillClimbFeedback?> hillClimbFeedback,
         Func<IUtilityAppHost?> utilityAppHost,
@@ -95,6 +103,9 @@ internal sealed class StepDispatcher
         _moveToolToCamera = moveToolToCamera;
         _moveToolToPose = moveToolToPose;
         _moveObjectToCamera = moveObjectToCamera;
+        _runPartAlignment = runPartAlignment;
+        _moveCameraToPartFiducial = moveCameraToPartFiducial;
+        _moveCameraToPartObject = moveCameraToPartObject;
         _runScript = runScript;
         _hillClimbFeedback = hillClimbFeedback;
         _utilityAppHost = utilityAppHost;
@@ -528,6 +539,28 @@ internal sealed class StepDispatcher
             case "tool.topose":
                 // Send the tool device back to the pose captured in its registration.
                 return await _moveToolToPose(Str(step, "tool", ctx), ct).ConfigureAwait(false);
+
+            case "part.runalignment":
+            {
+                // Re-find E1 / E2 and re-measure the part's objects. Manual-mark points cannot be
+                // served from a program — give them a vision profile.
+                var r = await _runPartAlignment(Str(step, "part", ctx), ct).ConfigureAwait(false);
+                if (!r.IsSuccess) return Result.Fail(r.Error, r.Message);
+                int measured = r.Value.Objects.Count(o => o.Measured);
+                return measured == r.Value.Objects.Length
+                    ? Result.Ok()
+                    : Result.Fail(ErrorCode.OperationFailed,
+                        $"Part alignment: {r.Value.Objects.Length - measured} object(s) not detected (taught positions kept). " +
+                        "The frame was measured; fix the profile or accept via the Part Alignment page.");
+            }
+
+            case "part.cameratofiducial":
+                return await _moveCameraToPartFiducial(
+                    Str(step, "part", ctx), (int)Num(step, "fiducial", ctx), ct).ConfigureAwait(false);
+
+            case "part.cameratoobject":
+                return await _moveCameraToPartObject(
+                    Str(step, "part", ctx), Str(step, "object", ctx), Bool(step, "applyOffset", ctx), ct).ConfigureAwait(false);
 
             case "object.tocamera":
             {

@@ -56,6 +56,24 @@ public partial class GrippedObjectView : UserControl
         };
         ToolOverlay.Attach(host, MainImage, cover: false);
         ToolOverlay.Camera = _vm.Camera.SelectedCamera;
+
+        // Marker placement (points + outline corners): armed by the toggles / the procedure's
+        // manual step; a feed click drops the crosshair; Confirm commits.
+        Placer.Attach(MainImage);
+        Placer.Confirmed += OnPlacementConfirmed;
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(GrippedObjectViewModel.Mark1Armed) or nameof(GrippedObjectViewModel.Mark2Armed)
+                or nameof(GrippedObjectViewModel.PickOutlineArmed))
+                SyncPlacer();
+        };
+    }
+
+    private void SyncPlacer()
+    {
+        if (_vm.MarkArmed != 0) Placer.Arm($"point {_vm.MarkArmed}");
+        else if (_vm.PickOutlineArmed) Placer.Arm("outline corner");
+        else Placer.Disarm();
     }
 
     // --- page lifecycle (shell) ---
@@ -93,17 +111,9 @@ public partial class GrippedObjectView : UserControl
         double availW = MainImage.ActualWidth, availH = MainImage.ActualHeight;
         if (p.X < 0 || p.Y < 0 || p.X > availW || p.Y > availH) return;
 
-        bool mark = _vm.MarkArmed != 0;
-        bool outline = OutlineToggle.IsChecked == true;
-        if (mark || outline)
+        if (_vm.MarkArmed != 0 || OutlineToggle.IsChecked == true)
         {
-            double scale = MoveClick.DisplayScale(availW, availH, bmp.PixelWidth, bmp.PixelHeight, cover: false);
-            if (scale <= 0) return;
-            var (dx, dy) = ToolOverlayMath.FromDisplay(p, availW, availH, scale);
-            double sx = bmp.PixelWidth / 2.0 + dx, sy = bmp.PixelHeight / 2.0 + dy;
-            if (mark) await _vm.MarkPointAsync(sx, sy, bmp.PixelWidth, bmp.PixelHeight);
-            else await _vm.AddOutlineCornerAsync(sx, sy, bmp.PixelWidth, bmp.PixelHeight);
-            RedrawPoints();
+            Placer.Place(p);   // committed on Confirm (OnPlacementConfirmed)
             return;
         }
 
@@ -116,6 +126,20 @@ public partial class GrippedObjectView : UserControl
             await MoveClick.JogAsync(host, meas, msg =>
                 host.Log.Add(new LogEntry(LogLevel.Info, DateTimeOffset.Now, "Gripped", msg)));
         }
+    }
+
+    private async void OnPlacementConfirmed(Point p)
+    {
+        if (MainImage.Source is not BitmapSource bmp) return;
+        double availW = MainImage.ActualWidth, availH = MainImage.ActualHeight;
+        double scale = MoveClick.DisplayScale(availW, availH, bmp.PixelWidth, bmp.PixelHeight, cover: false);
+        if (scale <= 0) return;
+        var (dx, dy) = ToolOverlayMath.FromDisplay(p, availW, availH, scale);
+        double sx = bmp.PixelWidth / 2.0 + dx, sy = bmp.PixelHeight / 2.0 + dy;
+        if (_vm.MarkArmed != 0) await _vm.MarkPointAsync(sx, sy, bmp.PixelWidth, bmp.PixelHeight);
+        else if (OutlineToggle.IsChecked == true) await _vm.AddOutlineCornerAsync(sx, sy, bmp.PixelWidth, bmp.PixelHeight);
+        RedrawPoints();
+        SyncPlacer();   // re-arm for the next corner / point, or hide when done
     }
 
     /// <summary>Draws the taught points, the centre and the outline preview at their current on-screen place.</summary>

@@ -58,8 +58,9 @@
                     Style="{StaticResource Tile}" Click="OnEngineerClick" />
             <Button x:Name="MachineTile" Grid.Row="1" Grid.Column="0" Content="Machine"
                     Style="{StaticResource Tile}" Click="OnMachineClick" />
-            <Button x:Name="VisionProfileTile" Grid.Row="1" Grid.Column="1" Content="Vision Profile"
-                    Style="{StaticResource Tile}" Click="OnVisionProfileClick" />
+            <Button x:Name="VisionAlignmentTile" Grid.Row="1" Grid.Column="1" Content="Vision Alignment"
+                    Style="{StaticResource Tile}" Click="OnVisionAlignmentClick"
+                    ToolTip="Vision profiles (per-position recipes) and the gripped FAU teach, in one page" />
             <Button x:Name="ScriptTile" Grid.Row="2" Grid.Column="0" Content="Script"
                     Style="{StaticResource Tile}" Click="OnScriptClick" />
             <Button x:Name="CalibrationTile" Grid.Row="2" Grid.Column="1" Content="Calibration"
@@ -67,9 +68,6 @@
             <Button x:Name="RepositoryTile" Grid.Row="3" Grid.Column="0" Content="Repository"
                     Style="{StaticResource Tile}" Click="OnRepositoryClick"
                     ToolTip="Browse program / deck versions and checkout an earlier one" />
-            <Button x:Name="GrippedTile" Grid.Row="3" Grid.Column="1" Content="Gripped FAU"
-                    Style="{StaticResource Tile}" Click="OnGrippedClick"
-                    ToolTip="Teach the object held by the registered gripper (two points + outline) so it tracks on the camera views" />
         </Grid>
     </Grid>
 </UserControl>

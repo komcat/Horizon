@@ -24,8 +24,11 @@ public static class AccessPolicy
     /// <summary>Manual hardware control (Machine page) — moves axes and toggles outputs by hand.</summary>
     public const AccessLevel Machine = AccessLevel.Technician;
 
-    /// <summary>Author a per-position vision recipe.</summary>
+    /// <summary>Author a per-position vision recipe (the Vision Profile tab).</summary>
     public const AccessLevel VisionProfile = AccessLevel.Technician;
+
+    /// <summary>The Vision Alignment page (Vision Profile + Gripped FAU tabs); the Gripped tab is gated further by <see cref="GrippedObject"/>.</summary>
+    public const AccessLevel VisionAlignment = VisionProfile;
 
     /// <summary>The Gantt sequence editor — changes what the machine does.</summary>
     public const AccessLevel Engineer = AccessLevel.Engineer;
@@ -45,8 +48,11 @@ public static class AccessPolicy
     /// </summary>
     public const AccessLevel Registration = AccessLevel.Engineer;
 
-    /// <summary>The Gripped FAU page — teaches the object held by the registered gripper (per product).</summary>
+    /// <summary>The Gripped FAU tab of Vision Alignment — teaches the object held by the registered gripper (per product).</summary>
     public const AccessLevel GrippedObject = AccessLevel.Engineer;
+
+    /// <summary>The Part Alignment tab of Vision Alignment — fiducials + local objects that locate the part on the fixture (per product).</summary>
+    public const AccessLevel PartAlignment = AccessLevel.Engineer;
 
     /// <summary>
     /// The Machine page's Settings section — machine identity, the user directory and

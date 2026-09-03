@@ -461,6 +461,44 @@ public interface IProcessService
     /// </summary>
     Task<Result> MoveGrippedObjectToCameraAsync(string name, double maxDistanceMm = 0, bool includeZ = false, double? zOffsetMm = null, CancellationToken ct = default);
 
+    // --- Part alignment (per-product): two fiducials fix the part's local frame on the
+    //     fixture; local objects (points / lines) are taught in that frame and re-measured
+    //     by a run. See docs/device-registration-design.md.
+
+    IReadOnlyList<PartAlignment> GetPartAlignments();
+    PartAlignment? GetPartAlignment(string name);
+
+    /// <summary>Adds or replaces a part alignment profile in the active product. Raises <see cref="PartAlignmentsChanged"/>.</summary>
+    Result SavePartAlignment(PartAlignment part);
+
+    /// <summary>Deletes a part alignment profile. Raises <see cref="PartAlignmentsChanged"/>.</summary>
+    Result RemovePartAlignment(string name);
+
+    /// <summary>Raised after a part alignment is saved, removed or re-measured, and on product switch (any thread).</summary>
+    event Action? PartAlignmentsChanged;
+
+    /// <summary>The part as it stands now in the gantry frame (measured after a run, taught otherwise) — drives the overlay.</summary>
+    Result<PartSnapshot> GetPartSnapshot(string name);
+
+    /// <summary>Runs a part's vision profile on the live camera and returns the point in the gantry frame (anchor preferred).</summary>
+    Task<Result<PartPoint>> DetectPartPointAsync(string name, string profile);
+
+    /// <summary>Converts an image point at a camera pose to a gantry-frame <see cref="PartPoint"/> (MoveClick semantics) — for manual marks.</summary>
+    PartPoint ToPartPoint(MotionPosition camPose, double px, double py, int srcW, int srcH, string source);
+
+    /// <summary>
+    /// Re-finds E1 / E2, rebuilds the frame and re-measures every object, then stores the
+    /// measurement on the profile. <paramref name="manual"/> supplies operator clicks for manual
+    /// points (null = manual points fail, as from a program step).
+    /// </summary>
+    Task<Result<PartMeasurement>> RunPartAlignmentAsync(string name, PartManualMark? manual = null, CancellationToken ct = default);
+
+    /// <summary>Camera → fiducial 1 or 2 (measured if a run happened, taught otherwise).</summary>
+    Task<Result> MoveCameraToPartFiducialAsync(string name, int which, CancellationToken ct = default);
+
+    /// <summary>Camera → a local object's reference point, plus its local-frame offset when <paramref name="applyOffset"/>.</summary>
+    Task<Result> MoveCameraToPartObjectAsync(string name, string objectName, bool applyOffset = true, CancellationToken ct = default);
+
     // --- Recipes (.hrec scripts, operate on the active product) ---
 
     /// <summary>Recipe names in the active product.</summary>

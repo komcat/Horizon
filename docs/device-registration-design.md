@@ -110,7 +110,7 @@ copied by Save As…) because the FAU dimensions belong to the product, not the 
 | 2 `Registration/` | `GrippedObject` (+ `GrippedPoint`), `GrippedObjectStore` | model + per-product store |
 | | `ToolRegistrationRoutine.LocateObject` | live location: taught centre carried by the tool's move since the object's tool pose, through the tool registration's axis maps |
 | | `IProcessService` | `Get/SaveGrippedObject(s)`, `RemoveGrippedObject`, `LocateGrippedObject`, `GrippedObjectsChanged` |
-| 3 `FAAM.UI` | Home › **Gripped FAU** page (`GrippedObjectView` / `GrippedObjectViewModel`, `AccessPolicy.GrippedObject` = Engineer) | the teach procedure |
+| 3 `FAAM.UI` | Home › **Vision Alignment** › **Gripped FAU** tab (`VisionAlignmentView` hosts it next to Vision Profile; `GrippedObjectView` / `GrippedObjectViewModel`, tab gated at `AccessPolicy.GrippedObject` = Engineer) | the teach procedure |
 | | `ToolOverlayView` | draws every saved object in **purple** on the Run feed, the Zoom2× inset and the pop-out, with `FAU higher/lower` Z read-out |
 
 Procedure (page): **1** capture the tool pose (Move to pose returns there) → **2** camera
@@ -139,3 +139,46 @@ is purple, its outline green.
 with Z its focus plane lands at the camera Z + a **Z offset** (`ToCameraZOffsetMm`, camera
 frame: negative = higher = hex-right X+, positive = lower = hex-right X−). Bounded like the
 tool moves.
+
+## Part alignment (fiducials + local objects)
+
+Locates the physical part on the working fixture so a program knows where it sits after the
+operator loads it. Per-product (`{product}\part_alignments.json`, copied by Save As…).
+
+| Layer | Piece | Role |
+|---|---|---|
+| 2 `Registration/` | `PartAlignment` (+ `PartFiducial`, `PartObject`, `PartObjectPoint`, `PartFrame`, `PartMeasurement`, `PartSnapshot`), `PartAlignmentStore` | model + per-product store |
+| | `PartAlignmentRoutine` | frame maths, detection (anchor XY preferred), the run, camera → fiducial / object |
+| | `IProcessService` | `Get/Save/RemovePartAlignment`, `GetPartSnapshot`, `DetectPartPointAsync`, `ToPartPoint`, `RunPartAlignmentAsync(name, PartManualMark?)`, `MoveCameraToPartFiducialAsync`, `MoveCameraToPartObjectAsync`, `PartAlignmentsChanged` |
+| | `StepDispatcher` | `part.runAlignment`, `part.cameraToFiducial`, `part.cameraToObject` |
+| 3 `FAAM.UI` | Vision Alignment › **Part Alignment** tab (`PartAlignmentView` / `PartAlignmentViewModel`, `AccessPolicy.PartAlignment` = Engineer) | the teach + run UI |
+| | `ToolOverlayView` | draws saved parts in **cyan** (E1 / E2 diamonds, object points / lines, an offset cross); dimmer when taught-only |
+
+**Frame.** Origin = E1, +X along E1 → E2, +Y = +X rotated 90° counter-clockwise in the gantry
+XY plane (right-handed), units mm, no scaling (`PartFrame`). Object points are stored in this
+local frame together with the local camera position they are seen from (camera Z absolute), so
+they follow the part wherever the fixture puts it.
+
+**Procedure (tab).** Camera exposure → **1** E1: teach the camera position, mark by click or
+profile → **2** E2 likewise → **3** the frame is derived → **4** local objects: `+ Point` /
+`+ Line`; selecting one swaps the panel to its editor (per point: camera position, Mark or
+profile; an XY offset in the local frame) → **5** Save → **6** Run: camera → E1, detect, →
+E2, detect, rebuild the frame, then each object from its taught local camera position
+through the new frame (profile, or wait for the operator's Mark click). An object that is
+not found keeps its taught position through the new frame and is flagged "(taught)"; the
+settle wait applies after each move → **7** camera → E1 / E2 / object (+ offset; a line's
+reference is its midpoint). Measured values are used once a run happened, taught ones
+before. The moves go to taught positions and are not distance-bounded.
+
+From a program every point must carry a vision profile: manual clicks need the tab, so
+`part.runAlignment` fails cleanly on a manual point.
+
+## Marker placement (all teach surfaces)
+
+Every point the operator places by clicking — registration centre points and outline
+corners, gripped-object points and corners, part fiducials and object points, and the manual
+points a run procedure asks for — goes through `Views/MarkerPlacer`: while armed, a feed click
+drops a **yellow crosshair** at that spot with **Confirm / Cancel** floated beside it; the
+operator may re-click to move it, and nothing is committed until Confirm. Cancel discards the
+placement and leaves the mark armed. The owner view routes its click to `Place`, and commits
+the image point on `Confirmed` exactly as a direct click used to.

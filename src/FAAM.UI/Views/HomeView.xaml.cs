@@ -28,8 +28,8 @@ public partial class HomeView : UserControl
     /// <summary>Raised when the operator clicks Engineer.</summary>
     public event Action? EngineerRequested;
 
-    /// <summary>Raised when the operator clicks Vision Profile.</summary>
-    public event Action? VisionProfileRequested;
+    /// <summary>Raised when the operator clicks Vision Alignment (vision profiles + gripped FAU).</summary>
+    public event Action? VisionAlignmentRequested;
 
     /// <summary>Raised when the operator clicks Script.</summary>
     public event Action? ScriptRequested;
@@ -40,8 +40,6 @@ public partial class HomeView : UserControl
     /// <summary>Raised when the operator clicks Repository.</summary>
     public event Action? RepositoryRequested;
 
-    /// <summary>Raised when the operator clicks Gripped FAU.</summary>
-    public event Action? GrippedRequested;
 
     public HomeView() => InitializeComponent();
 
@@ -70,11 +68,10 @@ public partial class HomeView : UserControl
         Gate(RunTile, AccessPolicy.Run);
         Gate(EngineerTile, AccessPolicy.Engineer);
         Gate(MachineTile, AccessPolicy.Machine);
-        Gate(VisionProfileTile, AccessPolicy.VisionProfile);
+        Gate(VisionAlignmentTile, AccessPolicy.VisionAlignment);
         Gate(ScriptTile, AccessPolicy.Script);
         Gate(CalibrationTile, AccessPolicy.Calibration);
         Gate(RepositoryTile, AccessPolicy.Repository);
-        Gate(GrippedTile, AccessPolicy.GrippedObject);
 
         // Switching to an existing product is floor work; creating one is authoring.
         var canSwitch = session.Has(AccessPolicy.ProductSwitch);
@@ -248,9 +245,8 @@ public partial class HomeView : UserControl
     private void OnMachineClick(object sender, RoutedEventArgs e) => MachineRequested?.Invoke();
 
     private void OnEngineerClick(object sender, RoutedEventArgs e) => EngineerRequested?.Invoke();
-    private void OnGrippedClick(object sender, RoutedEventArgs e) => GrippedRequested?.Invoke();
 
-    private void OnVisionProfileClick(object sender, RoutedEventArgs e) => VisionProfileRequested?.Invoke();
+    private void OnVisionAlignmentClick(object sender, RoutedEventArgs e) => VisionAlignmentRequested?.Invoke();
 
     private void OnScriptClick(object sender, RoutedEventArgs e) => ScriptRequested?.Invoke();
 

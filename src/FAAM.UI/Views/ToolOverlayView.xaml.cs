@@ -31,6 +31,8 @@ public partial class ToolOverlayView : UserControl
     private static readonly Brush OutlineBrush = new SolidColorBrush(Color.FromRgb(0xC8, 0xC8, 0xC8)); // grey outline box
     private static readonly Brush ObjectBrush = new SolidColorBrush(Color.FromRgb(0xB0, 0x70, 0xFF));  // purple: gripped object marker
     private static readonly Brush ObjectOutlineBrush = new SolidColorBrush(Color.FromRgb(0x00, 0xE6, 0x76)); // green: gripped object outline
+    private static readonly Brush PartBrush = new SolidColorBrush(Color.FromRgb(0x00, 0xE5, 0xFF));         // cyan: part fiducials + local objects
+    private static readonly Brush PartTaughtBrush = new SolidColorBrush(Color.FromArgb(0xA0, 0x00, 0xE5, 0xFF)); // dimmer: taught, not measured
     private static readonly Brush LabelBg = new SolidColorBrush(Color.FromArgb(0xB0, 0, 0, 0));
 
     private EngineHost? _host;
@@ -42,6 +44,8 @@ public partial class ToolOverlayView : UserControl
     private readonly Dictionary<string, ToolGlyph> _glyphs = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<ToolRegistration> _regs = Array.Empty<ToolRegistration>();
     private IReadOnlyList<GrippedObject> _objects = Array.Empty<GrippedObject>();
+    private IReadOnlyList<PartAlignment> _parts = Array.Empty<PartAlignment>();
+    private readonly Canvas _partLayer = new() { IsHitTestVisible = false };   // parts are rebuilt per tick (few shapes)
 
     public ToolOverlayView()
     {
@@ -64,6 +68,8 @@ public partial class ToolOverlayView : UserControl
         image.SizeChanged += OnImageSizeChanged;
         host.Process.ToolRegistrationsChanged += OnRegistrationsChanged;
         host.Process.GrippedObjectsChanged += OnRegistrationsChanged;   // objects ride on the same redraw
+        host.Process.PartAlignmentsChanged += OnRegistrationsChanged;
+        if (!Surface.Children.Contains(_partLayer)) Surface.Children.Add(_partLayer);
         ReloadRegistrations();
     }
 
@@ -75,6 +81,7 @@ public partial class ToolOverlayView : UserControl
         {
             _host.Process.ToolRegistrationsChanged -= OnRegistrationsChanged;
             _host.Process.GrippedObjectsChanged -= OnRegistrationsChanged;
+            _host.Process.PartAlignmentsChanged -= OnRegistrationsChanged;
         }
         _image = null;
         _host = null;
@@ -95,7 +102,7 @@ public partial class ToolOverlayView : UserControl
         if (_active == active) return;
         _active = active;
         if (active) { _timer.Start(); Redraw(); }
-        else { _timer.Stop(); Surface.Children.Clear(); _glyphs.Clear(); }
+        else { _timer.Stop(); Surface.Children.Clear(); _glyphs.Clear(); _partLayer.Children.Clear(); Surface.Children.Add(_partLayer); }
     }
 
     private void OnRegistrationsChanged()
@@ -109,6 +116,7 @@ public partial class ToolOverlayView : UserControl
     {
         _regs = _host?.Process.GetToolRegistrations() ?? Array.Empty<ToolRegistration>();
         _objects = _host?.Process.GetGrippedObjects() ?? Array.Empty<GrippedObject>();
+        _parts = _host?.Process.GetPartAlignments() ?? Array.Empty<PartAlignment>();
         // Drop glyphs for tools / objects that no longer exist.
         var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var r in _regs) keep.Add(r.ToolDevice);
@@ -155,6 +163,92 @@ public partial class ToolOverlayView : UserControl
                 () => _host.Process.LocateGrippedObject(obj.Name),
                 obj.OutlineWidthMm, obj.OutlineLengthMm, obj.OutlineOffsetXmm, obj.OutlineOffsetYmm,
                 ObjectBrush, ObjectOutlineBrush, settings, availW, availH, scale);
+        }
+
+        DrawParts(settings, availW, availH, scale);
+    }
+
+    /// <summary>
+    /// Saved part alignments: fiducials (diamonds E1 / E2), local objects (a circle, or a line
+    /// between its two points) and, when an object has an offset, a small cross at the offset
+    /// target. Fixed in the gantry frame — they do not ride on the hexapod — so they are placed
+    /// from the camera device's live pose. Dimmer when taught-only / not detected by the last run.
+    /// </summary>
+    private void DrawParts(Horizon.Common.AppSettings settings, double availW, double availH, double scale)
+    {
+        _partLayer.Children.Clear();
+        if (_host == null) return;
+        _partLayer.Width = availW;
+        _partLayer.Height = availH;
+
+        foreach (var part in _parts)
+        {
+            if (_camera == null || !string.Equals(part.CameraId, _camera, StringComparison.OrdinalIgnoreCase)) continue;
+            var cam = _host.Engine.Motion.GetState(part.CameraDevice);
+            if (!cam.Valid) continue;
+            var snap = _host.Process.GetPartSnapshot(part.Name);
+            if (!snap.IsSuccess) continue;
+
+            Point? Place(double gx, double gy)
+            {
+                var px = ToolOverlayMath.MmToSourcePx(gx - cam.Position.X, gy - cam.Position.Y, settings);
+                return px is { } o ? ToolOverlayMath.ToDisplay(o.DxPx, o.DyPx, availW, availH, scale) : null;
+            }
+
+            var fidBrush = snap.Value.FromMeasurement ? PartBrush : PartTaughtBrush;
+            if (snap.Value.E1 is { } e1) Diamond(Place, e1.X, e1.Y, $"{part.Name} E1", fidBrush);
+            if (snap.Value.E2 is { } e2) Diamond(Place, e2.X, e2.Y, $"{part.Name} E2", fidBrush);
+
+            foreach (var o in snap.Value.Objects)
+            {
+                var brush = o.Measured ? PartBrush : PartTaughtBrush;
+                var pts = o.Points.Select(p => Place(p.X, p.Y)).ToArray();
+                if (o.IsLine && pts.Length == 2 && pts[0] is { } a && pts[1] is { } b)
+                {
+                    _partLayer.Children.Add(new Line { X1 = a.X, Y1 = a.Y, X2 = b.X, Y2 = b.Y, Stroke = brush, StrokeThickness = 2 });
+                    Circle(a, brush); Circle(b, brush);
+                    Label(a, o.Name + (o.Measured ? "" : " (taught)"), brush);
+                }
+                else if (pts.Length >= 1 && pts[0] is { } p0)
+                {
+                    Circle(p0, brush);
+                    Label(p0, o.Name + (o.Measured ? "" : " (taught)"), brush);
+                }
+                if ((o.Target.X != o.Reference.X || o.Target.Y != o.Reference.Y) && Place(o.Target.X, o.Target.Y) is { } t)
+                {
+                    _partLayer.Children.Add(new Line { X1 = t.X - 6, X2 = t.X + 6, Y1 = t.Y, Y2 = t.Y, Stroke = brush, StrokeThickness = 1.5 });
+                    _partLayer.Children.Add(new Line { X1 = t.X, X2 = t.X, Y1 = t.Y - 6, Y2 = t.Y + 6, Stroke = brush, StrokeThickness = 1.5 });
+                }
+            }
+        }
+
+        void Diamond(Func<double, double, Point?> place, double gx, double gy, string label, Brush brush)
+        {
+            if (place(gx, gy) is not { } d) return;
+            _partLayer.Children.Add(new Polygon
+            {
+                Stroke = brush, StrokeThickness = 2, Fill = Brushes.Transparent,
+                Points = new PointCollection { new(d.X, d.Y - 7), new(d.X + 7, d.Y), new(d.X, d.Y + 7), new(d.X - 7, d.Y) },
+            });
+            Label(d, label, brush);
+        }
+
+        void Circle(Point d, Brush brush)
+        {
+            var e = new Ellipse { Width = 9, Height = 9, Stroke = brush, StrokeThickness = 2, Fill = Brushes.Transparent };
+            Canvas.SetLeft(e, d.X - 4.5); Canvas.SetTop(e, d.Y - 4.5);
+            _partLayer.Children.Add(e);
+        }
+
+        void Label(Point d, string text, Brush brush)
+        {
+            var box = new Border
+            {
+                Background = LabelBg, CornerRadius = new CornerRadius(2), Padding = new Thickness(4, 1, 4, 1),
+                Child = new TextBlock { Text = text, Foreground = brush, FontSize = 11, FontWeight = FontWeights.SemiBold },
+            };
+            Canvas.SetLeft(box, d.X + 8); Canvas.SetTop(box, d.Y - 16);
+            _partLayer.Children.Add(box);
         }
     }
 

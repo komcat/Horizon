@@ -140,8 +140,8 @@ defines its own program/recipe/position formats.
   exposed on `IProcessService` and as the `tool.cameraToTool` / `tool.toolToCamera` steps.
   The procedure UI is FAAM's Machine › Registration section; `ToolOverlayView` draws the
   live gripper on the Run feed / zoom inset / pop-out. A per-product **gripped object**
-  (`GrippedObject`/`GrippedObjectStore`, the FAU held by the gripper, taught on FAAM's Home ›
-  Gripped FAU page from two points + outline) rides on the registration and is drawn purple
+  (`GrippedObject`/`GrippedObjectStore`, the FAU held by the gripper, taught on FAAM's Vision
+  Alignment page › Gripped FAU tab from two points + outline) rides on the registration and is drawn purple
   by the same overlay. See `docs/device-registration-design.md`.
 
 ### Layer 3 — operator applications (Horizon.UI and FAAM.UI)
@@ -198,8 +198,10 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   **snapshot box** beside the Zoom2× inset (`SnapshotView`, FAAM's `IImageDisplaySink`
   — a `.moon` script pushes a captured still into it with `machine.ui.showImage`),
   serial-bracketed DUT run with PASS/FAIL + a DUT results viewer, log), **Engineer**
-  (the Gantt editor below), and **Vision Profile** (per-position vision recipe
-  authoring, below). A SiPhOG TCP client lives under `Siphog/` (its Skia chart,
+  (the Gantt editor below), and **Vision Alignment** — a tabbed page holding **Vision
+  Profile** (per-position vision recipe authoring, below), **Gripped FAU** (the
+  gripped-object teach) and **Part Alignment** (fiducials E1/E2 + local objects that locate
+  the part on the fixture; `part.*` blocks) — the latter two Engineer-gated tabs. A SiPhOG TCP client lives under `Siphog/` (its Skia chart,
   `SiphogChart`, is no longer on the Run page); `MoveClick.cs` holds the shared
   `mm/pixel` jog maths.
 - **Vision Profile page** — authors a saved, per-position vision recipe (camera +

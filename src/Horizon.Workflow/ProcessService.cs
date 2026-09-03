@@ -29,6 +29,7 @@ public sealed class ProcessService : IProcessService
     private VisionProfileStore? _visionProfiles;   // null when no product is active
     private DispenseStore? _dispense;    // per-product dispense routines; null when no product is active
     private GrippedObjectStore? _gripped;   // per-product gripped objects (the FAU in the gripper); null when no product is active
+    private PartAlignmentStore? _parts;   // per-product part alignment profiles (fiducials + local objects); null when no product is active
     private TaskCompletionSource<bool>? _deckGate;   // set while a deck waits for operator activation
     private DutStore? _dut;              // null when no product is active
     private readonly ProgramHistoryDb _history = new();   // machine-global audit store (history.db)
@@ -63,6 +64,7 @@ public sealed class ProcessService : IProcessService
             _visionProfiles = new VisionProfileStore(dir);
             _dispense = new DispenseStore(dir);
             _gripped = new GrippedObjectStore(dir);
+            _parts = new PartAlignmentStore(dir);
             _dut = new DutStore(dir, _products.ActiveProduct!);
         }
     }
@@ -195,11 +197,13 @@ public sealed class ProcessService : IProcessService
         _visionProfiles = new VisionProfileStore(dir);
         _dispense = new DispenseStore(dir);
         _gripped = new GrippedObjectStore(dir);
+        _parts = new PartAlignmentStore(dir);
         _dut = new DutStore(dir, name);
         SetActiveSerial(null);   // a serial belongs to a product — drop it on switch
         Log(LogLevel.Info, $"Product loaded: {name}");
         ProductChanged?.Invoke(name);
         GrippedObjectsChanged?.Invoke();   // the overlay re-reads the new product's objects
+        PartAlignmentsChanged?.Invoke();
         return Result.Ok();
     }
 
@@ -918,6 +922,9 @@ public sealed class ProcessService : IProcessService
             MoveToolToCameraAsync,
             MoveToolToPoseAsync,
             MoveGrippedObjectToCameraAsync,
+            (n, c) => RunPartAlignmentAsync(n, null, c),
+            MoveCameraToPartFiducialAsync,
+            MoveCameraToPartObjectAsync,
             RunScriptByNameAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,
@@ -1685,6 +1692,112 @@ public sealed class ProcessService : IProcessService
         return new ToolRegistrationRoutine(_engine, Log).MoveObjectToCameraAsync(reg, obj, maxDistanceMm, includeZ, zOffsetMm, ct);
     }
 
+    // --- Part alignment (per-product) ---
+
+    public event Action? PartAlignmentsChanged;
+
+    private PartAlignmentRoutine PartRoutine()
+        // Re-read app_settings.json on each use: the operator edits mm/pixel + MoveClick signs in
+        // the Layer 3 Settings page, and this Layer 2 store instance would otherwise stay stale.
+        => new(_engine, () => new AppSettingsStore().Current, RunVisionProfileByNameAsync, Log);
+
+    public IReadOnlyList<PartAlignment> GetPartAlignments() => _parts?.All ?? Array.Empty<PartAlignment>();
+
+    public PartAlignment? GetPartAlignment(string name)
+        => string.IsNullOrWhiteSpace(name) ? null : _parts?.Get(name);
+
+    public Result SavePartAlignment(PartAlignment part)
+    {
+        if (_parts == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (part == null || string.IsNullOrWhiteSpace(part.Name))
+            return Result.Fail(ErrorCode.InvalidParameter, "A part alignment needs a name.");
+        if (string.IsNullOrWhiteSpace(part.CameraDevice) || string.IsNullOrWhiteSpace(part.CameraId))
+            return Result.Fail(ErrorCode.InvalidParameter, "A part alignment needs a camera device and a camera.");
+        var dup = part.Objects.GroupBy(o => o.Name, StringComparer.OrdinalIgnoreCase).FirstOrDefault(g => g.Count() > 1);
+        if (dup != null)
+            return Result.Fail(ErrorCode.InvalidParameter, $"Object name '{dup.Key}' is used more than once.");
+
+        // A saved edit invalidates the last measurement only when the taught data changed; keep
+        // it when the caller passed it through unchanged (the run path saves via this too).
+        _parts.Update(part with
+        {
+            SavedBy = _operator?.DisplayName,
+            SavedAt = DateTimeOffset.Now.ToString("o"),
+        });
+        Log(LogLevel.Info,
+            $"Part alignment saved: '{part.Name}' ({part.CameraDevice}/{part.CameraId}), " +
+            $"E1 {(part.E1.Point != null ? "taught" : "—")}, E2 {(part.E2.Point != null ? "taught" : "—")}, " +
+            $"{part.Objects.Length} object(s){(part.Measured != null ? ", last measured " + part.Measured.At : "")}.");
+        PartAlignmentsChanged?.Invoke();
+        return Result.Ok();
+    }
+
+    public Result RemovePartAlignment(string name)
+    {
+        if (_parts == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (!_parts.Remove(name))
+            return Result.Fail(ErrorCode.FileNotFound, $"Part alignment '{name}' not found.");
+        Log(LogLevel.Info, $"Part alignment removed: '{name}'.");
+        PartAlignmentsChanged?.Invoke();
+        return Result.Ok();
+    }
+
+    public Result<PartSnapshot> GetPartSnapshot(string name)
+    {
+        var part = GetPartAlignment(name);
+        return part == null
+            ? Result<PartSnapshot>.Fail(ErrorCode.FileNotFound, $"Part alignment '{name}' not found.")
+            : Result<PartSnapshot>.Ok(PartAlignmentRoutine.Snapshot(part));
+    }
+
+    public Task<Result<PartPoint>> DetectPartPointAsync(string name, string profile)
+    {
+        var part = GetPartAlignment(name);
+        if (part == null)
+            return Task.FromResult(Result<PartPoint>.Fail(ErrorCode.FileNotFound, $"Part alignment '{name}' not found."));
+        return PartRoutine().DetectAsync(part, profile);
+    }
+
+    public PartPoint ToPartPoint(MotionPosition camPose, double px, double py, int srcW, int srcH, string source)
+        => PartRoutine().ToPartPoint(camPose, px, py, srcW, srcH, source);
+
+    public async Task<Result<PartMeasurement>> RunPartAlignmentAsync(string name, PartManualMark? manual = null, CancellationToken ct = default)
+    {
+        var part = GetPartAlignment(name);
+        if (part == null)
+            return Result<PartMeasurement>.Fail(ErrorCode.FileNotFound, $"Part alignment '{name}' not found — teach it on the Vision Alignment page first.");
+        Log(LogLevel.Info, $"Part alignment run started: '{name}'.");
+        var r = await PartRoutine().RunAsync(part, manual, ct).ConfigureAwait(false);
+        if (!r.IsSuccess)
+        {
+            Log(LogLevel.Warning, $"Part alignment run failed: '{name}' — {r.Message}");
+            return r;
+        }
+        _parts?.Update(part with { Measured = r.Value });
+        int measured = r.Value.Objects.Count(o => o.Measured);
+        Log(LogLevel.Info, $"Part alignment run done: '{name}' — {measured}/{r.Value.Objects.Length} object(s) measured.");
+        PartAlignmentsChanged?.Invoke();
+        return r;
+    }
+
+    public Task<Result> MoveCameraToPartFiducialAsync(string name, int which, CancellationToken ct = default)
+    {
+        var part = GetPartAlignment(name);
+        if (part == null)
+            return Task.FromResult(Result.Fail(ErrorCode.FileNotFound, $"Part alignment '{name}' not found."));
+        return PartRoutine().MoveCameraToFiducialAsync(part, which == 2 ? 2 : 1, ct);
+    }
+
+    public Task<Result> MoveCameraToPartObjectAsync(string name, string objectName, bool applyOffset = true, CancellationToken ct = default)
+    {
+        var part = GetPartAlignment(name);
+        if (part == null)
+            return Task.FromResult(Result.Fail(ErrorCode.FileNotFound, $"Part alignment '{name}' not found."));
+        return PartRoutine().MoveCameraToObjectAsync(part, objectName, applyOffset, ct);
+    }
+
     public async Task<Result> JogCameraNeedleOffsetAsync(bool toNeedle, CancellationToken ct = default)
     {
         var cal = _cameraNeedle.Current;
@@ -2081,6 +2194,9 @@ public sealed class ProcessService : IProcessService
             MoveToolToCameraAsync,
             MoveToolToPoseAsync,
             MoveGrippedObjectToCameraAsync,
+            (n, c) => RunPartAlignmentAsync(n, null, c),
+            MoveCameraToPartFiducialAsync,
+            MoveCameraToPartObjectAsync,
             RunScriptByNameAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,

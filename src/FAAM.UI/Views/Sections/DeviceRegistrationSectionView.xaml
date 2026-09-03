@@ -102,10 +102,10 @@
                                   Checked="OnMoveArmed"
                                   ToolTip="Click the image to jog the camera device from the crosshair centre" />
                     <ToggleButton x:Name="PickToggle" Style="{StaticResource PickToggle}" Content="Pick points" Margin="6,0,0,0"
-                                  IsChecked="{Binding PickArmed, Mode=TwoWay}" Checked="OnPickArmed"
+                                  IsChecked="{Binding PickArmed, Mode=TwoWay}" Checked="OnPickArmed" Unchecked="OnPickDisarmed"
                                   ToolTip="Click the gripper in the image to add a registration point" />
                     <ToggleButton x:Name="OutlineToggle" Style="{StaticResource OutlineToggle}" Content="Pick outline" Margin="6,0,0,0"
-                                  IsChecked="{Binding PickOutlineArmed, Mode=TwoWay}" Checked="OnOutlineArmed"
+                                  IsChecked="{Binding PickOutlineArmed, Mode=TwoWay}" Checked="OnOutlineArmed" Unchecked="OnPickDisarmed"
                                   ToolTip="Click two opposite corners of the gripper body to set the outline box" />
                     <Border Background="{StaticResource Overlay}" CornerRadius="3" Padding="8,3" Margin="8,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="{Binding Camera.SelectedCamera}" Foreground="{StaticResource Accent}" FontSize="13" FontWeight="SemiBold" />
@@ -116,6 +116,9 @@
                         CornerRadius="3" Margin="6" Padding="8,3">
                     <TextBlock Text="{Binding LiveText}" Foreground="#FFA000" FontFamily="Consolas" FontSize="12" />
                 </Border>
+
+                <!-- Standard marker placement: yellow crosshair + Confirm / Cancel (topmost). -->
+                <v:MarkerPlacer x:Name="Placer" />
             </Grid>
         </Border>
 

@@ -40,6 +40,9 @@ internal sealed class WorkflowRunner
         Func<string, double, bool, double?, CancellationToken, Task<Result>> moveToolToCamera,
         Func<string, CancellationToken, Task<Result>> moveToolToPose,
         Func<string, double, bool, double?, CancellationToken, Task<Result>> moveObjectToCamera,
+        Func<string, CancellationToken, Task<Result<Registration.PartMeasurement>>> runPartAlignment,
+        Func<string, int, CancellationToken, Task<Result>> moveCameraToPartFiducial,
+        Func<string, string, bool, CancellationToken, Task<Result>> moveCameraToPartObject,
         Func<string, CancellationToken, Task<Result>> runScript,
         Func<IHillClimbFeedback?> hillClimbFeedback,
         Func<IUtilityAppHost?> utilityAppHost,
@@ -53,7 +56,7 @@ internal sealed class WorkflowRunner
         Action<WorkflowStepEvent> onStep,
         Action<LogLevel, string> log)
     {
-        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, runDispenseRoutine, runNeedleApproach, moveCameraToTool, moveToolToCamera, moveToolToPose, moveObjectToCamera, runScript, hillClimbFeedback, utilityAppHost, siphogSheetSink, signals, deviceLinks, log);
+        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, runDispenseRoutine, runNeedleApproach, moveCameraToTool, moveToolToCamera, moveToolToPose, moveObjectToCamera, runPartAlignment, moveCameraToPartFiducial, moveCameraToPartObject, runScript, hillClimbFeedback, utilityAppHost, siphogSheetSink, signals, deviceLinks, log);
         _loadProgram = loadProgram;
         _prompt = prompt;
         _setDutSerial = setDutSerial;

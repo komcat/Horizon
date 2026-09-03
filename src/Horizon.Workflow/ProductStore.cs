@@ -130,6 +130,7 @@ internal sealed class ProductStore
 
         CopyFile(Path.Combine(src, "positions.json"), Path.Combine(dst, "positions.json"));
         CopyFile(Path.Combine(src, "gripped_objects.json"), Path.Combine(dst, "gripped_objects.json"));
+        CopyFile(Path.Combine(src, "part_alignments.json"), Path.Combine(dst, "part_alignments.json"));
         foreach (var sub in new[] { "vision", "processes", "decks", "recipes", "dispense" })
             CopyDirectory(Path.Combine(src, sub), Path.Combine(dst, sub));
 

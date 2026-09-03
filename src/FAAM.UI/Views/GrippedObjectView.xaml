@@ -129,6 +129,9 @@
                         CornerRadius="3" Margin="6" Padding="8,3">
                     <TextBlock Text="{Binding LiveText}" Foreground="#B070FF" FontFamily="Consolas" FontSize="12" />
                 </Border>
+
+                <!-- Standard marker placement: yellow crosshair + Confirm / Cancel (topmost). -->
+                <v:MarkerPlacer x:Name="Placer" />
             </Grid>
         </Border>
 

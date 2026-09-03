@@ -28,12 +28,11 @@ public partial class ShellWindow : Window
     private readonly MachinePageView _machine;
     private readonly RunView _run;
     private readonly EngineerPageView _engineer;
-    private readonly VisionProfileView _visionProfile;
+    private readonly VisionAlignmentView _visionAlignment;
     private readonly ScriptEditorView _scriptEditor;
     private readonly CalibrationView _calibration;
     private readonly CameraNeedleCalibrationView _cameraNeedle;
     private readonly RepositoryView _repository;
-    private readonly GrippedObjectView _gripped;
 
     /// <summary>Camera pop-out windows this shell owns (auto-opened + restored).</summary>
     private readonly List<DisplayWindow> _cameraWindows = new();
@@ -46,13 +45,12 @@ public partial class ShellWindow : Window
         _machine = new MachinePageView { DataContext = _machineVm };
         _run = new RunView(host);
         _engineer = new EngineerPageView(host);
-        _visionProfile = new VisionProfileView(host);
+        _visionAlignment = new VisionAlignmentView(host);
         _scriptEditor = new ScriptEditorView(host);
         _calibration = new CalibrationView();
         _cameraNeedle = new CameraNeedleCalibrationView(host);
         _repository = new RepositoryView();
         _repository.Attach(host);
-        _gripped = new GrippedObjectView(host);
         InitializeComponent();
 
         RestoreMainWindowPlacement();
@@ -78,11 +76,10 @@ public partial class ShellWindow : Window
         _home.MachineRequested += ShowMachine;
         _home.RunRequested += ShowRun;
         _home.EngineerRequested += ShowEngineer;
-        _home.VisionProfileRequested += ShowVisionProfile;
+        _home.VisionAlignmentRequested += ShowVisionAlignment;
         _home.ScriptRequested += ShowScript;
         _home.CalibrationRequested += ShowCalibration;
         _home.RepositoryRequested += ShowRepository;
-        _home.GrippedRequested += ShowGripped;
         _calibration.CameraNeedleRequested += ShowCameraNeedle;
         _cameraNeedle.BackRequested += ShowCalibration;
 
@@ -183,16 +180,14 @@ public partial class ShellWindow : Window
             _machineVm.OnDeactivated();
         else if (ReferenceEquals(PageHost.Content, _engineer))
             _engineer.Deactivate();
-        else if (ReferenceEquals(PageHost.Content, _visionProfile))
-            _visionProfile.Deactivate();
+        else if (ReferenceEquals(PageHost.Content, _visionAlignment))
+            _visionAlignment.Deactivate();
         else if (ReferenceEquals(PageHost.Content, _scriptEditor))
             _scriptEditor.Deactivate();
         else if (ReferenceEquals(PageHost.Content, _cameraNeedle))
             _cameraNeedle.Deactivate();
         else if (ReferenceEquals(PageHost.Content, _repository))
             _repository.Deactivate();
-        else if (ReferenceEquals(PageHost.Content, _gripped))
-            _gripped.Deactivate();
     }
 
     /// <summary>
@@ -256,15 +251,15 @@ public partial class ShellWindow : Window
         PageHost.Content = _engineer;
     }
 
-    private void ShowVisionProfile()
+    private void ShowVisionAlignment()
     {
-        if (!Allow(AccessPolicy.VisionProfile, "Vision Profile")) return;
+        if (!Allow(AccessPolicy.VisionAlignment, "Vision Alignment")) return;
         LeaveCurrent();
-        Header1Text.Text = "VISION PROFILE";
+        Header1Text.Text = "VISION ALIGNMENT";
         EngineHeader.Visibility = Visibility.Collapsed;
         DutHeader.Visibility = Visibility.Collapsed;
-        _visionProfile.Activate();
-        PageHost.Content = _visionProfile;
+        _visionAlignment.Activate();
+        PageHost.Content = _visionAlignment;
     }
 
     private void ShowScript()
@@ -297,17 +292,6 @@ public partial class ShellWindow : Window
         DutHeader.Visibility = Visibility.Collapsed;
         _repository.Activate();
         PageHost.Content = _repository;
-    }
-
-    private void ShowGripped()
-    {
-        if (!Allow(AccessPolicy.GrippedObject, "Gripped FAU")) return;
-        LeaveCurrent();
-        Header1Text.Text = "GRIPPED FAU";
-        EngineHeader.Visibility = Visibility.Collapsed;
-        DutHeader.Visibility = Visibility.Collapsed;
-        _gripped.Activate();
-        PageHost.Content = _gripped;
     }
 
     private void ShowCameraNeedle()
@@ -586,12 +570,11 @@ public partial class ShellWindow : Window
             ReferenceEquals(PageHost.Content, _run) ? (AccessLevel?)AccessPolicy.Run :
             ReferenceEquals(PageHost.Content, _machine) ? AccessPolicy.Machine :
             ReferenceEquals(PageHost.Content, _engineer) ? AccessPolicy.Engineer :
-            ReferenceEquals(PageHost.Content, _visionProfile) ? AccessPolicy.VisionProfile :
+            ReferenceEquals(PageHost.Content, _visionAlignment) ? AccessPolicy.VisionAlignment :
             ReferenceEquals(PageHost.Content, _scriptEditor) ? AccessPolicy.Script :
             ReferenceEquals(PageHost.Content, _calibration) ? AccessPolicy.Calibration :
             ReferenceEquals(PageHost.Content, _cameraNeedle) ? AccessPolicy.Calibration :
             ReferenceEquals(PageHost.Content, _repository) ? AccessPolicy.Repository :
-            ReferenceEquals(PageHost.Content, _gripped) ? AccessPolicy.GrippedObject :
             null;
 
         if (required != null && !_host.Session.Has(required.Value))
@@ -642,12 +625,12 @@ public partial class ShellWindow : Window
         _host.Engine.Safety.SafetyTripped -= OnSafetyTripped;
         _host.Engine.Safety.SafetyCleared -= OnSafetyCleared;
         // Stop every page-owned poller before the engine tears down: whichever page is
-        // showing (LeaveCurrent), plus the Run + Gripped pages explicitly (idempotent) —
+        // showing (LeaveCurrent), plus the Run + Vision Alignment pages explicitly (idempotent) —
         // their overlay / refresh timers would otherwise keep touching the facets on the UI
         // thread after they are nulled and throw "Engine is not initialized" mid-shutdown.
         LeaveCurrent();
         _run.Deactivate();
-        _gripped.Deactivate();
+        _visionAlignment.Deactivate();
         _machineVm.Dispose();      // stop the status sampler + detach UI hooks
         JogPanelControl.Stop();    // stop the jog-panel position poll
 

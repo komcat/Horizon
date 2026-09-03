@@ -1,0 +1,35 @@
+<UserControl x:Class="FAAM.UI.Views.MarkerPlacer"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             HorizontalAlignment="Center" VerticalAlignment="Center"
+             Visibility="Collapsed">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="MarkYellow" Color="#FFD500" />
+    </UserControl.Resources>
+    <!-- Sized to the feed's display box by the owner (see Attach). The canvas has no
+         background and every drawn piece is IsHitTestVisible=False, so clicks fall through to
+         the feed (which drops / moves the crosshair); only the two buttons take the mouse.
+         (A parent with IsHitTestVisible=False would swallow the buttons too.) -->
+    <Canvas x:Name="Surface" ClipToBounds="True">
+        <!-- Prompt badge (top-right) -->
+        <Border x:Name="Badge" Background="#B0000000" CornerRadius="3" Padding="8,3" Canvas.Top="6" IsHitTestVisible="False">
+            <TextBlock x:Name="BadgeText" Foreground="{StaticResource MarkYellow}" FontSize="12.5" FontWeight="SemiBold" />
+        </Border>
+
+        <!-- Yellow crosshair: long thin arms + a small open centre so the exact pixel stays visible. -->
+        <Line x:Name="ArmL" Stroke="{StaticResource MarkYellow}" StrokeThickness="1.5" Visibility="Collapsed" IsHitTestVisible="False" />
+        <Line x:Name="ArmR" Stroke="{StaticResource MarkYellow}" StrokeThickness="1.5" Visibility="Collapsed" IsHitTestVisible="False" />
+        <Line x:Name="ArmT" Stroke="{StaticResource MarkYellow}" StrokeThickness="1.5" Visibility="Collapsed" IsHitTestVisible="False" />
+        <Line x:Name="ArmB" Stroke="{StaticResource MarkYellow}" StrokeThickness="1.5" Visibility="Collapsed" IsHitTestVisible="False" />
+        <Ellipse x:Name="Ring" Width="14" Height="14" Stroke="{StaticResource MarkYellow}" StrokeThickness="1.5" Visibility="Collapsed" IsHitTestVisible="False" />
+
+        <!-- Confirm / Cancel, floated beside the crosshair. Hit-testable. -->
+        <StackPanel x:Name="Buttons" Orientation="Horizontal" Visibility="Collapsed">
+            <Button x:Name="ConfirmButton" Content="✓ Confirm" Height="26" Padding="10,0" FontWeight="SemiBold"
+                    Background="{StaticResource MarkYellow}" Foreground="Black" BorderThickness="0" Cursor="Hand" Click="OnConfirm" />
+            <Button x:Name="CancelButton" Content="✕" Height="26" Width="30" Margin="4,0,0,0"
+                    Background="#E0303030" Foreground="White" BorderThickness="0" Cursor="Hand" Click="OnCancel"
+                    ToolTip="Discard this placement (the mark stays armed — click again)" />
+        </StackPanel>
+    </Canvas>
+</UserControl>

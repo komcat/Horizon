@@ -32,7 +32,7 @@ the hardware adapters or the legacy `Core`/`Process` stack.
 - **Sign-in gate** — nothing in the shell works until an operator signs in with
   **level + employee number + level password**. Screens are gated by ranked
   `AccessLevel` through `AccessPolicy` (Operator: Run · Technician: + Machine, Vision
-  Profile · Engineer: + Engineer, Repository, Script, Calibration · Admin: + the
+  Alignment · Engineer: + Engineer, Repository, Script, Calibration, the Gripped FAU tab · Admin: + the
   Settings section). The jog rail locks with the station, except **STOP**, which stays
   live at every level. See `docs/product-and-traceability-design.md`.
 - **Run** — the production page:

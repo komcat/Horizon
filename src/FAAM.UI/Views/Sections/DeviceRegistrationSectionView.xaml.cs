@@ -42,6 +42,8 @@ public partial class DeviceRegistrationSectionView : UserControl
         PointOverlay.Children.Add(_avgV);
         DataContextChanged += OnDataContextChanged;
         MainImage.SizeChanged += (_, _) => RedrawPoints();
+        Placer.Attach(MainImage);
+        Placer.Confirmed += OnPlacementConfirmed;
         Unloaded += (_, _) => Bind(null);
         Loaded += (_, _) => Bind(DataContext as DeviceRegistrationSectionViewModel);
     }
@@ -80,10 +82,19 @@ public partial class DeviceRegistrationSectionView : UserControl
             ToolOverlay.Camera = _vm.Camera.SelectedCamera;
     }
 
-    // The feed click modes are exclusive: arming one disarms the others.
-    private void OnMoveArmed(object sender, RoutedEventArgs e) { PickToggle.IsChecked = false; OutlineToggle.IsChecked = false; }
-    private void OnPickArmed(object sender, RoutedEventArgs e) { MoveToggle.IsChecked = false; OutlineToggle.IsChecked = false; }
-    private void OnOutlineArmed(object sender, RoutedEventArgs e) { MoveToggle.IsChecked = false; PickToggle.IsChecked = false; }
+    // The feed click modes are exclusive: arming one disarms the others. Point / outline
+    // picks go through the marker placer (click → crosshair → Confirm).
+    private void OnMoveArmed(object sender, RoutedEventArgs e) { PickToggle.IsChecked = false; OutlineToggle.IsChecked = false; SyncPlacer(); }
+    private void OnPickArmed(object sender, RoutedEventArgs e) { MoveToggle.IsChecked = false; OutlineToggle.IsChecked = false; SyncPlacer(); }
+    private void OnOutlineArmed(object sender, RoutedEventArgs e) { MoveToggle.IsChecked = false; PickToggle.IsChecked = false; SyncPlacer(); }
+    private void OnPickDisarmed(object sender, RoutedEventArgs e) => SyncPlacer();
+
+    private void SyncPlacer()
+    {
+        if (PickToggle.IsChecked == true) Placer.Arm("centre point");
+        else if (OutlineToggle.IsChecked == true) Placer.Arm("outline corner");
+        else Placer.Disarm();
+    }
 
     private async void OnFeedClick(object sender, MouseButtonEventArgs e)
     {
@@ -94,15 +105,7 @@ public partial class DeviceRegistrationSectionView : UserControl
 
         if (PickToggle.IsChecked == true || OutlineToggle.IsChecked == true)
         {
-            double scale = MoveClick.DisplayScale(availW, availH, bmp.PixelWidth, bmp.PixelHeight, cover: false);
-            if (scale <= 0) return;
-            var (dx, dy) = ToolOverlayMath.FromDisplay(p, availW, availH, scale);
-            double sx = bmp.PixelWidth / 2.0 + dx, sy = bmp.PixelHeight / 2.0 + dy;
-            if (PickToggle.IsChecked == true)
-                await _vm.AddPointAsync(sx, sy, bmp.PixelWidth, bmp.PixelHeight);
-            else
-                await _vm.AddOutlineCornerAsync(sx, sy, bmp.PixelWidth, bmp.PixelHeight);
-            RedrawPoints();
+            Placer.Place(p);   // committed on Confirm (OnPlacementConfirmed)
             return;
         }
 
@@ -115,6 +118,22 @@ public partial class DeviceRegistrationSectionView : UserControl
             await MoveClick.JogAsync(host, meas, msg =>
                 host.Log.Add(new LogEntry(LogLevel.Info, DateTimeOffset.Now, "Registration", msg)));
         }
+    }
+
+    private async void OnPlacementConfirmed(Point p)
+    {
+        if (_vm == null || MainImage.Source is not BitmapSource bmp) return;
+        double availW = MainImage.ActualWidth, availH = MainImage.ActualHeight;
+        double scale = MoveClick.DisplayScale(availW, availH, bmp.PixelWidth, bmp.PixelHeight, cover: false);
+        if (scale <= 0) return;
+        var (dx, dy) = ToolOverlayMath.FromDisplay(p, availW, availH, scale);
+        double sx = bmp.PixelWidth / 2.0 + dx, sy = bmp.PixelHeight / 2.0 + dy;
+        if (PickToggle.IsChecked == true)
+            await _vm.AddPointAsync(sx, sy, bmp.PixelWidth, bmp.PixelHeight);
+        else if (OutlineToggle.IsChecked == true)
+            await _vm.AddOutlineCornerAsync(sx, sy, bmp.PixelWidth, bmp.PixelHeight);
+        RedrawPoints();
+        SyncPlacer();   // the model disarms the toggle when the set is complete
     }
 
     /// <summary>
