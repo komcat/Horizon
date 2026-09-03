@@ -119,6 +119,13 @@ public partial class RunView : UserControl
         // Let siphog.updateSheet workflow steps write a staged SAG-PWR measurement to the
         // SiPhOG server's Google Sheet (V11 UPDATE_SAG) over that same client/connection.
         host.Process.SetSiphogSheetSink(new SiphogSheetSink(siphog));
+
+        // Device-registration overlays: the registered gripper's live centre + outline on the
+        // main feed and on the Zoom2× inset (both centred on the same point, so one maths).
+        ToolOverlay.Attach(host, MainImage, FeedCover);
+        ZoomToolOverlay.Attach(host, ZoomImage, cover: false);
+        ToolOverlay.Camera = _mainCamera;
+        ZoomToolOverlay.Camera = _mainCamera;
     }
 
     /// <summary>Starts the process timer — called by the shell header when a DUT run begins.</summary>
@@ -182,6 +189,9 @@ public partial class RunView : UserControl
             _host.Log.Appended += OnLogAppended;
             _logSubscribed = true;
         }
+
+        ToolOverlay.SetActive(true);
+        ZoomToolOverlay.SetActive(true);
     }
 
     /// <summary>
@@ -209,6 +219,9 @@ public partial class RunView : UserControl
             _host.Log.Appended -= OnLogAppended;
             _logSubscribed = false;
         }
+
+        ToolOverlay.SetActive(false);
+        ZoomToolOverlay.SetActive(false);
 
         _active = false;
     }
@@ -554,6 +567,8 @@ public partial class RunView : UserControl
         _zoomBitmap = null;
         ZoomImage.Source = null;
         RoiBox.Visibility = Visibility.Collapsed;
+        ToolOverlay.Camera = camera;       // only tools registered against the shown camera draw
+        ZoomToolOverlay.Camera = camera;
 
         BuildThumbnails();   // rebuild the strip without the new main
         Log($"Main camera → {camera}");

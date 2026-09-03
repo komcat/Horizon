@@ -5,6 +5,7 @@ using Horizon.Workflow.Dispensing;
 using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Recipe;
+using Horizon.Workflow.Registration;
 using Horizon.Workflow.Scripting;
 using Horizon.Workflow.Signals;
 using Horizon.Workflow.UCorrection;
@@ -32,6 +33,7 @@ public sealed class ProcessService : IProcessService
     private readonly ProgramHistoryDb _history = new();   // machine-global audit store (history.db)
     private readonly DeviceLinkStore _deviceLinks = new();   // machine-global, not per-product
     private readonly CameraNeedleCalibrationStore _cameraNeedle = new();   // machine-global camera->needle calibration
+    private readonly ToolRegistrationStore _toolRegistrations = new();   // machine-global tool (gripper) <-> camera registrations
     private readonly AppSettingsStore _appSettings = new();   // machine-global app_settings.json (read-only here)
     private PauseController? _pause;     // non-null only while a program runs
     private OperatorContext? _operator;  // current operator, stamped onto DUT runs
@@ -908,6 +910,9 @@ public sealed class ProcessService : IProcessService
             RunVisionProfileByNameAsync,
             RunDispenseRoutineAsync,
             RunNeedleApproachAsync,
+            MoveCameraToToolAsync,
+            MoveToolToCameraAsync,
+            MoveToolToPoseAsync,
             RunScriptByNameAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,
@@ -1523,6 +1528,88 @@ public sealed class ProcessService : IProcessService
         }
     }
 
+    // --- Device registration: tool (gripper) <-> camera ---
+
+    public event Action? ToolRegistrationsChanged;
+
+    public IReadOnlyList<ToolRegistration> GetToolRegistrations() => _toolRegistrations.All;
+
+    public ToolRegistration? GetToolRegistration(string toolDevice)
+        => string.IsNullOrWhiteSpace(toolDevice) ? null : _toolRegistrations.Get(toolDevice);
+
+    public Result SaveToolRegistration(ToolRegistration registration)
+    {
+        if (registration == null || string.IsNullOrWhiteSpace(registration.ToolDevice))
+            return Result.Fail(ErrorCode.InvalidParameter, "A tool registration needs a tool device.");
+        if (string.IsNullOrWhiteSpace(registration.CameraDevice))
+            return Result.Fail(ErrorCode.InvalidParameter, "A tool registration needs a camera device.");
+        if (registration.ToolPose == null)
+            return Result.Fail(ErrorCode.InvalidParameter, "A tool registration needs the tool pose (capture it first).");
+        if (!registration.MapX.IsValid || !registration.MapY.IsValid
+            || string.Equals(registration.MapX.ToolAxis, registration.MapY.ToolAxis, StringComparison.OrdinalIgnoreCase))
+            return Result.Fail(ErrorCode.InvalidParameter, "Axis map must name two different tool axes (X..W) with sign ±1.");
+        if (registration.CameraZ != null && !registration.MapZ.IsValid)
+            return Result.Fail(ErrorCode.InvalidParameter, "The Z axis map must name a tool axis (X..W) with sign ±1.");
+        if (registration.OutlineWidthMm <= 0 || registration.OutlineLengthMm <= 0)
+            return Result.Fail(ErrorCode.InvalidParameter, "Outline width and length must be positive.");
+        if (registration.MaxMoveMm <= 0)
+            return Result.Fail(ErrorCode.InvalidParameter, "Max move bound must be positive.");
+
+        _toolRegistrations.Update(registration with
+        {
+            SavedBy = _operator?.DisplayName,
+            SavedAt = DateTimeOffset.Now.ToString("o"),
+        });
+        Log(LogLevel.Info,
+            $"Device registration saved: {registration.Label} on '{registration.ToolDevice}' seen by '{registration.CameraDevice}'/{registration.CameraId} " +
+            $"at ({registration.ToolX:F4}, {registration.ToolY:F4}) mm from {registration.Points.Length} point(s); " +
+            $"outline {registration.OutlineWidthMm:F2} × {registration.OutlineLengthMm:F2} mm; " +
+            $"camera X ← tool {registration.MapX.ToolAxis} × {registration.MapX.Sign:+0;-0}, camera Y ← tool {registration.MapY.ToolAxis} × {registration.MapY.Sign:+0;-0}.");
+        ToolRegistrationsChanged?.Invoke();
+        return Result.Ok();
+    }
+
+    public Result RemoveToolRegistration(string toolDevice)
+    {
+        if (!_toolRegistrations.Remove(toolDevice))
+            return Result.Fail(ErrorCode.FileNotFound, $"'{toolDevice}' has no registration.");
+        Log(LogLevel.Info, $"Device registration removed: '{toolDevice}'.");
+        ToolRegistrationsChanged?.Invoke();
+        return Result.Ok();
+    }
+
+    public Result<ToolLocation> LocateTool(string toolDevice)
+    {
+        var reg = GetToolRegistration(toolDevice);
+        if (reg == null)
+            return Result<ToolLocation>.Fail(ErrorCode.FileNotFound, $"'{toolDevice}' is not registered.");
+        return new ToolRegistrationRoutine(_engine, Log).Locate(reg);
+    }
+
+    public Task<Result> MoveCameraToToolAsync(string toolDevice, double maxDistanceMm = 0, bool includeZ = false, CancellationToken ct = default)
+    {
+        var reg = GetToolRegistration(toolDevice);
+        if (reg == null)
+            return Task.FromResult(Result.Fail(ErrorCode.FileNotFound, $"'{toolDevice}' is not registered — register it on the Machine page first."));
+        return new ToolRegistrationRoutine(_engine, Log).MoveCameraToToolAsync(reg, maxDistanceMm, includeZ, ct);
+    }
+
+    public Task<Result> MoveToolToCameraAsync(string toolDevice, double maxDistanceMm = 0, bool includeZ = false, double? zOffsetMm = null, CancellationToken ct = default)
+    {
+        var reg = GetToolRegistration(toolDevice);
+        if (reg == null)
+            return Task.FromResult(Result.Fail(ErrorCode.FileNotFound, $"'{toolDevice}' is not registered — register it on the Machine page first."));
+        return new ToolRegistrationRoutine(_engine, Log).MoveToolToCameraAsync(reg, maxDistanceMm, includeZ, zOffsetMm, ct);
+    }
+
+    public Task<Result> MoveToolToPoseAsync(string toolDevice, CancellationToken ct = default)
+    {
+        var reg = GetToolRegistration(toolDevice);
+        if (reg == null)
+            return Task.FromResult(Result.Fail(ErrorCode.FileNotFound, $"'{toolDevice}' is not registered — register it on the Machine page first."));
+        return new ToolRegistrationRoutine(_engine, Log).MoveToolToPoseAsync(reg, ct);
+    }
+
     public async Task<Result> JogCameraNeedleOffsetAsync(bool toNeedle, CancellationToken ct = default)
     {
         var cal = _cameraNeedle.Current;
@@ -1915,6 +2002,9 @@ public sealed class ProcessService : IProcessService
             RunVisionProfileByNameAsync,
             RunDispenseRoutineAsync,
             RunNeedleApproachAsync,
+            MoveCameraToToolAsync,
+            MoveToolToCameraAsync,
+            MoveToolToPoseAsync,
             RunScriptByNameAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,

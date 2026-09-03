@@ -60,6 +60,19 @@ public partial class DisplayWindow : Window
         // Mirror the alignment capture/confirm prompt only on the main-camera window.
         if (string.Equals(SelectedCamera, MainCameraId, StringComparison.OrdinalIgnoreCase))
             host.CapturePrompts.Add(PopoutPrompt);
+
+        // Device-registration overlay follows whichever camera this window shows.
+        ToolOverlay.Attach(host, MainImage, cover: false);
+        ToolOverlay.Camera = SelectedCamera;
+        ToolOverlay.SetActive(true);
+        if (DataContext is CameraSectionViewModel vm)
+            vm.PropertyChanged += OnCameraVmPropertyChanged;
+    }
+
+    private void OnCameraVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CameraSectionViewModel.SelectedCamera))
+            ToolOverlay.Camera = SelectedCamera;
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -70,6 +83,10 @@ public partial class DisplayWindow : Window
             host.Session.Changed -= ApplyAccess;
             host.CapturePrompts.Remove(PopoutPrompt);   // no-op if never registered
         }
+        if (DataContext is CameraSectionViewModel vm)
+            vm.PropertyChanged -= OnCameraVmPropertyChanged;
+        ToolOverlay.SetActive(false);
+        ToolOverlay.Detach();
         _detectionTimer?.Stop();
     }
 

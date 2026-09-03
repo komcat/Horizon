@@ -113,6 +113,10 @@
                                   Visibility="Collapsed" />
                         </Canvas>
 
+                        <!-- Device-registration overlay: live gripper centre + outline (or an edge
+                             marker + arrow + distance when it is out of frame). -->
+                        <v:ToolOverlayView x:Name="ToolOverlay" />
+
                         <!-- Cursor crosshair — follows the mouse while MoveClick is armed. -->
                         <Grid x:Name="MainCursor" Width="20" Height="20" IsHitTestVisible="False"
                               HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
@@ -174,6 +178,9 @@
                                        Style="{StaticResource CrosshairLine}" />
                             <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center"
                                        Style="{StaticResource CrosshairLine}" />
+
+                            <!-- Same registration overlay on the zoom inset (its source is the centre ROI). -->
+                            <v:ToolOverlayView x:Name="ZoomToolOverlay" />
 
                             <!-- Cursor crosshair — follows the mouse while MoveClick is armed. -->
                             <Grid x:Name="ZoomCursor" Width="20" Height="20" IsHitTestVisible="False"

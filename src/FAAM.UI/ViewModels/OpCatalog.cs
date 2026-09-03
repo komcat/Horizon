@@ -208,6 +208,33 @@ public static class OpCatalog
                 new ParamSpec("velocity", "Approach velocity (mm/s)", ParamKind.Number, "1"),
             }),
 
+        // ---- Tool (device registration: gripper <-> camera) ----
+        // Both use the machine-global registration saved on the Machine page's Registration
+        // section. 'tool' is the registered tool device (hex-right = the gripper). 'maxDistance'
+        // (mm) bounds the single move — a longer one is REFUSED, never clamped; 0 = the
+        // registration's own bound (10 mm by default). Device-less: the registration names
+        // the camera device (gantry-main) and the tool device.
+        // 'includeZ' also drives Z (camera to the captured focus height / tool to the camera's
+        // focus plane); on by default — needs a focus Z captured on the registration, else the step fails.
+        new("tool.cameraToTool", "Camera to Tool", "Tool", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("tool", "Tool device", ParamKind.MotionDeviceName, "hex-right"),
+                new ParamSpec("maxDistance", "Max move (mm, 0 = registration bound)", ParamKind.Number, "10"),
+                new ParamSpec("includeZ", "Include Z (to focus height)", ParamKind.Bool, "true"),
+            }),
+        new("tool.toolToCamera", "Tool to Camera", "Tool", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("tool", "Tool device", ParamKind.MotionDeviceName, "hex-right"),
+                new ParamSpec("maxDistance", "Max move (mm, 0 = registration bound)", ParamKind.Number, "10"),
+                new ParamSpec("includeZ", "Include Z (to focus plane)", ParamKind.Bool, "true"),
+                new ParamSpec("zOffset", "Z offset (mm, blank = registration's; − = higher)", ParamKind.Text),
+            }),
+        // Sends the tool device back to the pose captured in its registration (all axes).
+        new("tool.toPose", "Tool to Pose", "Tool", DeviceKind.None,
+            new[] { new ParamSpec("tool", "Tool device", ParamKind.MotionDeviceName, "hex-right") }),
+
         // ---- Scan ----
         // XY raster over a lattice about the start position: visits EVERY node and
         // returns the device to the best one (no hill-climbing, so it maps the whole

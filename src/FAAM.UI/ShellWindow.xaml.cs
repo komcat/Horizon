@@ -628,6 +628,13 @@ public partial class ShellWindow : Window
         _machineVm.Dispose();      // stop the status sampler + detach UI hooks
         JogPanelControl.Stop();    // stop the jog-panel position poll
 
+        // Close the camera pop-outs *before* teardown starts. They are separate top
+        // levels, so hiding this window leaves them up — and their tool-overlay /
+        // detection timers keep polling the engine on the UI thread while the facets
+        // are being nulled, which throws mid-shutdown and stalls the exit.
+        foreach (var win in Application.Current.Windows.OfType<DisplayWindow>().ToList())
+            win.Close();
+
         // Hand off to the shutdown screen — it runs the ordered teardown with
         // progress, then calls Application.Shutdown(). This window stays alive
         // but hidden so the process stays up until teardown completes.

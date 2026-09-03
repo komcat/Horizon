@@ -1,4 +1,5 @@
 using System.Text;
+using System.Threading;
 using System.Windows;
 
 namespace FAAM.UI;
@@ -40,8 +41,25 @@ public partial class ShutdownWindow : Window
 
         // Brief pause so the operator sees the final state before the window goes.
         await Task.Delay(600);
+
+        // Last-resort exit: if something keeps the dispatcher alive past this point
+        // (a stray window, a modal error box, a handler that throws during close),
+        // end the process anyway so the operator is never left staring at a
+        // finished shutdown screen. Hardware is already disconnected by now.
+        var watchdog = new Thread(() =>
+        {
+            Thread.Sleep(ExitWatchdogMs);
+            Serilog.Log.CloseAndFlush();
+            Environment.Exit(0);
+        })
+        { IsBackground = true, Name = "FAAM exit watchdog" };
+        watchdog.Start();
+
         Application.Current.Shutdown();
     }
+
+    /// <summary>How long after Application.Shutdown() the process is force-ended.</summary>
+    private const int ExitWatchdogMs = 5000;
 
     private void AppendLine(string line)
     {

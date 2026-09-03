@@ -26,7 +26,9 @@ the hardware adapters or the legacy `Core`/`Process` stack.
 - **Home** — launcher tiles (RUN / Machine).
 - **Machine** — the Horizon.UI Machine page ported wholesale (section rail:
   Status, Motion, IO, Pneumatic, Laser, TEC, Power supply, Measurement, SMU,
-  Camera, **Settings**). Engine status + Reconnect live in the shell top bar.
+  Camera, **Registration** (Engineer), **Settings** (Admin)). Engine status + Reconnect
+  live in the shell top bar. Registration registers the hex-right gripper to the
+  gantry camera — see `docs/device-registration-design.md`.
 - **Sign-in gate** — nothing in the shell works until an operator signs in with
   **level + employee number + level password**. Screens are gated by ranked
   `AccessLevel` through `AccessPolicy` (Operator: Run · Technician: + Machine, Vision

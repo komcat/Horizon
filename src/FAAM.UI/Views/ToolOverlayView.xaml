@@ -1,0 +1,9 @@
+<UserControl x:Class="FAAM.UI.Views.ToolOverlayView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             IsHitTestVisible="False"
+             HorizontalAlignment="Center" VerticalAlignment="Center">
+    <!-- Sized to the feed's display box at draw time (see Redraw), so canvas coordinates
+         line up with the drawn pixels exactly like the detection-line overlay. -->
+    <Canvas x:Name="Surface" ClipToBounds="True" />
+</UserControl>

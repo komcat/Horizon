@@ -5,6 +5,7 @@ using Horizon.Workflow.Dispensing;
 using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.HillClimb;
 using Horizon.Workflow.Recipe;
+using Horizon.Workflow.Registration;
 using Horizon.Workflow.Scripting;
 using Horizon.Workflow.Signals;
 using Horizon.Workflow.UCorrection;
@@ -378,6 +379,54 @@ public interface IProcessService
     /// Aborting retracts the head.
     /// </summary>
     Task<Result> RunNeedleApproachAsync(double approachDistanceMm, double velocity, CancellationToken ct = default);
+
+    // --- Device registration (machine-global): a tool on one motion device registered to the
+    //     camera on another, so either can be sent to the other. See docs/device-registration-design.md.
+
+    /// <summary>Every saved tool registration (empty until the first is saved).</summary>
+    IReadOnlyList<ToolRegistration> GetToolRegistrations();
+
+    /// <summary>The registration for a tool device, or null if it has not been registered.</summary>
+    ToolRegistration? GetToolRegistration(string toolDevice);
+
+    /// <summary>
+    /// Adds or replaces a tool registration and persists it (machine-global). The operator
+    /// stamp is applied here. Raises <see cref="ToolRegistrationsChanged"/>.
+    /// </summary>
+    Result SaveToolRegistration(ToolRegistration registration);
+
+    /// <summary>Deletes a tool device's registration. Raises <see cref="ToolRegistrationsChanged"/>.</summary>
+    Result RemoveToolRegistration(string toolDevice);
+
+    /// <summary>Raised after a registration is saved or removed (any thread).</summary>
+    event Action? ToolRegistrationsChanged;
+
+    /// <summary>
+    /// Where a registered tool is right now in its camera device's frame, from the engine's
+    /// cached motion states — non-blocking, any thread; drives the live camera overlay.
+    /// Fails when the tool is unregistered or a device has no valid state yet.
+    /// </summary>
+    Result<ToolLocation> LocateTool(string toolDevice);
+
+    /// <summary>
+    /// Moves the camera device so the camera is centred on the registered tool (camera device
+    /// XY; with <paramref name="includeZ"/> also to the captured focus height). Refused — not
+    /// clamped — when the required travel exceeds <paramref name="maxDistanceMm"/> (0 = the
+    /// registration's own bound, default 10 mm).
+    /// </summary>
+    Task<Result> MoveCameraToToolAsync(string toolDevice, double maxDistanceMm = 0, bool includeZ = false, CancellationToken ct = default);
+
+    /// <summary>
+    /// Moves the tool device so the tool sits where the camera is centred (the mapped tool
+    /// axes only; with <paramref name="includeZ"/> also the Z-mapped axis so the tool reaches the
+    /// camera's focus plane plus <paramref name="zOffsetMm"/> — null = the registration's stored
+    /// offset; negative = higher on the gantry's Z convention). Same bound rule as
+    /// <see cref="MoveCameraToToolAsync"/>, which itself always goes to the taught focus height.
+    /// </summary>
+    Task<Result> MoveToolToCameraAsync(string toolDevice, double maxDistanceMm = 0, bool includeZ = false, double? zOffsetMm = null, CancellationToken ct = default);
+
+    /// <summary>Moves the tool device back to the pose captured in its registration (all axes, one coordinated move).</summary>
+    Task<Result> MoveToolToPoseAsync(string toolDevice, CancellationToken ct = default);
 
     // --- Recipes (.hrec scripts, operate on the active product) ---
 

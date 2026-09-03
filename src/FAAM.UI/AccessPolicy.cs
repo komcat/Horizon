@@ -40,6 +40,12 @@ public static class AccessPolicy
     public const AccessLevel Calibration = AccessLevel.Engineer;
 
     /// <summary>
+    /// The Machine page's Device Registration section (tool ↔ camera). Like calibration it
+    /// rewrites a machine-global offset that camera→tool / tool→camera moves depend on.
+    /// </summary>
+    public const AccessLevel Registration = AccessLevel.Engineer;
+
+    /// <summary>
     /// The Machine page's Settings section — machine identity, the user directory and
     /// the level passwords. Admin only: this is the screen that grants access.
     /// </summary>

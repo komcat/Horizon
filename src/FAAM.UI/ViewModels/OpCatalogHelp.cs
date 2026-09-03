@@ -122,6 +122,42 @@ public static class OpCatalogHelp
 
         // ===== Flow — script =====
 
+        // ===== Tool — device registration (gripper <-> camera) =====
+        // Both blocks read the machine-global registration saved on the Machine page's
+        // Registration section (Engineer level). See docs/device-registration-design.md.
+
+        ["tool.cameraToTool"] = new()
+        {
+            Summary = "Move the camera device (gantry-main) so the camera is centred on a registered tool — the hex-right gripper. XY, plus Z to the focus height when 'includeZ' is on.",
+            Usage = "Needs a saved registration for the tool device (Machine › Registration). The step reads both devices live, works out where the gripper is in the gantry's frame from the hexapod's current pose, and issues ONE coordinated XY move. It is bounded: if the required travel is longer than 'maxDistance' (or the registration's own bound), the step FAILS rather than moving part-way — use it after a Move to Position that already brings the camera near the gripper.",
+            ParamNotes = new[]
+            {
+                ("tool", "The registered tool device (hex-right = the gripper)."),
+                ("maxDistance", "Hard bound in mm on this move; longer is refused. 0 = the registration's bound (10 mm by default)."),
+                ("includeZ", "Also move the camera Z to the captured focus height (the bound then covers XYZ). Needs a focus Z captured on the Registration section; fails otherwise."),
+            },
+        },
+
+        ["tool.toolToCamera"] = new()
+        {
+            Summary = "Move the tool device (hex-right) so the gripper sits where the camera is centred. The hexapod axes mapped to camera X/Y move (and the Z-mapped axis when 'includeZ' is on).",
+            Usage = "The mirror of Camera to Tool: the camera stays put and the gripper comes to it. Same registration, same bound rule — a required travel beyond 'maxDistance' fails the step. Without 'includeZ' the hexapod's other axes are untouched, so height / rotation are the program's job before and after.",
+            ParamNotes = new[]
+            {
+                ("tool", "The registered tool device (hex-right = the gripper)."),
+                ("maxDistance", "Hard bound in mm on this move; longer is refused. 0 = the registration's bound (10 mm by default)."),
+                ("includeZ", "Also move the Z-mapped hexapod axis so the gripper reaches the camera's current focus plane (plus zOffset). Needs a captured focus Z; fails otherwise."),
+                ("zOffset", "Z offset (mm, camera-device frame) added to the focus plane when Z is included. Negative = higher on the gantry's Z convention (−1 keeps the gripper 1 mm above focus). Blank = the offset stored on the registration."),
+            },
+        },
+
+        ["tool.toPose"] = new()
+        {
+            Summary = "Send the tool device (hex-right) back to the pose captured in its registration — all six axes in one coordinated move.",
+            Usage = "A known-good parking spot for the gripper: the pose it stood at when it was registered. Not bounded (the registration pose is a taught, reachable location) — make sure the path is clear, as with any Move to Position.",
+            ParamNotes = new[] { ("tool", "The registered tool device (hex-right = the gripper).") },
+        },
+
         ["script.run"] = new()
         {
             Summary = "Run a saved .moon script from this product, to completion, as one step in the sequence.",

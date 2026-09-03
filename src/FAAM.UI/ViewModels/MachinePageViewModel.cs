@@ -47,6 +47,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         PowerSupply = new PowerSupplySectionViewModel(host);
         Camera = new CameraSectionViewModel(host);
         Settings = new SettingsSectionViewModel(host);
+        Registration = new DeviceRegistrationSectionViewModel(host);
         _currentSection = Status;
         Sections = new ObservableCollection<object>();
         RebuildSections();
@@ -89,6 +90,8 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
                  })
             Sections.Add(section);
 
+        if (_host.Session.Has(AccessPolicy.Registration))
+            Sections.Add(Registration);
         if (_host.Session.Has(AccessPolicy.Settings))
             Sections.Add(Settings);
 
@@ -127,6 +130,9 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     /// <summary>The Settings section — application settings (mm/pixel, MoveClick mapping).</summary>
     public SettingsSectionViewModel Settings { get; }
+
+    /// <summary>The Device Registration section — registers the gripper (hex-right) to the gantry camera. Engineer-only.</summary>
+    public DeviceRegistrationSectionViewModel Registration { get; }
 
     /// <summary>Engine + workflow log lines, oldest first, capped at <see cref="MaxLogLines"/>.</summary>
     public ObservableCollection<LogLineViewModel> Log { get; } = new();
@@ -175,7 +181,11 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
     /// nothing from any other section or page.
     /// </summary>
     private void UpdateCameraActive()
-        => Camera.SetActive(_pageActive && ReferenceEquals(_currentSection, Camera));
+    {
+        Camera.SetActive(_pageActive && ReferenceEquals(_currentSection, Camera));
+        // Same rule for the registration feed — it holds its own grab lease only while shown.
+        Registration.SetActive(_pageActive && ReferenceEquals(_currentSection, Registration));
+    }
 
     private void OnTick()
     {
@@ -193,6 +203,8 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         _ = Tec.RefreshAsync();
         _ = PowerSupply.RefreshAsync();
         Camera.Refresh();
+        if (ReferenceEquals(_currentSection, Registration))
+            Registration.Refresh();   // live tool read-out + point-marker redraw, only while shown
 
         // GetStatusSnapshot() reads each device's IsConnected, which takes the
         // adapter lock a 2 s hardware poll also holds during VISA/SCPI I/O — so
@@ -251,6 +263,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         _host.Log.Appended -= OnLogAppended;
         _host.Session.Changed -= RebuildSections;
         Camera.Dispose();   // unsubscribes the camera FrameReady hook (UI cleanup, not teardown)
+        Registration.Dispose();
 
         // Pure UI cleanup only — no hardware teardown here. Stopping every
         // SMU/Measurement stream and disconnecting devices is owned by the

@@ -133,6 +133,13 @@ defines its own program/recipe/position formats.
 - `DeviceLinkStore` — machine-global `device_links.json` storing spatial
   offsets between motion devices; written by `motion.registerDeviceLink`,
   replayed by `motion.compensateDeviceLink`.
+- `Registration/` — **device registration**: a tool on one motion device (the hex-right
+  gripper) registered to the camera on another (gantry-main). `ToolRegistrationStore`
+  (machine-global `tool_registrations.json`), `ToolRegistrationRoutine` (`Locate` from
+  cached states + the two **bounded** moves — refused, never clamped, beyond `MaxMoveMm`),
+  exposed on `IProcessService` and as the `tool.cameraToTool` / `tool.toolToCamera` steps.
+  The procedure UI is FAAM's Machine › Registration section; `ToolOverlayView` draws the
+  live gripper on the Run feed / zoom inset / pop-out. See `docs/device-registration-design.md`.
 
 ### Layer 3 — operator applications (Horizon.UI and FAAM.UI)
 
@@ -352,6 +359,7 @@ write code that won't trip them:
 - Program history → SQLite: `docs/program-history-sqlite-design.md`.
 - Program / deck version repository (commit notes + checkout): `docs/version-repository-design.md`.
 - Vision Profile page (per-position vision recipes): `docs/vision-profile-design.md`.
+- Device registration (hex-right gripper ↔ gantry camera; `tool.cameraToTool` / `tool.toolToCamera` blocks + live overlay): `docs/device-registration-design.md`.
 - Run-page utility-app launcher (phone-style springboard + L2→L3 app facet): `docs/utility-app-launcher-design.md`.
 - Engineer command help (palette help panel + `OpCatalogHelp` authoring): `docs/engineer-command-help.md`.
 - Mission-critical coding standard (Power of 10): `docs/coding-standards-power-of-10.md`.

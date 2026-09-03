@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
 using Horizon.Engine;
@@ -88,6 +89,16 @@ public partial class App : Application
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
+        // While the shutdown screen is up the engine facets are being torn down, so a
+        // late UI-thread poll can throw. A modal error box here would block the
+        // dispatcher and hang the exit — log it and let the shutdown continue.
+        if (Windows.OfType<ShutdownWindow>().Any())
+        {
+            Log.Warning(e.Exception, "Unhandled UI exception during shutdown (ignored)");
+            e.Handled = true;
+            return;
+        }
+
         MessageBox.Show(
             e.Exception.Message,
             "FAAM — unexpected error",

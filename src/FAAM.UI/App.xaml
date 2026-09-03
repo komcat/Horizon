@@ -191,6 +191,9 @@
             <DataTemplate DataType="{x:Type vms:SettingsSectionViewModel}">
                 <vsec:SettingsSectionView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vms:DeviceRegistrationSectionViewModel}">
+                <vsec:DeviceRegistrationSectionView />
+            </DataTemplate>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

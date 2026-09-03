@@ -82,6 +82,10 @@
                       Visibility="Collapsed" />
             </Canvas>
 
+            <!-- Device-registration overlay — mirrors the Run feed: live gripper centre + outline,
+                 or an edge marker + arrow + distance when it is out of frame. -->
+            <v:ToolOverlayView x:Name="ToolOverlay" />
+
             <!-- Short cursor crosshair — follows the mouse while MoveClick is armed. -->
             <Grid x:Name="MainCursor" Width="20" Height="20" IsHitTestVisible="False"
                   HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">

@@ -30,6 +30,12 @@ internal sealed class StepDispatcher
     // (approachDistanceMm, velocity, ct) — moves the needle to the camera point, extends the
     // head, then approaches the surface. Drives needle.approach.
     private readonly Func<double, double, CancellationToken, Task<Result>> _runNeedleApproach;
+    // (toolDevice, maxDistanceMm, includeZ, ct) — device registration moves: centre the camera on a
+    // registered tool / put the tool under the camera. Drive tool.cameraToTool / tool.toolToCamera.
+    private readonly Func<string, double, bool, CancellationToken, Task<Result>> _moveCameraToTool;
+    private readonly Func<string, double, bool, double?, CancellationToken, Task<Result>> _moveToolToCamera;
+    // (toolDevice, ct) — send the tool device back to its registered pose. Drives tool.toPose.
+    private readonly Func<string, CancellationToken, Task<Result>> _moveToolToPose;
     // (scriptName, ct) — runs a saved per-product .moon script to completion. Drives script.run.
     private readonly Func<string, CancellationToken, Task<Result>> _runScript;
     // Supplies the hill-climb signal source (Layer 3 SiPhOG). Returns null when no head
@@ -64,6 +70,9 @@ internal sealed class StepDispatcher
         Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
         Func<string, CancellationToken, Task<Result>> runDispenseRoutine,
         Func<double, double, CancellationToken, Task<Result>> runNeedleApproach,
+        Func<string, double, bool, CancellationToken, Task<Result>> moveCameraToTool,
+        Func<string, double, bool, double?, CancellationToken, Task<Result>> moveToolToCamera,
+        Func<string, CancellationToken, Task<Result>> moveToolToPose,
         Func<string, CancellationToken, Task<Result>> runScript,
         Func<IHillClimbFeedback?> hillClimbFeedback,
         Func<IUtilityAppHost?> utilityAppHost,
@@ -79,6 +88,9 @@ internal sealed class StepDispatcher
         _runVisionProfile = runVisionProfile;
         _runDispenseRoutine = runDispenseRoutine;
         _runNeedleApproach = runNeedleApproach;
+        _moveCameraToTool = moveCameraToTool;
+        _moveToolToCamera = moveToolToCamera;
+        _moveToolToPose = moveToolToPose;
         _runScript = runScript;
         _hillClimbFeedback = hillClimbFeedback;
         _utilityAppHost = utilityAppHost;
@@ -490,6 +502,28 @@ internal sealed class StepDispatcher
                 // (mm) at 'velocity' (mm/s). Leaves the head extended.
                 return await _runNeedleApproach(
                     Num(step, "approachDistance", ctx), Num(step, "velocity", ctx), ct).ConfigureAwait(false);
+
+            case "tool.cameratotool":
+                // Centre the camera on a registered tool (moves the camera device's XY, plus Z to
+                // the focus height when 'includeZ'). 'tool' = the registered tool device;
+                // 'maxDistance' (mm, 0 = registration bound) refuses — never clamps — a longer move.
+                return await _moveCameraToTool(
+                    Str(step, "tool", ctx), Num(step, "maxDistance", ctx), Bool(step, "includeZ", ctx), ct).ConfigureAwait(false);
+
+            case "tool.tooltocamera":
+            {
+                // Put a registered tool under the camera centre (moves the tool device's mapped axes,
+                // plus the Z-mapped axis when 'includeZ'). 'zOffset' (mm) parks the tool above/below
+                // the focus plane; blank = the registration's stored offset.
+                var zText = Str(step, "zOffset", ctx).Trim();
+                double? zOffset = zText.Length == 0 ? null : Num(step, "zOffset", ctx);
+                return await _moveToolToCamera(
+                    Str(step, "tool", ctx), Num(step, "maxDistance", ctx), Bool(step, "includeZ", ctx), zOffset, ct).ConfigureAwait(false);
+            }
+
+            case "tool.topose":
+                // Send the tool device back to the pose captured in its registration.
+                return await _moveToolToPose(Str(step, "tool", ctx), ct).ConfigureAwait(false);
 
             case "io.setoutput":
                 return await _engine.IO.SetOutputAsync(step.Device, (int)Num(step, "pin", ctx), Bool(step, "state", ctx), ct);
