@@ -188,6 +188,8 @@
                     <StackPanel Orientation="Horizontal">
                         <Button Content="Capture tool pose" Style="{StaticResource Btn}" Command="{Binding CaptureToolPoseCommand}" />
                         <Button Content="Move to pose" Style="{StaticResource Btn}" Command="{Binding MoveToPoseCommand}" />
+                        <Button Content="Camera → tool centre" Style="{StaticResource Btn}" Command="{Binding CameraToToolCommand}"
+                                ToolTip="Centre the camera on the registered gripper anchor (bounded move). Point positions are taught relative to this." />
                     </StackPanel>
                     <TextBlock Text="{Binding ToolPoseText}" Style="{StaticResource Mono}" Margin="0,2,0,0" />
 
@@ -215,7 +217,7 @@
                     <TextBlock Text="3 · Point 1" Style="{StaticResource StepTitle}" />
                     <StackPanel Orientation="Horizontal">
                         <Button Content="Teach camera pos" Style="{StaticResource Btn}" Command="{Binding TeachCamera1Command}"
-                                ToolTip="Record where the camera device is now as the position for point 1" />
+                                ToolTip="Record where the camera device is now for point 1 — stored as an offset from the tool centre, so it follows the tool" />
                         <Button Content="Move camera" Style="{StaticResource Btn}" Command="{Binding MoveCamera1Command}" />
                     </StackPanel>
                     <TextBlock Text="{Binding CamPose1Text}" Style="{StaticResource Mono}" Margin="0,2,0,2" />
@@ -223,7 +225,7 @@
                         <TextBlock Text="Vision" Style="{StaticResource FieldLabel}" />
                         <ComboBox Width="150" Height="24" ItemsSource="{Binding VisionProfiles}" SelectedItem="{Binding Profile1}" />
                         <Button Content="Run" Style="{StaticResource Btn}" Margin="6,0,0,0" Command="{Binding RunVision1Command}"
-                                ToolTip="Detect point 1 with this profile (needs a point-type result: x / y)" />
+                                ToolTip="Move the camera to the taught point-1 position, apply the exposure, then detect with this profile (anchor / x-y)" />
                     </StackPanel>
                     <TextBlock Foreground="{StaticResource Subtle}" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap"
                                Text="…or arm Mark 1 on the feed and click the point." />
@@ -238,7 +240,8 @@
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="Vision" Style="{StaticResource FieldLabel}" />
                         <ComboBox Width="150" Height="24" ItemsSource="{Binding VisionProfiles}" SelectedItem="{Binding Profile2}" />
-                        <Button Content="Run" Style="{StaticResource Btn}" Margin="6,0,0,0" Command="{Binding RunVision2Command}" />
+                        <Button Content="Run" Style="{StaticResource Btn}" Margin="6,0,0,0" Command="{Binding RunVision2Command}"
+                                ToolTip="Move the camera to the taught point-2 position, apply the exposure, then detect with this profile (anchor / x-y)" />
                     </StackPanel>
                     <TextBlock Foreground="{StaticResource Subtle}" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap"
                                Text="…or arm Mark 2 on the feed and click the point." />
@@ -277,6 +280,15 @@
                         <Button Content="Clear object" Height="28" Padding="10,0" Margin="0,0,6,0" Command="{Binding ClearObjectCommand}"
                                 ToolTip="Remove the saved object — its points and outline" />
                         <Button Content="Reload" Height="28" Padding="10,0" Command="{Binding ReloadCommand}" />
+                    </StackPanel>
+
+                    <!-- 7 -->
+                    <TextBlock Text="7 · Run object detect procedure" Style="{StaticResource StepTitle}" />
+                    <TextBlock Foreground="{StaticResource Subtle}" TextWrapping="Wrap" FontSize="11.5"
+                               Text="Wherever the tool is: camera → tool centre, then camera → point 1 by its offset and detect (vision profile, or wait for your Mark click), same for point 2, then save — the outline is redrawn at the new place." />
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <Button Content="Run procedure" Height="28" Padding="12,0" Margin="0,0,6,0" FontWeight="SemiBold" Command="{Binding RunProcedureCommand}" />
+                        <Button Content="Cancel" Height="28" Padding="10,0" Command="{Binding CancelProcedureCommand}" />
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>

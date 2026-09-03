@@ -15,6 +15,14 @@ public sealed record GrippedPoint(
     string Source);
 
 /// <summary>
+/// Where the camera device stood relative to the tool centre when a point was taught:
+/// camera pose − tool location (mm, camera device frame). Z is null when the tool's
+/// registration has no focus Z (the camera then keeps its current Z). Lets a later run
+/// re-find the point from wherever the tool is: camera → tool, then this offset.
+/// </summary>
+public sealed record CameraOffset(double X, double Y, double? Z);
+
+/// <summary>
 /// A <b>gripped object</b> — something held by a registered tool (the FAU in the hex-right
 /// gripper), taught by two reference points seen through the gantry camera. Per-product
 /// (<c>{product}\gripped_objects.json</c>): the FAU dimensions belong to the product, the
@@ -61,6 +69,10 @@ public sealed record GrippedObject
     public GrippedPoint? Point1 { get; init; }
     public GrippedPoint? Point2 { get; init; }
 
+    /// <summary>Camera position for point 1 / 2 relative to the tool centre (see <see cref="CameraOffset"/>).</summary>
+    public CameraOffset? Point1CameraOffset { get; init; }
+    public CameraOffset? Point2CameraOffset { get; init; }
+
     /// <summary>Object centre = mean of the two points, camera device frame at <see cref="ToolPose"/> (mm).</summary>
     public double CentreX { get; init; }
     public double CentreY { get; init; }
@@ -68,7 +80,7 @@ public sealed record GrippedObject
     /// <summary>Camera-device Z that had the object in focus (mean of the point poses' Z), or null.</summary>
     public double? FocusZ { get; init; }
 
-    // --- outline (drawn purple) ---
+    // --- outline (drawn green; the marker is purple) ---
 
     public double OutlineWidthMm { get; init; } = 2.0;
     public double OutlineLengthMm { get; init; } = 6.0;

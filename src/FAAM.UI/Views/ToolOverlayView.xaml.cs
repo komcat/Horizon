@@ -29,7 +29,8 @@ public partial class ToolOverlayView : UserControl
     private const double EdgeInset = 16;      // how far inside the box a pinned marker sits
     private static readonly Brush ToolBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xA0, 0x00));   // orange over video
     private static readonly Brush OutlineBrush = new SolidColorBrush(Color.FromRgb(0xC8, 0xC8, 0xC8)); // grey outline box
-    private static readonly Brush ObjectBrush = new SolidColorBrush(Color.FromRgb(0xB0, 0x70, 0xFF));  // purple: gripped object
+    private static readonly Brush ObjectBrush = new SolidColorBrush(Color.FromRgb(0xB0, 0x70, 0xFF));  // purple: gripped object marker
+    private static readonly Brush ObjectOutlineBrush = new SolidColorBrush(Color.FromRgb(0x00, 0xE6, 0x76)); // green: gripped object outline
     private static readonly Brush LabelBg = new SolidColorBrush(Color.FromArgb(0xB0, 0, 0, 0));
 
     private EngineHost? _host;
@@ -120,6 +121,13 @@ public partial class ToolOverlayView : UserControl
     public void Redraw()
     {
         if (!_active || _host == null || _image == null) return;
+        if (_host.Engine.State == Horizon.Engine.EngineState.ShuttingDown)
+        {
+            // Facets are being (or have been) torn down — stop for good rather than throw each tick.
+            _timer.Stop();
+            foreach (var g in _glyphs.Values) g.Hide();
+            return;
+        }
 
         double availW = _image.ActualWidth, availH = _image.ActualHeight;
         if (_image.Source is not BitmapSource bmp || availW <= 0 || availH <= 0)
@@ -146,7 +154,7 @@ public partial class ToolOverlayView : UserControl
             DrawOne(ObjectKey(obj.Name), obj.Name, obj.Name, obj.CameraId,
                 () => _host.Process.LocateGrippedObject(obj.Name),
                 obj.OutlineWidthMm, obj.OutlineLengthMm, obj.OutlineOffsetXmm, obj.OutlineOffsetYmm,
-                ObjectBrush, ObjectBrush, settings, availW, availH, scale);
+                ObjectBrush, ObjectOutlineBrush, settings, availW, availH, scale);
         }
     }
 

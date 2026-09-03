@@ -641,7 +641,13 @@ public partial class ShellWindow : Window
         _host.Process.ActiveSerialChanged -= OnActiveSerialChanged;
         _host.Engine.Safety.SafetyTripped -= OnSafetyTripped;
         _host.Engine.Safety.SafetyCleared -= OnSafetyCleared;
-        _run.Deactivate();         // stop frame routing before the engine tears down
+        // Stop every page-owned poller before the engine tears down: whichever page is
+        // showing (LeaveCurrent), plus the Run + Gripped pages explicitly (idempotent) —
+        // their overlay / refresh timers would otherwise keep touching the facets on the UI
+        // thread after they are nulled and throw "Engine is not initialized" mid-shutdown.
+        LeaveCurrent();
+        _run.Deactivate();
+        _gripped.Deactivate();
         _machineVm.Dispose();      // stop the status sampler + detach UI hooks
         JogPanelControl.Stop();    // stop the jog-panel position poll
 

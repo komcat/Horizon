@@ -123,3 +123,12 @@ outline: *Pick outline* two corners (width / length / box offset derived, editab
 **6** *Save object* into the product; *Clear object* removes the object with its points and
 outline. Marking / corner picking is refused unless the tool stands at the object's pose.
 The focus Z is the mean camera Z of the two point poses.
+
+Point camera positions are stored both absolute and as a **`CameraOffset` from the tool
+centre** (camera pose − `LocateTool`, Z included when the registration has a focus Z), so
+*Move camera* / *Run* go to "tool centre + offset" wherever the tool is. *Camera → tool
+centre* (step 1) is the reference move. **Step 7 — Run object detect procedure** re-teaches
+the object from wherever the tool stands: capture the tool pose, camera → tool centre, then
+per point: camera by its offset → detect with the profile (anchor preferred) or wait for the
+operator's Mark click → save, keeping the outline size + offset from the centre. The object
+marker is purple, its outline green.

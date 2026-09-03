@@ -318,6 +318,7 @@ public sealed class DeviceRegistrationSectionViewModel : ObservableObject, IDisp
     /// <summary>Sampler tick: refresh the live read-out and let the view redraw.</summary>
     public void Refresh()
     {
+        if (_host.Engine.State == EngineState.ShuttingDown) return;   // facets gone — nothing to read
         Camera.Refresh();
         if (_toolDevice != null && IsRegistered)
         {

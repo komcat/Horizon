@@ -128,6 +128,7 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
     /// <summary>Refreshes connection / grab state from the engine — called each sampler tick.</summary>
     public void Refresh()
     {
+        if (_host.Engine.State == EngineState.ShuttingDown) return;   // facets gone — nothing to read
         var camera = _selectedCamera;
         Connected = camera != null && _host.Engine.Camera.IsConnected(camera);
         if (camera == null) return;

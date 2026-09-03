@@ -23,13 +23,14 @@ namespace FAAM.UI.Views;
 public partial class GrippedObjectView : UserControl
 {
     private static readonly Brush ObjBrush = new SolidColorBrush(Color.FromRgb(0xB0, 0x70, 0xFF));
+    private static readonly Brush OutlineBrush = new SolidColorBrush(Color.FromRgb(0x00, 0xE6, 0x76));
 
     private readonly GrippedObjectViewModel _vm;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly List<UIElement> _marks = new();
     private readonly Rectangle _preview = new()
     {
-        Stroke = ObjBrush, StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 4, 3 },
+        Stroke = OutlineBrush, StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 4, 3 },
         Fill = Brushes.Transparent, Visibility = Visibility.Collapsed,
     };
     private readonly Line _cH = new() { Stroke = ObjBrush, StrokeThickness = 2, Visibility = Visibility.Collapsed };
@@ -76,6 +77,7 @@ public partial class GrippedObjectView : UserControl
         _active = false;
         _timer.Stop();
         ToolOverlay.SetActive(false);
+        _vm.CancelProcedure();
         _vm.SetActive(false);
     }
 
@@ -155,7 +157,7 @@ public partial class GrippedObjectView : UserControl
         foreach (var corner in _vm.OutlineCorners)
         {
             if (Place(corner.X, corner.Y) is not { } d) continue;
-            var sq = new Rectangle { Width = 8, Height = 8, Stroke = ObjBrush, StrokeThickness = 2, Fill = Brushes.Transparent };
+            var sq = new Rectangle { Width = 8, Height = 8, Stroke = OutlineBrush, StrokeThickness = 2, Fill = Brushes.Transparent };
             Canvas.SetLeft(sq, d.X - 4); Canvas.SetTop(sq, d.Y - 4);
             PointOverlay.Children.Add(sq);
             _marks.Add(sq);

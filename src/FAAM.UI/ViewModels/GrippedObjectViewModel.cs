@@ -38,7 +38,10 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
     private bool _autoExposure = true;
     private string _lightingNote = "";
     private MotionPosition? _camPose1, _camPose2;
+    private CameraOffset? _camOff1, _camOff2;
     private GrippedPoint? _pt1, _pt2;
+    private TaskCompletionSource<bool>? _manualMark;   // step 7 waits on this for a manual click
+    private CancellationTokenSource? _procCts;
     private string _profile1 = "", _profile2 = "";
     private int _markArmed;   // 0 = none, 1 / 2 = the point the next feed click marks
     private bool _pickOutlineArmed;
@@ -60,12 +63,15 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
 
         CaptureToolPoseCommand = new AsyncRelayCommand(CaptureToolPoseAsync, () => !_busy && _toolDevice != null);
         MoveToPoseCommand = new AsyncRelayCommand(MoveToPoseAsync, () => !_busy && _toolDevice != null && _toolPose != null);
+        CameraToToolCommand = new AsyncRelayCommand(CameraToToolAsync, () => !_busy && _toolDevice != null);
+        RunProcedureCommand = new AsyncRelayCommand(RunProcedureAsync, () => !_busy && _toolDevice != null && _camOff1 != null && _camOff2 != null);
+        CancelProcedureCommand = new RelayCommand(CancelProcedure, () => _procCts != null);
         ReadExposureCommand = new RelayCommand(ReadExposure, () => Camera.SelectedCamera != null);
         ApplyExposureCommand = new AsyncRelayCommand(ApplyExposureAsync, () => !_busy && Camera.SelectedCamera != null);
         TeachCamera1Command = new AsyncRelayCommand(() => TeachCameraAsync(1), () => !_busy && _toolPose != null);
         TeachCamera2Command = new AsyncRelayCommand(() => TeachCameraAsync(2), () => !_busy && _toolPose != null);
-        MoveCamera1Command = new AsyncRelayCommand(() => MoveCameraAsync(1), () => !_busy && _camPose1 != null);
-        MoveCamera2Command = new AsyncRelayCommand(() => MoveCameraAsync(2), () => !_busy && _camPose2 != null);
+        MoveCamera1Command = new AsyncRelayCommand(() => MoveCameraAsync(1), () => !_busy && (_camOff1 != null || _camPose1 != null));
+        MoveCamera2Command = new AsyncRelayCommand(() => MoveCameraAsync(2), () => !_busy && (_camOff2 != null || _camPose2 != null));
         RunVision1Command = new AsyncRelayCommand(() => RunVisionAsync(1), () => !_busy && _toolPose != null && _profile1.Length > 0);
         RunVision2Command = new AsyncRelayCommand(() => RunVisionAsync(2), () => !_busy && _toolPose != null && _profile2.Length > 0);
         ClearPointsCommand = new RelayCommand(ClearPoints, () => _pt1 != null || _pt2 != null);
@@ -140,8 +146,11 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
     public string Profile1 { get => _profile1; set { if (SetField(ref _profile1, value ?? "")) RaiseCans(); } }
     public string Profile2 { get => _profile2; set { if (SetField(ref _profile2, value ?? "")) RaiseCans(); } }
 
-    public string CamPose1Text => PoseText(_camPose1);
-    public string CamPose2Text => PoseText(_camPose2);
+    public string CamPose1Text => PoseText(_camPose1, _camOff1);
+    public string CamPose2Text => PoseText(_camPose2, _camOff2);
+
+    /// <summary>True while the step-7 procedure is running.</summary>
+    public bool ProcedureRunning => _procCts != null;
     public string Point1Text => PointText(_pt1);
     public string Point2Text => PointText(_pt2);
 
@@ -194,6 +203,9 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
 
     public AsyncRelayCommand CaptureToolPoseCommand { get; }
     public AsyncRelayCommand MoveToPoseCommand { get; }
+    public AsyncRelayCommand CameraToToolCommand { get; }
+    public AsyncRelayCommand RunProcedureCommand { get; }
+    public RelayCommand CancelProcedureCommand { get; }
     public RelayCommand ReadExposureCommand { get; }
     public AsyncRelayCommand ApplyExposureCommand { get; }
     public AsyncRelayCommand TeachCamera1Command { get; }
@@ -234,6 +246,7 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
     /// <summary>Refresh tick (from the view's timer): live read-out + marker redraw.</summary>
     public void Refresh()
     {
+        if (_host.Engine.State == EngineState.ShuttingDown) return;   // facets gone — nothing to read
         Camera.Refresh();
         if (IsSaved)
         {
@@ -307,22 +320,75 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
     {
         var r = await _host.Engine.Motion.GetPositionAsync(_cameraDevice).ConfigureAwait(true);
         if (!r.IsSuccess) { SetStatus($"Read {_cameraDevice} failed: {r.Message}", true); return; }
-        if (i == 1) _camPose1 = r.Value; else _camPose2 = r.Value;
-        OnPropertyChanged(i == 1 ? nameof(CamPose1Text) : nameof(CamPose2Text));
+        SetCameraPose(i, r.Value);
         RaiseCans();
-        SetStatus($"Camera position for point {i} taught. Now mark point {i}: arm Mark {i} and click it, or run its vision profile.");
+        SetStatus((i == 1 ? _camOff1 : _camOff2) == null
+            ? $"Camera position for point {i} taught (absolute only — the tool is not registered / located, so no offset from the tool centre)."
+            : $"Camera position for point {i} taught as an offset from the tool centre. Now mark point {i}: arm Mark {i} and click it, or run its vision profile.");
+    }
+
+    /// <summary>Stores a point's camera pose both absolute and relative to the live tool centre.</summary>
+    private void SetCameraPose(int i, MotionPosition pose)
+    {
+        var off = OffsetFromTool(pose);
+        if (i == 1) { _camPose1 = pose; _camOff1 = off; } else { _camPose2 = pose; _camOff2 = off; }
+        OnPropertyChanged(i == 1 ? nameof(CamPose1Text) : nameof(CamPose2Text));
+    }
+
+    /// <summary>Camera pose − tool location (from the tool registration, cached states); null if the tool cannot be located.</summary>
+    private CameraOffset? OffsetFromTool(MotionPosition camPose)
+    {
+        if (_toolDevice == null) return null;
+        var loc = _host.Process.LocateTool(_toolDevice);
+        if (!loc.IsSuccess) return null;
+        return new CameraOffset(camPose.X - loc.Value.ToolX, camPose.Y - loc.Value.ToolY,
+            loc.Value.ToolZ is { } tz ? camPose.Z - tz : null);
+    }
+
+    /// <summary>The absolute camera target for a point right now: live tool centre + stored offset (falls back to the absolute pose).</summary>
+    private MotionPosition? CameraTargetFor(int i, MotionPosition current)
+    {
+        var off = i == 1 ? _camOff1 : _camOff2;
+        var abs = i == 1 ? _camPose1 : _camPose2;
+        if (off == null || _toolDevice == null) return abs;
+        var loc = _host.Process.LocateTool(_toolDevice);
+        if (!loc.IsSuccess) return abs;
+        var t = current with { X = loc.Value.ToolX + off.X, Y = loc.Value.ToolY + off.Y };
+        if (off.Z is { } oz && loc.Value.ToolZ is { } tz) t = t with { Z = tz + oz };
+        return t;
+    }
+
+    /// <summary>Camera → tool centre (the registered gripper anchor), with Z when the registration knows it.</summary>
+    private async Task CameraToToolAsync()
+    {
+        if (_toolDevice == null) return;
+        await RunBusyAsync("Camera → tool", async () =>
+        {
+            var reg = _host.Process.GetToolRegistration(_toolDevice);
+            var r = await _host.Process.MoveCameraToToolAsync(_toolDevice, includeZ: reg?.HasZ == true).ConfigureAwait(true);
+            SetStatus(r.IsSuccess ? "Camera is on the tool centre." : r.Message, !r.IsSuccess);
+        });
     }
 
     private async Task MoveCameraAsync(int i)
     {
-        var pose = i == 1 ? _camPose1 : _camPose2;
-        if (pose == null) return;
         await RunBusyAsync($"Camera → point {i}", async () =>
         {
-            var r = await _host.Engine.Motion.MoveToPositionAsync(_cameraDevice, pose).ConfigureAwait(true);
-            if (r.IsSuccess) await ApplyExposureAsync().ConfigureAwait(true);
-            SetStatus(r.IsSuccess ? $"Camera at point {i} position (exposure applied)." : r.Message, !r.IsSuccess);
+            var r = await MoveCameraToPointAsync(i).ConfigureAwait(true);
+            SetStatus(r.IsSuccess ? $"Camera at point {i} position (relative to the tool; exposure applied)." : r.Message, !r.IsSuccess);
         });
+    }
+
+    /// <summary>Moves the camera device to point i's position relative to the live tool centre, then applies the exposure.</summary>
+    private async Task<Horizon.Common.Result> MoveCameraToPointAsync(int i)
+    {
+        var cur = await _host.Engine.Motion.GetPositionAsync(_cameraDevice).ConfigureAwait(true);
+        if (!cur.IsSuccess) return Horizon.Common.Result.Fail(Horizon.Common.ErrorCode.OperationFailed, $"Read {_cameraDevice} failed: {cur.Message}");
+        var target = CameraTargetFor(i, cur.Value);
+        if (target == null) return Horizon.Common.Result.Fail(Horizon.Common.ErrorCode.InvalidParameter, $"No camera position taught for point {i}.");
+        var r = await _host.Engine.Motion.MoveToPositionAsync(_cameraDevice, target).ConfigureAwait(true);
+        if (r.IsSuccess) await ApplyExposureAsync().ConfigureAwait(true);
+        return r;
     }
 
     /// <summary>Manual mark: a feed click at source px while <see cref="MarkArmed"/> is 1 or 2.</summary>
@@ -339,6 +405,99 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
         _markArmed = 0;
         OnPropertyChanged(nameof(Mark1Armed)); OnPropertyChanged(nameof(Mark2Armed));
         SetStatus($"Point {i} marked manually." + (Centre != null ? " Both points set — pick the outline, then Save." : ""));
+        _manualMark?.TrySetResult(true);   // step 7 waiting on this click
+    }
+
+    // --- step 7: run the detect procedure from wherever the tool is ---
+
+    /// <summary>
+    /// Re-finds the object with the tool wherever it stands now: capture the tool pose, camera →
+    /// tool centre, then for each point move the camera by that point's stored offset and detect
+    /// it (vision profile if set, otherwise wait for a Mark click), then save — the outline
+    /// (width / length / offset from the centre) is kept, so it is redrawn at the new place.
+    /// </summary>
+    private async Task RunProcedureAsync()
+    {
+        if (_toolDevice == null || _camOff1 == null || _camOff2 == null) return;
+        var cam = Camera.SelectedCamera;
+        if (cam == null) { SetStatus("No camera selected.", true); return; }
+
+        _procCts = new CancellationTokenSource();
+        OnPropertyChanged(nameof(ProcedureRunning));
+        CancelProcedureCommand.RaiseCanExecuteChanged();
+        var ct = _procCts.Token;
+        await RunBusyAsync("Object detect procedure", async () =>
+        {
+            try
+            {
+                // 1. The object rides with the tool: its pose NOW is the new teach pose.
+                var tp = await _host.Engine.Motion.GetPositionAsync(_toolDevice).ConfigureAwait(true);
+                if (!tp.IsSuccess) { SetStatus($"Read {_toolDevice} failed: {tp.Message}", true); return; }
+                ToolPose = tp.Value;
+                _pt1 = _pt2 = null;
+                PointsChanged();
+
+                // 2. Camera → tool centre (bounded move; Z when the registration knows it).
+                var reg = _host.Process.GetToolRegistration(_toolDevice);
+                SetStatus("Procedure: camera → tool centre…");
+                var c2t = await _host.Process.MoveCameraToToolAsync(_toolDevice, includeZ: reg?.HasZ == true, ct: ct).ConfigureAwait(true);
+                if (!c2t.IsSuccess) { SetStatus($"Procedure: camera → tool: {c2t.Message}", true); return; }
+
+                // 3. Each point: relative move, then detect (auto) or wait for the operator's click (manual).
+                for (int i = 1; i <= 2; i++)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    SetStatus($"Procedure: camera → point {i} (offset from the tool centre)…");
+                    var mv = await MoveCameraToPointAsync(i).ConfigureAwait(true);
+                    if (!mv.IsSuccess) { SetStatus($"Procedure: camera → point {i}: {mv.Message}", true); return; }
+
+                    var profile = i == 1 ? _profile1 : _profile2;
+                    if (profile.Length > 0)
+                    {
+                        if (!await DetectPointAsync(i, profile, cam).ConfigureAwait(true)) return;
+                    }
+                    else
+                    {
+                        var wait = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                        _manualMark = wait;
+                        _markArmed = i;
+                        OnPropertyChanged(nameof(Mark1Armed)); OnPropertyChanged(nameof(Mark2Armed));
+                        SetStatus($"Procedure: click point {i} on the feed (Mark {i} is armed)…");
+                        using (ct.Register(() => wait.TrySetResult(false)))
+                        {
+                            if (!await wait.Task.ConfigureAwait(true)) return;
+                        }
+                        _manualMark = null;
+                    }
+                }
+
+                // 4. Save: centre from the new points; the outline box keeps its size + offset from the centre.
+                if (!CanSave) { SetStatus("Procedure: points set but the object cannot be saved (check the outline fields).", true); return; }
+                await SaveAsync().ConfigureAwait(true);
+                SetStatus($"Procedure done — '{_name}' re-taught at the tool's current pose and saved; outline redrawn.");
+            }
+            catch (OperationCanceledException)
+            {
+                SetStatus("Procedure cancelled.", true);
+            }
+            finally
+            {
+                _manualMark = null;
+                _markArmed = 0;
+                OnPropertyChanged(nameof(Mark1Armed)); OnPropertyChanged(nameof(Mark2Armed));
+                _procCts?.Dispose();
+                _procCts = null;
+                OnPropertyChanged(nameof(ProcedureRunning));
+                CancelProcedureCommand.RaiseCanExecuteChanged();
+            }
+        });
+    }
+
+    /// <summary>Cancels a running step-7 procedure (also called when the page is left).</summary>
+    public void CancelProcedure()
+    {
+        try { _procCts?.Cancel(); } catch (ObjectDisposedException) { /* already finished */ }
+        _manualMark?.TrySetResult(false);
     }
 
     /// <summary>Auto mark: runs the point's vision profile on the live camera and takes its x/y.</summary>
@@ -352,19 +511,41 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
 
         await RunBusyAsync($"Vision point {i}", async () =>
         {
+            // Run = go to the taught camera position (exposure re-applied there), then detect.
+            // Without a taught position the profile runs wherever the camera stands.
+            if ((i == 1 ? _camOff1 : _camOff2) != null || (i == 1 ? _camPose1 : _camPose2) != null)
+            {
+                SetStatus($"Moving camera to point {i} position…");
+                var mv = await MoveCameraToPointAsync(i).ConfigureAwait(true);
+                if (!mv.IsSuccess) { SetStatus($"Camera → point {i}: {mv.Message}", true); return; }
+            }
+
+            await DetectPointAsync(i, profile, cam).ConfigureAwait(true);
+        });
+    }
+
+    /// <summary>Runs the profile where the camera stands and stores the detected point (anchor preferred).</summary>
+    private async Task<bool> DetectPointAsync(int i, string profile, string cam)
+    {
+        {
             var det = await _host.Process.RunVisionProfileByNameAsync(profile).ConfigureAwait(true);
-            if (!det.IsSuccess) { SetStatus($"Profile '{profile}': {det.Message}", true); return; }
-            if (!det.Value.Found) { SetStatus($"Profile '{profile}' found nothing — adjust and retry, or mark manually.", true); return; }
-            double? x = Value(det.Value, "x"), y = Value(det.Value, "y");
-            if (x is null || y is null) { SetStatus($"Profile '{profile}' reports no x/y point (a line/edge profile?) — use a point-type profile or mark manually.", true); return; }
+            if (!det.IsSuccess) { SetStatus($"Profile '{profile}': {det.Message}", true); return false; }
+            if (!det.Value.Found) { SetStatus($"Profile '{profile}' found nothing — adjust and retry, or mark manually.", true); return false; }
+            // NCC profiles report the taught ANCHOR (anchorX/Y) as well as the match centre (x/y);
+            // the anchor is the point the operator meant. Circle / corner profiles only have x/y.
+            bool anchored = true;
+            double? x = Value(det.Value, "anchorX"), y = Value(det.Value, "anchorY");
+            if (x is null || y is null) { anchored = false; x = Value(det.Value, "x"); y = Value(det.Value, "y"); }
+            if (x is null || y is null) { SetStatus($"Profile '{profile}' reports no x/y point (a line/edge profile?) — use a point-type profile or mark manually.", true); return false; }
 
             var state = _host.Engine.Camera.GetState(cam);
-            if (state.Width <= 0 || state.Height <= 0) { SetStatus("Camera frame size unknown — is it grabbing?", true); return; }
+            if (state.Width <= 0 || state.Height <= 0) { SetStatus("Camera frame size unknown — is it grabbing?", true); return false; }
             var pose = await _host.Engine.Motion.GetPositionAsync(_cameraDevice).ConfigureAwait(true);
-            if (!pose.IsSuccess) { SetStatus($"Read {_cameraDevice} failed: {pose.Message}", true); return; }
+            if (!pose.IsSuccess) { SetStatus($"Read {_cameraDevice} failed: {pose.Message}", true); return false; }
             SetPoint(i, pose.Value, x.Value, y.Value, state.Width, state.Height, "vision:" + profile);
-            SetStatus($"Point {i} detected by '{profile}' at px ({x:0}, {y:0})." + (Centre != null ? " Both points set — pick the outline, then Save." : ""));
-        });
+            SetStatus($"Point {i} detected by '{profile}' at px ({x:0}, {y:0}) [{(anchored ? "anchor" : "centre")}]." + (Centre != null ? " Both points set — pick the outline, then Save." : ""));
+            return true;
+        }
 
         static double? Value(VisionDetectResult r, string key)
         {
@@ -378,8 +559,8 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
     {
         var (dxMm, dyMm) = ToolOverlayMath.SourcePxToMm(px - srcW / 2.0, py - srcH / 2.0, _host.Settings.Current);
         var pt = new GrippedPoint(i, camPose, px, py, camPose.X + dxMm, camPose.Y + dyMm, source);
-        if (i == 1) { _pt1 = pt; _camPose1 = camPose; } else { _pt2 = pt; _camPose2 = camPose; }
-        OnPropertyChanged(i == 1 ? nameof(CamPose1Text) : nameof(CamPose2Text));
+        if (i == 1) _pt1 = pt; else _pt2 = pt;
+        SetCameraPose(i, camPose);
         PointsChanged();
     }
 
@@ -485,6 +666,8 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
             Point2VisionProfile = _profile2,
             Point1 = _pt1,
             Point2 = _pt2,
+            Point1CameraOffset = _camOff1,
+            Point2CameraOffset = _camOff2,
             CentreX = c.X,
             CentreY = c.Y,
             FocusZ = FocusZ,
@@ -564,6 +747,7 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
                 Profile1 = obj.Point1VisionProfile; Profile2 = obj.Point2VisionProfile;
                 _pt1 = obj.Point1; _pt2 = obj.Point2;
                 _camPose1 = obj.Point1?.CameraPose; _camPose2 = obj.Point2?.CameraPose;
+                _camOff1 = obj.Point1CameraOffset; _camOff2 = obj.Point2CameraOffset;
                 _outlineCorners.Clear();
                 OutlineWidth = obj.OutlineWidthMm.ToString("0.###", CultureInfo.InvariantCulture);
                 OutlineLength = obj.OutlineLengthMm.ToString("0.###", CultureInfo.InvariantCulture);
@@ -593,6 +777,7 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
         ToolPose = null;
         _pt1 = _pt2 = null;
         _camPose1 = _camPose2 = null;
+        _camOff1 = _camOff2 = null;
         _outlineCorners.Clear();
         OutlineOffsetX = "0"; OutlineOffsetY = "0";
         OnPropertyChanged(nameof(CamPose1Text)); OnPropertyChanged(nameof(CamPose2Text));
@@ -624,6 +809,9 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
     {
         CaptureToolPoseCommand.RaiseCanExecuteChanged();
         MoveToPoseCommand.RaiseCanExecuteChanged();
+        CameraToToolCommand.RaiseCanExecuteChanged();
+        RunProcedureCommand.RaiseCanExecuteChanged();
+        CancelProcedureCommand.RaiseCanExecuteChanged();
         ReadExposureCommand.RaiseCanExecuteChanged();
         ApplyExposureCommand.RaiseCanExecuteChanged();
         TeachCamera1Command.RaiseCanExecuteChanged();
@@ -644,8 +832,10 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
         StatusWarn = warn;
     }
 
-    private static string PoseText(MotionPosition? p)
-        => p == null ? "not taught" : $"X {p.X:0.0000}  Y {p.Y:0.0000}  Z {p.Z:0.0000}";
+    private static string PoseText(MotionPosition? p, CameraOffset? off)
+        => p == null ? "not taught"
+         : $"X {p.X:0.0000}  Y {p.Y:0.0000}  Z {p.Z:0.0000}" +
+           (off == null ? "  (absolute only)" : $"   Δtool ({off.X:+0.000;-0.000}, {off.Y:+0.000;-0.000}{(off.Z is { } z ? $", {z:+0.000;-0.000}" : "")})");
 
     private static string PointText(GrippedPoint? p)
         => p == null ? "not marked" : $"px ({p.PixelX:0}, {p.PixelY:0}) → ({p.CameraFrameX:0.0000}, {p.CameraFrameY:0.0000}) mm  [{p.Source}]";
@@ -657,6 +847,7 @@ public sealed class GrippedObjectViewModel : ObservableObject, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        CancelProcedure();
         _host.Process.GrippedObjectsChanged -= OnObjectsChanged;
         _host.Process.ToolRegistrationsChanged -= OnObjectsChanged;
         _active = false;
