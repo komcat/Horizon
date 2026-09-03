@@ -98,3 +98,28 @@ gripper still shows its edge) and the label. With a focus Z the label carries th
 read-out — `tool higher −1.00` / `tool lower +1.00` (ToolZ − CameraZ; gantry Z− is up).
 When the centre is outside the frame the marker is pinned to the nearest edge with an
 arrow toward the real position and the distance in mm (`Gripper 12.30 mm ↗`).
+
+## Gripped object (the FAU in the gripper)
+
+Once the gripper is registered, whatever it holds can be taught the same way and ride
+along with it. A **gripped object** is per-product (`{product}\gripped_objects.json`,
+copied by Save As…) because the FAU dimensions belong to the product, not the machine.
+
+| Layer | Piece | Role |
+|---|---|---|
+| 2 `Registration/` | `GrippedObject` (+ `GrippedPoint`), `GrippedObjectStore` | model + per-product store |
+| | `ToolRegistrationRoutine.LocateObject` | live location: taught centre carried by the tool's move since the object's tool pose, through the tool registration's axis maps |
+| | `IProcessService` | `Get/SaveGrippedObject(s)`, `RemoveGrippedObject`, `LocateGrippedObject`, `GrippedObjectsChanged` |
+| 3 `FAAM.UI` | Home › **Gripped FAU** page (`GrippedObjectView` / `GrippedObjectViewModel`, `AccessPolicy.GrippedObject` = Engineer) | the teach procedure |
+| | `ToolOverlayView` | draws every saved object in **purple** on the Run feed, the Zoom2× inset and the pop-out, with `FAU higher/lower` Z read-out |
+
+Procedure (page): **1** capture the tool pose (Move to pose returns there) → **2** camera
+exposure (read / apply; lighting is a free-text placeholder for now) → **3** for each of the
+two reference points: *Teach camera pos* (records the gantry pose; *Move camera* returns
+there and re-applies the exposure), then mark the point either by arming *Mark 1 / Mark 2*
+and clicking the feed, or by choosing a vision profile and *Run* (takes the profile's `x`/`y`
+result — point-type profiles: NCC, circle, corner) → **4** the centre is the mean → **5**
+outline: *Pick outline* two corners (width / length / box offset derived, editable) →
+**6** *Save object* into the product; *Clear object* removes the object with its points and
+outline. Marking / corner picking is refused unless the tool stands at the object's pose.
+The focus Z is the mean camera Z of the two point poses.

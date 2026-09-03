@@ -67,6 +67,9 @@
             <Button x:Name="RepositoryTile" Grid.Row="3" Grid.Column="0" Content="Repository"
                     Style="{StaticResource Tile}" Click="OnRepositoryClick"
                     ToolTip="Browse program / deck versions and checkout an earlier one" />
+            <Button x:Name="GrippedTile" Grid.Row="3" Grid.Column="1" Content="Gripped FAU"
+                    Style="{StaticResource Tile}" Click="OnGrippedClick"
+                    ToolTip="Teach the object held by the registered gripper (two points + outline) so it tracks on the camera views" />
         </Grid>
     </Grid>
 </UserControl>

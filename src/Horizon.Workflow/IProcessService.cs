@@ -428,6 +428,31 @@ public interface IProcessService
     /// <summary>Moves the tool device back to the pose captured in its registration (all axes, one coordinated move).</summary>
     Task<Result> MoveToolToPoseAsync(string toolDevice, CancellationToken ct = default);
 
+    // --- Gripped objects (per-product): something held by a registered tool, e.g. the FAU in
+    //     the hex-right gripper, taught by two reference points and drawn purple on the feeds.
+
+    /// <summary>The active product's gripped objects (empty if none / no product).</summary>
+    IReadOnlyList<GrippedObject> GetGrippedObjects();
+
+    /// <summary>A gripped object by name, or null.</summary>
+    GrippedObject? GetGrippedObject(string name);
+
+    /// <summary>Adds or replaces a gripped object in the active product. Raises <see cref="GrippedObjectsChanged"/>.</summary>
+    Result SaveGrippedObject(GrippedObject obj);
+
+    /// <summary>Deletes a gripped object (its points and outline). Raises <see cref="GrippedObjectsChanged"/>.</summary>
+    Result RemoveGrippedObject(string name);
+
+    /// <summary>Raised after a gripped object is saved or removed, and on product switch (any thread).</summary>
+    event Action? GrippedObjectsChanged;
+
+    /// <summary>
+    /// Where a gripped object is right now in its camera device's frame (cached motion states,
+    /// non-blocking) — its taught centre carried along by the tool's move since the teach pose.
+    /// Needs the tool's registration. Drives the live overlay.
+    /// </summary>
+    Result<ToolLocation> LocateGrippedObject(string name);
+
     // --- Recipes (.hrec scripts, operate on the active product) ---
 
     /// <summary>Recipe names in the active product.</summary>

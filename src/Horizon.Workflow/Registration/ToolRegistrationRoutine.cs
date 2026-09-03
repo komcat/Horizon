@@ -60,6 +60,34 @@ internal sealed class ToolRegistrationRoutine
     }
 
     /// <summary>
+    /// Live location of a gripped object (cached states): its taught centre shifted by the
+    /// tool's move since the object's own tool pose, through the tool registration's axis
+    /// maps. Z (the object's focus height) follows the same way when both the registration and
+    /// the object know their Z.
+    /// </summary>
+    public Result<ToolLocation> LocateObject(ToolRegistration reg, GrippedObject obj)
+    {
+        var check = Validate(reg);
+        if (!check.IsSuccess) return Result<ToolLocation>.Fail(ErrorCode.InvalidParameter, check.Message);
+        if (obj.ToolPose == null)
+            return Result<ToolLocation>.Fail(ErrorCode.InvalidParameter, $"Gripped object '{obj.Name}' has no tool pose.");
+
+        var tool = _engine.Motion.GetState(reg.ToolDevice);
+        var cam = _engine.Motion.GetState(reg.CameraDevice);
+        if (!tool.Valid || !cam.Valid)
+            return Result<ToolLocation>.Fail(ErrorCode.OperationFailed,
+                $"No motion state yet for '{(tool.Valid ? reg.CameraDevice : reg.ToolDevice)}'.");
+
+        var now = ToolCentreAt(reg, tool.Position);
+        var then = ToolCentreAt(reg, obj.ToolPose);
+        double x = obj.CentreX + (now.X - then.X);
+        double y = obj.CentreY + (now.Y - then.Y);
+        double? z = obj.FocusZ is { } fz && now.Z is { } nz && then.Z is { } tz ? fz + (nz - tz) : null;
+        return Result<ToolLocation>.Ok(new ToolLocation(obj.Name, x, y, cam.Position.X, cam.Position.Y,
+            x - cam.Position.X, y - cam.Position.Y, z, cam.Position.Z, z is { } zz ? zz - cam.Position.Z : 0));
+    }
+
+    /// <summary>
     /// Moves the camera device so the camera is centred on the tool. Reads both devices live,
     /// computes the delta, refuses if it exceeds <paramref name="maxDistanceMm"/> (0 = the
     /// registration's own bound), then issues one coordinated move. With

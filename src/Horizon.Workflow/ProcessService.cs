@@ -28,6 +28,7 @@ public sealed class ProcessService : IProcessService
     private DeckStore? _decks;           // null when no product is active
     private VisionProfileStore? _visionProfiles;   // null when no product is active
     private DispenseStore? _dispense;    // per-product dispense routines; null when no product is active
+    private GrippedObjectStore? _gripped;   // per-product gripped objects (the FAU in the gripper); null when no product is active
     private TaskCompletionSource<bool>? _deckGate;   // set while a deck waits for operator activation
     private DutStore? _dut;              // null when no product is active
     private readonly ProgramHistoryDb _history = new();   // machine-global audit store (history.db)
@@ -61,6 +62,7 @@ public sealed class ProcessService : IProcessService
             _decks = new DeckStore(dir);
             _visionProfiles = new VisionProfileStore(dir);
             _dispense = new DispenseStore(dir);
+            _gripped = new GrippedObjectStore(dir);
             _dut = new DutStore(dir, _products.ActiveProduct!);
         }
     }
@@ -192,10 +194,12 @@ public sealed class ProcessService : IProcessService
         _decks = new DeckStore(dir);
         _visionProfiles = new VisionProfileStore(dir);
         _dispense = new DispenseStore(dir);
+        _gripped = new GrippedObjectStore(dir);
         _dut = new DutStore(dir, name);
         SetActiveSerial(null);   // a serial belongs to a product — drop it on switch
         Log(LogLevel.Info, $"Product loaded: {name}");
         ProductChanged?.Invoke(name);
+        GrippedObjectsChanged?.Invoke();   // the overlay re-reads the new product's objects
         return Result.Ok();
     }
 
@@ -1608,6 +1612,65 @@ public sealed class ProcessService : IProcessService
         if (reg == null)
             return Task.FromResult(Result.Fail(ErrorCode.FileNotFound, $"'{toolDevice}' is not registered — register it on the Machine page first."));
         return new ToolRegistrationRoutine(_engine, Log).MoveToolToPoseAsync(reg, ct);
+    }
+
+    // --- Gripped objects (per-product) ---
+
+    public event Action? GrippedObjectsChanged;
+
+    public IReadOnlyList<GrippedObject> GetGrippedObjects() => _gripped?.All ?? Array.Empty<GrippedObject>();
+
+    public GrippedObject? GetGrippedObject(string name)
+        => string.IsNullOrWhiteSpace(name) ? null : _gripped?.Get(name);
+
+    public Result SaveGrippedObject(GrippedObject obj)
+    {
+        if (_gripped == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (obj == null || string.IsNullOrWhiteSpace(obj.Name))
+            return Result.Fail(ErrorCode.InvalidParameter, "A gripped object needs a name.");
+        if (string.IsNullOrWhiteSpace(obj.ToolDevice) || GetToolRegistration(obj.ToolDevice) == null)
+            return Result.Fail(ErrorCode.InvalidParameter, $"Tool '{obj.ToolDevice}' is not registered — register it on the Machine page first.");
+        if (obj.ToolPose == null)
+            return Result.Fail(ErrorCode.InvalidParameter, "A gripped object needs the tool pose (capture it first).");
+        if (obj.Point1 == null || obj.Point2 == null)
+            return Result.Fail(ErrorCode.InvalidParameter, "A gripped object needs both reference points.");
+        if (obj.OutlineWidthMm <= 0 || obj.OutlineLengthMm <= 0)
+            return Result.Fail(ErrorCode.InvalidParameter, "Outline width and length must be positive.");
+
+        _gripped.Update(obj with
+        {
+            SavedBy = _operator?.DisplayName,
+            SavedAt = DateTimeOffset.Now.ToString("o"),
+        });
+        Log(LogLevel.Info,
+            $"Gripped object saved: '{obj.Name}' in '{obj.ToolDevice}' seen by '{obj.CameraDevice}'/{obj.CameraId}, " +
+            $"centre ({obj.CentreX:F4}, {obj.CentreY:F4}) mm from pt1 [{obj.Point1.Source}] + pt2 [{obj.Point2.Source}]; " +
+            $"outline {obj.OutlineWidthMm:F2} × {obj.OutlineLengthMm:F2} mm; focus Z {(obj.FocusZ is { } z ? z.ToString("F4") : "—")}.");
+        GrippedObjectsChanged?.Invoke();
+        return Result.Ok();
+    }
+
+    public Result RemoveGrippedObject(string name)
+    {
+        if (_gripped == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (!_gripped.Remove(name))
+            return Result.Fail(ErrorCode.FileNotFound, $"Gripped object '{name}' not found.");
+        Log(LogLevel.Info, $"Gripped object removed: '{name}'.");
+        GrippedObjectsChanged?.Invoke();
+        return Result.Ok();
+    }
+
+    public Result<ToolLocation> LocateGrippedObject(string name)
+    {
+        var obj = GetGrippedObject(name);
+        if (obj == null)
+            return Result<ToolLocation>.Fail(ErrorCode.FileNotFound, $"Gripped object '{name}' not found.");
+        var reg = GetToolRegistration(obj.ToolDevice);
+        if (reg == null)
+            return Result<ToolLocation>.Fail(ErrorCode.FileNotFound, $"Tool '{obj.ToolDevice}' is not registered.");
+        return new ToolRegistrationRoutine(_engine, Log).LocateObject(reg, obj);
     }
 
     public async Task<Result> JogCameraNeedleOffsetAsync(bool toNeedle, CancellationToken ct = default)

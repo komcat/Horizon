@@ -33,6 +33,7 @@ public partial class ShellWindow : Window
     private readonly CalibrationView _calibration;
     private readonly CameraNeedleCalibrationView _cameraNeedle;
     private readonly RepositoryView _repository;
+    private readonly GrippedObjectView _gripped;
 
     /// <summary>Camera pop-out windows this shell owns (auto-opened + restored).</summary>
     private readonly List<DisplayWindow> _cameraWindows = new();
@@ -51,6 +52,7 @@ public partial class ShellWindow : Window
         _cameraNeedle = new CameraNeedleCalibrationView(host);
         _repository = new RepositoryView();
         _repository.Attach(host);
+        _gripped = new GrippedObjectView(host);
         InitializeComponent();
 
         RestoreMainWindowPlacement();
@@ -80,6 +82,7 @@ public partial class ShellWindow : Window
         _home.ScriptRequested += ShowScript;
         _home.CalibrationRequested += ShowCalibration;
         _home.RepositoryRequested += ShowRepository;
+        _home.GrippedRequested += ShowGripped;
         _calibration.CameraNeedleRequested += ShowCameraNeedle;
         _cameraNeedle.BackRequested += ShowCalibration;
 
@@ -188,6 +191,8 @@ public partial class ShellWindow : Window
             _cameraNeedle.Deactivate();
         else if (ReferenceEquals(PageHost.Content, _repository))
             _repository.Deactivate();
+        else if (ReferenceEquals(PageHost.Content, _gripped))
+            _gripped.Deactivate();
     }
 
     /// <summary>
@@ -292,6 +297,17 @@ public partial class ShellWindow : Window
         DutHeader.Visibility = Visibility.Collapsed;
         _repository.Activate();
         PageHost.Content = _repository;
+    }
+
+    private void ShowGripped()
+    {
+        if (!Allow(AccessPolicy.GrippedObject, "Gripped FAU")) return;
+        LeaveCurrent();
+        Header1Text.Text = "GRIPPED FAU";
+        EngineHeader.Visibility = Visibility.Collapsed;
+        DutHeader.Visibility = Visibility.Collapsed;
+        _gripped.Activate();
+        PageHost.Content = _gripped;
     }
 
     private void ShowCameraNeedle()
@@ -575,6 +591,7 @@ public partial class ShellWindow : Window
             ReferenceEquals(PageHost.Content, _calibration) ? AccessPolicy.Calibration :
             ReferenceEquals(PageHost.Content, _cameraNeedle) ? AccessPolicy.Calibration :
             ReferenceEquals(PageHost.Content, _repository) ? AccessPolicy.Repository :
+            ReferenceEquals(PageHost.Content, _gripped) ? AccessPolicy.GrippedObject :
             null;
 
         if (required != null && !_host.Session.Has(required.Value))

@@ -29,6 +29,7 @@ public partial class ToolOverlayView : UserControl
     private const double EdgeInset = 16;      // how far inside the box a pinned marker sits
     private static readonly Brush ToolBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xA0, 0x00));   // orange over video
     private static readonly Brush OutlineBrush = new SolidColorBrush(Color.FromRgb(0xC8, 0xC8, 0xC8)); // grey outline box
+    private static readonly Brush ObjectBrush = new SolidColorBrush(Color.FromRgb(0xB0, 0x70, 0xFF));  // purple: gripped object
     private static readonly Brush LabelBg = new SolidColorBrush(Color.FromArgb(0xB0, 0, 0, 0));
 
     private EngineHost? _host;
@@ -39,6 +40,7 @@ public partial class ToolOverlayView : UserControl
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private readonly Dictionary<string, ToolGlyph> _glyphs = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<ToolRegistration> _regs = Array.Empty<ToolRegistration>();
+    private IReadOnlyList<GrippedObject> _objects = Array.Empty<GrippedObject>();
 
     public ToolOverlayView()
     {
@@ -60,6 +62,7 @@ public partial class ToolOverlayView : UserControl
         _cover = cover;
         image.SizeChanged += OnImageSizeChanged;
         host.Process.ToolRegistrationsChanged += OnRegistrationsChanged;
+        host.Process.GrippedObjectsChanged += OnRegistrationsChanged;   // objects ride on the same redraw
         ReloadRegistrations();
     }
 
@@ -67,7 +70,11 @@ public partial class ToolOverlayView : UserControl
     public void Detach()
     {
         if (_image != null) _image.SizeChanged -= OnImageSizeChanged;
-        if (_host != null) _host.Process.ToolRegistrationsChanged -= OnRegistrationsChanged;
+        if (_host != null)
+        {
+            _host.Process.ToolRegistrationsChanged -= OnRegistrationsChanged;
+            _host.Process.GrippedObjectsChanged -= OnRegistrationsChanged;
+        }
         _image = null;
         _host = null;
     }
@@ -100,9 +107,11 @@ public partial class ToolOverlayView : UserControl
     private void ReloadRegistrations()
     {
         _regs = _host?.Process.GetToolRegistrations() ?? Array.Empty<ToolRegistration>();
-        // Drop glyphs for tools that no longer exist.
+        _objects = _host?.Process.GetGrippedObjects() ?? Array.Empty<GrippedObject>();
+        // Drop glyphs for tools / objects that no longer exist.
         var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var r in _regs) keep.Add(r.ToolDevice);
+        foreach (var o in _objects) keep.Add(ObjectKey(o.Name));
         foreach (var key in new List<string>(_glyphs.Keys))
             if (!keep.Contains(key)) { _glyphs[key].Remove(Surface); _glyphs.Remove(key); }
     }
@@ -127,75 +136,92 @@ public partial class ToolOverlayView : UserControl
 
         foreach (var reg in _regs)
         {
-            if (!_glyphs.TryGetValue(reg.ToolDevice, out var glyph))
-            {
-                glyph = new ToolGlyph();
-                glyph.Add(Surface);
-                _glyphs[reg.ToolDevice] = glyph;
-            }
-
-            if (_camera == null || !string.Equals(reg.CameraId, _camera, StringComparison.OrdinalIgnoreCase))
-            {
-                glyph.Hide();
-                continue;
-            }
-
-            Horizon.Common.Result<ToolLocation> loc;
-            try { loc = _host.Process.LocateTool(reg.ToolDevice); }
-            catch (InvalidOperationException)
-            {
-                // Engine torn down (shutdown) — the motion facet is gone. Stop polling
-                // rather than throwing on the UI thread every tick.
-                SetActive(false);
-                return;
-            }
-            var px = loc.IsSuccess ? ToolOverlayMath.MmToSourcePx(loc.Value.DxMm, loc.Value.DyMm, settings) : null;
-            if (px is not { } off)
-            {
-                glyph.Hide();
-                continue;
-            }
-
-            var centre = ToolOverlayMath.ToDisplay(off.DxPx, off.DyPx, availW, availH, scale);
-            double wPx = settings.MmPerPixel > 0 ? reg.OutlineWidthMm / settings.MmPerPixel * scale : 0;
-            double hPx = settings.MmPerPixel > 0 ? reg.OutlineLengthMm / settings.MmPerPixel * scale : 0;
-            // The outline box is anchored to the tool point but need not be centred on it.
-            var boxOff = ToolOverlayMath.MmToSourcePx(reg.OutlineOffsetXmm, reg.OutlineOffsetYmm, settings);
-            var boxCentre = boxOff is { } bo
-                ? new Point(centre.X + bo.DxPx * scale, centre.Y + bo.DyPx * scale)
-                : centre;
-            var pinned = ToolOverlayMath.ClampToBox(centre, availW, availH, EdgeInset, out bool clamped);
-
-            // Z read-out: ToolZ − CameraZ in the camera device's frame (gantry Z− is up), so a
-            // negative delta means the tool sits above the focus plane.
-            string zText = loc.Value.HasZ
-                ? (loc.Value.DzMm < 0 ? $"tool higher {loc.Value.DzMm:0.00}" : $"tool lower {loc.Value.DzMm:+0.00}")
-                : "";
-
-            glyph.Show(reg.Label, zText, centre, boxCentre, pinned, clamped, wPx, hPx, loc.Value.DistanceMm, availW, availH);
+            DrawOne(reg.ToolDevice, reg.Label, "tool", reg.CameraId,
+                () => _host.Process.LocateTool(reg.ToolDevice),
+                reg.OutlineWidthMm, reg.OutlineLengthMm, reg.OutlineOffsetXmm, reg.OutlineOffsetYmm,
+                ToolBrush, OutlineBrush, settings, availW, availH, scale);
         }
+        foreach (var obj in _objects)
+        {
+            DrawOne(ObjectKey(obj.Name), obj.Name, obj.Name, obj.CameraId,
+                () => _host.Process.LocateGrippedObject(obj.Name),
+                obj.OutlineWidthMm, obj.OutlineLengthMm, obj.OutlineOffsetXmm, obj.OutlineOffsetYmm,
+                ObjectBrush, ObjectBrush, settings, availW, availH, scale);
+        }
+    }
+
+    private static string ObjectKey(string name) => "obj:" + name;
+
+    /// <summary>Draws (or hides) one glyph — a registered tool or a gripped object — from its live location.</summary>
+    private void DrawOne(string key, string label, string zSubject, string cameraId,
+                         Func<Horizon.Common.Result<ToolLocation>> locate,
+                         double widthMm, double lengthMm, double offXmm, double offYmm,
+                         Brush markerBrush, Brush outlineBrush,
+                         Horizon.Common.AppSettings settings, double availW, double availH, double scale)
+    {
+        if (!_glyphs.TryGetValue(key, out var glyph))
+        {
+            glyph = new ToolGlyph(markerBrush, outlineBrush);
+            glyph.Add(Surface);
+            _glyphs[key] = glyph;
+        }
+
+        if (_camera == null || !string.Equals(cameraId, _camera, StringComparison.OrdinalIgnoreCase))
+        {
+            glyph.Hide();
+            return;
+        }
+
+        var loc = locate();
+        var px = loc.IsSuccess ? ToolOverlayMath.MmToSourcePx(loc.Value.DxMm, loc.Value.DyMm, settings) : null;
+        if (px is not { } off)
+        {
+            glyph.Hide();
+            return;
+        }
+
+        var centre = ToolOverlayMath.ToDisplay(off.DxPx, off.DyPx, availW, availH, scale);
+        double wPx = settings.MmPerPixel > 0 ? widthMm / settings.MmPerPixel * scale : 0;
+        double hPx = settings.MmPerPixel > 0 ? lengthMm / settings.MmPerPixel * scale : 0;
+        // The outline box is anchored to the point but need not be centred on it.
+        var boxOff = ToolOverlayMath.MmToSourcePx(offXmm, offYmm, settings);
+        var boxCentre = boxOff is { } bo
+            ? new Point(centre.X + bo.DxPx * scale, centre.Y + bo.DyPx * scale)
+            : centre;
+        var pinned = ToolOverlayMath.ClampToBox(centre, availW, availH, EdgeInset, out bool clamped);
+
+        // Z read-out: Z − CameraZ in the camera device frame (gantry Z− is up), so a
+        // negative delta means the subject sits above the focus plane.
+        string zText = loc.Value.HasZ
+            ? (loc.Value.DzMm < 0 ? $"{zSubject} higher {loc.Value.DzMm:0.00}" : $"{zSubject} lower {loc.Value.DzMm:+0.00}")
+            : "";
+
+        glyph.Show(label, zText, centre, boxCentre, pinned, clamped, wPx, hPx, loc.Value.DistanceMm, availW, availH);
     }
 
     /// <summary>The drawable pieces for one tool — reused across redraws (no per-tick allocation).</summary>
     private sealed class ToolGlyph
     {
-        private readonly Rectangle _outline = new()
-        {
-            Stroke = OutlineBrush, StrokeThickness = 1.5, Fill = Brushes.Transparent,
-            StrokeDashArray = new DoubleCollection { 6, 3 },
-        };
-        private readonly Line _h = new() { Stroke = ToolBrush, StrokeThickness = 1.5 };
-        private readonly Line _v = new() { Stroke = ToolBrush, StrokeThickness = 1.5 };
-        private readonly Ellipse _dot = new() { Width = 6, Height = 6, Fill = ToolBrush };
-        private readonly Polygon _arrow = new() { Fill = ToolBrush, Visibility = Visibility.Collapsed };
+        private readonly Rectangle _outline;
+        private readonly Line _h;
+        private readonly Line _v;
+        private readonly Ellipse _dot;
+        private readonly Polygon _arrow;
         private readonly Border _labelBox;
-        private readonly TextBlock _label = new()
-        {
-            Foreground = ToolBrush, FontSize = 11.5, FontWeight = FontWeights.SemiBold,
-        };
+        private readonly TextBlock _label;
 
-        public ToolGlyph()
+        public ToolGlyph(Brush marker, Brush outline)
         {
+            _outline = new Rectangle
+            {
+                Stroke = outline, StrokeThickness = 1.5, Fill = Brushes.Transparent,
+                StrokeDashArray = new DoubleCollection { 6, 3 },
+            };
+            _h = new Line { Stroke = marker, StrokeThickness = 1.5 };
+            _v = new Line { Stroke = marker, StrokeThickness = 1.5 };
+            _dot = new Ellipse { Width = 6, Height = 6, Fill = marker };
+            _arrow = new Polygon { Fill = marker, Visibility = Visibility.Collapsed };
+            _label = new TextBlock { Foreground = marker, FontSize = 11.5, FontWeight = FontWeights.SemiBold };
             _labelBox = new Border
             {
                 Background = LabelBg, CornerRadius = new CornerRadius(2),

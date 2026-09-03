@@ -45,6 +45,9 @@ public static class AccessPolicy
     /// </summary>
     public const AccessLevel Registration = AccessLevel.Engineer;
 
+    /// <summary>The Gripped FAU page — teaches the object held by the registered gripper (per product).</summary>
+    public const AccessLevel GrippedObject = AccessLevel.Engineer;
+
     /// <summary>
     /// The Machine page's Settings section — machine identity, the user directory and
     /// the level passwords. Admin only: this is the screen that grants access.

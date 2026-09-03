@@ -139,7 +139,10 @@ defines its own program/recipe/position formats.
   cached states + the two **bounded** moves — refused, never clamped, beyond `MaxMoveMm`),
   exposed on `IProcessService` and as the `tool.cameraToTool` / `tool.toolToCamera` steps.
   The procedure UI is FAAM's Machine › Registration section; `ToolOverlayView` draws the
-  live gripper on the Run feed / zoom inset / pop-out. See `docs/device-registration-design.md`.
+  live gripper on the Run feed / zoom inset / pop-out. A per-product **gripped object**
+  (`GrippedObject`/`GrippedObjectStore`, the FAU held by the gripper, taught on FAAM's Home ›
+  Gripped FAU page from two points + outline) rides on the registration and is drawn purple
+  by the same overlay. See `docs/device-registration-design.md`.
 
 ### Layer 3 — operator applications (Horizon.UI and FAAM.UI)
 
