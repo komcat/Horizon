@@ -68,6 +68,9 @@
             <Button x:Name="RepositoryTile" Grid.Row="3" Grid.Column="0" Content="Repository"
                     Style="{StaticResource Tile}" Click="OnRepositoryClick"
                     ToolTip="Browse program / deck versions and checkout an earlier one" />
+            <Button x:Name="DutDataTile" Grid.Row="3" Grid.Column="1" Content="DUT Data"
+                    Style="{StaticResource Tile}" Click="OnDutDataClick"
+                    ToolTip="UV signal snapshots (uv1.0 … uv2.1_final) per serial, with chart and CSV export" />
         </Grid>
     </Grid>
 </UserControl>

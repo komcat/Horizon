@@ -36,6 +36,12 @@ public static class AccessPolicy
     /// <summary>Program / deck version browse + checkout.</summary>
     public const AccessLevel Repository = AccessLevel.Engineer;
 
+    /// <summary>
+    /// The DUT Data page — the per-serial UV signal snapshots. Read-only traceability
+    /// data with no hardware or configuration exposure, so it sits at the Run level.
+    /// </summary>
+    public const AccessLevel DutData = AccessLevel.Operator;
+
     /// <summary>Write and run <c>.moon</c> scripts against live hardware.</summary>
     public const AccessLevel Script = AccessLevel.Engineer;
 

@@ -40,6 +40,9 @@ public partial class HomeView : UserControl
     /// <summary>Raised when the operator clicks Repository.</summary>
     public event Action? RepositoryRequested;
 
+    /// <summary>Raised when the operator clicks DUT Data (per-serial UV signal snapshots).</summary>
+    public event Action? DutDataRequested;
+
 
     public HomeView() => InitializeComponent();
 
@@ -72,6 +75,7 @@ public partial class HomeView : UserControl
         Gate(ScriptTile, AccessPolicy.Script);
         Gate(CalibrationTile, AccessPolicy.Calibration);
         Gate(RepositoryTile, AccessPolicy.Repository);
+        Gate(DutDataTile, AccessPolicy.DutData);
 
         // Switching to an existing product is floor work; creating one is authoring.
         var canSwitch = session.Has(AccessPolicy.ProductSwitch);
@@ -253,4 +257,6 @@ public partial class HomeView : UserControl
     private void OnCalibrationClick(object sender, RoutedEventArgs e) => CalibrationRequested?.Invoke();
 
     private void OnRepositoryClick(object sender, RoutedEventArgs e) => RepositoryRequested?.Invoke();
+
+    private void OnDutDataClick(object sender, RoutedEventArgs e) => DutDataRequested?.Invoke();
 }

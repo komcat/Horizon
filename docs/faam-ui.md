@@ -16,14 +16,16 @@ the hardware adapters or the legacy `Core`/`Process` stack.
 - `EngineHost` — composition root: owns the single `HorizonEngine`, `ProcessService`,
   `LogHub`, `TelemetryStore`, and `AppSettingsStore`.
 - `ShellWindow` — fixed chrome (Home button, **global jog rail**, page header) around
-  a swappable page host: **Home**, **Machine**, **Run**.
+  a swappable page host: **Home**, **Machine**, **Run**, **Engineer**, **Vision
+  Alignment**, **Script**, **Calibration**, **Repository**, **DUT Data**.
 - Theming: Windows **SystemColors** palette (`App.xaml` brushes `Bg/Panel/Text/
   Subtle/Edge/Accent` + fixed status/video colours) — see `faam-ui` memory / the
   same scheme is mirrored in Horizon.UI.
 
 ## Pages
 
-- **Home** — launcher tiles (RUN / Machine).
+- **Home** — launcher tiles (RUN / Engineer / Machine / Vision Alignment / Script /
+  Calibration / Repository / DUT Data) plus the product selector.
 - **Machine** — the Horizon.UI Machine page ported wholesale (section rail:
   Status, Motion, IO, Pneumatic, Laser, TEC, Power supply, Measurement, SMU,
   Camera, **Registration** (Engineer), **Settings** (Admin)). Engine status + Reconnect
@@ -31,7 +33,7 @@ the hardware adapters or the legacy `Core`/`Process` stack.
   gantry camera — see `docs/device-registration-design.md`.
 - **Sign-in gate** — nothing in the shell works until an operator signs in with
   **level + employee number + level password**. Screens are gated by ranked
-  `AccessLevel` through `AccessPolicy` (Operator: Run · Technician: + Machine, Vision
+  `AccessLevel` through `AccessPolicy` (Operator: Run, DUT Data · Technician: + Machine, Vision
   Alignment · Engineer: + Engineer, Repository, Script, Calibration, the Gripped FAU tab · Admin: + the
   Settings section). The jog rail locks with the station, except **STOP**, which stays
   live at every level. See `docs/product-and-traceability-design.md`.
@@ -81,6 +83,23 @@ the hardware adapters or the legacy `Core`/`Process` stack.
     cursor but not the machine (there is nowhere to go): jog there, press Update, and
     carry on — that is how a fresh product gets taught in program order.
   - **Log** — engine + process/jog log lines.
+- **DUT Data** (`Views/DutDataView`, Operator) — the UV-cure signal snapshots of every
+  unit of the active product. The UV programs' `dut.readAllSignals` steps file a full
+  SiPhOG read-out (`siphog.sagPwrV`, `targetSagPwrV`, `photoCurrentUa`, `sledCurrentMa`,
+  `sledTempC`, `tecCurrentMa`) under the dataset keys **`uv1.0`** (before cure 1),
+  **`uv1.1`** (after cure 1), **`uv2.0`** / **`uv2.1_final`** (around cure 2) as
+  `Type=Object` entries in the run's `dut\{serial}.json`. `DutUvData` extracts them
+  (ignoring the jog-mirror / log entries in the same run); the page loads every record
+  through `IProcessService.ListDutRecords` / `GetDutRecord` on a background thread with
+  progress in the status line (cancelled on leaving, reloaded on product switch). The
+  **overview** grid is one row per UV run, newest first (a reworked serial appears once per
+  run), showing the picked **Signal** at each snapshot plus the `uv2.1_final − uv1.0`
+  delta, with a serial **filter** and range presets (All · last 7 days · last 30 days ·
+  YTD · last 30 runs · last 100 runs, combined with the filter); selecting a row lists that run's snapshots with every
+  signal in the **detail** grid, and the `DutTrendChart` (static SkiaSharp, categorical X)
+  trends the picked signal across the visible rows with the selected run marked.
+  **Export CSV** writes the visible rows with every snapshot × every signal. The Run
+  header's older *Results* window (run metadata only) is unchanged.
 
 ## Global jog panel (shell rail)
 

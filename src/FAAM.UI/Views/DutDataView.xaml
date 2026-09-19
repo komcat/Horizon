@@ -1,0 +1,133 @@
+<UserControl x:Class="FAAM.UI.Views.DutDataView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:FAAM.UI.Views"
+             Background="{StaticResource Bg}">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="120" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="280" MinHeight="120" />
+        </Grid.RowDefinitions>
+
+        <!-- ===== Top bar: title · status · filter · signal picker · refresh · export ===== -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,10">
+            <TextBlock x:Name="TitleText" Text="DUT Data" Foreground="{StaticResource Accent}"
+                       FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                <TextBlock Text="Filter" Foreground="{StaticResource Subtle}" FontSize="12"
+                           VerticalAlignment="Center" Margin="0,0,6,0" />
+                <TextBox x:Name="FilterBox" Width="140" Height="26" VerticalContentAlignment="Center"
+                         TextChanged="OnFilterChanged" ToolTip="Show only serials containing this text" />
+                <TextBlock Text="Signal" Foreground="{StaticResource Subtle}" FontSize="12"
+                           VerticalAlignment="Center" Margin="16,0,6,0" />
+                <ComboBox x:Name="SignalCombo" Width="210" Height="26" VerticalContentAlignment="Center"
+                          DisplayMemberPath="Label" SelectionChanged="OnSignalChanged"
+                          ToolTip="The signal shown in the uv columns and the chart" />
+                <Button Content="Refresh" Width="80" Height="26" Margin="16,0,0,0" Click="OnRefresh" />
+                <Button x:Name="ExportButton" Content="Export CSV" Width="100" Height="26" Margin="6,0,0,0"
+                        Click="OnExport" ToolTip="Save the rows shown below (all snapshots × all signals) as a .csv" />
+            </StackPanel>
+            <TextBlock x:Name="StatusText" Foreground="{StaticResource Subtle}" FontSize="12"
+                       VerticalAlignment="Center" Margin="16,0,0,0" />
+        </DockPanel>
+
+        <!-- ===== Overview: one row per UV run, newest first ===== -->
+        <Border Grid.Row="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                BorderThickness="1" CornerRadius="3">
+            <DockPanel Margin="8">
+                <DockPanel DockPanel.Dock="Top" Margin="2,2,2,8">
+                    <!-- Range presets — combine with the serial filter; count presets take the newest N. -->
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <StackPanel.Resources>
+                            <Style TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                <Setter Property="MinWidth" Value="92" />
+                                <Setter Property="Height" Value="24" />
+                                <Setter Property="Margin" Value="4,0,0,0" />
+                                <Setter Property="Padding" Value="8,0" />
+                                <Setter Property="GroupName" Value="Range" />
+                            </Style>
+                        </StackPanel.Resources>
+                        <TextBlock Text="Show" Foreground="{StaticResource Subtle}" FontSize="12"
+                                   VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <RadioButton Content="All" Tag="All" IsChecked="True" Checked="OnRangeChecked" />
+                        <RadioButton Content="Last 7 days" Tag="Week" Checked="OnRangeChecked" />
+                        <RadioButton Content="Last 30 days" Tag="Month" Checked="OnRangeChecked" />
+                        <RadioButton Content="YTD" Tag="Ytd" Checked="OnRangeChecked" ToolTip="Since 1 January this year" />
+                        <RadioButton Content="Last 30 runs" Tag="Last30" Checked="OnRangeChecked" />
+                        <RadioButton Content="Last 100 runs" Tag="Last100" Checked="OnRangeChecked" />
+                    </StackPanel>
+                    <TextBlock x:Name="OverviewHeader" Foreground="{StaticResource Text}"
+                               FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Text="UV runs" />
+                </DockPanel>
+                <DataGrid x:Name="OverviewGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                          Background="Transparent" RowBackground="Transparent" Foreground="{StaticResource Text}"
+                          BorderThickness="0" CanUserAddRows="False" CanUserResizeRows="False"
+                          SelectionMode="Single" SelectionUnit="FullRow" FontSize="12.5"
+                          SelectionChanged="OnRowSelected">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Verdict}" Value="Fail">
+                                    <Setter Property="Foreground" Value="{StaticResource Danger}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Verdict}" Value="Aborted">
+                                    <Setter Property="Foreground" Value="{StaticResource Warn}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Verdict}" Value="InProgress">
+                                    <Setter Property="Foreground" Value="{StaticResource Running}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Serial" Binding="{Binding Serial}" Width="90" />
+                        <DataGridTextColumn Header="Started" Binding="{Binding Started}" Width="150" />
+                        <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="110" />
+                        <DataGridTextColumn Header="Verdict" Binding="{Binding Verdict}" Width="80" />
+                        <DataGridTextColumn Header="Operator" Binding="{Binding Operator}" Width="120" />
+                        <DataGridTextColumn x:Name="Uv10Column" Header="uv1.0" Width="110"
+                                            Binding="{Binding Uv10, StringFormat={}{0:0.0000}}" />
+                        <DataGridTextColumn x:Name="Uv11Column" Header="uv1.1" Width="110"
+                                            Binding="{Binding Uv11, StringFormat={}{0:0.0000}}" />
+                        <DataGridTextColumn x:Name="Uv20Column" Header="uv2.0" Width="110"
+                                            Binding="{Binding Uv20, StringFormat={}{0:0.0000}}" />
+                        <DataGridTextColumn x:Name="Uv21Column" Header="uv2.1_final" Width="110"
+                                            Binding="{Binding Uv21Final, StringFormat={}{0:0.0000}}" />
+                        <DataGridTextColumn x:Name="DeltaColumn" Header="Δ final − uv1.0" Width="*" MinWidth="110"
+                                            Binding="{Binding Delta, StringFormat={}{0:+0.0000;-0.0000;0.0000}}" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+
+        <GridSplitter Grid.Row="2" Height="8" HorizontalAlignment="Stretch" Background="Transparent"
+                      ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" />
+
+        <!-- ===== Lower row: selected run's snapshots (left) · trend chart (right) ===== -->
+        <Grid Grid.Row="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="0.8*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="3">
+                <DockPanel Margin="8">
+                    <TextBlock x:Name="DetailHeader" DockPanel.Dock="Top" Foreground="{StaticResource Text}"
+                               FontSize="13" FontWeight="SemiBold" Margin="2,2,2,8" Text="Select a run above." />
+                    <DataGrid x:Name="DetailGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                              Background="Transparent" RowBackground="Transparent" Foreground="{StaticResource Text}"
+                              BorderThickness="0" CanUserAddRows="False" CanUserResizeRows="False"
+                              FontFamily="Consolas" FontSize="12.5" />
+                </DockPanel>
+            </Border>
+
+            <v:DutTrendChart x:Name="Chart" Grid.Column="2" />
+        </Grid>
+    </Grid>
+</UserControl>

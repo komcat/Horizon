@@ -201,7 +201,11 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   (the Gantt editor below), and **Vision Alignment** — a tabbed page holding **Vision
   Profile** (per-position vision recipe authoring, below), **Gripped FAU** (the
   gripped-object teach) and **Part Alignment** (fiducials E1/E2 + local objects that locate
-  the part on the fixture; `part.*` blocks) — the latter two Engineer-gated tabs. A SiPhOG TCP client lives under `Siphog/` (its Skia chart,
+  the part on the fixture; `part.*` blocks) — the latter two Engineer-gated tabs; plus
+  **Repository** (version browse/checkout) and **DUT Data** (Operator-level viewer of the
+  per-serial UV signal snapshots `uv1.0`/`uv1.1`/`uv2.0`/`uv2.1_final` that
+  `dut.readAllSignals` files: one row per UV run, signal picker, detail grid, trend chart,
+  CSV export — `Views/DutDataView` + `DutUvData`). A SiPhOG TCP client lives under `Siphog/` (its Skia chart,
   `SiphogChart`, is no longer on the Run page); `MoveClick.cs` holds the shared
   `mm/pixel` jog maths.
 - **Vision Profile page** — authors a saved, per-position vision recipe (camera +
