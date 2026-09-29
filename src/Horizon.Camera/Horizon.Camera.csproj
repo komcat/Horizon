@@ -15,13 +15,26 @@
     <PackageReference Include="Serilog" Version="4.2.0" />
   </ItemGroup>
 
-  <!-- Basler Pylon .NET wrapper from local Pylon 8 installation (must match native runtime) -->
+  <!-- Basler Pylon .NET wrapper from the local pylon installation (must match native runtime).
+       Resolved per machine: PYLON_DEV_DIR (set by the pylon installer) first, then the
+       pylon 8 ("pylon 8") and pylon 9+ ("pylon") default install dirs. Within the SDK,
+       prefer the net8.0 build (pylon 9+) over the root x64 build (.NET Framework). -->
+  <PropertyGroup>
+    <PylonDevDir Condition="'$(PYLON_DEV_DIR)' != '' And Exists('$(PYLON_DEV_DIR)Assemblies\Basler.Pylon')">$(PYLON_DEV_DIR)</PylonDevDir>
+    <PylonDevDir Condition="'$(PylonDevDir)' == '' And Exists('C:\Program Files\Basler\pylon 8\Development\Assemblies\Basler.Pylon')">C:\Program Files\Basler\pylon 8\Development\</PylonDevDir>
+    <PylonDevDir Condition="'$(PylonDevDir)' == '' And Exists('C:\Program Files\Basler\pylon\Development\Assemblies\Basler.Pylon')">C:\Program Files\Basler\pylon\Development\</PylonDevDir>
+    <PylonAssembly Condition="Exists('$(PylonDevDir)Assemblies\Basler.Pylon\net8.0\x64\Basler.Pylon.dll')">$(PylonDevDir)Assemblies\Basler.Pylon\net8.0\x64\Basler.Pylon.dll</PylonAssembly>
+    <PylonAssembly Condition="'$(PylonAssembly)' == ''">$(PylonDevDir)Assemblies\Basler.Pylon\x64\Basler.Pylon.dll</PylonAssembly>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="Basler.Pylon">
-      <HintPath>C:\Program Files\Basler\pylon 8\Development\Assemblies\Basler.Pylon\x64\Basler.Pylon.dll</HintPath>
+      <HintPath>$(PylonAssembly)</HintPath>
       <Private>true</Private>
     </Reference>
   </ItemGroup>
+  <Target Name="CheckPylonSdk" BeforeTargets="ResolveAssemblyReferences" Condition="!Exists('$(PylonAssembly)')">
+    <Error Text="Basler pylon .NET SDK not found (looked for '$(PylonAssembly)'). Install pylon with the Developer/.NET components, or set PYLON_DEV_DIR." />
+  </Target>
 
   <!-- IDS peak .NET SDK — only included when the SDK is installed -->
   <PropertyGroup>
