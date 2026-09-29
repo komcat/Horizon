@@ -136,12 +136,14 @@ public sealed class UnifiedMotionManager
         Log.Information("[Motion] '{Device}' MoveAbs6 X={X:F4} Y={Y:F4} Z={Z:F4} U={U:F4} V={V:F4} W={W:F4}",
             device, pos.X, pos.Y, pos.Z, pos.U, pos.V, pos.W);
         var values = new[] { pos.X, pos.Y, pos.Z, pos.U, pos.V, pos.W };
-        for (int i = 0; i < Math.Min(axes.Count, 6); i++)
-            if (!controller.MoveToPosition(axes[i], values[i], blocking))
-            {
-                Log.Error("[Motion] '{Device}' MoveAbs6 FAILED at axis {Axis}", device, axes[i]);
-                return false;
-            }
+        int n = Math.Min(axes.Count, 6);
+        // Send the pose as one move — a hexapod rejects per-axis moves whose
+        // intermediate pose is outside its workspace (see IMotionController.MoveToPositions).
+        if (!controller.MoveToPositions(axes.Take(n).ToList(), values.Take(n).ToList(), blocking))
+        {
+            Log.Error("[Motion] '{Device}' MoveAbs6 FAILED (axes {Axes})", device, string.Join(" ", axes.Take(n)));
+            return false;
+        }
         return true;
     }
 

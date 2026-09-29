@@ -54,6 +54,23 @@ public sealed class PIMotionController : IMotionController
         return true;
     }
 
+    /// <summary>
+    /// One MOV for the whole pose. The hexapod checks each MOV against its workspace
+    /// using the other axes' current targets, so moving axis-by-axis can hit an
+    /// unreachable intermediate pose (e.g. Home → ClearGrip rejected at Y) even though
+    /// the final pose is valid. A single multi-axis MOV is validated as one pose.
+    /// </summary>
+    public bool MoveToPositions(IReadOnlyList<string> axes, IReadOnlyList<double> positions, bool blocking)
+    {
+        if (!IsConnected) return false;
+        var result = PIGcs2.MOV(_connectionId, string.Join(" ", axes), positions.ToArray());
+        if (result == 0) return false;
+        if (blocking)
+            foreach (var axis in axes)
+                WaitForMotionComplete(axis);
+        return true;
+    }
+
     public bool MoveRelative(string axis, double distance, bool blocking)
     {
         if (!IsConnected) return false;
