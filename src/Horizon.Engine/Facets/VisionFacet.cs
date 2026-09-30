@@ -38,7 +38,10 @@ internal sealed class VisionFacet : IVisionFacet, IDisposable
         try
         {
             HOperatorSet.GetSystem("version", out HTuple version);
-            HalconVersion = version.S;
+            // 'version' comes back as a string on some HALCON releases and a double on others (24.05).
+            HalconVersion = version.Type == HTupleType.STRING
+                ? version.S
+                : Convert.ToString(version.D, System.Globalization.CultureInfo.InvariantCulture);
             HalconAvailable = true;
             _log(LogLevel.Info, $"Vision: HALCON {HalconVersion} available.");
         }
