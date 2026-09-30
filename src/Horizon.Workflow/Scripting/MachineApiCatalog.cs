@@ -75,6 +75,8 @@ public static class MachineApiCatalog
         new("psu", "setCurrentLimit", "machine.psu.setCurrentLimit(device [, channel], amps)", "Set a channel current limit (channel default 1)."),
         new("psu", "outputOn", "machine.psu.outputOn(device [, channel])", "Enable a channel output (channel default 1)."),
         new("psu", "outputOff", "machine.psu.outputOff(device [, channel])", "Disable a channel output (channel default 1)."),
+        new("psu", "powerUp", "machine.psu.powerUp(device, channel, volts, amps [, {settleMs=150, toleranceV=0.1, offOnFail=true}]) -> {v, i}",
+            "Verified power-up: check link, set I-limit + V, output ON, read back after settleMs. Errors (output switched OFF) if the reading is off."),
         new("psu", "readVoltage", "machine.psu.readVoltage(device [, channel]) -> V", "Read a channel voltage (channel default 1)."),
         new("psu", "readCurrent", "machine.psu.readCurrent(device [, channel]) -> A", "Read a channel current (channel default 1)."),
 

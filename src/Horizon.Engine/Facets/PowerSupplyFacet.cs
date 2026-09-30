@@ -156,7 +156,11 @@ internal sealed class PowerSupplyFacet : IPowerSupplyFacet, IAsyncDisposable
            && a.Channels.SequenceEqual(b.Channels);
 
     private static Result Map(string device, PowerSupplyError error)
-        => error == PowerSupplyError.Success
-            ? Result.Ok()
-            : Result.Fail(ErrorCode.OperationFailed, $"Power supply '{device}': {error}");
+        => error switch
+        {
+            PowerSupplyError.Success => Result.Ok(),
+            PowerSupplyError.OutOfRange => Result.Fail(ErrorCode.InvalidParameter,
+                $"Power supply '{device}': setpoint outside the channel's rated range (nothing sent)."),
+            _ => Result.Fail(ErrorCode.OperationFailed, $"Power supply '{device}': {error}"),
+        };
 }

@@ -703,6 +703,13 @@ internal sealed class StepDispatcher
             case "psu.connect":
                 return await _engine.PowerSupply.ConnectAsync(step.Device, ct);
 
+            // Adapters force every output OFF before closing the link.
+            case "psu.disconnect":
+                return await _engine.PowerSupply.DisconnectAsync(step.Device);
+
+            case "psu.powerup":
+                return await PsuPowerUpAsync(step, ctx, ct);
+
             case "psu.setvoltage":
                 return await _engine.PowerSupply.SetVoltageAsync(
                     step.Device, PsuChannel(step, ctx), Num(step, "volts", ctx));
@@ -1276,6 +1283,34 @@ internal sealed class StepDispatcher
     /// <summary>Power-supply channel (1-based) — defaults to channel 1 when omitted.</summary>
     private static int PsuChannel(WorkflowStep step, WorkflowContext ctx)
         => Has(step, "channel") ? (int)Num(step, "channel", ctx) : 1;
+
+    /// <summary>
+    /// <c>psu.powerUp</c> — verified channel power-up via the shared <see cref="PsuPowerUp"/>
+    /// (also behind <c>machine.psu.powerUp</c>). Verified readings land in
+    /// <c>{captureAs}_v</c> / <c>{captureAs}_i</c>.
+    /// </summary>
+    private async Task<Result> PsuPowerUpAsync(WorkflowStep step, WorkflowContext ctx, CancellationToken ct)
+    {
+        var req = new PsuPowerUpRequest(
+            step.Device,
+            PsuChannel(step, ctx),
+            Num(step, "volts", ctx),
+            Num(step, "amps", ctx),
+            Has(step, "settleMs") ? (int)Num(step, "settleMs", ctx) : PsuPowerUp.DefaultSettleMs,
+            Has(step, "toleranceV") ? Num(step, "toleranceV", ctx) : PsuPowerUp.DefaultToleranceV,
+            !Has(step, "offOnFail") || Bool(step, "offOnFail", ctx));
+
+        var r = await PsuPowerUp.RunAsync(_engine.PowerSupply, req, _log, ct);
+        if (!r.IsSuccess) return Result.Fail(r.Error, r.Message);
+
+        var captureAs = Str(step, "captureAs", ctx);
+        if (!string.IsNullOrWhiteSpace(captureAs))
+        {
+            ctx.Set($"{captureAs}_v", r.Value.Voltage);
+            ctx.Set($"{captureAs}_i", r.Value.Current);
+        }
+        return Result.Ok();
+    }
 
     /// <summary>Reads the optional velocity / camera / exposure params of a move step.</summary>
     private static MoveOverrides MoveOverridesOf(WorkflowStep step, WorkflowContext ctx)

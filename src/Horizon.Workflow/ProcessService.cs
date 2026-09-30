@@ -120,6 +120,8 @@ public sealed class ProcessService : IProcessService
 
     public bool IsPaused => _pause?.IsPaused ?? false;
 
+    public bool IsRunning => Volatile.Read(ref _pause) != null;
+
     public void Pause() => _pause?.Pause();
     public void Resume() => _pause?.Resume();
     public void Step() => _pause?.Step();

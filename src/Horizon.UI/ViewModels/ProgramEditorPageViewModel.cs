@@ -58,7 +58,7 @@ public sealed class ProgramEditorPageViewModel : PageViewModel
         "tec.connect", "tec.setTemperature", "tec.tecOn", "tec.tecOff", "tec.readTemperature", "tec.waitForTemperature",
         "smu.connect", "smu.setSourceVoltage", "smu.setSourceCurrent", "smu.setCompliance",
         "smu.outputOn", "smu.outputOff", "smu.readCurrent", "smu.readVoltage",
-        "psu.connect", "psu.setVoltage", "psu.setCurrentLimit", "psu.outputOn", "psu.outputOff",
+        "psu.connect", "psu.disconnect", "psu.powerUp", "psu.setVoltage", "psu.setCurrentLimit", "psu.outputOn", "psu.outputOff",
         "psu.readVoltage", "psu.readCurrent",
         "lighting.connect", "lighting.disconnect", "lighting.setIntensity",
         "lighting.setLightPercent", "lighting.setLightColor",

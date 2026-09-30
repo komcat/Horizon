@@ -52,15 +52,35 @@ public sealed class PowerSupplySectionViewModel : ObservableObject
     public AsyncRelayCommand ConnectCommand { get; }
     public AsyncRelayCommand DisconnectCommand { get; }
 
+    /// <summary>Adapter type of the selected device (e.g. <c>unit_t_udp3305s</c>).</summary>
+    public string DeviceType => _selectedDevice == null
+        ? "—"
+        : _host.Engine.PowerSupply.GetDevice(_selectedDevice)?.ControllerType ?? "—";
+
     private void RebuildChannels()
     {
+        foreach (var old in Channels)
+            old.PropertyChanged -= OnChannelPropertyChanged;
         Channels.Clear();
+        OnPropertyChanged(nameof(DeviceType));
         var device = _selectedDevice;
         if (device == null) return;
 
         var count = _host.Engine.PowerSupply.GetDevice(device)?.ChannelCount ?? 1;
         for (var ch = 1; ch <= count; ch++)
-            Channels.Add(new PowerSupplyChannelViewModel(_host, () => _selectedDevice, ch));
+        {
+            var vm = new PowerSupplyChannelViewModel(_host, () => _selectedDevice, ch);
+            vm.PropertyChanged += OnChannelPropertyChanged;
+            Channels.Add(vm);
+        }
+    }
+
+    // Surface each channel's last command result (incl. out-of-range refusals) on the status line.
+    private void OnChannelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(PowerSupplyChannelViewModel.LastStatus)
+            && sender is PowerSupplyChannelViewModel { LastStatus: { } status })
+            Status = status;
     }
 
     /// <summary>
@@ -84,7 +104,7 @@ public sealed class PowerSupplySectionViewModel : ObservableObject
         try
         {
             // RefreshAsync runs every channel's MEAS:V / MEAS:I / OUTP? — for
-            // the 3-channel UDP3305S that's 9 SCPI queries over USBTMC, ~100 ms.
+            // the 3-channel UDP3305S that's 9 SCPI queries (LAN or USBTMC), ~100 ms.
             // Run off the UI thread.
             await Task.Run(() => _host.Engine.PowerSupply.RefreshAsync()).ConfigureAwait(true);
 

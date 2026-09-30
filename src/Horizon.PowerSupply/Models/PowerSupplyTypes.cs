@@ -8,7 +8,9 @@ public enum PowerSupplyError
     InvalidChannel,
     OperationFailed,
     CommunicationError,
-    ParseError
+    ParseError,
+    /// <summary>A setpoint is outside the channel's rated range; nothing was sent.</summary>
+    OutOfRange
 }
 
 /// <summary>Live readings for one power-supply output channel.</summary>

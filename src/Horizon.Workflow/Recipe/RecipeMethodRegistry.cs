@@ -82,6 +82,8 @@ internal sealed class RecipeMethodRegistry : IRecipeMethodInvoker
     private void RegisterPowerSupply()
     {
         Register("psu", "connect", Hw("psu", (d, a, ctx, ct) => _engine.PowerSupply.ConnectAsync(d, ct)));
+        // Adapters force every output OFF before closing the link.
+        Register("psu", "disconnect", Hw("psu", (d, a, ctx, ct) => _engine.PowerSupply.DisconnectAsync(d)));
         Register("psu", "setVoltage", Hw("psu", (d, a, ctx, ct) =>
             _engine.PowerSupply.SetVoltageAsync(d, a.Int("channel", 1), a.Number("volts"))));
         Register("psu", "setCurrentLimit", Hw("psu", (d, a, ctx, ct) =>
@@ -90,6 +92,26 @@ internal sealed class RecipeMethodRegistry : IRecipeMethodInvoker
             _engine.PowerSupply.OutputOnAsync(d, a.Int("channel", 1))));
         Register("psu", "outputOff", Hw("psu", (d, a, ctx, ct) =>
             _engine.PowerSupply.OutputOffAsync(d, a.Int("channel", 1))));
+
+        // Verified power-up, shared with the psu.powerUp block and machine.psu.powerUp:
+        // psu.<dev>.powerUp(channel: 1, volts: 5, amps: 0.5 [, settleMs: 150, toleranceV: 0.1,
+        //                   offOnFail: true, store: "psu1"])  → psu1_v / psu1_i on success.
+        Register("psu", "powerUp", Hw("psu", async (d, a, ctx, ct) =>
+        {
+            var req = new PsuPowerUpRequest(d, a.Int("channel", 1), a.Number("volts"), a.Number("amps"),
+                a.Int("settleMs", PsuPowerUp.DefaultSettleMs),
+                a.Number("toleranceV", PsuPowerUp.DefaultToleranceV),
+                a.Flag("offOnFail", true));
+            var r = await PsuPowerUp.RunAsync(_engine.PowerSupply, req, _log, ct).ConfigureAwait(false);
+            if (!r.IsSuccess) return Result.Fail(r.Error, r.Message);
+            var store = a.Text("store");
+            if (!string.IsNullOrWhiteSpace(store))
+            {
+                ctx.Set($"{store}_v", RecipeValue.Number(r.Value.Voltage));
+                ctx.Set($"{store}_i", RecipeValue.Number(r.Value.Current));
+            }
+            return Result.Ok();
+        }));
 
         Register("psu", "readVoltage", Hw("psu", async (d, a, ctx, ct) =>
         {

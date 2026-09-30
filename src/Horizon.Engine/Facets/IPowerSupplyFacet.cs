@@ -3,8 +3,9 @@ using Horizon.Common;
 namespace Horizon.Engine;
 
 /// <summary>
-/// Power-supply domain of the engine — Keysight E36xxx programmable supplies
-/// over LXI. Exposes engine-owned types only. Channels are 1-based.
+/// Power-supply domain of the engine — Keysight E36xxx (LXI) and UNI-T
+/// UDP3305S-E (LAN / USB) programmable supplies. Exposes engine-owned types
+/// only. Channels are 1-based.
 /// </summary>
 public interface IPowerSupplyFacet
 {

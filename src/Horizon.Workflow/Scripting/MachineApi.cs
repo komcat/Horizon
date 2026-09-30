@@ -339,6 +339,33 @@ internal sealed class MachineApi
             return Do(_engine.PowerSupply.OutputOffAsync(dev, ch), $"psu.outputOff({dev},CH{ch})");
         });
 
+        // machine.psu.powerUp(device, channel, volts, amps [, opts]) -> { v, i }
+        // Verified power-up (shared with the psu.powerUp block): link check → I-limit → V →
+        // ON → settle → read-back. opts = { settleMs = 150, toleranceV = 0.1, offOnFail = true }.
+        // Raises a Lua error on failure — after switching the output back OFF unless offOnFail = false.
+        p["powerUp"] = Cb(a =>
+        {
+            const string fn = "psu.powerUp";
+            string dev = ReqStr(a, 0, fn);
+            int ch = (int)ReqNum(a, 1, fn);
+            double volts = ReqNum(a, 2, fn);
+            double amps = ReqNum(a, 3, fn);
+            var opts = a.Count > 4 && a[4].Type == DataType.Table ? a[4].Table : null;
+
+            var req = new PsuPowerUpRequest(dev, ch, volts, amps,
+                (int)OptField(opts, "settleMs", PsuPowerUp.DefaultSettleMs),
+                OptField(opts, "toleranceV", PsuPowerUp.DefaultToleranceV),
+                opts?.Get("offOnFail") is { } off && !off.IsNil() ? off.CastToBool() : true);
+
+            var r = Block(PsuPowerUp.RunAsync(_engine.PowerSupply, req, (_, msg) => _log(msg), _ct));
+            if (!r.IsSuccess) throw new ScriptRuntimeException(r.Message);
+
+            var t = new Table(_script);
+            t["v"] = DynValue.NewNumber(r.Value.Voltage);
+            t["i"] = DynValue.NewNumber(r.Value.Current);
+            return DynValue.NewTable(t);
+        });
+
         p["readVoltage"] = Cb(a => DynValue.NewNumber(PsuChannel(a, "psu.readVoltage").Voltage));
         p["readCurrent"] = Cb(a => DynValue.NewNumber(PsuChannel(a, "psu.readCurrent").Current));
 
@@ -870,6 +897,10 @@ internal sealed class MachineApi
 
     private static int OptInt(CallbackArguments a, int i, int fallback)
         => i < a.Count && a[i].Type == DataType.Number ? (int)a[i].Number : fallback;
+
+    /// <summary>A numeric field of an optional Lua options table, or <paramref name="fallback"/>.</summary>
+    private static double OptField(Table? opts, string key, double fallback)
+        => opts?.Get(key) is { Type: DataType.Number } v ? v.Number : fallback;
 
     /// <summary>
     /// Parses the optional-channel set form: <c>(device, value)</c> → CH1, or

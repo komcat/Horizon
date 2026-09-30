@@ -104,6 +104,14 @@ defines its own program/recipe/position formats.
   - `UCorrection/`, `FauPreAlign/` — `UCorrectionRoutine` / `FauPreAlignRoutine`
     with their angle/vector calculators; each is its own non-modal
     `IOperatorPrompt` on the Run page (inline Capture/Apply).
+- **Power supply (`psu.*`)** — the same op set on all three surfaces: program blocks
+  (`StepDispatcher`), `.moon` (`machine.psu.*`) and `.hrcp` (`psu.<dev>.*`), incl.
+  `psu.disconnect` (outputs forced OFF first). **`psu.powerUp`** is a verified power-up —
+  link check (one reconnect) → I-limit → V → ON → settle (150 ms) → read-back must show ON
+  and V within tolerance, else the output is switched back **OFF** (fail-safe, also on
+  cancel). One shared implementation, `Execution/PsuPowerUp.cs`, behind all three
+  surfaces. `IProcessService.IsRunning` (program/deck/recipe in progress) lets Layer 3
+  lock manual controls during a run. See `docs/power-supply.md`.
 - `Dut/` — `DutStore` for per-DUT (device-under-test) results, keyed by serial. A
   `DutRun` is stamped with the operator + station (`OperatorContext`, set via
   `IProcessService.SetOperator`). Beyond the program-driven path, an **interactive DUT
@@ -197,7 +205,10 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   **MoveClick** click-to-jog, process steps panel with Teach/Run toggle, a
   **snapshot box** beside the Zoom2× inset (`SnapshotView`, FAAM's `IImageDisplaySink`
   — a `.moon` script pushes a captured still into it with `machine.ui.showImage`),
-  serial-bracketed DUT run with PASS/FAIL + a DUT results viewer, log), **Engineer**
+  serial-bracketed DUT run with PASS/FAIL + a DUT results viewer, a **PSU panel**
+  (`Views/PsuQuickPanel` — green-on-black V/A readouts + per-channel output ON/OFF, CH1
+  default with CH2/CH3 add/remove saved in `faam_psu_panel.json`, toggles locked during a
+  run; it replaced the hand-operated Dispense panel), log), **Engineer**
   (the Gantt editor below), and **Vision Alignment** — a tabbed page holding **Vision
   Profile** (per-position vision recipe authoring, below), **Gripped FAU** (the
   gripped-object teach) and **Part Alignment** (fiducials E1/E2 + local objects that locate
@@ -239,7 +250,8 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   (`RunStepAsync`) — not yet promoted to a Layer 2 `WorkflowDeck`/`PositionStore`.
 - `EngineHost` forces camera **auto-exposure ON** on each camera-connect edge.
 - FAAM-owned config in `%APPDATA%\Horizon\config\`: `jog_transforms.json` (jog
-  matrices), `faam_teach_points.json` (legacy taught points, migrated into the product);
+  matrices), `faam_teach_points.json` (legacy taught points, migrated into the product),
+  `faam_psu_panel.json` (Run-page PSU channels shown, per supply);
   plus shared `app_settings.json` (`AppSettings`/`AppSettingsStore` in `Horizon.Common`:
   `mm/pixel`, MoveClick mapping, jog velocity presets, `StationId`) and the engine
   device configs. Operator directory `users.json` and the program-history
@@ -271,7 +283,7 @@ both — a single process owns the hardware SDKs. `docs/architecture_layers.md` 
 | Pneumatic | IPneumaticSlide | PneumaticSlide | Uses IIODevice output pins |
 | Current Measurement | ICurrentMeasurementDevice | Keithley6482Adapter | visa64.dll P/Invoke (NI-VISA) |
 | Laser Controller | ILaserControllerDevice | CLD101xAdapter | Thorlabs CLD101x SCPI over USB |
-| Power Supply | IPowerSupplyDevice | KeysightPowerSupplyAdapter | Keysight E36xxx |
+| Power Supply | IPowerSupplyDevice | KeysightPowerSupplyAdapter, UnitTUDP3305SAdapter | Keysight E36xxx (LXI TCP); UNI-T UDP3305S-E (LAN raw SCPI socket, or VISA USBTMC / VXI-11 — `Transport/ScpiTransport.cs`) |
 | Lighting | ILightingDevice | CcsPd3Adapter | CCS PD3 LED controller |
 | TEC | ITecDevice | Ted4015Adapter | Thorlabs TED4015 standalone TEC |
 | SMU | ISmuDevice | Keithley2400Adapter, Keithley2602BAdapter | Keithley SourceMeter via VISA |
@@ -362,6 +374,7 @@ write code that won't trip them:
 - Bobcat → Horizon recipe migration: `docs/recipe-migration.md`.
 - FAAM.UI (second Layer 3 head): `docs/faam-ui.md`, `docs/faam-handoff.md`.
 - SMU streaming: `docs/smu-streaming-design.md`.
+- Power supply (UDP3305S-E LAN setup, `psu.*` ops, verified `psu.powerUp`, FAAM PSU panel): `docs/power-supply.md`.
 - Product encapsulation + operator login + DUT traceability: `docs/product-and-traceability-design.md`.
 - Access levels / sign-in gate + machine identity on the DUT record: `docs/access-control-design.md`.
 - Gantt timeline editor + `flow.parallel`: `docs/timeline-sequence-editor-design.md`.

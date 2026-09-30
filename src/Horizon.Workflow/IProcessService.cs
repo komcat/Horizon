@@ -706,6 +706,12 @@ public interface IProcessService
     /// <summary>True while a running program is paused.</summary>
     bool IsPaused { get; }
 
+    /// <summary>
+    /// True while a program, deck or recipe run is in progress (paused or not). Cheap and
+    /// thread-safe — Layer 3 polls it to lock manual controls during a run.
+    /// </summary>
+    bool IsRunning { get; }
+
     /// <summary>Raised when the running program's paused state changes (true = paused).</summary>
     event Action<bool>? PausedChanged;
 

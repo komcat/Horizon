@@ -158,6 +158,7 @@ public sealed class ProcessBlockViewModel : ObservableObject
         DeviceKind.Pneumatic => _host.Engine.Pneumatic.SlideNames,
         DeviceKind.Camera => _host.Engine.Camera.CameraIds,
         DeviceKind.Lighting => _host.Engine.Lighting.DeviceNames,
+        DeviceKind.PowerSupply => _host.Engine.PowerSupply.DeviceNames,
         _ => Array.Empty<string>(),
     };
 

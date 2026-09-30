@@ -1,0 +1,27 @@
+<UserControl x:Class="FAAM.UI.Views.PsuQuickPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+            BorderThickness="1" CornerRadius="3" Padding="8">
+        <StackPanel>
+            <DockPanel Margin="0,0,0,6">
+                <TextBlock Text="Power supply" Foreground="{StaticResource Text}" FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+                <!-- "+ CH2" / "+ CH3" — one per channel not currently shown (built in code). -->
+                <StackPanel x:Name="AddButtons" DockPanel.Dock="Right" Orientation="Horizontal"
+                            HorizontalAlignment="Right" />
+                <!-- Picker only appears when more than one supply is configured. -->
+                <ComboBox x:Name="DeviceCombo" DockPanel.Dock="Right" Width="130" Height="24" Margin="0,0,8,0"
+                          HorizontalAlignment="Right" SelectionChanged="OnDeviceChanged" Visibility="Collapsed" />
+                <TextBlock x:Name="DeviceText" Foreground="{StaticResource Subtle}" Margin="8,0,0,0"
+                           VerticalAlignment="Center" />
+            </DockPanel>
+
+            <!-- One row per shown channel: CH · V · A · ON/OFF · remove (built in code). -->
+            <StackPanel x:Name="ChannelRows" />
+
+            <TextBlock x:Name="StatusText" Foreground="{StaticResource Subtle}" Margin="0,6,0,0"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+    </Border>
+</UserControl>

@@ -68,10 +68,11 @@
                                      HorizontalAlignment="Left" Width="240" />
 
                 <!-- Alignment utilities laid out directly and always ready to use
-                     (Dispense action on top, U correction + FAU pre-align + Hill Climber
-                     below). The SiPhOG connection + chart live in the camera-column tab group. -->
+                     (power-supply channel ON/OFF + V/A readout on top, U correction + FAU
+                     pre-align + Hill Climber below). The SiPhOG connection + chart live in the
+                     camera-column tab group. -->
                 <DockPanel Grid.Column="1" Margin="12,0,0,0">
-                    <v:DispensePanel DockPanel.Dock="Top" x:Name="DispensePanel" Margin="0,0,0,8" />
+                    <v:PsuQuickPanel DockPanel.Dock="Top" x:Name="PsuPanel" Margin="0,0,0,8" />
                     <v:UtilityAppHost x:Name="AppHost" />
                 </DockPanel>
             </Grid>

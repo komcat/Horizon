@@ -62,6 +62,12 @@ the hardware adapters or the legacy `Core`/`Process` stack.
     crosshair centre (`mm/pixel`) and jog `gantry-main` (coordinated X+Y).
   - **Process steps panel** (left) — FAU-attach steps, process timer, STOP,
     **Teach/Run** toggle, Properties button.
+  - **Power supply panel** (top of the utilities column, `Views/PsuQuickPanel`; replaced
+    the hand-operated Dispense panel) — live V / A per channel in a green-on-black
+    readout plus an output ON/OFF toggle. CH1 always shown; CH2/CH3 added with `+ CHn`
+    and removed with `×` (not while ON), saved in `faam_psu_panel.json`. Toggles lock
+    while a step / alignment / scan or a program / deck run is in progress. See
+    `docs/power-supply.md`.
   - **Motion Inspector** — right-click a step button → *Inspect Motion*. Fills the
     camera column with the named-position moves **that step's program actually
     performs, in run order** (walking the `.hwf`: top-level `motion.moveToPosition` /
@@ -159,6 +165,7 @@ HillClimb / AutoW panels ─┘     (Category, action, Data)  └─▶ DutActiv
 | `app_settings.json` | `Horizon.Common` AppSettingsStore | `mm/pixel`, MoveClick mapping, jog velocity presets |
 | `jog_transforms.json` | FAAM (Layer 3) | per-device global→local jog matrices (seeded on first run) |
 | `faam_teach_points.json` | FAAM | taught process-step positions |
+| `faam_psu_panel.json` | FAAM `PsuQuickPanel` | Run-page PSU channels shown, per supply (`{ "UDP3305S": [1, 3] }`) |
 
 (plus the engine's shared device configs: `io_devices.json`, `motor_devices.json`,
 `pneumatic_slides.json`, …)

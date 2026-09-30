@@ -4,16 +4,17 @@ namespace Horizon.Config;
 
 /// <summary>
 /// A programmable power supply. <see cref="Type"/> selects the adapter:
-/// Keysight E36xxx is reached over LXI (SCPI on a TCP socket); UNI-T UDP3305S
-/// is USB/USBTMC over VISA. <see cref="Ip"/>/<see cref="Port"/> and
-/// <see cref="VisaResource"/> are mutually exclusive.
+/// Keysight E36xxx is reached over LXI (SCPI on a TCP socket); UNI-T UDP3305S-E
+/// over LAN (<see cref="Ip"/>/<see cref="Port"/>, raw SCPI socket) or VISA
+/// (<see cref="VisaResource"/>: USBTMC or VXI-11). Set one or the other — when
+/// both are set the UDP3305S adapter uses <see cref="VisaResource"/>.
 /// </summary>
 public record PowerSupplyConfig
 {
     public string Name { get; init; } = string.Empty;
     /// <summary>
     /// e.g. <c>keysight_e36441a_direct</c>, <c>keysight_e36103b_direct</c> (LXI/TCP);
-    /// <c>unit_t_udp3305s</c> (USB/VISA).
+    /// <c>unit_t_udp3305s</c> (LAN or USB/VISA).
     /// </summary>
     public string Type { get; init; } = string.Empty;
     public string Ip { get; init; } = string.Empty;

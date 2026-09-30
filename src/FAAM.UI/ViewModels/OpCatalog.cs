@@ -4,7 +4,7 @@ namespace FAAM.UI.ViewModels;
 /// Which engine facet supplies the device drop-down for a command (drives the
 /// Device picker source in the editor). <see cref="None"/> = the op takes no device.
 /// </summary>
-public enum DeviceKind { None, Motion, Io, Pneumatic, Camera, Lighting }
+public enum DeviceKind { None, Motion, Io, Pneumatic, Camera, Lighting, PowerSupply }
 
 /// <summary>
 /// The editor widget used for one parameter field. <see cref="PositionName"/>,
@@ -115,6 +115,55 @@ public static class OpCatalog
             }),
         new("lighting.connect", "Connect Lighting", "Lighting", DeviceKind.Lighting, System.Array.Empty<ParamSpec>()),
         new("lighting.disconnect", "Disconnect Lighting", "Lighting", DeviceKind.Lighting, System.Array.Empty<ParamSpec>()),
+
+        // ---- Power supply ----
+        // Device = a supply from power_supply_devices.json (e.g. the UDP3305S-E).
+        // 'channel' is 1-based (UDP3305S: CH1/CH2 0–32 V / 0–5 A, CH3 0–6 V / 0–3 A);
+        // an out-of-range setpoint is refused by the adapter and fails the step.
+        // Power Up = verify link → I-limit → V → ON → settle → verified read-back;
+        // fails safe (output back OFF) if the read-back doesn't match.
+        new("psu.powerUp", "PSU Power Up (verified)", "Power", DeviceKind.PowerSupply,
+            new[]
+            {
+                new ParamSpec("channel", "Channel", ParamKind.Number, "1"),
+                new ParamSpec("volts", "Voltage (V)", ParamKind.Number, "0"),
+                new ParamSpec("amps", "Current limit (A)", ParamKind.Number, "0.1"),
+                new ParamSpec("settleMs", "Verify after (ms)", ParamKind.Number, "150"),
+                new ParamSpec("toleranceV", "Voltage tolerance (± V)", ParamKind.Number, "0.1"),
+                new ParamSpec("offOnFail", "Switch output OFF if verify fails", ParamKind.Bool, "true"),
+                new ParamSpec("captureAs", "Store readings as (→ _v / _i, blank = none)", ParamKind.Text),
+            }),
+        new("psu.setVoltage", "Set PSU Voltage", "Power", DeviceKind.PowerSupply,
+            new[]
+            {
+                new ParamSpec("channel", "Channel", ParamKind.Number, "1"),
+                new ParamSpec("volts", "Voltage (V)", ParamKind.Number, "0"),
+            }),
+        new("psu.setCurrentLimit", "Set PSU Current Limit", "Power", DeviceKind.PowerSupply,
+            new[]
+            {
+                new ParamSpec("channel", "Channel", ParamKind.Number, "1"),
+                new ParamSpec("amps", "Current limit (A)", ParamKind.Number, "0.1"),
+            }),
+        new("psu.outputOn", "PSU Output ON", "Power", DeviceKind.PowerSupply,
+            new[] { new ParamSpec("channel", "Channel", ParamKind.Number, "1") }),
+        new("psu.outputOff", "PSU Output OFF", "Power", DeviceKind.PowerSupply,
+            new[] { new ParamSpec("channel", "Channel", ParamKind.Number, "1") }),
+        // Forces a fresh poll, then stores the measured value in 'captureAs' (blank = log only).
+        new("psu.readVoltage", "Read PSU Voltage", "Power", DeviceKind.PowerSupply,
+            new[]
+            {
+                new ParamSpec("channel", "Channel", ParamKind.Number, "1"),
+                new ParamSpec("captureAs", "Store in variable (blank = log only)", ParamKind.Text),
+            }),
+        new("psu.readCurrent", "Read PSU Current", "Power", DeviceKind.PowerSupply,
+            new[]
+            {
+                new ParamSpec("channel", "Channel", ParamKind.Number, "1"),
+                new ParamSpec("captureAs", "Store in variable (blank = log only)", ParamKind.Text),
+            }),
+        new("psu.connect", "Connect PSU", "Power", DeviceKind.PowerSupply, System.Array.Empty<ParamSpec>()),
+        new("psu.disconnect", "Disconnect PSU", "Power", DeviceKind.PowerSupply, System.Array.Empty<ParamSpec>()),
 
         // ---- Flow ----
         new("flow.wait", "Wait", "Flow", DeviceKind.None,

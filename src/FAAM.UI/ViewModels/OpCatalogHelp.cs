@@ -113,6 +113,94 @@ public static class OpCatalogHelp
             Usage = "Frees the controller's single TCP slot, e.g. so an external tool can connect. Switch lights off first if they should not stay on.",
         },
 
+        // ===== Power supply =====
+
+        ["psu.powerUp"] = new()
+        {
+            Summary = "One-block power-up: check the connection, set current limit + voltage, switch the output ON, then verify the reading.",
+            Usage = "Runs in this order: 1) verifies the supply is connected (reconnects once if the link dropped); 2) sets the current limit, then the voltage — limit first so the DUT is protected the instant the output turns on; 3) switches the output ON; 4) waits the settle time (150 ms default) and reads the channel back. The step passes only if the output reads ON and the measured voltage is within the tolerance of the setpoint.\n\nIf the check fails (or the run is cancelled) the output is switched back OFF and the step fails. A low voltage with the current at its limit is reported as constant-current mode — usually an overload or short on the DUT. UDP3305S-E ranges: CH1 / CH2 0–32 V / 0–5 A, CH3 0–6 V / 0–3 A.",
+            ParamNotes = new[]
+            {
+                ("channel", "Output channel, 1-based (UDP3305S-E: 1, 2 or 3)."),
+                ("volts", "Voltage setpoint in volts."),
+                ("amps", "Current limit in amps."),
+                ("settleMs", "Wait between output ON and the verifying read-back (0–10000 ms)."),
+                ("toleranceV", "Allowed |measured − setpoint| voltage difference."),
+                ("offOnFail", "Switch the output back OFF when verification fails (recommended)."),
+                ("captureAs", "Prefix for the measured readings: {prefix}_v (volts) and {prefix}_i (amps). Blank = don't store."),
+            },
+        },
+
+        ["psu.setVoltage"] = new()
+        {
+            Summary = "Program a power-supply channel's output voltage.",
+            Usage = "Sets the voltage setpoint only — the output is not switched on (use \"PSU Output ON\"). Set the current limit first so the load is protected the moment the output turns on. UDP3305S-E ranges: CH1 / CH2 0–32 V, CH3 0–6 V; a value outside the channel's range is refused and fails the step without touching the supply.",
+            ParamNotes = new[]
+            {
+                ("channel", "Output channel, 1-based (UDP3305S-E: 1, 2 or 3)."),
+                ("volts", "Voltage setpoint in volts."),
+            },
+        },
+
+        ["psu.setCurrentLimit"] = new()
+        {
+            Summary = "Program a power-supply channel's current limit (constant-current ceiling).",
+            Usage = "The supply will not source more than this; if the load tries to draw more, the channel drops into constant-current mode and the voltage sags. UDP3305S-E ranges: CH1 / CH2 0–5 A, CH3 0–3 A; out-of-range values fail the step.",
+            ParamNotes = new[]
+            {
+                ("channel", "Output channel, 1-based."),
+                ("amps", "Current limit in amps."),
+            },
+        },
+
+        ["psu.outputOn"] = new()
+        {
+            Summary = "Switch a power-supply channel's output ON at its programmed voltage / current limit.",
+            Usage = "Set the voltage and current limit before this step. Pair it with a \"PSU Output OFF\" later in the program (and in any failure branch) so the DUT is not left powered.",
+            ParamNotes = new[] { ("channel", "Output channel, 1-based.") },
+        },
+
+        ["psu.outputOff"] = new()
+        {
+            Summary = "Switch a power-supply channel's output OFF.",
+            Usage = "The setpoints are kept, so a later \"PSU Output ON\" returns to the same voltage / limit.",
+            ParamNotes = new[] { ("channel", "Output channel, 1-based.") },
+        },
+
+        ["psu.readVoltage"] = new()
+        {
+            Summary = "Measure a channel's actual output voltage and optionally store it in a variable.",
+            Usage = "Forces a fresh read of the supply, then logs the value. With a variable name it is stored for later If / Calculate blocks. For a snapshot of every signal into the DUT record use \"Read All Signals\" instead.",
+            ParamNotes = new[]
+            {
+                ("channel", "Output channel, 1-based."),
+                ("captureAs", "Variable to receive the reading in volts; blank = log only."),
+            },
+        },
+
+        ["psu.readCurrent"] = new()
+        {
+            Summary = "Measure a channel's actual output current and optionally store it in a variable.",
+            Usage = "Forces a fresh read of the supply, then logs the value. With a variable name it is stored for later If / Calculate blocks.",
+            ParamNotes = new[]
+            {
+                ("channel", "Output channel, 1-based."),
+                ("captureAs", "Variable to receive the reading in amps; blank = log only."),
+            },
+        },
+
+        ["psu.connect"] = new()
+        {
+            Summary = "Open the connection to the power supply.",
+            Usage = "Normally not needed — the supply connects at startup. Use it after a \"Disconnect PSU\" step or if the supply was power-cycled.",
+        },
+
+        ["psu.disconnect"] = new()
+        {
+            Summary = "Switch every output OFF and close the connection to the power supply.",
+            Usage = "All channels are turned off before the link is closed, so a disconnected supply is never left driving the DUT.",
+        },
+
         // ===== DUT — per-unit traceability records =====
 
         ["dut.readAllSignals"] = new()
