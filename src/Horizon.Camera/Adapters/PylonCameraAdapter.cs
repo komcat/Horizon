@@ -318,11 +318,24 @@ public sealed class PylonCameraAdapter : ICameraHardware
             "Check that the PC has a network adapter on the same subnet as the camera.");
     }
 
+    // Grab failures used to be dropped silently, so a stream that never delivers a
+    // frame (GigE packets blocked / incomplete buffers) looked like "grabbing, 0 frames"
+    // with nothing in the log. Log the first failure and then every Nth.
+    private const int GrabFailureLogEvery = 100;
+    private long _grabFailures;
+    private bool _convertFailureLogged;
+
     private void OnImageGrabbed(object? sender, ImageGrabbedEventArgs e)
     {
         var grabResult = e.GrabResult;
         if (!grabResult.GrabSucceeded)
+        {
+            var n = ++_grabFailures;
+            if (n == 1 || n % GrabFailureLogEvery == 0)
+                Serilog.Log.Warning("[Camera] Grab failed: Id={Id} (failure #{Count}) — 0x{Code:X8} {Description}",
+                    _info.Id, n, grabResult.ErrorCode, grabResult.ErrorDescription);
             return;
+        }
 
         _hasNewFrame = true;
 
@@ -341,7 +354,21 @@ public sealed class PylonCameraAdapter : ICameraHardware
 
         var size = frame.Width * frame.Height * 3;
         frame.ImageData = RentFrameBuffer(size);
-        _converter?.Convert(frame.ImageData, grabResult);
+        try
+        {
+            _converter?.Convert(frame.ImageData, grabResult);
+        }
+        catch (Exception ex)
+        {
+            // An unconvertible pixel format would otherwise vanish inside pylon's grab thread.
+            if (!_convertFailureLogged)
+            {
+                _convertFailureLogged = true;
+                Serilog.Log.Error("[Camera] Frame convert failed: Id={Id} PixelType={PixelType} — {Message}",
+                    _info.Id, grabResult.PixelTypeValue, ex.Message);
+            }
+            return;
+        }
 
         callback(frame);
     }
