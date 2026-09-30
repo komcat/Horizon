@@ -46,6 +46,8 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
         LoadFromStore();
         SaveCommand = new RelayCommand(Save);
         ReloadCommand = new RelayCommand(Reload);
+        // The Machine › Settings page also edits this flag — pick up its saves so our Save doesn't revert it.
+        _store.Changed += s => AutoVisionUCorrection = s.FindFirstLight.AutoVisionUCorrection;
     }
 
     /// <summary>Master switch — when off the whole find-first-light search is skipped after FAU pre-align.</summary>

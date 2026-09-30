@@ -33,6 +33,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
     private string _gantryStepPresetsText = "";
     private bool _showMainCameraOnStartup = true;
     private bool _autoLoginOperator = true;
+    private bool _autoVisionUCorrection;
     private string _status = "—";
 
     private string _machineNumber = "";
@@ -55,6 +56,8 @@ public sealed class SettingsSectionViewModel : ObservableObject
         AddUserCommand = new RelayCommand(AddUser);
         DeleteUserCommand = new RelayCommand(DeleteUser);
         RefreshUsers();
+        // The Engineer › Find First Light tab also edits this flag — pick up its saves so our Save doesn't revert it.
+        _store.Changed += s => AutoVisionUCorrection = s.FindFirstLight.AutoVisionUCorrection;
     }
 
     /// <summary>Label shown in the Machine-page section rail.</summary>
@@ -112,6 +115,17 @@ public sealed class SettingsSectionViewModel : ObservableObject
     {
         get => _autoLoginOperator;
         set => SetField(ref _autoLoginOperator, value);
+    }
+
+    /// <summary>
+    /// Start correction: move gantry-main to the vision facets (visionFacet / visionFAUFacet) and
+    /// measure U by vision first. Off skips straight to the manual UCorr_P1/P2/F1/F2 capture.
+    /// Same flag as the Find First Light tab's "Auto-run vision U-correction".
+    /// </summary>
+    public bool AutoVisionUCorrection
+    {
+        get => _autoVisionUCorrection;
+        set => SetField(ref _autoVisionUCorrection, value);
     }
 
     public string Status { get => _status; private set => SetField(ref _status, value); }
@@ -250,6 +264,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
         GantryStepPresetsText = string.Join(", ", s.GantryStepPresetsMm);                                       // already mm
         ShowMainCameraOnStartup = s.ShowMainCameraOnStartup;
         AutoLoginOperator = s.AutoLoginOperator;
+        AutoVisionUCorrection = s.FindFirstLight.AutoVisionUCorrection;
         MachineNumber = s.StationId;
         MachineCredential = s.MachineCredential;
 
@@ -280,6 +295,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
             GantryStepPresetsMm = ParseSteps(_gantryStepPresetsText, 1.0, current.GantryStepPresetsMm), // mm entry
             ShowMainCameraOnStartup = _showMainCameraOnStartup,
             AutoLoginOperator = _autoLoginOperator,
+            FindFirstLight = current.FindFirstLight with { AutoVisionUCorrection = _autoVisionUCorrection },
             StationId = (_machineNumber ?? "").Trim(),
             MachineCredential = (_machineCredential ?? "").Trim(),
         });

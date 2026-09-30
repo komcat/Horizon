@@ -173,6 +173,13 @@
                       IsChecked="{Binding AutoLoginOperator}"
                       ToolTip="Only ever skips the prompt for a level with no password set. Once every level has a password, startup always asks." />
 
+            <TextBlock Text="Start correction" Foreground="{StaticResource Text}"
+                       FontSize="14" FontWeight="SemiBold" Margin="0,14,0,8" />
+            <CheckBox Content="Move to the vision facets first (visionFacet → visionFAUFacet) and measure U by vision"
+                      Foreground="{StaticResource Text}" Margin="0,0,0,4"
+                      IsChecked="{Binding AutoVisionUCorrection}"
+                      ToolTip="Off: Start correction skips the vision facet moves and goes straight to the manual UCorr_P1 → P2 → F1 → F2 capture. Same setting as 'Auto-run vision U-correction' on the Find First Light tab." />
+
             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                 <Button Content="Save" Width="90" Height="30" Command="{Binding SaveCommand}" />
                 <Button Content="Reload" Width="90" Height="30" Margin="8,0,0,0" Command="{Binding ReloadCommand}" />
