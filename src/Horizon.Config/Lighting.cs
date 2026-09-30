@@ -5,12 +5,17 @@ namespace Horizon.Config;
 /// <summary>One output channel of an LED lighting controller.</summary>
 public record LightingChannelConfig
 {
+    /// <summary>Channel number as printed on the controller's front panel (CCS PD3: L1..L8 = 1..8).</summary>
     public int Channel { get; init; }
     public string Name { get; init; } = string.Empty;
-    /// <summary>Free-text colour label (e.g. "white", "red"); empty if unused.</summary>
+    /// <summary>Colour label ("white", "red", "green", "blue"); drives colour call-outs on a group.</summary>
     public string Color { get; init; } = string.Empty;
-    /// <summary>Logical group the channel belongs to (e.g. "light1").</summary>
+    /// <summary>
+    /// Logical light the channel belongs to (e.g. "rgb_light"). Channels sharing a
+    /// group are driven together as one light; an ungrouped channel is a light by its name.
+    /// </summary>
     public string Group { get; init; } = string.Empty;
+    /// <summary>Initial status value (controller-native units) until the first read-back; not sent to hardware.</summary>
     public int DefaultIntensity { get; init; }
     public bool Enabled { get; init; } = true;
 }
@@ -33,7 +38,7 @@ public record LightingControllerConfig
 /// <summary>Loads / saves <c>lighting_devices.json</c>.</summary>
 public static class LightingJsonLoader
 {
-    private record LightingFile
+    private sealed record LightingFile
     {
         public List<LightingControllerConfig> LightingControllers { get; init; } = new();
     }

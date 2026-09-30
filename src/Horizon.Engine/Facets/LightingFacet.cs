@@ -38,7 +38,13 @@ internal sealed class LightingFacet : ILightingFacet, IAsyncDisposable
                                .Select(c => new LightingChannelInfo(c.Channel, c.Name, c.Group, c.Color))
                                .ToList()
                            ?? new List<LightingChannelInfo>();
-            _devices[id] = new LightingDeviceInfo(id, dev?.DisplayName ?? id, dev?.ControllerType ?? "?", channels);
+            var lights = channels
+                .Select(c => string.IsNullOrWhiteSpace(c.Group) ? c.Name : c.Group)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            _devices[id] = new LightingDeviceInfo(
+                id, dev?.DisplayName ?? id, dev?.ControllerType ?? "?", channels, dev?.MaxIntensity ?? 255, lights);
             _state[id] = LightingState.Unknown;
         }
 
@@ -110,6 +116,64 @@ internal sealed class LightingFacet : ILightingFacet, IAsyncDisposable
             c => byColor.TryGetValue(c.Color, out var v) ? v : 0);
     }
 
+    public Task<Result> SetLightPercentAsync(string device, string light, double percent)
+    {
+        if (!TryToNative(device, percent, out var native, out var error))
+            return Task.FromResult(error);
+        return ApplySelectedAsync(device, $"light '{light}'", c => InLight(c, light), _ => native);
+    }
+
+    public Task<Result> SetLightColorAsync(string device, string light, LightColor color, double percent)
+    {
+        if (!TryToNative(device, percent, out var native, out var error))
+            return Task.FromResult(error);
+        if (color == LightColor.White)
+            return ApplySelectedAsync(device, $"light '{light}'", c => InLight(c, light), _ => native);
+
+        var colorName = color.ToString();
+        if (_devices.TryGetValue(device, out var info)
+            && !info.Channels.Any(c => InLight(c, light) && IsColor(c, colorName)))
+            return Task.FromResult(Result.Fail(ErrorCode.InvalidParameter,
+                $"Lighting '{device}': light '{light}' has no {colorName.ToLowerInvariant()} channel."));
+
+        // The requested colour at the level; the light's other channels off.
+        return ApplySelectedAsync(device, $"light '{light}'",
+            c => InLight(c, light),
+            c => IsColor(c, colorName) ? native : 0);
+    }
+
+    /// <summary>A light is a group name, or the name of an ungrouped channel.</summary>
+    private static bool InLight(LightingChannelInfo c, string light)
+        => string.IsNullOrWhiteSpace(c.Group)
+            ? c.Name.Equals(light, StringComparison.OrdinalIgnoreCase)
+            : c.Group.Equals(light, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsColor(LightingChannelInfo c, string color)
+        => c.Color.Equals(color, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Validates a 0..100 % request and converts it to controller-native units.</summary>
+    private bool TryToNative(string device, double percent, out int native, out Result error)
+    {
+        native = 0;
+        error = Result.Ok();
+        if (!_devices.TryGetValue(device, out var info))
+        {
+            error = Result.Fail(ErrorCode.OperationFailed, $"Lighting controller '{device}' not found.");
+            return false;
+        }
+        if (!double.IsFinite(percent) || percent < 0 || percent > 100)
+        {
+            error = Result.Fail(ErrorCode.InvalidParameter,
+                $"Lighting '{device}': intensity {percent} % is outside 0..100 %.");
+            return false;
+        }
+        native = (int)Math.Round(percent / 100.0 * info.MaxIntensity, MidpointRounding.AwayFromZero);
+        return true;
+    }
+
+    private static double ToPercent(int native, int max)
+        => max > 0 ? Math.Round(native * 100.0 / max, 1) : 0;
+
     /// <summary>
     /// Applies an intensity to every channel of <paramref name="device"/> that
     /// satisfies <paramref name="match"/>. Best-effort — every matched channel
@@ -164,24 +228,29 @@ internal sealed class LightingFacet : ILightingFacet, IAsyncDisposable
     public async ValueTask DisposeAsync()
         => await _poll.DisposeAsync().ConfigureAwait(false);
 
-    /// <summary>Runs one poll tick now, so <see cref="GetState"/> is current after a command.</summary>
-    public Task RefreshAsync() => PollTickAsync(CancellationToken.None);
+    /// <summary>Runs one poll tick now (off the caller's thread), so <see cref="GetState"/> is current after a command.</summary>
+    public Task RefreshAsync() => Task.Run(() => PollTickAsync(CancellationToken.None));
 
     private Task PollTickAsync(CancellationToken ct)
     {
-        foreach (var id in _devices.Keys)
+        foreach (var (id, info) in _devices)
         {
             if (ct.IsCancellationRequested) break;
-            if (!IsConnected(id)) continue;
+            var device = _manager.GetDevice(id);
+            if (device == null) continue;
 
-            var status = _manager.GetStatus(id);
-            if (status == null) continue;
+            // Read back the hardware while connected; a link failure closes the
+            // device, and the cached status below then reports it disconnected.
+            if (device.IsConnected)
+                device.Poll();
 
+            var status = device.GetStatus();
             var next = new LightingState(
                 true,
                 status.Connected,
                 status.Channels
-                    .Select(c => new LightingChannelState(c.Channel, c.Name, c.Intensity))
+                    .Select(c => new LightingChannelState(
+                        c.Channel, c.Name, c.Intensity, c.On, ToPercent(c.Intensity, info.MaxIntensity), c.Mode))
                     .ToList(),
                 status.LastError);
 

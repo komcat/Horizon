@@ -4,7 +4,7 @@ namespace FAAM.UI.ViewModels;
 /// Which engine facet supplies the device drop-down for a command (drives the
 /// Device picker source in the editor). <see cref="None"/> = the op takes no device.
 /// </summary>
-public enum DeviceKind { None, Motion, Io, Pneumatic, Camera }
+public enum DeviceKind { None, Motion, Io, Pneumatic, Camera, Lighting }
 
 /// <summary>
 /// The editor widget used for one parameter field. <see cref="PositionName"/>,
@@ -12,7 +12,7 @@ public enum DeviceKind { None, Motion, Io, Pneumatic, Camera }
 /// options are filled by the block (positions from the chosen device, the axis
 /// list, or Set/Clear); the rest are a text box / number box / check box.
 /// </summary>
-public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName, SignalName, Operator, MotionDeviceName, DispenseRoutineName, ScriptName }
+public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName, SignalName, Operator, MotionDeviceName, DispenseRoutineName, ScriptName, LightName, LightColor }
 
 /// <summary>One parameter of an op — its persisted key, a display label, the editor widget, and a default value.</summary>
 public sealed record ParamSpec(string Key, string Label, ParamKind Kind, string Default = "");
@@ -89,6 +89,27 @@ public static class OpCatalog
         // Retracts every configured slide and waits until all reach the retracted
         // sensor. Device-less (iterates all slides) — the lane device is ignored.
         new("pneumatic.retractAll", "Retract All Slides", "Pneumatic", DeviceKind.Pneumatic, System.Array.Empty<ParamSpec>()),
+
+        // ---- Lighting ----
+        // 'light' is a channel group (rgb_light) or an ungrouped channel's name
+        // (collimate_light) from lighting_devices.json; 'percent' 0..100, 0 = off.
+        // Colour: red / green / blue light only that colour (the light's other channels
+        // off); white drives every channel of the light (R+G+B mixed on an RGB light).
+        new("lighting.setLightPercent", "Set Light %", "Lighting", DeviceKind.Lighting,
+            new[]
+            {
+                new ParamSpec("light", "Light", ParamKind.LightName),
+                new ParamSpec("percent", "Intensity (%, 0 = off)", ParamKind.Number, "50"),
+            }),
+        new("lighting.setLightColor", "Set Light Colour", "Lighting", DeviceKind.Lighting,
+            new[]
+            {
+                new ParamSpec("light", "Light", ParamKind.LightName, "rgb_light"),
+                new ParamSpec("color", "Colour", ParamKind.LightColor, "white"),
+                new ParamSpec("percent", "Intensity (%, 0 = off)", ParamKind.Number, "50"),
+            }),
+        new("lighting.connect", "Connect Lighting", "Lighting", DeviceKind.Lighting, System.Array.Empty<ParamSpec>()),
+        new("lighting.disconnect", "Disconnect Lighting", "Lighting", DeviceKind.Lighting, System.Array.Empty<ParamSpec>()),
 
         // ---- Flow ----
         new("flow.wait", "Wait", "Flow", DeviceKind.None,

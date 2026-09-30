@@ -446,6 +446,42 @@ internal sealed class MachineApi
             return Do(_engine.Lighting.SetAllAsync(dev, intensity), $"lighting.setAll({dev},{intensity})");
         });
 
+        // Light-level calls: a light is a channel group (rgb_light) or an ungrouped
+        // channel's name (collimate_light); percent 0..100, 0 = off (range checked by the facet).
+        lt["lights"] = Cb(a =>
+        {
+            string dev = ReqStr(a, 0, "lighting.lights");
+            var info = _engine.Lighting.GetDevice(dev)
+                       ?? throw new ScriptRuntimeException($"lighting.lights: unknown controller '{dev}'");
+            return Names(info.Lights);
+        });
+        lt["setLightPercent"] = Cb(a =>
+        {
+            string dev = ReqStr(a, 0, "lighting.setLightPercent");
+            string light = ReqStr(a, 1, "lighting.setLightPercent");
+            double percent = ReqNum(a, 2, "lighting.setLightPercent");
+            return Do(_engine.Lighting.SetLightPercentAsync(dev, light, percent),
+                $"lighting.setLightPercent({dev},{light},{percent})");
+        });
+        lt["setLightColor"] = Cb(a =>
+        {
+            string dev = ReqStr(a, 0, "lighting.setLightColor");
+            string light = ReqStr(a, 1, "lighting.setLightColor");
+            string colorText = ReqStr(a, 2, "lighting.setLightColor");
+            double percent = ReqNum(a, 3, "lighting.setLightColor");
+            var color = colorText.Trim().ToLowerInvariant() switch
+            {
+                "white" => LightColor.White,
+                "red" => LightColor.Red,
+                "green" => LightColor.Green,
+                "blue" => LightColor.Blue,
+                _ => throw new ScriptRuntimeException(
+                    $"lighting.setLightColor: colour '{colorText}' must be red, green, blue or white"),
+            };
+            return Do(_engine.Lighting.SetLightColorAsync(dev, light, color, percent),
+                $"lighting.setLightColor({dev},{light},{colorText},{percent})");
+        });
+
         return lt;
     }
 

@@ -107,6 +107,11 @@ public static class MachineApiCatalog
         new("lighting", "setNamed", "machine.lighting.setNamed(device, name, intensity)", "Set channels matching a name."),
         new("lighting", "setGroup", "machine.lighting.setGroup(device, group, intensity)", "Set every channel in a group."),
         new("lighting", "setAll", "machine.lighting.setAll(device, intensity)", "Set every channel."),
+        new("lighting", "lights", "machine.lighting.lights(device) -> {names}", "Light names: channel groups + ungrouped channels."),
+        new("lighting", "setLightPercent", "machine.lighting.setLightPercent(device, light, percent)",
+            "Set a light to 0..100 % (0 = off)."),
+        new("lighting", "setLightColor", "machine.lighting.setLightColor(device, light, color, percent)",
+            "Colour call-out: 'red'/'green'/'blue' (others off) or 'white' (all channels), 0..100 %."),
 
         // measurement
         new("measurement", "list", "machine.measurement.list() -> {names}", "Configured measurement device names."),

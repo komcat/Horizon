@@ -736,6 +736,37 @@ internal sealed class StepDispatcher
             case "lighting.connect":
                 return await _engine.Lighting.ConnectAsync(step.Device, ct);
 
+            case "lighting.disconnect":
+                return await _engine.Lighting.DisconnectAsync(step.Device);
+
+            // Light-level ops: 'light' is a channel group (e.g. rgb_light) or an
+            // ungrouped channel's name (e.g. collimate_light); 'percent' 0..100,
+            // 0 = off. A missing / non-numeric percent fails rather than reading as 0.
+            case "lighting.setlightpercent":
+            {
+                if (!TryPercent(step, ctx, out var percent, out var bad)) return bad;
+                return await _engine.Lighting.SetLightPercentAsync(step.Device, Str(step, "light", ctx), percent);
+            }
+
+            case "lighting.setlightcolor":
+            {
+                if (!TryPercent(step, ctx, out var percent, out var bad)) return bad;
+                var colorText = Str(step, "color", ctx).Trim().ToLowerInvariant();
+                LightColor? color = colorText switch
+                {
+                    "white" => LightColor.White,
+                    "red" => LightColor.Red,
+                    "green" => LightColor.Green,
+                    "blue" => LightColor.Blue,
+                    _ => null,
+                };
+                if (color == null)
+                    return Result.Fail(ErrorCode.InvalidParameter,
+                        $"lighting.setLightColor: colour '{colorText}' must be red, green, blue or white.");
+                return await _engine.Lighting.SetLightColorAsync(
+                    step.Device, Str(step, "light", ctx), color.Value, percent);
+            }
+
             case "lighting.setintensity":
                 return await _engine.Lighting.SetChannelIntensityAsync(
                     step.Device, (int)Num(step, "channel", ctx), (int)Num(step, "intensity", ctx));
@@ -1272,6 +1303,19 @@ internal sealed class StepDispatcher
     private static double Num(WorkflowStep step, string key, WorkflowContext ctx)
         => double.TryParse(Str(step, key, ctx), NumberStyles.Float, CultureInfo.InvariantCulture, out var d)
             ? d : 0.0;
+
+    /// <summary>Strict read of the 'percent' parameter (0..100); range is re-checked by the facet.</summary>
+    private static bool TryPercent(WorkflowStep step, WorkflowContext ctx, out double percent, out Result error)
+    {
+        var raw = Str(step, "percent", ctx);
+        error = Result.Ok();
+        if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out percent)
+            && double.IsFinite(percent) && percent >= 0 && percent <= 100)
+            return true;
+        error = Result.Fail(ErrorCode.InvalidParameter,
+            $"{step.Op}: percent '{raw}' must be a number from 0 to 100.");
+        return false;
+    }
 
     private static bool Bool(WorkflowStep step, string key, WorkflowContext ctx)
     {

@@ -18,6 +18,11 @@ public sealed class LightingManager : IDisposable
     public void AddDevice(LightingControllerConfig config)
     {
         if (string.IsNullOrWhiteSpace(config.DeviceId)) return;
+        if (!config.Enabled)
+        {
+            Log.Information("[Lighting] device {Device} is disabled in config — skipped", config.DeviceId);
+            return;
+        }
         if (_devices.TryAdd(config.DeviceId, new CcsPd3Adapter(config)))
             Log.Information("[Lighting] device added: {Device} ({Type})", config.DeviceId, config.ControllerType);
     }

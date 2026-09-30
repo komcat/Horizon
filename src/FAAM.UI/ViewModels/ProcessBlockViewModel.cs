@@ -157,6 +157,7 @@ public sealed class ProcessBlockViewModel : ObservableObject
         DeviceKind.Io => _host.Engine.IO.DeviceNames,
         DeviceKind.Pneumatic => _host.Engine.Pneumatic.SlideNames,
         DeviceKind.Camera => _host.Engine.Camera.CameraIds,
+        DeviceKind.Lighting => _host.Engine.Lighting.DeviceNames,
         _ => Array.Empty<string>(),
     };
 
@@ -253,6 +254,11 @@ public sealed class ProcessBlockViewModel : ObservableObject
                     break;
                 case ParamKind.CameraName:
                     p.SetOptions(_host.Engine.Camera.CameraIds);   // global, device-independent
+                    break;
+                case ParamKind.LightName:
+                    p.SetOptions(string.IsNullOrEmpty(device)
+                        ? Array.Empty<string>()
+                        : _host.Engine.Lighting.GetDevice(device)?.Lights ?? Array.Empty<string>());
                     break;
             }
         }

@@ -24,7 +24,8 @@ public sealed class ParamTemplateSelector : DataTemplateSelector
                 ParamKind.PositionName or ParamKind.AxisName or ParamKind.OutputPin
                     or ParamKind.CameraName or ParamKind.SignalName
                     or ParamKind.Operator or ParamKind.MotionDeviceName
-                    or ParamKind.DispenseRoutineName or ParamKind.ScriptName => Combo,
+                    or ParamKind.DispenseRoutineName or ParamKind.ScriptName
+                    or ParamKind.LightName or ParamKind.LightColor => Combo,
                 _ => Text,
             }
             : Text;

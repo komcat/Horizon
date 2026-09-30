@@ -60,7 +60,8 @@ public sealed class ProgramEditorPageViewModel : PageViewModel
         "smu.outputOn", "smu.outputOff", "smu.readCurrent", "smu.readVoltage",
         "psu.connect", "psu.setVoltage", "psu.setCurrentLimit", "psu.outputOn", "psu.outputOff",
         "psu.readVoltage", "psu.readCurrent",
-        "lighting.connect", "lighting.setIntensity",
+        "lighting.connect", "lighting.disconnect", "lighting.setIntensity",
+        "lighting.setLightPercent", "lighting.setLightColor",
         "flow.wait", "flow.log", "flow.comment", "flow.loopStart", "flow.loopEnd", "flow.askUser",
         "var.set", "var.calculate",
     };

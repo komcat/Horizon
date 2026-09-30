@@ -22,7 +22,7 @@ public sealed class OpHelp
 /// to their parameter labels — no help is not an error.
 ///
 /// Authoring guide + structure: <c>docs/engineer-command-help.md</c>.
-/// Coverage so far: <b>App</b>, <b>DUT</b>, <b>Scan</b> categories plus <c>script.run</c>. Other categories: TODO.
+/// Coverage so far: <b>App</b>, <b>DUT</b>, <b>Lighting</b>, <b>Scan</b> categories plus <c>script.run</c>. Other categories: TODO.
 /// </summary>
 public static class OpCatalogHelp
 {
@@ -71,6 +71,45 @@ public static class OpCatalogHelp
             {
                 ("appId", "Which app to stop: ucorrection, faupre, hillclimb, or siphog."),
             },
+        },
+
+        // ===== Lighting — CCS PD3 LED controller =====
+        // Lights come from lighting_devices.json: a group (rgb_light = L3 green, L4 blue,
+        // L6 red) or an ungrouped channel by name (collimate_light = L1 white).
+
+        ["lighting.setLightPercent"] = new()
+        {
+            Summary = "Set a light to a brightness in percent. 0 % switches it off.",
+            Usage = "Every channel of the light is driven to the same level — on rgb_light that is R+G+B together (a white mix). The controller must be connected (it is at startup) and its front-panel MANU/EXT selector must be on EXT. The step fails if the light name is unknown or the percent is not 0–100.",
+            ParamNotes = new[]
+            {
+                ("light", "The light to drive: a group (e.g. rgb_light) or a single channel's name (e.g. collimate_light)."),
+                ("percent", "Brightness 0–100 %. 0 turns the output fully off (not just dimmed)."),
+            },
+        },
+
+        ["lighting.setLightColor"] = new()
+        {
+            Summary = "Colour call-out for a light: red, green, blue, or white, at a brightness in percent.",
+            Usage = "red / green / blue light ONLY that colour's channel and switch the light's other channels off. white drives every channel of the light at the same level (R+G+B mixed on rgb_light). Asking for a colour the light doesn't have (e.g. red on collimate_light) fails the step.",
+            ParamNotes = new[]
+            {
+                ("light", "The light to drive — normally rgb_light."),
+                ("color", "red, green, blue, or white (R+G+B mix)."),
+                ("percent", "Brightness 0–100 % for the chosen colour. 0 = off."),
+            },
+        },
+
+        ["lighting.connect"] = new()
+        {
+            Summary = "Open the connection to the lighting controller.",
+            Usage = "Normally not needed — the controller connects at startup. Use it after a Disconnect Lighting step or if the controller was power-cycled. The PD3 accepts only ONE client, so close any test tool (Hercules, scripts) first.",
+        },
+
+        ["lighting.disconnect"] = new()
+        {
+            Summary = "Close the connection to the lighting controller (the lights keep their last setting).",
+            Usage = "Frees the controller's single TCP slot, e.g. so an external tool can connect. Switch lights off first if they should not stay on.",
         },
 
         // ===== DUT — per-unit traceability records =====

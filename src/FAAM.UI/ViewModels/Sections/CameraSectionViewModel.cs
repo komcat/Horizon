@@ -77,6 +77,14 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
     /// <summary>The engine host — used by the pop-out window's MoveClick jog.</summary>
     public EngineHost Host => _host;
 
+    private LightingPanelViewModel? _lighting;
+
+    /// <summary>
+    /// Lighting adjustment shown under the exposure row. Created on first use, so the
+    /// other hosts of this view-model (pop-out windows, Gripped FAU page) never build it.
+    /// </summary>
+    public LightingPanelViewModel Lighting => _lighting ??= new LightingPanelViewModel(_host);
+
     /// <summary>Label shown in the Machine-page section rail.</summary>
     public string Title => "Camera";
 
@@ -129,6 +137,7 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
     public void Refresh()
     {
         if (_host.Engine.State == EngineState.ShuttingDown) return;   // facets gone — nothing to read
+        _lighting?.Refresh();
         var camera = _selectedCamera;
         Connected = camera != null && _host.Engine.Camera.IsConnected(camera);
         if (camera == null) return;

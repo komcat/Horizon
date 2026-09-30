@@ -9,7 +9,7 @@ namespace FAAM.UI.ViewModels.Timeline;
 /// read-out block; <see cref="Control"/> carries the other device-less flow ops
 /// (wait / log / comment).
 /// </summary>
-public enum LaneDomain { Motion, Io, Pneumatic, PowerSupply, Smu, Tec, Vision, Signal, Control }
+public enum LaneDomain { Motion, Io, Pneumatic, PowerSupply, Smu, Tec, Lighting, Vision, Signal, Control }
 
 /// <summary>
 /// Which conditional branch a stage's cells fall in, for the timeline tint:
@@ -72,6 +72,7 @@ public sealed class LaneViewModel : ObservableObject
         LaneDomain.Io => spec.DeviceKind == DeviceKind.Io,
         LaneDomain.Pneumatic => spec.DeviceKind == DeviceKind.Pneumatic,
         LaneDomain.Vision => spec.DeviceKind == DeviceKind.Camera,
+        LaneDomain.Lighting => spec.DeviceKind == DeviceKind.Lighting,
         LaneDomain.Signal => spec.DeviceKind == DeviceKind.None && IsSignalOp(spec),
         LaneDomain.Control => spec.DeviceKind == DeviceKind.None && !IsSignalOp(spec),
         _ => false,
@@ -163,6 +164,7 @@ public static class LaneBuilder
         AddGroup(LaneDomain.PowerSupply, "PSU", host.Engine.PowerSupply.DeviceNames);
         AddGroup(LaneDomain.Smu, "SMU", host.Engine.Smu.DeviceNames);
         AddGroup(LaneDomain.Tec, "TEC", host.Engine.Tec.DeviceNames);
+        AddGroup(LaneDomain.Lighting, "Lighting", host.Engine.Lighting.DeviceNames);
         AddGroup(LaneDomain.Vision, "Vision", host.Engine.Camera.CameraIds);
 
         // The signal lane is always present (signals span devices + product sources) —

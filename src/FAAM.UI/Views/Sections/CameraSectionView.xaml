@@ -6,6 +6,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -61,8 +62,59 @@
             </StackPanel>
         </Border>
 
+        <!-- Lighting: one row per light (group or ungrouped channel); RGB lights add colour call-outs -->
+        <Border Grid.Row="3" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Padding="12,8"
+                DataContext="{Binding Lighting}"
+                Visibility="{Binding HasDevices, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <TextBlock Text="Lighting" Foreground="{StaticResource Text}" FontWeight="SemiBold"
+                               VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <ListBox Style="{StaticResource DeviceSelector}" VerticalAlignment="Center" Margin="0,0,12,0"
+                             ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}"
+                             Visibility="{Binding HasMultipleDevices, Converter={StaticResource BoolToVis}}" />
+                    <TextBlock Text="Connected" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Connected}" Foreground="{StaticResource Text}" Margin="6,0,12,0" VerticalAlignment="Center" />
+                    <Button Content="Connect" Width="74" Height="26" Margin="0,0,6,0" Command="{Binding ConnectCommand}" />
+                    <Button Content="Disconnect" Width="80" Height="26" Margin="0,0,6,0" Command="{Binding DisconnectCommand}" />
+                    <Button Content="All off" Width="64" Height="26" Margin="0,0,16,0" Command="{Binding AllOffCommand}" />
+                    <TextBlock Text="{Binding Status}" Foreground="{StaticResource Subtle}" FontStyle="Italic"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+
+                <ItemsControl ItemsSource="{Binding Lights}"
+                              IsEnabled="{Binding Connected}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="{Binding Name}" Foreground="{StaticResource Text}" Width="130"
+                                           VerticalAlignment="Center" />
+                                <Slider Width="240" Minimum="0" Maximum="100" SmallChange="1" LargeChange="10"
+                                        IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center"
+                                        Value="{Binding Percent}" />
+                                <TextBox Width="44" Margin="8,0,2,0" VerticalAlignment="Center"
+                                         Text="{Binding Percent, UpdateSourceTrigger=LostFocus, StringFormat=0}" />
+                                <TextBlock Text="%" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                <Button Content="Off" Width="44" Height="24" Margin="0,0,4,0" Command="{Binding OffCommand}" />
+                                <Button Content="100%" Width="48" Height="24" Margin="0,0,12,0" Command="{Binding FullCommand}" />
+                                <StackPanel Orientation="Horizontal"
+                                            Visibility="{Binding IsRgb, Converter={StaticResource BoolToVis}}">
+                                    <Button Content="Red" Width="52" Height="24" Margin="0,0,4,0" Command="{Binding RedCommand}" />
+                                    <Button Content="Green" Width="52" Height="24" Margin="0,0,4,0" Command="{Binding GreenCommand}" />
+                                    <Button Content="Blue" Width="52" Height="24" Margin="0,0,4,0" Command="{Binding BlueCommand}" />
+                                    <Button Content="White" Width="52" Height="24" Margin="0,0,12,0" Command="{Binding WhiteCommand}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding Summary}" Foreground="{StaticResource Accent}" FontFamily="Consolas"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
         <!-- Live preview -->
-        <Border Grid.Row="3" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Margin="0,0,0,0">
+        <Border Grid.Row="4" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Margin="0,0,0,0">
             <Grid>
                 <TextBlock Text="No video — Start grabbing or open Pop out"
                            Foreground="{StaticResource Subtle}" HorizontalAlignment="Center" VerticalAlignment="Center"

@@ -31,6 +31,11 @@ public sealed class BlockParamViewModel : ObservableObject
         if (spec.Kind == ParamKind.Operator)
             foreach (var o in new[] { ">", ">=", "<", "<=", "==", "!=" })
                 Options.Add(o);
+
+        // Colour call-outs — fixed list (matches the dispatcher's lighting.setLightColor parser).
+        if (spec.Kind == ParamKind.LightColor)
+            foreach (var c in new[] { "red", "green", "blue", "white" })
+                Options.Add(c);
     }
 
     public string Key => _spec.Key;

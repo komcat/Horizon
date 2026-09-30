@@ -1030,7 +1030,10 @@ internal sealed partial class ConsoleApp
     {
         const string Connect = "Connect";
         const string Disconnect = "Disconnect";
-        const string SetIntensity = "Set channel intensity";
+        const string SetLight = "Set light intensity (%)";
+        const string SetColor = "Set light colour (red / green / blue / white)";
+        const string AllOff = "All lights off";
+        const string SetIntensity = "Set channel intensity (raw units)";
         const string Refresh = "Refresh";
 
         while (true)
@@ -1041,7 +1044,7 @@ internal sealed partial class ConsoleApp
             var connected = _engine.Lighting.IsConnected(device);
             var choices = new List<string>();
             if (connected)
-                choices.AddRange(new[] { SetIntensity, Disconnect });
+                choices.AddRange(new[] { SetLight, SetColor, AllOff, SetIntensity, Disconnect });
             else
                 choices.Add(Connect);
             choices.Add(Refresh);
@@ -1060,6 +1063,31 @@ internal sealed partial class ConsoleApp
                 case Disconnect:
                     ReportResult(await _engine.Lighting.DisconnectAsync(device), $"Disconnect {device}");
                     break;
+                case SetLight:
+                {
+                    var light = PromptLight(device);
+                    if (light == null) break;
+                    var percent = PromptPercent();
+                    ReportResult(await _engine.Lighting.SetLightPercentAsync(device, light, percent),
+                        $"{light} → {percent:0.#} %");
+                    break;
+                }
+                case SetColor:
+                {
+                    var light = PromptLight(device);
+                    if (light == null) break;
+                    var color = AnsiConsole.Prompt(
+                        new SelectionPrompt<LightColor>()
+                            .Title("Colour:")
+                            .AddChoices(LightColor.Red, LightColor.Green, LightColor.Blue, LightColor.White));
+                    var percent = PromptPercent();
+                    ReportResult(await _engine.Lighting.SetLightColorAsync(device, light, color, percent),
+                        $"{light} → {color} {percent:0.#} %");
+                    break;
+                }
+                case AllOff:
+                    ReportResult(await _engine.Lighting.SetAllAsync(device, 0), $"All lights off on {device}");
+                    break;
                 case SetIntensity:
                     var info = _engine.Lighting.GetDevice(device);
                     int channel;
@@ -1068,16 +1096,21 @@ internal sealed partial class ConsoleApp
                         var ch = AnsiConsole.Prompt(
                             new SelectionPrompt<LightingChannelInfo>()
                                 .Title("Select channel:")
-                                .UseConverter(c => $"{c.Channel}: {c.Name}")
+                                .UseConverter(c => $"L{c.Channel}: {c.Name}")
                                 .AddChoices(info.Channels));
                         channel = ch.Channel;
                     }
                     else
                     {
-                        channel = AnsiConsole.Prompt(new TextPrompt<int>("Channel:").DefaultValue(0));
+                        channel = AnsiConsole.Prompt(new TextPrompt<int>("Channel (front-panel L number):").DefaultValue(1));
                     }
+                    var max = info?.MaxIntensity ?? 255;
                     var intensity = AnsiConsole.Prompt(
-                        new TextPrompt<int>("Intensity (controller units):").DefaultValue(0));
+                        new TextPrompt<int>($"Intensity (0..{max}, 0 = off):")
+                            .DefaultValue(0)
+                            .Validate(v => v >= 0 && v <= max
+                                ? ValidationResult.Success()
+                                : ValidationResult.Error($"[red]Enter 0..{max}[/]")));
                     ReportResult(await _engine.Lighting.SetChannelIntensityAsync(device, channel, intensity),
                         $"Set channel {channel} intensity {intensity}");
                     await Task.Delay(150);
@@ -1112,16 +1145,53 @@ internal sealed partial class ConsoleApp
         var table = new Table().Border(TableBorder.Rounded);
         table.AddColumn("Channel");
         table.AddColumn("Name");
+        table.AddColumn("Light");
+        table.AddColumn("Colour");
         table.AddColumn("Intensity");
+        table.AddColumn("Output");
+        table.AddColumn("Mode");
         foreach (var ch in state.Channels)
-            table.AddRow($"{ch.Channel}", Markup.Escape(ch.Name), ch.Intensity.ToString());
+        {
+            var ci = info.Channels.FirstOrDefault(c => c.Channel == ch.Channel);
+            var light = ci == null ? "" : string.IsNullOrWhiteSpace(ci.Group) ? ci.Name : ci.Group;
+            table.AddRow(
+                $"L{ch.Channel}",
+                Markup.Escape(ch.Name),
+                Markup.Escape(light),
+                Markup.Escape(ci?.Color ?? ""),
+                $"{ch.Percent:0.#} % ({ch.Intensity})",
+                ch.On ? "[green]ON[/]" : "[grey]off[/]",
+                ch.Mode switch { "" => "[grey]?[/]", "00" => "continuous", _ => $"[yellow]strobe S{ch.Mode}[/]" });
+        }
         if (state.Channels.Count == 0)
-            table.AddRow("[grey]—[/]", "[grey]no data[/]", "[grey]—[/]");
+            table.AddRow("[grey]—[/]", "[grey]no data[/]", "[grey]—[/]", "[grey]—[/]", "[grey]—[/]", "[grey]—[/]", "[grey]—[/]");
         AnsiConsole.Write(table);
 
         if (!string.IsNullOrEmpty(state.LastError))
             AnsiConsole.MarkupLineInterpolated($"[red]Last error[/] — {state.LastError}");
     }
+
+    /// <summary>Picks one of the controller's lights (group, or ungrouped channel); null if none.</summary>
+    private string? PromptLight(string device)
+    {
+        var lights = _engine.Lighting.GetDevice(device)?.Lights ?? Array.Empty<string>();
+        if (lights.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No lights configured on this controller.[/]");
+            return null;
+        }
+        return lights.Count == 1
+            ? lights[0]
+            : AnsiConsole.Prompt(new SelectionPrompt<string>().Title("Light:").AddChoices(lights));
+    }
+
+    private static double PromptPercent()
+        => AnsiConsole.Prompt(
+            new TextPrompt<double>("Intensity % (0..100, 0 = off):")
+                .DefaultValue(50)
+                .Validate(v => v >= 0 && v <= 100
+                    ? ValidationResult.Success()
+                    : ValidationResult.Error("[red]Enter 0..100[/]")));
 
     private async Task TecMenuAsync()
     {
