@@ -1031,7 +1031,7 @@ internal sealed partial class ConsoleApp
         const string Connect = "Connect";
         const string Disconnect = "Disconnect";
         const string SetLight = "Set light intensity (%)";
-        const string SetColor = "Set light colour (red / green / blue / white)";
+        const string SetColor = "Set light colour (red / green / blue / white / collimate / white + collimate)";
         const string AllOff = "All lights off";
         const string SetIntensity = "Set channel intensity (raw units)";
         const string Refresh = "Refresh";
@@ -1079,10 +1079,12 @@ internal sealed partial class ConsoleApp
                     var color = AnsiConsole.Prompt(
                         new SelectionPrompt<LightColor>()
                             .Title("Colour:")
-                            .AddChoices(LightColor.Red, LightColor.Green, LightColor.Blue, LightColor.White));
+                            .UseConverter(LightColors.Display)
+                            .AddChoices(LightColor.Red, LightColor.Green, LightColor.Blue, LightColor.White,
+                                        LightColor.Collimate, LightColor.WhiteCollimate));
                     var percent = PromptPercent();
                     ReportResult(await _engine.Lighting.SetLightColorAsync(device, light, color, percent),
-                        $"{light} → {color} {percent:0.#} %");
+                        $"{light} → {LightColors.Display(color)} {percent:0.#} %");
                     break;
                 }
                 case AllOff:

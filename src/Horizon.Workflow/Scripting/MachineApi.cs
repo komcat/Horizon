@@ -446,8 +446,8 @@ internal sealed class MachineApi
             return Do(_engine.Lighting.SetAllAsync(dev, intensity), $"lighting.setAll({dev},{intensity})");
         });
 
-        // Light-level calls: a light is a channel group (rgb_light) or an ungrouped
-        // channel's name (collimate_light); percent 0..100, 0 = off (range checked by the facet).
+        // Light-level calls: a light is a channel group (main_camera_light) or an
+        // ungrouped channel's name; percent 0..100, 0 = off (range checked by the facet).
         lt["lights"] = Cb(a =>
         {
             string dev = ReqStr(a, 0, "lighting.lights");
@@ -469,15 +469,9 @@ internal sealed class MachineApi
             string light = ReqStr(a, 1, "lighting.setLightColor");
             string colorText = ReqStr(a, 2, "lighting.setLightColor");
             double percent = ReqNum(a, 3, "lighting.setLightColor");
-            var color = colorText.Trim().ToLowerInvariant() switch
-            {
-                "white" => LightColor.White,
-                "red" => LightColor.Red,
-                "green" => LightColor.Green,
-                "blue" => LightColor.Blue,
-                _ => throw new ScriptRuntimeException(
-                    $"lighting.setLightColor: colour '{colorText}' must be red, green, blue or white"),
-            };
+            if (!LightColors.TryParse(colorText, out var color))
+                throw new ScriptRuntimeException(
+                    $"lighting.setLightColor: colour '{colorText}' must be one of {string.Join(", ", LightColors.Names)}");
             return Do(_engine.Lighting.SetLightColorAsync(dev, light, color, percent),
                 $"lighting.setLightColor({dev},{light},{colorText},{percent})");
         });

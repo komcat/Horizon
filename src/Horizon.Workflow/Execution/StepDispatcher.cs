@@ -123,7 +123,13 @@ internal sealed class StepDispatcher
                 return await _engine.Motion.SetDeviceVelocityAsync(step.Device, Num(step, "speed", ctx));
 
             case "motion.movetoposition":
-                return await _moveToNamed(step.Device, Str(step, "position", ctx), MoveOverridesOf(step, ctx), ct);
+            {
+                // Optional lighting call-out applied during the move — validated before
+                // the stage is commanded, so a bad colour / percent never starts a move.
+                if (!TryMoveLighting(step, ctx, out var lighting, out var bad)) return bad;
+                return await _moveToNamed(step.Device, Str(step, "position", ctx),
+                    MoveOverridesOf(step, ctx) with { Lighting = lighting }, ct);
+            }
 
             case "motion.parallelmove":
             {
@@ -739,32 +745,24 @@ internal sealed class StepDispatcher
             case "lighting.disconnect":
                 return await _engine.Lighting.DisconnectAsync(step.Device);
 
-            // Light-level ops: 'light' is a channel group (e.g. rgb_light) or an
-            // ungrouped channel's name (e.g. collimate_light); 'percent' 0..100,
+            // Light-level ops: 'light' is a channel group (e.g. main_camera_light) or an
+            // ungrouped channel's name; 'percent' 0..100,
             // 0 = off. A missing / non-numeric percent fails rather than reading as 0.
             case "lighting.setlightpercent":
             {
-                if (!TryPercent(step, ctx, out var percent, out var bad)) return bad;
+                if (!TryPercent(step, ctx, "percent", out var percent, out var bad)) return bad;
                 return await _engine.Lighting.SetLightPercentAsync(step.Device, Str(step, "light", ctx), percent);
             }
 
             case "lighting.setlightcolor":
             {
-                if (!TryPercent(step, ctx, out var percent, out var bad)) return bad;
-                var colorText = Str(step, "color", ctx).Trim().ToLowerInvariant();
-                LightColor? color = colorText switch
-                {
-                    "white" => LightColor.White,
-                    "red" => LightColor.Red,
-                    "green" => LightColor.Green,
-                    "blue" => LightColor.Blue,
-                    _ => null,
-                };
-                if (color == null)
+                if (!TryPercent(step, ctx, "percent", out var percent, out var bad)) return bad;
+                var colorText = Str(step, "color", ctx);
+                if (!LightColors.TryParse(colorText, out var color))
                     return Result.Fail(ErrorCode.InvalidParameter,
-                        $"lighting.setLightColor: colour '{colorText}' must be red, green, blue or white.");
+                        $"lighting.setLightColor: colour '{colorText}' must be one of {string.Join(", ", LightColors.Names)}.");
                 return await _engine.Lighting.SetLightColorAsync(
-                    step.Device, Str(step, "light", ctx), color.Value, percent);
+                    step.Device, Str(step, "light", ctx), color, percent);
             }
 
             case "lighting.setintensity":
@@ -1304,17 +1302,41 @@ internal sealed class StepDispatcher
         => double.TryParse(Str(step, key, ctx), NumberStyles.Float, CultureInfo.InvariantCulture, out var d)
             ? d : 0.0;
 
-    /// <summary>Strict read of the 'percent' parameter (0..100); range is re-checked by the facet.</summary>
-    private static bool TryPercent(WorkflowStep step, WorkflowContext ctx, out double percent, out Result error)
+    /// <summary>Strict read of a percent parameter (0..100); range is re-checked by the facet.</summary>
+    private static bool TryPercent(WorkflowStep step, WorkflowContext ctx, string key, out double percent, out Result error)
     {
-        var raw = Str(step, "percent", ctx);
+        var raw = Str(step, key, ctx);
         error = Result.Ok();
         if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out percent)
             && double.IsFinite(percent) && percent >= 0 && percent <= 100)
             return true;
         error = Result.Fail(ErrorCode.InvalidParameter,
-            $"{step.Op}: percent '{raw}' must be a number from 0 to 100.");
+            $"{step.Op}: {key} '{raw}' must be a number from 0 to 100.");
         return false;
+    }
+
+    /// <summary>
+    /// Reads a move step's optional lighting call-out: 'light' (blank = leave lighting
+    /// untouched → null), 'lightColor' and 'lightPercent'. Invalid values fail the step.
+    /// </summary>
+    private static bool TryMoveLighting(WorkflowStep step, WorkflowContext ctx, out MoveLighting? lighting, out Result error)
+    {
+        lighting = null;
+        error = Result.Ok();
+        var light = Str(step, "light", ctx).Trim();
+        if (light.Length == 0) return true;
+
+        var colorText = Str(step, "lightColor", ctx);
+        if (!LightColors.TryParse(colorText, out var color))
+        {
+            error = Result.Fail(ErrorCode.InvalidParameter,
+                $"{step.Op}: lightColor '{colorText}' must be one of {string.Join(", ", LightColors.Names)}.");
+            return false;
+        }
+        if (!TryPercent(step, ctx, "lightPercent", out var percent, out error)) return false;
+
+        lighting = new MoveLighting(light, color, percent);
+        return true;
     }
 
     private static bool Bool(WorkflowStep step, string key, WorkflowContext ctx)

@@ -8,13 +8,22 @@ public record LightingChannelConfig
     /// <summary>Channel number as printed on the controller's front panel (CCS PD3: L1..L8 = 1..8).</summary>
     public int Channel { get; init; }
     public string Name { get; init; } = string.Empty;
-    /// <summary>Colour label ("white", "red", "green", "blue"); drives colour call-outs on a group.</summary>
+    /// <summary>
+    /// Colour label driving the call-outs on a group: "red" / "green" / "blue" (the
+    /// "white" call-out mixes all three) or "collimate".
+    /// </summary>
     public string Color { get; init; } = string.Empty;
     /// <summary>
-    /// Logical light the channel belongs to (e.g. "rgb_light"). Channels sharing a
+    /// Logical light the channel belongs to (e.g. "main_camera_light"). Channels sharing a
     /// group are driven together as one light; an ungrouped channel is a light by its name.
     /// </summary>
     public string Group { get; init; } = string.Empty;
+    /// <summary>
+    /// Camera id this channel illuminates (e.g. "main_camera"), so UIs can show the
+    /// selected camera's lights. Give every channel of a group the same camera; empty =
+    /// not tied to a camera (shown with every camera).
+    /// </summary>
+    public string Camera { get; init; } = string.Empty;
     /// <summary>Initial status value (controller-native units) until the first read-back; not sent to hardware.</summary>
     public int DefaultIntensity { get; init; }
     public bool Enabled { get; init; } = true;

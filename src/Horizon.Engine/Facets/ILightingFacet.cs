@@ -57,18 +57,20 @@ public interface ILightingFacet
         string device, string group, IReadOnlyDictionary<string, int> intensitiesByColor);
 
     // ---- Lights (percent / colour API) ------------------------------------
-    // A "light" is a channel group (e.g. "rgb_light"), or an ungrouped channel
-    // addressed by its name (e.g. "collimate_light"). 0 % switches the
+    // A "light" is a channel group (e.g. "main_camera_light"), or an ungrouped
+    // channel addressed by its name. 0 % switches the
     // channel outputs off; percentages outside 0..100 are rejected.
 
     /// <summary>Sets every channel of <paramref name="light"/> to <paramref name="percent"/> of full scale.</summary>
     Task<Result> SetLightPercentAsync(string device, string light, double percent);
 
     /// <summary>
-    /// Colour call-out: <see cref="LightColor.White"/> drives every channel of the
-    /// light at <paramref name="percent"/> (R+G+B mixed on an RGB light);
-    /// Red/Green/Blue drive only the channels of that colour and switch the rest
-    /// of the light off. Fails if the light has no channel of the requested colour.
+    /// Colour call-out: drives the light's channels matching <paramref name="color"/>
+    /// at <paramref name="percent"/> and switches the rest of the light off.
+    /// Red/Green/Blue = that LED; <see cref="LightColor.White"/> = R+G+B mixed;
+    /// <see cref="LightColor.Collimate"/> = the collimated channel;
+    /// <see cref="LightColor.WhiteCollimate"/> = collimate + R + G + B. Fails if the light
+    /// has no channel for the call-out.
     /// </summary>
     Task<Result> SetLightColorAsync(string device, string light, LightColor color, double percent);
 

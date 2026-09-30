@@ -1,3 +1,4 @@
+using Horizon.Common;
 using Horizon.Engine;
 
 namespace Horizon.Workflow;
@@ -9,7 +10,45 @@ namespace Horizon.Workflow;
 /// hardware untouched (for a named-position move, they fall back to the position's
 /// stored settings).
 /// </summary>
-public sealed record MoveOverrides(double Velocity = 0, string? Camera = null, double? ExposureUs = null);
+public sealed record MoveOverrides(
+    double Velocity = 0, string? Camera = null, double? ExposureUs = null, MoveLighting? Lighting = null);
+
+/// <summary>
+/// A lighting call-out applied at the start of a move (null on <see cref="MoveOverrides"/>
+/// = leave lighting untouched). <see cref="Light"/> is a light name (channel group or
+/// ungrouped channel); the controller that owns it is found automatically.
+/// </summary>
+public sealed record MoveLighting(string Light, LightColor Color, double Percent);
+
+/// <summary>Applies a <see cref="MoveLighting"/> while a move is in flight.</summary>
+internal static class MoveLight
+{
+    /// <summary>
+    /// Resolves the controller owning <c>lighting.Light</c> and sets the call-out.
+    /// Returns the failure instead of throwing, so the caller can let the move settle
+    /// first and then fail the step (a vision step after it would otherwise run in the
+    /// wrong light).
+    /// </summary>
+    public static async Task<Result> ApplyAsync(
+        ILightingFacet facet, MoveLighting? lighting, Action<LogLevel, string> log)
+    {
+        if (lighting == null) return Result.Ok();
+
+        var owners = facet.DeviceNames
+            .Where(d => facet.GetDevice(d)?.Lights.Contains(lighting.Light, StringComparer.OrdinalIgnoreCase) == true)
+            .ToList();
+        if (owners.Count != 1)
+            return Result.Fail(ErrorCode.InvalidParameter, owners.Count == 0
+                ? $"Light '{lighting.Light}' is not configured on any lighting controller."
+                : $"Light '{lighting.Light}' exists on several controllers ({string.Join(", ", owners)}).");
+
+        var result = await facet.SetLightColorAsync(owners[0], lighting.Light, lighting.Color, lighting.Percent)
+                                .ConfigureAwait(false);
+        log(result.IsSuccess ? LogLevel.Info : LogLevel.Warning,
+            $"Light {lighting.Light} = {lighting.Color} {lighting.Percent:0.#} %: {(result.IsSuccess ? "ok" : result.Message)}");
+        return result;
+    }
+}
 
 /// <summary>Shared "apply a manual exposure during a move" helper for the move ops.</summary>
 internal static class MoveExposure

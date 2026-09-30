@@ -74,29 +74,30 @@ public static class OpCatalogHelp
         },
 
         // ===== Lighting — CCS PD3 LED controller =====
-        // Lights come from lighting_devices.json: a group (rgb_light = L3 green, L4 blue,
-        // L6 red) or an ungrouped channel by name (collimate_light = L1 white).
+        // Lights come from lighting_devices.json: a channel group — main_camera_light =
+        // L1 collimate, L2 red, L3 green, L4 blue; side_camera_light = L5 collimate,
+        // L6 red, L7 green, L8 blue — or an ungrouped channel by its name.
 
         ["lighting.setLightPercent"] = new()
         {
-            Summary = "Set a light to a brightness in percent. 0 % switches it off.",
-            Usage = "Every channel of the light is driven to the same level — on rgb_light that is R+G+B together (a white mix). The controller must be connected (it is at startup) and its front-panel MANU/EXT selector must be on EXT. The step fails if the light name is unknown or the percent is not 0–100.",
+            Summary = "Set EVERY channel of a light to a brightness in percent. 0 % switches it off.",
+            Usage = "All channels of the light are driven to the same level — on main_camera_light that is collimate + R + G + B together. To pick one illumination, use \"Set Light Colour\" instead. The controller must be connected (it is at startup) and its front-panel MANU/EXT selector must be on EXT. The step fails if the light name is unknown or the percent is not 0–100.",
             ParamNotes = new[]
             {
-                ("light", "The light to drive: a group (e.g. rgb_light) or a single channel's name (e.g. collimate_light)."),
+                ("light", "The light to drive: a group (e.g. main_camera_light) or a single channel's name."),
                 ("percent", "Brightness 0–100 %. 0 turns the output fully off (not just dimmed)."),
             },
         },
 
         ["lighting.setLightColor"] = new()
         {
-            Summary = "Colour call-out for a light: red, green, blue, or white, at a brightness in percent.",
-            Usage = "red / green / blue light ONLY that colour's channel and switch the light's other channels off. white drives every channel of the light at the same level (R+G+B mixed on rgb_light). Asking for a colour the light doesn't have (e.g. red on collimate_light) fails the step.",
+            Summary = "Colour call-out for a light — red, green, blue, white (R+G+B mix), collimate or white_collimate — at a brightness in percent.",
+            Usage = "Lights ONLY the channels of the call-out and switches the light's other channels off: red / green / blue = that LED; white = red + green + blue mixed at the same level; collimate = the collimated light; white_collimate = collimate + red + green + blue together. Asking for a call-out the light has no channel for fails the step.\n\nTip: Move to Position has the same lighting fields, applied while the stage travels.",
             ParamNotes = new[]
             {
-                ("light", "The light to drive — normally rgb_light."),
-                ("color", "red, green, blue, or white (R+G+B mix)."),
-                ("percent", "Brightness 0–100 % for the chosen colour. 0 = off."),
+                ("light", "The light to drive — main_camera_light or side_camera_light."),
+                ("color", "red, green, blue, white (R+G+B mix), collimate, or white_collimate (collimate + R+G+B)."),
+                ("percent", "Brightness 0–100 % for the call-out. 0 = off."),
             },
         },
 

@@ -8,8 +8,9 @@ namespace FAAM.UI.ViewModels.Sections;
 /// <summary>
 /// Lighting adjustment shown in the Machine page's Camera section (so exposure and
 /// illumination are tuned side by side). One row per light of the selected
-/// controller — a channel group (rgb_light) or an ungrouped channel (collimate_light) —
-/// with a 0..100 % slider; RGB lights add red / green / blue / white call-outs.
+/// controller — a channel group (main_camera_light) or an ungrouped channel — with a
+/// 0..100 % slider and the call-outs the light has channels for (red / green / blue /
+/// white = R+G+B mix / collimate).
 /// All hardware calls go through the engine facet (off the UI thread).
 /// </summary>
 public sealed class LightingPanelViewModel : ObservableObject
@@ -40,6 +41,24 @@ public sealed class LightingPanelViewModel : ObservableObject
         get => _selectedDevice;
         set { if (SetField(ref _selectedDevice, value)) Rebuild(); }
     }
+
+    private string? _camera;
+
+    /// <summary>
+    /// The Camera section's selected camera. Only lights configured for this camera
+    /// (plus lights tied to no camera) are shown.
+    /// </summary>
+    public string? Camera
+    {
+        get => _camera;
+        set { if (SetField(ref _camera, value)) Rebuild(); }
+    }
+
+    /// <summary>True when the selected camera has no light on this controller — shows a note instead of rows.</summary>
+    public bool NoLightsForCamera => Lights.Count == 0;
+
+    /// <summary>The note shown when <see cref="NoLightsForCamera"/>.</summary>
+    public string NoLightsText => $"No lighting configured for {(_camera ?? "this camera")} (lighting_devices.json › \"camera\").";
 
     public bool Connected
     {
@@ -72,6 +91,19 @@ public sealed class LightingPanelViewModel : ObservableObject
     private void Rebuild()
     {
         Lights.Clear();
+        try
+        {
+            AddRows();
+        }
+        finally
+        {
+            OnPropertyChanged(nameof(NoLightsForCamera));
+            OnPropertyChanged(nameof(NoLightsText));
+        }
+    }
+
+    private void AddRows()
+    {
         var device = _selectedDevice;
         var info = device == null ? null : _host.Engine.Lighting.GetDevice(device);
         if (device == null || info == null) return;
@@ -79,8 +111,10 @@ public sealed class LightingPanelViewModel : ObservableObject
         foreach (var light in info.Lights)
         {
             var channels = info.Channels.Where(c => InLight(c, light)).ToList();
-            var isRgb = channels.Any(c => IsPrimary(c.Color));
-            Lights.Add(new LightControlViewModel(_host, device, light, isRgb, SetStatus));
+            if (!ForCamera(channels)) continue;
+            var hasRgb = channels.Any(c => LightColors.IsPrimary(c.Color));
+            var hasCollimate = channels.Any(c => LightColors.Matches(LightColor.Collimate, c.Color));
+            Lights.Add(new LightControlViewModel(_host, device, light, hasRgb, hasCollimate, SetStatus));
         }
         Refresh();
         if (_connected) SyncFromHardware();
@@ -88,7 +122,8 @@ public sealed class LightingPanelViewModel : ObservableObject
 
     /// <summary>
     /// Seeds each row from the controller's read-back state: the brightest lit channel
-    /// sets the slider; on an RGB light a single lit colour selects that colour, else white.
+    /// sets the slider; the call-out is the one whose channels are exactly the lit set
+    /// (e.g. only L1 lit → collimate; R+G+B lit → white), else white.
     /// </summary>
     private void SyncFromHardware()
     {
@@ -101,17 +136,20 @@ public sealed class LightingPanelViewModel : ObservableObject
 
         foreach (var row in Lights)
         {
-            var lit = info.Channels
-                .Where(c => InLight(c, row.Name))
+            var channels = info.Channels.Where(c => InLight(c, row.Name)).ToList();
+            var lit = channels
                 .Select(c => (Info: c, State: state.Channels.FirstOrDefault(s => s.Channel == c.Channel)))
                 .Where(x => x.State is { On: true, Intensity: > 0 })
                 .ToList();
 
             var percent = lit.Count == 0 ? 0 : lit.Max(x => x.State!.Percent);
-            var color = LightColor.White;
-            if (row.IsRgb && lit.Count == 1 && Enum.TryParse<LightColor>(lit[0].Info.Color, true, out var single)
-                && single != LightColor.White)
-                color = single;
+            var litSet = lit.Select(x => x.Info.Channel).ToHashSet();
+            var color = Enum.GetValues<LightColor>()
+                .Where(k => channels.Any(c => LightColors.Matches(k, c.Color)))
+                .Select(k => (LightColor?)k)
+                .FirstOrDefault(k => litSet.SetEquals(
+                    channels.Where(c => LightColors.Matches(k!.Value, c.Color)).Select(c => c.Channel)))
+                ?? row.Color;   // all off / mixed: keep the row's current call-out
             row.SetFromHardware(percent, color);
         }
     }
@@ -149,15 +187,21 @@ public sealed class LightingPanelViewModel : ObservableObject
 
     private void SetStatus(string text) => Status = text;
 
+    /// <summary>
+    /// Whether a light belongs on the selected camera: any of its channels is tied to
+    /// that camera, or none of them is tied to a camera at all.
+    /// </summary>
+    private bool ForCamera(IReadOnlyList<LightingChannelInfo> channels)
+    {
+        var tied = channels.Where(c => !string.IsNullOrWhiteSpace(c.Camera)).ToList();
+        return tied.Count == 0
+               || (_camera != null && tied.Any(c => c.Camera.Equals(_camera, StringComparison.OrdinalIgnoreCase)));
+    }
+
     private static bool InLight(LightingChannelInfo c, string light)
         => string.IsNullOrWhiteSpace(c.Group)
             ? c.Name.Equals(light, StringComparison.OrdinalIgnoreCase)
             : c.Group.Equals(light, StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsPrimary(string color)
-        => color.Equals("red", StringComparison.OrdinalIgnoreCase)
-           || color.Equals("green", StringComparison.OrdinalIgnoreCase)
-           || color.Equals("blue", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>
@@ -176,13 +220,17 @@ public sealed class LightControlViewModel : ObservableObject
     private bool _pending;
     private bool _suppressApply;
 
-    public LightControlViewModel(EngineHost host, string device, string name, bool isRgb, Action<string> report)
+    public LightControlViewModel(
+        EngineHost host, string device, string name, bool hasRgb, bool hasCollimate, Action<string> report)
     {
         _host = host;
         _device = device;
         _report = report;
         Name = name;
-        IsRgb = isRgb;
+        HasRgb = hasRgb;
+        HasCollimate = hasCollimate;
+        // A light with only a collimate channel starts on that call-out.
+        if (!hasRgb && hasCollimate) _color = LightColor.Collimate;
 
         OffCommand = new RelayCommand(() => Percent = 0);
         FullCommand = new RelayCommand(() => Percent = 100);
@@ -190,12 +238,23 @@ public sealed class LightControlViewModel : ObservableObject
         GreenCommand = new RelayCommand(() => SelectColor(LightColor.Green));
         BlueCommand = new RelayCommand(() => SelectColor(LightColor.Blue));
         WhiteCommand = new RelayCommand(() => SelectColor(LightColor.White));
+        CollimateCommand = new RelayCommand(() => SelectColor(LightColor.Collimate));
+        WhiteCollimateCommand = new RelayCommand(() => SelectColor(LightColor.WhiteCollimate));
     }
 
     public string Name { get; }
 
-    /// <summary>True when the light has red/green/blue channels — shows the colour call-outs.</summary>
-    public bool IsRgb { get; }
+    /// <summary>True when the light has red/green/blue channels — shows Red/Green/Blue/White (mix).</summary>
+    public bool HasRgb { get; }
+
+    /// <summary>True when the light has a collimate channel — shows the Collimate call-out.</summary>
+    public bool HasCollimate { get; }
+
+    /// <summary>True when the light has both — shows the White + collimate call-out.</summary>
+    public bool HasRgbAndCollimate => HasRgb && HasCollimate;
+
+    /// <summary>True when the light is driven by colour call-outs (vs. a plain percent on all channels).</summary>
+    public bool HasColors => HasRgb || HasCollimate;
 
     /// <summary>Brightness 0..100 % (whole percent). Setting it sends the change to the controller.</summary>
     public double Percent
@@ -217,7 +276,9 @@ public sealed class LightControlViewModel : ObservableObject
     }
 
     /// <summary>Read-out next to the slider, e.g. "Red 40 %" / "Off".</summary>
-    public string Summary => _percent <= 0 ? "Off" : IsRgb ? $"{_color} {_percent:0} %" : $"{_percent:0} %";
+    public string Summary => _percent <= 0
+        ? "Off"
+        : HasColors ? $"{LightColors.Display(_color)} {_percent:0} %" : $"{_percent:0} %";
 
     public RelayCommand OffCommand { get; }
     public RelayCommand FullCommand { get; }
@@ -225,6 +286,8 @@ public sealed class LightControlViewModel : ObservableObject
     public RelayCommand GreenCommand { get; }
     public RelayCommand BlueCommand { get; }
     public RelayCommand WhiteCommand { get; }
+    public RelayCommand CollimateCommand { get; }
+    public RelayCommand WhiteCollimateCommand { get; }
 
     /// <summary>Updates the row from read-back state without sending anything.</summary>
     public void SetFromHardware(double percent, LightColor color)
@@ -258,7 +321,7 @@ public sealed class LightControlViewModel : ObservableObject
                 _pending = false;
                 var percent = _percent;
                 var color = _color;
-                var r = IsRgb
+                var r = HasColors
                     ? await _host.Engine.Lighting.SetLightColorAsync(_device, Name, color, percent).ConfigureAwait(true)
                     : await _host.Engine.Lighting.SetLightPercentAsync(_device, Name, percent).ConfigureAwait(true);
                 _report(r.IsSuccess ? $"{Name}: {Summary}" : r.Message);

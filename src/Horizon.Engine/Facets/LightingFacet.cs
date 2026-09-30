@@ -35,7 +35,7 @@ internal sealed class LightingFacet : ILightingFacet, IAsyncDisposable
         {
             var dev = _manager.GetDevice(id);
             var channels = dev?.Channels
-                               .Select(c => new LightingChannelInfo(c.Channel, c.Name, c.Group, c.Color))
+                               .Select(c => new LightingChannelInfo(c.Channel, c.Name, c.Group, c.Color, c.Camera))
                                .ToList()
                            ?? new List<LightingChannelInfo>();
             var lights = channels
@@ -127,19 +127,16 @@ internal sealed class LightingFacet : ILightingFacet, IAsyncDisposable
     {
         if (!TryToNative(device, percent, out var native, out var error))
             return Task.FromResult(error);
-        if (color == LightColor.White)
-            return ApplySelectedAsync(device, $"light '{light}'", c => InLight(c, light), _ => native);
 
-        var colorName = color.ToString();
         if (_devices.TryGetValue(device, out var info)
-            && !info.Channels.Any(c => InLight(c, light) && IsColor(c, colorName)))
+            && !info.Channels.Any(c => InLight(c, light) && LightColors.Matches(color, c.Color)))
             return Task.FromResult(Result.Fail(ErrorCode.InvalidParameter,
-                $"Lighting '{device}': light '{light}' has no {colorName.ToLowerInvariant()} channel."));
+                $"Lighting '{device}': light '{light}' has no channel for call-out '{LightColors.Display(color)}'."));
 
-        // The requested colour at the level; the light's other channels off.
+        // The call-out's channels at the level; the light's other channels off.
         return ApplySelectedAsync(device, $"light '{light}'",
             c => InLight(c, light),
-            c => IsColor(c, colorName) ? native : 0);
+            c => LightColors.Matches(color, c.Color) ? native : 0);
     }
 
     /// <summary>A light is a group name, or the name of an ungrouped channel.</summary>
@@ -147,9 +144,6 @@ internal sealed class LightingFacet : ILightingFacet, IAsyncDisposable
         => string.IsNullOrWhiteSpace(c.Group)
             ? c.Name.Equals(light, StringComparison.OrdinalIgnoreCase)
             : c.Group.Equals(light, StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsColor(LightingChannelInfo c, string color)
-        => c.Color.Equals(color, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Validates a 0..100 % request and converts it to controller-native units.</summary>
     private bool TryToNative(string device, double percent, out int native, out Result error)

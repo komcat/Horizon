@@ -111,7 +111,7 @@ public static class MachineApiCatalog
         new("lighting", "setLightPercent", "machine.lighting.setLightPercent(device, light, percent)",
             "Set a light to 0..100 % (0 = off)."),
         new("lighting", "setLightColor", "machine.lighting.setLightColor(device, light, color, percent)",
-            "Colour call-out: 'red'/'green'/'blue' (others off) or 'white' (all channels), 0..100 %."),
+            "Colour call-out, 0..100 %: 'red'/'green'/'blue', 'white' (R+G+B mix), 'collimate' or 'white_collimate'; the light's other channels go off."),
 
         // measurement
         new("measurement", "list", "machine.measurement.list() -> {names}", "Configured measurement device names."),

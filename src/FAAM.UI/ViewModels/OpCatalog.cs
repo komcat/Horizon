@@ -53,6 +53,10 @@ public static class OpCatalog
                 new ParamSpec("velocity", "Velocity override (mm/s, 0 = use position)", ParamKind.Number, "0"),
                 new ParamSpec("camera", "Camera override (blank = use position)", ParamKind.CameraName),
                 new ParamSpec("exposure", "Exposure override (µs, 0 = use position)", ParamKind.Number, "0"),
+                // Lighting call-out applied while travelling; blank light = leave lighting as is.
+                new ParamSpec("light", "Lighting (blank = leave as is)", ParamKind.LightName),
+                new ParamSpec("lightColor", "Light colour", ParamKind.LightColor, "white"),
+                new ParamSpec("lightPercent", "Light intensity (%, 0 = off)", ParamKind.Number, "50"),
             }),
         new("motion.moveRelative", "Move Relative", "Motion", DeviceKind.Motion,
             new[]
@@ -91,10 +95,11 @@ public static class OpCatalog
         new("pneumatic.retractAll", "Retract All Slides", "Pneumatic", DeviceKind.Pneumatic, System.Array.Empty<ParamSpec>()),
 
         // ---- Lighting ----
-        // 'light' is a channel group (rgb_light) or an ungrouped channel's name
-        // (collimate_light) from lighting_devices.json; 'percent' 0..100, 0 = off.
-        // Colour: red / green / blue light only that colour (the light's other channels
-        // off); white drives every channel of the light (R+G+B mixed on an RGB light).
+        // 'light' is a channel group (main_camera_light) or an ungrouped channel's
+        // name from lighting_devices.json; 'percent' 0..100, 0 = off.
+        // Colour call-outs light only their channels (the light's others go off):
+        // red / green / blue = that LED, white = R+G+B mixed, collimate = the collimated light,
+        // white_collimate = collimate + R+G+B.
         new("lighting.setLightPercent", "Set Light %", "Lighting", DeviceKind.Lighting,
             new[]
             {
@@ -104,7 +109,7 @@ public static class OpCatalog
         new("lighting.setLightColor", "Set Light Colour", "Lighting", DeviceKind.Lighting,
             new[]
             {
-                new ParamSpec("light", "Light", ParamKind.LightName, "rgb_light"),
+                new ParamSpec("light", "Light", ParamKind.LightName, "main_camera_light"),
                 new ParamSpec("color", "Colour", ParamKind.LightColor, "white"),
                 new ParamSpec("percent", "Intensity (%, 0 = off)", ParamKind.Number, "50"),
             }),

@@ -34,7 +34,7 @@ public sealed class BlockParamViewModel : ObservableObject
 
         // Colour call-outs — fixed list (matches the dispatcher's lighting.setLightColor parser).
         if (spec.Kind == ParamKind.LightColor)
-            foreach (var c in new[] { "red", "green", "blue", "white" })
+            foreach (var c in Horizon.Engine.LightColors.Names)
                 Options.Add(c);
     }
 

@@ -256,9 +256,17 @@ public sealed class ProcessBlockViewModel : ObservableObject
                     p.SetOptions(_host.Engine.Camera.CameraIds);   // global, device-independent
                     break;
                 case ParamKind.LightName:
-                    p.SetOptions(string.IsNullOrEmpty(device)
-                        ? Array.Empty<string>()
-                        : _host.Engine.Lighting.GetDevice(device)?.Lights ?? Array.Empty<string>());
+                    // On a lighting block: the chosen controller's lights. On any other
+                    // block (e.g. Move to Position's lighting override): every controller's
+                    // lights — the step resolves the owning controller itself.
+                    p.SetOptions(Spec.DeviceKind == DeviceKind.Lighting
+                        ? (string.IsNullOrEmpty(device)
+                            ? Array.Empty<string>()
+                            : _host.Engine.Lighting.GetDevice(device)?.Lights ?? Array.Empty<string>())
+                        : _host.Engine.Lighting.DeviceNames
+                            .SelectMany(d => _host.Engine.Lighting.GetDevice(d)?.Lights ?? Array.Empty<string>())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList());
                     break;
             }
         }

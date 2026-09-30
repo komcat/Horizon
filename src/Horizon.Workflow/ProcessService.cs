@@ -350,8 +350,16 @@ public sealed class ProcessService : IProcessService
         var exposure = overrides.ExposureUs ?? np.ExposureUs;
         await MoveExposure.ApplyAsync(_engine.Camera, camera, exposure, Log).ConfigureAwait(false);
 
-        // 4) Wait for the move to settle and return its result.
-        return await moveTask.ConfigureAwait(false);
+        // 3b) Also while moving, the step's lighting call-out (if any).
+        var lit = await MoveLight.ApplyAsync(_engine.Lighting, overrides.Lighting, Log).ConfigureAwait(false);
+
+        // 4) Wait for the move to settle. A lighting failure fails the step only after
+        //    the stage has stopped, so the move itself is never abandoned mid-travel.
+        var moved = await moveTask.ConfigureAwait(false);
+        if (!moved.IsSuccess) return moved;
+        return lit.IsSuccess
+            ? moved
+            : Result.Fail(lit.Error, $"Move {device} -> '{name}' done, but lighting failed — {lit.Message}");
     }
 
     // --- Vision profiles ---

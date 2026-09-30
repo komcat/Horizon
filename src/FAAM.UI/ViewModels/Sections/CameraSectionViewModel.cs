@@ -83,7 +83,8 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
     /// Lighting adjustment shown under the exposure row. Created on first use, so the
     /// other hosts of this view-model (pop-out windows, Gripped FAU page) never build it.
     /// </summary>
-    public LightingPanelViewModel Lighting => _lighting ??= new LightingPanelViewModel(_host);
+    public LightingPanelViewModel Lighting
+        => _lighting ??= new LightingPanelViewModel(_host) { Camera = _selectedCamera };
 
     /// <summary>Label shown in the Machine-page section rail.</summary>
     public string Title => "Camera";
@@ -93,7 +94,12 @@ public sealed class CameraSectionViewModel : ObservableObject, IDisposable
     public string? SelectedCamera
     {
         get => _selectedCamera;
-        set { if (SetField(ref _selectedCamera, value)) RebuildForCamera(); }
+        set
+        {
+            if (!SetField(ref _selectedCamera, value)) return;
+            RebuildForCamera();
+            if (_lighting != null) _lighting.Camera = value;   // lighting rows follow the camera
+        }
     }
 
     public bool Connected { get => _connected; private set => SetField(ref _connected, value); }

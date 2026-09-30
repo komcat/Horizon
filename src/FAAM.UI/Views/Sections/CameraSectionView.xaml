@@ -82,30 +82,47 @@
                                VerticalAlignment="Center" />
                 </StackPanel>
 
+                <TextBlock Text="{Binding NoLightsText}" Foreground="{StaticResource Subtle}" FontStyle="Italic"
+                           Visibility="{Binding NoLightsForCamera, Converter={StaticResource BoolToVis}}" />
                 <ItemsControl ItemsSource="{Binding Lights}"
                               IsEnabled="{Binding Connected}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Orientation="Horizontal" Margin="0,2">
-                                <TextBlock Text="{Binding Name}" Foreground="{StaticResource Text}" Width="130"
-                                           VerticalAlignment="Center" />
-                                <Slider Width="240" Minimum="0" Maximum="100" SmallChange="1" LargeChange="10"
-                                        IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center"
-                                        Value="{Binding Percent}" />
-                                <TextBox Width="44" Margin="8,0,2,0" VerticalAlignment="Center"
-                                         Text="{Binding Percent, UpdateSourceTrigger=LostFocus, StringFormat=0}" />
-                                <TextBlock Text="%" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" Margin="0,0,10,0" />
-                                <Button Content="Off" Width="44" Height="24" Margin="0,0,4,0" Command="{Binding OffCommand}" />
-                                <Button Content="100%" Width="48" Height="24" Margin="0,0,12,0" Command="{Binding FullCommand}" />
-                                <StackPanel Orientation="Horizontal"
-                                            Visibility="{Binding IsRgb, Converter={StaticResource BoolToVis}}">
-                                    <Button Content="Red" Width="52" Height="24" Margin="0,0,4,0" Command="{Binding RedCommand}" />
-                                    <Button Content="Green" Width="52" Height="24" Margin="0,0,4,0" Command="{Binding GreenCommand}" />
-                                    <Button Content="Blue" Width="52" Height="24" Margin="0,0,4,0" Command="{Binding BlueCommand}" />
-                                    <Button Content="White" Width="52" Height="24" Margin="0,0,12,0" Command="{Binding WhiteCommand}" />
+                            <StackPanel Margin="0,2">
+                                <!-- Row 1: level -->
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Name}" Foreground="{StaticResource Text}" Width="130"
+                                               VerticalAlignment="Center" />
+                                    <Slider Width="240" Minimum="0" Maximum="100" SmallChange="1" LargeChange="10"
+                                            IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center"
+                                            Value="{Binding Percent}" />
+                                    <TextBox Width="44" Margin="8,0,2,0" VerticalAlignment="Center"
+                                             Text="{Binding Percent, UpdateSourceTrigger=LostFocus, StringFormat=0}" />
+                                    <TextBlock Text="%" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                    <Button Content="Off" Width="44" Height="24" Margin="0,0,4,0" Command="{Binding OffCommand}" />
+                                    <Button Content="100%" Width="48" Height="24" Margin="0,0,12,0" Command="{Binding FullCommand}" />
+                                    <TextBlock Text="{Binding Summary}" Foreground="{StaticResource Accent}" FontFamily="Consolas"
+                                               VerticalAlignment="Center" />
                                 </StackPanel>
-                                <TextBlock Text="{Binding Summary}" Foreground="{StaticResource Accent}" FontFamily="Consolas"
-                                           VerticalAlignment="Center" />
+
+                                <!-- Row 2: colour call-outs (only those the light has channels for) -->
+                                <StackPanel Orientation="Horizontal" Margin="130,4,0,2"
+                                            Visibility="{Binding HasColors, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel Orientation="Horizontal"
+                                                Visibility="{Binding HasRgb, Converter={StaticResource BoolToVis}}">
+                                        <Button Content="Red" Width="56" Height="24" Margin="0,0,4,0" Command="{Binding RedCommand}" />
+                                        <Button Content="Green" Width="56" Height="24" Margin="0,0,4,0" Command="{Binding GreenCommand}" />
+                                        <Button Content="Blue" Width="56" Height="24" Margin="0,0,4,0" Command="{Binding BlueCommand}" />
+                                        <Button Content="White" Width="56" Height="24" Margin="0,0,4,0" Command="{Binding WhiteCommand}"
+                                                ToolTip="Red + green + blue mixed" />
+                                    </StackPanel>
+                                    <Button Content="Collimate" Width="76" Height="24" Margin="0,0,4,0" Command="{Binding CollimateCommand}"
+                                            Visibility="{Binding HasCollimate, Converter={StaticResource BoolToVis}}" />
+                                    <Button Content="White + Collimate" Width="120" Height="24" Margin="0,0,4,0"
+                                            Command="{Binding WhiteCollimateCommand}"
+                                            ToolTip="Collimate + red + green + blue together"
+                                            Visibility="{Binding HasRgbAndCollimate, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
                             </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
