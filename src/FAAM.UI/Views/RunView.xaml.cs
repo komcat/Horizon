@@ -514,7 +514,7 @@ public partial class RunView : UserControl
     {
         if (MoveToggle.IsChecked != true || _mainCamera == null) return;
         if (!_bitmaps.TryGetValue(_mainCamera, out var bmp)) return;
-        // The main feed is UniformToFill (see RunView.xaml) — measure against the cover scale.
+        // The main feed is Uniform (see RunView.xaml / FeedCover) — measure against the fit scale.
         await DoMoveClickAsync(e.GetPosition(MainImage), MainImage.ActualWidth, MainImage.ActualHeight,
                                bmp.PixelWidth, bmp.PixelHeight, "feed", FeedCover);
     }
@@ -542,7 +542,11 @@ public partial class RunView : UserControl
 
         MoveReadout.Text = meas.Readout;
         MoveReadoutBox.Visibility = Visibility.Visible;
-        Log($"MoveClick ({surface}): {meas.Readout}");
+        double scale = MoveClick.DisplayScale(availW, availH, srcW, srcH, cover);
+        Log($"MoveClick ({surface}): {meas.Readout} | src {srcW}×{srcH} px, shown {availW:0}×{availH:0} " +
+            $"(scale {scale:0.####}), click ({p.X:0},{p.Y:0}) → " +
+            $"({(p.X - availW / 2.0) / scale:+0.0;-0.0}, {(p.Y - availH / 2.0) / scale:+0.0;-0.0}) src px, " +
+            $"mm/px {_host.Settings.Current.MmPerPixel:G6}");
 
         await MoveClick.JogAsync(_host, meas, Log);
     }
