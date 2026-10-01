@@ -48,10 +48,14 @@
              chart area keeps the vertical space beside the log. -->
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <!-- Auto so the camera column shrinks to the (aspect-correct) feed
-                     width instead of pillar-boxing it; the left column takes the rest. -->
+                <ColumnDefinition Width="*" MinWidth="260" />
+                <!-- Draggable splitter between the left panels and the camera column. -->
                 <ColumnDefinition Width="Auto" />
+                <!-- Auto so the camera column shrinks to the (aspect-correct) feed
+                     width instead of pillar-boxing it; the left column takes the rest.
+                     Dragging the splitter pins it to a pixel width (the feed scales down
+                     uniformly); double-clicking the splitter restores Auto. -->
+                <ColumnDefinition x:Name="CameraColumn" Width="Auto" MinWidth="320" />
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
@@ -59,7 +63,7 @@
             </Grid.RowDefinitions>
 
             <!-- Left column — process steps panel + the alignment utilities. -->
-            <Grid Grid.Row="0" Grid.Column="0" Margin="0,0,8,0">
+            <Grid Grid.Row="0" Grid.Column="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -77,9 +81,29 @@
                 </DockPanel>
             </Grid>
 
+            <!-- Splitter — drag left/right to grow/shrink the camera column (so the left
+                 panels are not cut off); double-click to snap back to the full feed width. -->
+            <GridSplitter Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Width="8"
+                          HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                          ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                          Background="Transparent" Cursor="SizeWE" ShowsPreview="False"
+                          MouseDoubleClick="OnSplitterReset" DragCompleted="OnSplitterDragCompleted"
+                          ToolTip="Drag to resize the camera area · double-click to reset">
+                <GridSplitter.Template>
+                    <ControlTemplate TargetType="GridSplitter">
+                        <Border Background="{TemplateBinding Background}">
+                            <!-- Grip: a short vertical bar centred on the splitter. -->
+                            <Rectangle Width="2" Height="40" RadiusX="1" RadiusY="1"
+                                       Fill="{StaticResource Edge}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </GridSplitter.Template>
+            </GridSplitter>
+
             <!-- Camera column — spans both rows so it extends down beside the log.
                  Row 0 = Zoom2x + chart + thumbnails (on top); Row 1 = main live feed. -->
-            <Grid Grid.Row="0" Grid.RowSpan="2" Grid.Column="1">
+            <Grid Grid.Row="0" Grid.RowSpan="2" Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -356,7 +380,7 @@
 
             <!-- Log area — under the left column only (Row 1, Col 0); the camera column
                  (RowSpan 2) keeps the vertical space to its right. -->
-            <Border Grid.Row="1" Grid.Column="0" Height="120" Margin="0,8,8,0"
+            <Border Grid.Row="1" Grid.Column="0" Height="120" Margin="0,8,0,0"
                     Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3">
                 <Grid>
                     <Grid.RowDefinitions>

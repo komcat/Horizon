@@ -180,6 +180,39 @@
                       IsChecked="{Binding AutoVisionUCorrection}"
                       ToolTip="Off: Start correction skips the vision facet moves and goes straight to the manual UCorr_P1 → P2 → F1 → F2 capture. Same setting as 'Auto-run vision U-correction' on the Find First Light tab." />
 
+            <!-- Run-page power supply: what the PSU panel's ON button applies per channel. -->
+            <TextBlock Text="Run page power supply" Foreground="{StaticResource Text}"
+                       FontSize="14" FontWeight="SemiBold" Margin="0,14,0,4" />
+            <TextBlock Foreground="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,0,0,8"
+                       Text="Voltage and current limit applied when a channel is switched ON from the Run page (verified power-up: current limit → voltage → ON → read-back; switched back OFF if the read-back is wrong). Default 5 V / 1.0 A. Saved with the Save button below." />
+            <TextBlock Text="No power supply configured (power_supply_devices.json)." Foreground="{StaticResource Subtle}"
+                       Margin="0,0,0,4">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasPowerSupply}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+            <ItemsControl ItemsSource="{Binding PsuSetpoints}" Margin="0,0,0,4">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Device}" Width="140" Style="{StaticResource FieldLabel}" />
+                            <TextBlock Text="{Binding ChannelLabel}" Width="40" FontWeight="SemiBold"
+                                       Foreground="{StaticResource Accent}" Style="{StaticResource FieldLabel}" />
+                            <TextBlock Text="Voltage (V)" Style="{StaticResource FieldLabel}" />
+                            <TextBox Width="90" Margin="0,0,16,8" Text="{Binding Volts}" />
+                            <TextBlock Text="Current limit (A)" Style="{StaticResource FieldLabel}" />
+                            <TextBox Width="90" Text="{Binding Amps}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                 <Button Content="Save" Width="90" Height="30" Command="{Binding SaveCommand}" />
                 <Button Content="Reload" Width="90" Height="30" Margin="8,0,0,0" Command="{Binding ReloadCommand}" />

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -8,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Horizon.Common;
 using Horizon.Engine;
+using Horizon.Workflow;
 
 namespace FAAM.UI.Views;
 
@@ -18,9 +20,11 @@ namespace FAAM.UI.Views;
 /// "×" — the choice is saved per supply in <c>faam_psu_panel.json</c>. A channel whose
 /// output is ON can't be removed, so a live output is never hidden. All channels are still
 /// polled, so a re-added row is current at once. The button shows the polled output state
-/// (green = ON) and a click switches it to the other state. Readings are refreshed off the
-/// UI thread every <see cref="RefreshInterval"/> while the panel is visible; setpoints are
-/// authored on the Machine page's Power supply section or by the PSU blocks.
+/// (green = ON) and a click switches it to the other state. Switching ON is a verified
+/// power-up (<see cref="PsuPowerUp"/>) at the channel's Run-page setpoints, authored on the
+/// Machine page's Settings section (<see cref="PsuChannelDefaults"/>, default 5 V / 1.0 A).
+/// Readings are refreshed off the UI thread every <see cref="RefreshInterval"/> while the
+/// panel is visible.
 /// The toggles are LOCKED (readouts keep updating) while anything is running: a Run-page
 /// process step / alignment / scan (<see cref="ActivityGate"/>) or a Layer 2 program, deck
 /// or recipe run (<see cref="Horizon.Workflow.IProcessService.IsRunning"/>) — the run owns
@@ -31,6 +35,9 @@ public partial class PsuQuickPanel : UserControl
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMilliseconds(500);
     private const string PrefsFile = "faam_psu_panel";   // { "<device>": [1, 2], ... }
     private const int DefaultChannel = 1;
+
+    /// <summary>Upper bound on one verified power-up (link check + setpoints + settle + read-back).</summary>
+    private static readonly TimeSpan PowerUpTimeout = TimeSpan.FromSeconds(10);
 
     // Fixed device-readout colours (same as the Process timer) — deliberately not themed.
     private static readonly Brush ReadoutFg = Frozen(Color.FromRgb(0x33, 0xFF, 0x33));
@@ -262,14 +269,41 @@ public partial class PsuQuickPanel : UserControl
         try
         {
             var psu = _host.Engine.PowerSupply;
-            Result result = turnOn
-                ? await psu.OutputOnAsync(device, row.Channel).ConfigureAwait(true)
-                : await psu.OutputOffAsync(device, row.Channel).ConfigureAwait(true);
+            string what;
+            Result result;
+            if (turnOn)
+            {
+                // ON = verified power-up at the Settings-page setpoints (I-limit → V → ON →
+                // read-back; switched back OFF if the read-back is wrong).
+                var sp = PsuChannelDefaults.Get(device, row.Channel);
+                what = $"{device} CH{row.Channel} output ON at {sp.Volts:0.###} V / {sp.Amps:0.###} A";
+                var host = _host;
+                using var cts = new CancellationTokenSource(PowerUpTimeout);
+                // AcceptCurrentLimit: a load held at the current limit (CC mode, voltage below
+                // the setpoint) is a normal ON here, exactly as when the output is switched by hand.
+                var up = await PsuPowerUp.RunAsync(psu,
+                    new PsuPowerUpRequest(device, row.Channel, sp.Volts, sp.Amps, AcceptCurrentLimit: true),
+                    (level, msg) => host.Log.Add(new LogEntry(level, DateTimeOffset.Now, "PSU", msg)),
+                    cts.Token).ConfigureAwait(true);
+                result = up.IsSuccess ? Result.Ok() : Result.Fail(up.Error, up.Message);
+                if (up.IsSuccess && up.Value is { } reading
+                    && Math.Abs(reading.Voltage - sp.Volts) > PsuPowerUp.DefaultToleranceV)
+                    what += $" — CC mode: {reading.Voltage:F3} V at the {sp.Amps:0.###} A limit";
+            }
+            else
+            {
+                what = $"{device} CH{row.Channel} output OFF";
+                result = await psu.OutputOffAsync(device, row.Channel).ConfigureAwait(true);
+            }
 
-            var what = $"{device} CH{row.Channel} output {(turnOn ? "ON" : "OFF")}";
             SetStatus(result.IsSuccess ? what : $"{what} failed: {result.Message}", warn: !result.IsSuccess, fromCommand: true);
             _host.Log.Add(new LogEntry(result.IsSuccess ? LogLevel.Info : LogLevel.Error,
                 DateTimeOffset.Now, "PSU", result.IsSuccess ? what : $"{what} failed: {result.Message}"));
+        }
+        catch (OperationCanceledException)
+        {
+            // PsuPowerUp has already forced the output back OFF.
+            SetStatus($"{device} CH{row.Channel} power-up timed out — output switched OFF.", warn: true, fromCommand: true);
         }
         catch (Exception ex)
         {
@@ -323,6 +357,16 @@ public partial class PsuQuickPanel : UserControl
 
             Button = new Button { Content = "OFF", Height = 30, IsEnabled = false, ToolTip = "Toggle this channel's output" };
             Button.Click += async (_, _) => await _owner.ToggleAsync(this);
+            // Show the setpoints ON will apply — read fresh, so a Settings save shows at once.
+            ToolTipService.SetShowOnDisabled(Button, true);
+            Button.ToolTipOpening += (_, _) =>
+            {
+                if (_owner._device == null) return;
+                var sp = PsuChannelDefaults.Get(_owner._device, Channel);
+                Button.ToolTip = OutputOn
+                    ? $"Switch CH{Channel} output OFF"
+                    : $"Switch CH{Channel} ON at {sp.Volts:0.###} V / {sp.Amps:0.###} A (verified; set on Machine › Settings)";
+            };
 
             Grid.SetColumn(voltsBox, 1);
             Grid.SetColumn(ampsBox, 2);

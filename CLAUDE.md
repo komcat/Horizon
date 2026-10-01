@@ -107,9 +107,10 @@ defines its own program/recipe/position formats.
 - **Power supply (`psu.*`)** — the same op set on all three surfaces: program blocks
   (`StepDispatcher`), `.moon` (`machine.psu.*`) and `.hrcp` (`psu.<dev>.*`), incl.
   `psu.disconnect` (outputs forced OFF first). **`psu.powerUp`** is a verified power-up —
-  link check (one reconnect) → I-limit → V → ON → settle (150 ms) → read-back must show ON
-  and V within tolerance, else the output is switched back **OFF** (fail-safe, also on
-  cancel). One shared implementation, `Execution/PsuPowerUp.cs`, behind all three
+  link check (one reconnect) → I-limit → V → ON → settle (150 ms) → read-back polled (up to
+  `VerifyMs`, 2 s) until it shows ON and V within tolerance, else the output is switched back
+  **OFF** (fail-safe, also on cancel). `AcceptCurrentLimit` (Run-page panel only) treats a load
+  held at the current limit (CC mode) as a successful ON. One shared implementation, `Execution/PsuPowerUp.cs`, behind all three
   surfaces. `IProcessService.IsRunning` (program/deck/recipe in progress) lets Layer 3
   lock manual controls during a run. See `docs/power-supply.md`.
 - `Dut/` — `DutStore` for per-DUT (device-under-test) results, keyed by serial. A
@@ -251,7 +252,10 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
 - `EngineHost` forces camera **auto-exposure ON** on each camera-connect edge.
 - FAAM-owned config in `%APPDATA%\Horizon\config\`: `jog_transforms.json` (jog
   matrices), `faam_teach_points.json` (legacy taught points, migrated into the product),
-  `faam_psu_panel.json` (Run-page PSU channels shown, per supply);
+  `faam_psu_panel.json` (Run-page PSU channels shown, per supply),
+  `faam_psu_defaults.json` (per supply/channel V + I-limit the Run-page PSU ON button
+  applies via a verified `PsuPowerUp`, default 5 V / 1.0 A; edited on Machine › Settings),
+  `faam_run_layout.json` (Run-page camera-column splitter width);
   plus shared `app_settings.json` (`AppSettings`/`AppSettingsStore` in `Horizon.Common`:
   `mm/pixel`, MoveClick mapping, jog velocity presets, `StationId`) and the engine
   device configs. Operator directory `users.json` and the program-history

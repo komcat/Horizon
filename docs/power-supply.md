@@ -70,13 +70,17 @@ One shared implementation, `Horizon.Workflow/Execution/PsuPowerUp.cs`
 2. **Current limit, then voltage** — the limit first, so the load is protected the
    instant the output turns on. Out-of-range values fail here, nothing sent.
 3. **Output ON.**
-4. **Settle** `settleMs` (default **150 ms**, max 10 s), then a **fresh read-back**.
-   Passes only if the output reads ON and `|V − setpoint| ≤ toleranceV` (default 0.1 V).
-   A sag with the current at ≥ 98 % of the limit is reported as **constant-current
-   mode** (overload / short).
+4. **Settle** `settleMs` (default **150 ms**, max 10 s), then **poll the read-back**
+   every 100 ms for up to `VerifyMs` (default **2 s**, max 10 s) until it passes. A single
+   early read is not enough: the UDP3305S was seen reading `0.000 V / 0.300 A` 150 ms after
+   ON on an output that came up fine. Passes only if the output reads ON and
+   `|V − setpoint| ≤ toleranceV` (default 0.1 V). A sag with the current at ≥ 98 % of the
+   limit is reported as **constant-current mode** (overload / short) — unless the request
+   sets `AcceptCurrentLimit` (the FAAM Run-page panel does), which returns success with a
+   CC-mode warning, matching a by-hand ON of a load that runs at its current limit.
 
 **Fail-safe:** once the output was commanded ON, any failure — or a cancel during the
-settle — switches it back **OFF** (unless `offOnFail` is false). Verified readings are
+settle / verify — switches it back **OFF** (unless `offOnFail` is false). Verified readings are
 stored on success only: `{captureAs}_v` / `_i` (block), `{store}_v` / `_i` (recipe),
 the returned `{ v, i }` table (script).
 
@@ -106,6 +110,10 @@ product switch mid-run.
   - **CH1 is always shown**; `+ CH2` / `+ CH3` add rows and `×` removes them — a channel
     whose output is ON can't be removed. The choice is saved per supply in
     `%APPDATA%\Horizon\config\faam_psu_panel.json` (`{ "UDP3305S": [1, 3] }`);
+  - **ON is a verified power-up** (`PsuPowerUp`, 10 s bound) at the channel's Run-page
+    setpoints, edited on **Machine › Settings › Run page power supply** and saved per supply /
+    channel in `faam_psu_defaults.json` (`{ "UDP3305S": { "1": { "volts": 5, "amps": 1 } } }`);
+    a channel with no entry uses **5 V / 1.0 A**. OFF is a plain output-off;
   - readings refresh every 500 ms off the UI thread, only while the panel is visible;
   - the **toggles lock during a run** — a Run-page step / alignment / scan
     (`ActivityGate`) or a Layer 2 program / deck / recipe (`IsRunning`) — re-checked at

@@ -130,6 +130,46 @@ public sealed class SettingsSectionViewModel : ObservableObject
 
     public string Status { get => _status; private set => SetField(ref _status, value); }
 
+    // --- Run-page power supply: the V / A the PSU panel's ON button applies ---
+
+    /// <summary>One row per channel of every configured supply (saved with the Save button).</summary>
+    public ObservableCollection<PsuSetpointRow> PsuSetpoints { get; } = new();
+
+    /// <summary>True when at least one power supply is configured (hides the grid otherwise).</summary>
+    public bool HasPowerSupply => PsuSetpoints.Count > 0;
+
+    private void LoadPsuSetpoints()
+    {
+        PsuSetpoints.Clear();
+        var psu = _host.Engine.PowerSupply;
+        var saved = PsuChannelDefaults.LoadAll();
+        foreach (var device in psu.DeviceNames)
+        {
+            var count = psu.GetDevice(device)?.ChannelCount ?? 1;
+            for (var ch = 1; ch <= count; ch++)
+            {
+                var sp = PsuChannelDefaults.Lookup(saved, device, ch);
+                PsuSetpoints.Add(new PsuSetpointRow(device, ch, sp.Volts, sp.Amps));
+            }
+        }
+        OnPropertyChanged(nameof(HasPowerSupply));
+    }
+
+    /// <summary>Writes the PSU rows (validated by <see cref="Save"/>). Throws on I/O failure.</summary>
+    private void SavePsuSetpoints()
+    {
+        // Start from the file so entries for supplies not configured right now are kept.
+        var all = PsuChannelDefaults.LoadAll();
+        foreach (var r in PsuSetpoints)
+        {
+            var key = all.Keys.FirstOrDefault(k => string.Equals(k, r.Device, StringComparison.OrdinalIgnoreCase)) ?? r.Device;
+            if (!all.TryGetValue(key, out var channels))
+                all[key] = channels = new Dictionary<string, PsuChannelSetpoint>();
+            channels[r.Channel.ToString()] = new PsuChannelSetpoint { Volts = r.Volts, Amps = r.Amps };
+        }
+        PsuChannelDefaults.SaveAll(all);
+    }
+
     // --- Machine identity: stamped onto every DUT run (see Session / OperatorContext) ---
 
     /// <summary>
@@ -275,10 +315,21 @@ public sealed class SettingsSectionViewModel : ObservableObject
         CameraNeedleTouchZAdjustMm = cn.TouchZAdjustMm;
         CameraNeedleDwellMs = cn.DwellMs;
         CameraNeedleDebounceMs = cn.OutputDebounceMs;
+
+        LoadPsuSetpoints();
     }
 
     private void Save()
     {
+        // Validate the PSU setpoints first, so a bad entry doesn't leave a half-saved page.
+        var psuError = PsuSetpoints.FirstOrDefault(r =>
+            !PsuChannelDefaults.IsValid(new PsuChannelSetpoint { Volts = r.Volts, Amps = r.Amps }));
+        if (psuError != null)
+        {
+            Status = $"Not saved — {psuError.Device} CH{psuError.Channel}: voltage must be ≥ 0 and current limit > 0.";
+            return;
+        }
+
         var current = _store.Current;
         // `with` preserves fields this page doesn't edit (window layout, last program).
         _store.Update(current with
@@ -305,7 +356,8 @@ public sealed class SettingsSectionViewModel : ObservableObject
             _host.Process.SetCameraNeedleSettings(
                 _cameraNeedleOffsetX, _cameraNeedleOffsetY, _cameraNeedleApproachMm,
                 _cameraNeedleTouchZAdjustMm, _cameraNeedleDwellMs, _cameraNeedleDebounceMs);
-            Status = "Saved to app_settings.json";
+            SavePsuSetpoints();
+            Status = "Saved to app_settings.json + faam_psu_defaults.json";
         }
         catch (Exception ex)
         {
@@ -346,4 +398,29 @@ public sealed class SettingsSectionViewModel : ObservableObject
         values.Sort();
         return values.Count > 0 ? values.ToArray() : fallback;
     }
+}
+
+/// <summary>One editable Settings row: the V / A the Run-page PSU panel applies to a channel on ON.</summary>
+public sealed class PsuSetpointRow : ObservableObject
+{
+    private double _volts;
+    private double _amps;
+
+    public PsuSetpointRow(string device, int channel, double volts, double amps)
+    {
+        Device = device;
+        Channel = channel;
+        _volts = volts;
+        _amps = amps;
+    }
+
+    public string Device { get; }
+    public int Channel { get; }
+    public string ChannelLabel => $"CH{Channel}";
+
+    /// <summary>Output voltage setpoint (V).</summary>
+    public double Volts { get => _volts; set => SetField(ref _volts, value); }
+
+    /// <summary>Current limit (A).</summary>
+    public double Amps { get => _amps; set => SetField(ref _amps, value); }
 }

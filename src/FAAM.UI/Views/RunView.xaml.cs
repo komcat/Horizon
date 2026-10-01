@@ -4,6 +4,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using FAAM.UI.Siphog;
+using Horizon.Common;
 using Horizon.Engine;
 using Horizon.Workflow;
 
@@ -38,6 +39,7 @@ public partial class RunView : UserControl
     /// </summary>
     private const bool FeedCover = false;
     private const int MaxLogLines = 200;
+    private const string LayoutFile = "faam_run_layout";   // { "cameraColumnWidth": 900 } — null = Auto
 
     private readonly EngineHost _host;
     private readonly Dispatcher _dispatcher;
@@ -71,6 +73,7 @@ public partial class RunView : UserControl
         _host = host;
         _dispatcher = Dispatcher.CurrentDispatcher;
         InitializeComponent();
+        RestoreLayout();   // camera column width the operator dragged to last session
 
         _cameras = host.Engine.Camera.CameraIds;
         _mainCamera = _cameras.Count > 0 ? _cameras[0] : null;
@@ -148,6 +151,55 @@ public partial class RunView : UserControl
     /// <summary>Hides the inspector, returning to the live camera feed.</summary>
     private void OnCloseInspector(object sender, RoutedEventArgs e)
         => InspectorPanel.Visibility = Visibility.Collapsed;
+
+    /// <summary>Double-click on the left/camera splitter — drop the dragged pixel width and
+    /// return the camera column to Auto (full aspect-correct feed width).</summary>
+    private void OnSplitterReset(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        CameraColumn.Width = GridLength.Auto;
+        SaveLayout(null);
+    }
+
+    /// <summary>Splitter drag finished — remember the camera column's new pixel width.</summary>
+    private void OnSplitterDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        if (CameraColumn.Width.IsAbsolute)
+            SaveLayout(CameraColumn.Width.Value);
+    }
+
+    /// <summary>Saved Run-page layout (<c>faam_run_layout.json</c>). A null width = Auto.</summary>
+    private sealed class RunLayout
+    {
+        public double? CameraColumnWidth { get; set; }
+    }
+
+    /// <summary>Re-applies the camera column width saved by a previous session, if any.</summary>
+    private void RestoreLayout()
+    {
+        try
+        {
+            var layout = ConfigLoader.LoadJson<RunLayout>(ConfigLoader.GetConfigDirectory(), LayoutFile);
+            if (layout?.CameraColumnWidth is double w && double.IsFinite(w) && w >= CameraColumn.MinWidth)
+                CameraColumn.Width = new GridLength(w);
+        }
+        catch (Exception ex)
+        {
+            Log($"Run layout: could not load {LayoutFile}.json — {ex.Message}");
+        }
+    }
+
+    private void SaveLayout(double? cameraColumnWidth)
+    {
+        try
+        {
+            ConfigLoader.SaveJson(ConfigLoader.GetConfigDirectory(), LayoutFile,
+                new RunLayout { CameraColumnWidth = cameraColumnWidth });
+        }
+        catch (Exception ex)
+        {
+            Log($"Run layout: could not save {LayoutFile}.json — {ex.Message}");
+        }
+    }
 
     /// <summary>Per-row ".." button — opens that position's editor (logic owned by the process panel).</summary>
     private void OnEditRow(object sender, RoutedEventArgs e)

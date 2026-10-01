@@ -11,7 +11,9 @@ public sealed record PsuPowerUpRequest(
     double Amps,
     int SettleMs = PsuPowerUp.DefaultSettleMs,
     double ToleranceV = PsuPowerUp.DefaultToleranceV,
-    bool OffOnFail = true);
+    bool OffOnFail = true,
+    int VerifyMs = PsuPowerUp.DefaultVerifyMs,
+    bool AcceptCurrentLimit = false);
 
 /// <summary>The verified read-back of a successful power-up.</summary>
 public sealed record PsuPowerUpReading(double Voltage, double Current);
@@ -30,6 +32,14 @@ public static class PsuPowerUp
     public const int DefaultSettleMs = 150;
     public const double DefaultToleranceV = 0.1;
     public const int MaxSettleMs = 10_000;
+
+    /// <summary>How long after the settle the read-back keeps being polled for the setpoint.</summary>
+    public const int DefaultVerifyMs = 2_000;
+    public const int MaxVerifyMs = 10_000;
+    private const int VerifyPollMs = 100;
+
+    /// <summary>Read current at or above this fraction of the limit counts as "at the limit" (CC mode).</summary>
+    private const double CurrentLimitFraction = 0.98;
 
     public static async Task<Result<PsuPowerUpReading>> RunAsync(
         IPowerSupplyFacet psu, PsuPowerUpRequest req, Action<LogLevel, string> log, CancellationToken ct)
@@ -62,21 +72,36 @@ public static class PsuPowerUp
         r = await psu.OutputOnAsync(dev, channel).ConfigureAwait(false);
         if (!r.IsSuccess) return await FailSafeAsync(psu, req, log, r.Message).ConfigureAwait(false);
 
+        // 4. Settle, then poll the read-back until it verifies or the verify window closes.
+        // One read at the settle time is not enough: a supply's output ramps (soft start,
+        // load capacitance) and its measurement updates slower than its command path, so an
+        // early read can show 0 V on an output that is coming up fine.
+        var verifyMs = Math.Clamp(req.VerifyMs, 0, MaxVerifyMs);
+        var maxPolls = verifyMs / VerifyPollMs + 1;   // bounded loop (Power of 10)
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        PowerSupplyChannelState? pch = null;
         try
         {
             await Task.Delay(settleMs, ct).ConfigureAwait(false);
+            sw.Restart();
+            for (var poll = 0; poll < maxPolls; poll++)
+            {
+                if (poll > 0) await Task.Delay(VerifyPollMs, ct).ConfigureAwait(false);
+                await psu.RefreshAsync().ConfigureAwait(false);
+                pch = psu.GetState(dev).Channels.FirstOrDefault(s => s.Channel == channel);
+                if (pch != null && pch.OutputOn && Math.Abs(pch.Voltage - req.Volts) <= tolV) break;
+                if (sw.ElapsedMilliseconds >= verifyMs) break;
+            }
         }
         catch (OperationCanceledException)
         {
             if (req.OffOnFail) await psu.OutputOffAsync(dev, channel).ConfigureAwait(false);
             throw;
         }
+        var waited = settleMs + sw.ElapsedMilliseconds;
 
-        // 4. Fresh read-back and verify.
-        await psu.RefreshAsync().ConfigureAwait(false);
-        var pch = psu.GetState(dev).Channels.FirstOrDefault(s => s.Channel == channel);
         if (pch == null)
-            return await FailSafeAsync(psu, req, log, $"{tag}: no read-back after {settleMs} ms.").ConfigureAwait(false);
+            return await FailSafeAsync(psu, req, log, $"{tag}: no read-back after {waited} ms.").ConfigureAwait(false);
 
         var reading = $"{pch.Voltage:F3} V / {pch.Current:F4} A";
 
@@ -86,14 +111,24 @@ public static class PsuPowerUp
 
         if (Math.Abs(pch.Voltage - req.Volts) > tolV)
         {
-            // Voltage sag with the current at its limit = constant-current mode (overload / short).
-            var ccHint = req.Amps > 0 && pch.Current >= req.Amps * 0.98
-                ? " — current at limit (CC mode: overload or short?)" : "";
+            // Voltage below setpoint with the current at its limit = constant-current mode:
+            // the supply is holding the load at the limit. A caller that drives a CC load on
+            // purpose (the Run-page panel) accepts that; otherwise it is an overload / short.
+            var atLimit = req.Amps > 0 && pch.Current >= req.Amps * CurrentLimitFraction;
+            if (atLimit && req.AcceptCurrentLimit && pch.Voltage > 0)
+            {
+                log(LogLevel.Warning,
+                    $"psu.powerUp: {tag} ON in CC mode — {reading} (current at the {req.Amps:G4} A limit, " +
+                    $"voltage below {req.Volts:F3} V setpoint) after {waited} ms");
+                return Result<PsuPowerUpReading>.Ok(new PsuPowerUpReading(pch.Voltage, pch.Current));
+            }
+
+            var ccHint = atLimit ? " — current at limit (CC mode: overload or short?)" : "";
             return await FailSafeAsync(psu, req, log,
-                $"{tag}: read {reading}, expected {req.Volts:F3} V ±{tolV:G3}{ccHint}.").ConfigureAwait(false);
+                $"{tag}: read {reading} after {waited} ms, expected {req.Volts:F3} V ±{tolV:G3}{ccHint}.").ConfigureAwait(false);
         }
 
-        log(LogLevel.Info, $"psu.powerUp: {tag} ON, verified {reading} after {settleMs} ms");
+        log(LogLevel.Info, $"psu.powerUp: {tag} ON, verified {reading} after {waited} ms");
         return Result<PsuPowerUpReading>.Ok(new PsuPowerUpReading(pch.Voltage, pch.Current));
     }
 
