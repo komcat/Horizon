@@ -85,6 +85,7 @@ public sealed class ProcessService : IProcessService
     public ProductInfo? GetProductInfo(string name) => _products.ReadInfo(name);
 
     public event Action<WorkflowStepEvent>? StepEvent;
+    public event Action<ScriptProgress>? ScriptProgressChanged;
     public event Action<DeckProgress>? DeckStepEvent;
 
     /// <summary>
@@ -1951,7 +1952,8 @@ public sealed class ProcessService : IProcessService
                 GetPartSnapshot,
                 MoveCameraToPartFiducialAsync,
                 MoveCameraToPartObjectAsync,
-                MoveCameraToPartObjectPointAsync));
+                MoveCameraToPartObjectPointAsync),
+            progress: p => ScriptProgressChanged?.Invoke(p));
 
         void Sink(string line)
         {

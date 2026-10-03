@@ -718,6 +718,12 @@ public interface IProcessService
     /// <summary>Raised before and after each executed step of a running program.</summary>
     event Action<WorkflowStepEvent>? StepEvent;
 
+    /// <summary>
+    /// Raised (off the UI thread) when a running <c>.moon</c> script reports progress via
+    /// <c>machine.progress(pct, message)</c> — from a <c>script.run</c> step or the editor.
+    /// </summary>
+    event Action<ScriptProgress>? ScriptProgressChanged;
+
     /// <summary>Raised for every workflow log line. The Layer 2 logging surface.</summary>
     event Action<LogEntry>? LogEmitted;
 }

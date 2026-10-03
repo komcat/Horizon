@@ -27,6 +27,12 @@ internal sealed class WorkflowRunner
     private readonly Action<WorkflowStepEvent> _onStep;
     private readonly Action<LogLevel, string> _log;
 
+    // Nesting depth of the sequence currently executing on this async flow. Set at the
+    // top of RunCoreAsync; an async method's AsyncLocal writes don't leak back to its
+    // caller, so each sub-program / parallel branch sees its own value. Stamped onto
+    // every step event so listeners can tell top-level steps from nested ones.
+    private readonly AsyncLocal<int> _depth = new();
+
     public WorkflowRunner(
         IHorizonEngine engine,
         Func<string, string, MoveOverrides, CancellationToken, Task<Result>> moveToNamed,
@@ -62,7 +68,7 @@ internal sealed class WorkflowRunner
         _setDutSerial = setDutSerial;
         _closeDut = closeDut;
         _pause = pause;
-        _onStep = onStep;
+        _onStep = e => onStep(e with { Depth = _depth.Value });
         _log = log;
     }
 
@@ -81,6 +87,7 @@ internal sealed class WorkflowRunner
     private async Task<Result> RunCoreAsync(
         WorkflowProgram program, WorkflowContext ctx, int depth, string? lane, CancellationToken ct)
     {
+        _depth.Value = depth;
         var steps = program.Steps;
         var loops = new Stack<LoopFrame>();
         int index = 0;
@@ -327,6 +334,17 @@ internal sealed class WorkflowRunner
                 result = Result.Fail(ErrorCode.OperationFailed, ex.Message);
             }
 
+            // Best-effort ops (e.g. Save SAG to Sheet) fail silently: one warning line in
+            // the log, then the block counts as done (not red) and the run carries on —
+            // a missing DUT serial, an unregistered sink, a disconnected client or a server
+            // ERR / reply timeout is a nuisance, not a fault worth stopping the process over.
+            // A run cancel (STOP) still propagates as cancellation above.
+            if (!result.IsSuccess && IsNonFatalOp(op))
+            {
+                _log(LogLevel.Warning, $"Step {index + 1} '{desc}' skipped (non-fatal): {result.Message}");
+                result = Result.Ok($"skipped — {result.Message}");
+            }
+
             if (result.IsSuccess && step.DelayAfterMs > 0)
                 await Task.Delay(step.DelayAfterMs, ct).ConfigureAwait(false);
 
@@ -343,17 +361,6 @@ internal sealed class WorkflowRunner
                     && await PromptMoveFailureAsync(step, index, steps.Count, desc, result, lane, ct)
                         .ConfigureAwait(false))
                 {
-                    index++;
-                    continue;
-                }
-
-                // Best-effort ops (e.g. writing SiPhOG SAG to the Google Sheet) report
-                // their failure but never abort the run — a missing DUT serial, an
-                // unregistered sink, or a server ERR is a logged nuisance, not a fault
-                // worth stopping the process over.
-                if (IsNonFatalOp(op))
-                {
-                    _log(LogLevel.Warning, $"Step {index + 1} '{desc}' failed (continuing): {result.Message}");
                     index++;
                     continue;
                 }

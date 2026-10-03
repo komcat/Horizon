@@ -43,6 +43,7 @@ public sealed class MoonScriptEngine
     private readonly IImageDisplaySink? _imageDisplay;
     private readonly PartAlignmentScriptHost? _partAlignment;
     private readonly IOperatorPrompt? _prompt;
+    private readonly Action<ScriptProgress>? _progress;
 
     public MoonScriptEngine(
         IHorizonEngine engine,
@@ -51,9 +52,11 @@ public sealed class MoonScriptEngine
         VisionProfileRunner? visionRunner = null,
         IOperatorPrompt? operatorPrompt = null,
         IImageDisplaySink? imageDisplay = null,
-        PartAlignmentScriptHost? partAlignment = null)
+        PartAlignmentScriptHost? partAlignment = null,
+        Action<ScriptProgress>? progress = null)
     {
         _partAlignment = partAlignment;
+        _progress = progress;
         _engine = engine;
         _mover = namedPositionMover;
         _signalReader = signalReader;
@@ -84,7 +87,7 @@ public sealed class MoonScriptEngine
 
         var script = new Script(CoreModules.Preset_HardSandbox);
         script.Options.DebugPrint = Log;     // Lua print(...) → output
-        new MachineApi(script, _engine, _mover, _signalReader, _visionRunner, _imageDisplay, _prompt, Log, ct, _partAlignment).Install();
+        new MachineApi(script, _engine, _mover, _signalReader, _visionRunner, _imageDisplay, _prompt, Log, ct, _partAlignment, _progress).Install();
 
         DynValue function;
         try

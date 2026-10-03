@@ -30,6 +30,7 @@ public static class MachineApiCatalog
         new("", "log", "machine.log(message)", "Write a line to the output / log."),
         new("", "wait", "machine.wait(ms)", "Sleep for ms milliseconds (cancellable)."),
         new("", "ask", "machine.ask(title [, message]) -> bool", "Blocking operator yes/no; returns true for yes."),
+        new("", "progress", "machine.progress(percent [, message])", "Report run progress 0–100 (fills the Run-page progress bar for a Run Script block)."),
 
         // motion
         new("motion", "list", "machine.motion.list() -> {names}", "Configured motion device names."),

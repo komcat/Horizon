@@ -2,6 +2,9 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using FAAM.UI.Process;
 using FAAM.UI.ViewModels;
 using FAAM.UI.ViewModels.Sections;
 using FAAM.UI.Views;
@@ -45,6 +48,7 @@ public partial class ShellWindow : Window
         _machineVm = new MachinePageViewModel(host);
         _machine = new MachinePageView { DataContext = _machineVm };
         _run = new RunView(host);
+        _run.ProgressChanged += OnRunProgress;
         _engineer = new EngineerPageView(host);
         _visionAlignment = new VisionAlignmentView(host);
         _scriptEditor = new ScriptEditorView(host);
@@ -178,6 +182,7 @@ public partial class ShellWindow : Window
     /// <summary>Stops a page's background work (camera pipeline, status sampler) when leaving it.</summary>
     private void LeaveCurrent()
     {
+        ApplyHeaderProgress(RunProgressSnapshot.Idle);   // the RUN header bar belongs to the Run page only
         if (ReferenceEquals(PageHost.Content, _run))
             _run.Deactivate();
         else if (ReferenceEquals(PageHost.Content, _machine))
@@ -239,11 +244,46 @@ public partial class ShellWindow : Window
         if (!Allow(AccessPolicy.Run, "Run")) return;
         LeaveCurrent();
         Header1Text.Text = "RUN";
+        ApplyHeaderProgress(_runProgress);   // a step may still be executing from before we left
         EngineHeader.Visibility = Visibility.Collapsed;
         DutHeader.Visibility = Visibility.Visible;   // serial-bracketed DUT run lives in the header here
         RefreshDutButtons();
         _run.Activate();   // starts grabbing + frame routing
         PageHost.Content = _run;
+    }
+
+    private RunProgressSnapshot _runProgress = RunProgressSnapshot.Idle;
+
+    private void OnRunProgress(RunProgressSnapshot snap)
+    {
+        _runProgress = snap;
+        if (ReferenceEquals(PageHost.Content, _run))
+            ApplyHeaderProgress(snap);
+    }
+
+    /// <summary>
+    /// Turns the page-title box into a big progress bar while a Run-page step executes:
+    /// green fill to the current %, black "RUNNING…  42%" text. Idle restores "RUN".
+    /// </summary>
+    private void ApplyHeaderProgress(RunProgressSnapshot snap)
+    {
+        if (snap.Running)
+        {
+            HeaderProgress.Visibility = Visibility.Visible;
+            HeaderProgress.IsIndeterminate = !snap.HasProgress;
+            HeaderProgress.Value = snap.Percent;
+            Header1Text.Foreground = Brushes.Black;
+            Header1Text.FontWeight = FontWeights.Bold;
+            Header1Text.Text = snap.HasProgress ? $"RUNNING…   {snap.Short}" : "RUNNING…";
+        }
+        else if (HeaderProgress.Visibility == Visibility.Visible)
+        {
+            HeaderProgress.Visibility = Visibility.Collapsed;
+            HeaderProgress.IsIndeterminate = false;
+            Header1Text.SetResourceReference(TextBlock.ForegroundProperty, "Accent");
+            Header1Text.FontWeight = FontWeights.SemiBold;
+            if (ReferenceEquals(PageHost.Content, _run)) Header1Text.Text = "RUN";
+        }
     }
 
     private void ShowEngineer()

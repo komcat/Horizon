@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 using FAAM.UI.Process;
 using Horizon.Common;
@@ -50,12 +51,25 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
     // re-runs the first step, which re-homes and re-opens the gripper.
     private bool _restartRequired;
 
+    private string _title = "FAU ATTACH STEPS";   // deck title shown while idle
+    private int _executing;                       // steps in flight (a new click can overlap a superseded one)
+    private readonly RunProgressTracker _progress = new();   // drives the progress bar under the title
+    private readonly RunDurationStore _durations = new();    // earlier-run block timings → % estimate
+    private readonly DispatcherTimer _progressTick;          // advances the time estimate while running
+
+    /// <summary>Raised on the UI thread whenever the run progress changes (and once with
+    /// <see cref="RunProgressSnapshot.Running"/> false when execution ends) — the shell
+    /// mirrors it onto the big RUN header.</summary>
+    public event Action<RunProgressSnapshot>? ProgressChanged;
+
     public ProcessStepsPanel()
     {
         InitializeComponent();
         StepList.ItemsSource = DefaultSteps();
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += (_, _) => UpdateTimer();
+        _progressTick = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _progressTick.Tick += (_, _) => { _progress.Tick(); ShowProgress(); };
     }
 
     /// <summary>Supplies the engine host (for the step sequences, teach, STOP, logging).</summary>
@@ -76,6 +90,10 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
         // Re-point the Run page at the new product's active deck when the product
         // changes, so switching product immediately reloads the right steps.
         host.Process.ProductChanged += OnProductChanged;
+
+        // Progress bar feed — both events arrive off the UI thread.
+        host.Process.StepEvent += e => Dispatcher.BeginInvoke(() => { if (_executing > 0) { _progress.OnStep(e); ShowProgress(); } });
+        host.Process.ScriptProgressChanged += p => Dispatcher.BeginInvoke(() => { if (_executing > 0) { _progress.OnScript(p); ShowProgress(); } });
 
         // Populate the deck picker; re-list each time it's opened so decks authored in
         // the Engineer page show up without re-entering the Run page.
@@ -155,7 +173,7 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
         {
             _deck = null;
             StepList.ItemsSource = DefaultSteps();
-            TitleText.Text = "FAU ATTACH STEPS";
+            SetTitle("FAU ATTACH STEPS");
             UpdateNoDeckBanner();
             return;
         }
@@ -185,8 +203,8 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
 
         _deck = deck;
         StepList.ItemsSource = steps;
-        TitleText.Text = string.IsNullOrWhiteSpace(deck.Name)
-            ? "PROCESS DECK" : deck.Name.ToUpperInvariant();
+        SetTitle(string.IsNullOrWhiteSpace(deck.Name)
+            ? "PROCESS DECK" : deck.Name.ToUpperInvariant());
         UpdateNoDeckBanner();
     }
 
@@ -345,6 +363,7 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
             return;
 
         step.Status = StepStatus.Running;   // yellow while executing
+        SetExecuting(+1);
         try
         {
             if (!string.IsNullOrEmpty(step.Program))
@@ -353,7 +372,9 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
                 if (loaded.IsSuccess)
                 {
                     Log(LogLevel.Info, $"Running program '{step.Program}' for step '{step.Label}'.");
+                    BeginProgress(step.Program);
                     var result = await _host.Process.RunAsync(loaded.Value, serial: null, ct);
+                    CommitProgress(result.IsSuccess);
                     if (!result.IsSuccess)
                     {
                         step.Status = StepStatus.Failed;   // program reported failure → red
@@ -396,6 +417,76 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
         {
             step.Status = StepStatus.Failed;              // errored → red
             Log(LogLevel.Error, $"Step '{step.Label}' error: {ex.Message}");
+        }
+        finally
+        {
+            SetExecuting(-1);
+        }
+    }
+
+    /// <summary>Restarts the progress bar for the program about to run.</summary>
+    private void BeginProgress(string program)
+    {
+        _progress.Reset(_durations, RunDurationStore.Key(_host?.Process.ActiveProduct, program));
+        ShowProgress();
+    }
+
+    /// <summary>Saves the finished program's block timings for the next run's estimate.</summary>
+    private void CommitProgress(bool completed)
+        => _progress.Commit(completed, err => Log(LogLevel.Warning, $"Could not save run timings: {err}"));
+
+    /// <summary>Pushes the tracker's % and current block onto the progress bar (+ the shell header).</summary>
+    private void ShowProgress()
+    {
+        var snap = RunProgressSnapshot.From(_progress, running: _executing > 0);
+        RunProgress.IsIndeterminate = !snap.HasProgress;
+        RunProgress.Value = snap.Percent;
+        RunProgressText.Text = snap.Text;
+        ProgressChanged?.Invoke(snap);
+    }
+
+    /// <summary>Sets the idle (deck) title; while executing the title bar keeps showing "RUNNING…".</summary>
+    private void SetTitle(string title)
+    {
+        _title = title;
+        if (_executing == 0) TitleText.Text = title;
+    }
+
+    /// <summary>
+    /// Tracks in-flight steps and switches the panel's executing look: a darker panel
+    /// fill and a green "RUNNING…" title bar while any step runs; restored when idle.
+    /// </summary>
+    private void SetExecuting(int delta)
+    {
+        _executing = Math.Max(0, _executing + delta);
+        bool busy = _executing > 0;
+
+        PanelRoot.SetResourceReference(Border.BackgroundProperty,
+            busy ? SystemColors.ControlDarkBrushKey : "Panel");
+
+        if (busy && delta > 0)
+        {
+            _progress.Reset();          // built-in step: stays indeterminate (no program events)
+            _progressTick.Start();
+            ShowProgress();
+        }
+        else if (!busy)
+        {
+            _progressTick.Stop();
+            ProgressChanged?.Invoke(RunProgressSnapshot.Idle);
+        }
+        ProgressArea.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        if (busy)
+        {
+            TitleBar.Background = (Brush)FindResource("StatusSuccess");
+            TitleText.Foreground = Brushes.Black;
+            TitleText.Text = "RUNNING…";
+        }
+        else
+        {
+            TitleBar.Background = Brushes.Transparent;
+            TitleText.SetResourceReference(TextBlock.ForegroundProperty, "Accent");
+            TitleText.Text = _title;
         }
     }
 
@@ -473,9 +564,11 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
 
             Log(LogLevel.Info, $"Auto-chain: running '{label}'.");
             _host.Process.RecordDutValue($"chain_{i}", label);
+            BeginProgress(entry.Program);
             try
             {
                 var result = await _host.Process.RunAsync(loaded.Value, serial: null, ct);
+                CommitProgress(result.IsSuccess);
                 if (!result.IsSuccess)
                 {
                     if (chained != null) chained.Status = StepStatus.Failed;

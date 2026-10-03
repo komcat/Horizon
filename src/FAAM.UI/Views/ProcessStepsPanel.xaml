@@ -97,11 +97,27 @@
         </Style>
     </UserControl.Resources>
 
-    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}" BorderThickness="2" CornerRadius="4">
+    <!-- Panel fill darkens while a step is executing (SetExecuting in code-behind). -->
+    <Border x:Name="PanelRoot" Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}" BorderThickness="2" CornerRadius="4">
         <DockPanel Margin="8">
-            <TextBlock DockPanel.Dock="Top" x:Name="TitleText" Text="FAU ATTACH STEPS"
-                       Foreground="{StaticResource Accent}" FontSize="15" FontWeight="Bold"
-                       HorizontalAlignment="Center" Margin="0,2,0,8" />
+            <!-- Title bar — turns green and reads "RUNNING…" while a step is executing. -->
+            <Border DockPanel.Dock="Top" x:Name="TitleBar" Background="Transparent" CornerRadius="3"
+                    Padding="0,3" Margin="0,0,0,8">
+                <TextBlock x:Name="TitleText" Text="FAU ATTACH STEPS"
+                           Foreground="{StaticResource Accent}" FontSize="15" FontWeight="Bold"
+                           HorizontalAlignment="Center" />
+            </Border>
+
+            <!-- Run progress — shown while a step executes. % = top-level blocks done plus the
+                 current block's share (parallel branches / sub-program / machine.progress);
+                 indeterminate for a built-in step or before the first block reports. -->
+            <Grid DockPanel.Dock="Top" x:Name="ProgressArea" Visibility="Collapsed" Margin="0,0,0,8">
+                <ProgressBar x:Name="RunProgress" Height="20" Minimum="0" Maximum="100"
+                             Foreground="{StaticResource StatusSuccess}" />
+                <TextBlock x:Name="RunProgressText" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           FontSize="11" FontWeight="SemiBold" Foreground="Black"
+                           TextTrimming="CharacterEllipsis" Margin="4,0" />
+            </Grid>
 
             <!-- Process timer — fixed green-on-black device readout. -->
             <Border DockPanel.Dock="Top" Background="Black" CornerRadius="3" Padding="0,6" Margin="0,0,0,8">

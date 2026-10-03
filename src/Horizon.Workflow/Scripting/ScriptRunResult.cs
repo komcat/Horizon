@@ -21,3 +21,11 @@ public sealed record ScriptRunResult(
     public static ScriptRunResult CancelledRun(IReadOnlyList<string> output)
         => new(false, true, "cancelled", output);
 }
+
+/// <summary>
+/// Self-reported progress from a running <c>.moon</c> script (<c>machine.progress</c>).
+/// <see cref="Percent"/> is clamped to 0–100; <see cref="Message"/> is an optional
+/// operator-facing note ("UV point 3"). The script author places these calls — the
+/// host cannot know a script's length in advance (loops, branches).
+/// </summary>
+public sealed record ScriptProgress(double Percent, string? Message);

@@ -49,6 +49,9 @@ public sealed record WorkflowProgram
 /// Progress event raised before and after each executed step. <see cref="Lane"/> is
 /// null for top-level steps and the branch lane id for steps run inside a
 /// <c>flow.parallel</c> branch (so a timeline UI can highlight the right row).
+/// <see cref="Depth"/> is 0 for the program's own steps and grows by one per
+/// <c>flow.subProgram</c> / parallel-branch level, so a progress bar can count only
+/// top-level steps (Index/Total of a nested event refer to the nested sequence).
 /// </summary>
 public sealed record WorkflowStepEvent(
     int Index,
@@ -57,4 +60,5 @@ public sealed record WorkflowStepEvent(
     bool Completed,
     bool Success,
     string Message,
-    string? Lane = null);
+    string? Lane = null,
+    int Depth = 0);

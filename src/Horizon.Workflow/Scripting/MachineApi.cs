@@ -69,6 +69,7 @@ internal sealed class MachineApi
     private readonly PartAlignmentScriptHost? _part;
     private readonly Action<string> _log;
     private readonly CancellationToken _ct;
+    private readonly Action<ScriptProgress>? _progress;
 
     public MachineApi(
         Script script,
@@ -80,7 +81,8 @@ internal sealed class MachineApi
         IOperatorPrompt? prompt,
         Action<string> log,
         CancellationToken ct,
-        PartAlignmentScriptHost? part = null)
+        PartAlignmentScriptHost? part = null,
+        Action<ScriptProgress>? progress = null)
     {
         _script = script;
         _engine = engine;
@@ -92,6 +94,7 @@ internal sealed class MachineApi
         _part = part;
         _log = log;
         _ct = ct;
+        _progress = progress;
     }
 
     /// <summary>Installs the <c>machine</c> global into the script's environment.</summary>
@@ -123,6 +126,19 @@ internal sealed class MachineApi
         machine["log"] = Cb(a =>
         {
             _log(ReqStr(a, 0, "machine.log"));
+            return DynValue.Nil;
+        });
+
+        // machine.progress(pct [, message]) — the script reports how far it has got, so
+        // the host can fill a progress bar. Not logged (a script may call it often);
+        // a non-finite pct is rejected, anything else is clamped to 0–100.
+        machine["progress"] = Cb(a =>
+        {
+            double pct = ReqNum(a, 0, "machine.progress");
+            if (double.IsNaN(pct) || double.IsInfinity(pct))
+                throw new ScriptRuntimeException("machine.progress: percent must be a finite number");
+            string? message = a.Count > 1 && !a[1].IsNil() ? a[1].CastToString() : null;
+            _progress?.Invoke(new ScriptProgress(Math.Clamp(pct, 0, 100), message));
             return DynValue.Nil;
         });
 

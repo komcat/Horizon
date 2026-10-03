@@ -255,7 +255,10 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   `faam_psu_panel.json` (Run-page PSU channels shown, per supply),
   `faam_psu_defaults.json` (per supply/channel V + I-limit the Run-page PSU ON button
   applies via a verified `PsuPowerUp`, default 5 V / 1.0 A; edited on Machine › Settings),
-  `faam_run_layout.json` (Run-page camera-column splitter width);
+  `faam_run_layout.json` (Run-page camera-column splitter width),
+  `faam_run_durations.json` (per product/program top-level block timings from earlier runs —
+  weights the Run-page progress bar by time and estimates blocks that report no progress;
+  a `.moon` script reports its own via `machine.progress(pct, msg)`);
   plus shared `app_settings.json` (`AppSettings`/`AppSettingsStore` in `Horizon.Common`:
   `mm/pixel`, MoveClick mapping, jog velocity presets, `StationId`) and the engine
   device configs. Operator directory `users.json` and the program-history

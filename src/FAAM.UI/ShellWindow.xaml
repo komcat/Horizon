@@ -37,9 +37,15 @@
             </Grid.ColumnDefinitions>
             <Border Grid.Column="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
                     BorderThickness="1" CornerRadius="3" Margin="6,0,0,0">
-                <TextBlock x:Name="Header1Text" Text="HOME" Foreground="{StaticResource Accent}"
-                           FontSize="18" FontWeight="SemiBold"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Grid>
+                    <!-- Big run-progress bar behind the title — shown on the Run page while a
+                         step executes (title then reads "RUNNING…  ≈42% · 2:10 left"). -->
+                    <ProgressBar x:Name="HeaderProgress" Minimum="0" Maximum="100" Visibility="Collapsed"
+                                 BorderThickness="0" Background="Transparent" Foreground="#66BB6A" />
+                    <TextBlock x:Name="Header1Text" Text="HOME" Foreground="{StaticResource Accent}"
+                               FontSize="18" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Grid>
             </Border>
             <!-- Engine status + Reconnect — bound to the Machine page VM in code,
                  shown only on the Machine page (its sampler drives these). -->

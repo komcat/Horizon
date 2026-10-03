@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using FAAM.UI.Process;
 using FAAM.UI.Siphog;
 using Horizon.Common;
 using Horizon.Engine;
@@ -132,6 +133,13 @@ public partial class RunView : UserControl
     }
 
     /// <summary>Starts the process timer — called by the shell header when a DUT run begins.</summary>
+    /// <summary>Run progress from the steps panel (UI thread) — the shell mirrors it on the RUN header.</summary>
+    public event Action<RunProgressSnapshot>? ProgressChanged
+    {
+        add => StepsPanel.ProgressChanged += value;
+        remove => StepsPanel.ProgressChanged -= value;
+    }
+
     public void StartProcessTimer() => StepsPanel.StartProcessTimer();
 
     /// <summary>Stops the process timer — called by the shell header when a DUT run ends.</summary>
