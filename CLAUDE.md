@@ -254,7 +254,7 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   matrices), `faam_teach_points.json` (legacy taught points, migrated into the product),
   `faam_psu_panel.json` (Run-page PSU channels shown, per supply),
   `faam_psu_defaults.json` (per supply/channel V + I-limit the Run-page PSU ON button
-  applies via a verified `PsuPowerUp`, default 5 V / 1.0 A; edited on Machine › Settings),
+  applies via a verified `PsuPowerUp`, default CV 3.3 V / 1.0 A; edited on Machine › Settings),
   `faam_run_layout.json` (Run-page camera-column splitter width),
   `faam_run_durations.json` (per product/program top-level block timings from earlier runs —
   weights the Run-page progress bar by time and estimates blocks that report no progress;

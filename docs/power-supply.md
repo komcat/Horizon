@@ -112,8 +112,8 @@ product switch mid-run.
     `%APPDATA%\Horizon\config\faam_psu_panel.json` (`{ "UDP3305S": [1, 3] }`);
   - **ON is a verified power-up** (`PsuPowerUp`, 10 s bound) at the channel's Run-page
     setpoints, edited on **Machine › Settings › Run page power supply** and saved per supply /
-    channel in `faam_psu_defaults.json` (`{ "UDP3305S": { "1": { "volts": 5, "amps": 1 } } }`);
-    a channel with no entry uses **5 V / 1.0 A**. OFF is a plain output-off;
+    channel in `faam_psu_defaults.json` (`{ "UDP3305S": { "1": { "volts": 3.3, "amps": 1 } } }`);
+    a channel with no entry uses **CV 3.3 V / 1.0 A** (constant voltage; the current limit is the per-channel variable). OFF is a plain output-off;
   - readings refresh every 500 ms off the UI thread, only while the panel is visible;
   - the **toggles lock during a run** — a Run-page step / alignment / scan
     (`ActivityGate`) or a Layer 2 program / deck / recipe (`IsRunning`) — re-checked at

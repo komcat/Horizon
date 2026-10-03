@@ -55,6 +55,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
         ReloadCommand = new RelayCommand(Reload);
         AddUserCommand = new RelayCommand(AddUser);
         DeleteUserCommand = new RelayCommand(DeleteUser);
+        ResetPsuSetpointsCommand = new RelayCommand(ResetPsuSetpoints);
         RefreshUsers();
         // The Engineer › Find First Light tab also edits this flag — pick up its saves so our Save doesn't revert it.
         _store.Changed += s => AutoVisionUCorrection = s.FindFirstLight.AutoVisionUCorrection;
@@ -153,6 +154,19 @@ public sealed class SettingsSectionViewModel : ObservableObject
             }
         }
         OnPropertyChanged(nameof(HasPowerSupply));
+    }
+
+    public RelayCommand ResetPsuSetpointsCommand { get; }
+
+    /// <summary>Puts every row back to the CV default (not saved until Save).</summary>
+    private void ResetPsuSetpoints()
+    {
+        foreach (var r in PsuSetpoints)
+        {
+            r.Volts = PsuChannelDefaults.DefaultVolts;
+            r.Amps = PsuChannelDefaults.DefaultAmps;
+        }
+        Status = $"PSU setpoints reset to CV {PsuChannelDefaults.DefaultVolts} V / {PsuChannelDefaults.DefaultAmps} A — press Save to keep.";
     }
 
     /// <summary>Writes the PSU rows (validated by <see cref="Save"/>). Throws on I/O failure.</summary>

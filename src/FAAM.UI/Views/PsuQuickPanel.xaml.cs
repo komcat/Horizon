@@ -22,7 +22,7 @@ namespace FAAM.UI.Views;
 /// polled, so a re-added row is current at once. The button shows the polled output state
 /// (green = ON) and a click switches it to the other state. Switching ON is a verified
 /// power-up (<see cref="PsuPowerUp"/>) at the channel's Run-page setpoints, authored on the
-/// Machine page's Settings section (<see cref="PsuChannelDefaults"/>, default 5 V / 1.0 A).
+/// Machine page's Settings section (<see cref="PsuChannelDefaults"/>, default CV 3.3 V / 1.0 A).
 /// Readings are refreshed off the UI thread every <see cref="RefreshInterval"/> while the
 /// panel is visible.
 /// The toggles are LOCKED (readouts keep updating) while anything is running: a Run-page

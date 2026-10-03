@@ -16,17 +16,17 @@ public sealed class PsuChannelSetpoint
 /// The voltage + current-limit the Run-page PSU panel applies when its ON button is
 /// pressed (verified power-up, <see cref="Horizon.Workflow.PsuPowerUp"/>). Authored on the
 /// Machine page's Settings section; stored per supply, per channel in
-/// <c>faam_psu_defaults.json</c>: <c>{ "&lt;device&gt;": { "1": { "volts": 5, "amps": 1 }, ... } }</c>.
+/// <c>faam_psu_defaults.json</c>: <c>{ "&lt;device&gt;": { "1": { "volts": 3.3, "amps": 1 }, ... } }</c>.
 /// A channel with no entry uses <see cref="DefaultVolts"/> / <see cref="DefaultAmps"/>.
 /// Read fresh at every lookup, so a Settings save takes effect on the next ON click.
 /// </summary>
 public static class PsuChannelDefaults
 {
-    public const double DefaultVolts = 5.0;
+    public const double DefaultVolts = 3.3;
     public const double DefaultAmps = 1.0;
     private const string FileName = "faam_psu_defaults";
 
-    /// <summary>The setpoints for one channel (the 5 V / 1.0 A default when none is saved).</summary>
+    /// <summary>The setpoints for one channel (the 3.3 V / 1.0 A default when none is saved).</summary>
     public static PsuChannelSetpoint Get(string device, int channel) => Lookup(LoadAll(), device, channel);
 
     /// <summary>The setpoints for one channel within an already-loaded set (default when absent / invalid).</summary>
