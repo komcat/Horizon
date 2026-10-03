@@ -1,0 +1,100 @@
+<UserControl x:Class="FAAM.UI.Views.SiphogSnapshotsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource Bg}">
+    <!-- SiPhOG labelled snapshots (siphog_data\{serial}.json): serial list on the left, the
+         selected DUT's sets as columns × the six SiPhOG parameters as rows on the right. -->
+    <Grid Margin="0,8,0,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" MinHeight="140" />
+            <RowDefinition Height="8" />
+            <RowDefinition Height="1.2*" MinHeight="200" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220" />
+            <ColumnDefinition Width="8" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Serial list -->
+        <Border Grid.Column="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                BorderThickness="1" CornerRadius="3">
+            <DockPanel Margin="8">
+                <TextBlock DockPanel.Dock="Top" Text="DUT serials" Foreground="{StaticResource Text}"
+                           FontSize="13" FontWeight="SemiBold" Margin="2,2,2,6" />
+                <TextBox DockPanel.Dock="Top" x:Name="FilterBox" Height="26" VerticalContentAlignment="Center"
+                         Margin="0,0,0,6" TextChanged="OnFilterChanged" ToolTip="Show only serials containing this text" />
+                <TextBlock DockPanel.Dock="Bottom" x:Name="CountText" Foreground="{StaticResource Subtle}"
+                           FontSize="11" Margin="2,6,2,0" />
+                <ListBox x:Name="SerialList" SelectionChanged="OnSerialSelected" FontSize="12.5" />
+            </DockPanel>
+        </Border>
+
+        <!-- Selected DUT's sets -->
+        <Border Grid.Column="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                BorderThickness="1" CornerRadius="3">
+            <DockPanel Margin="8">
+                <DockPanel DockPanel.Dock="Top" Margin="2,2,2,8">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <CheckBox x:Name="AllSetsCheck" Content="Every set" VerticalAlignment="Center"
+                                  Foreground="{StaticResource Text}" Margin="0,0,12,0"
+                                  Checked="OnOptionChanged" Unchecked="OnOptionChanged"
+                                  ToolTip="Show every saved set, including earlier sets with a re-used label (default: newest per label)" />
+                        <CheckBox x:Name="MinMaxCheck" Content="Min / max" VerticalAlignment="Center"
+                                  Foreground="{StaticResource Text}" Margin="0,0,12,0"
+                                  Checked="OnOptionChanged" Unchecked="OnOptionChanged"
+                                  ToolTip="Add min and max rows under each parameter" />
+                        <Button Content="Refresh" Width="80" Height="26" Click="OnRefresh" />
+                        <Button x:Name="ExportButton" Content="Export CSV" Width="100" Height="26" Margin="6,0,0,0"
+                                Click="OnExport" ToolTip="Save every set of the serials listed (filter applied) as a .csv — one row per set × parameter" />
+                    </StackPanel>
+                    <TextBlock x:Name="HeaderText" Foreground="{StaticResource Text}" FontSize="13"
+                               FontWeight="SemiBold" VerticalAlignment="Center" Text="Select a DUT serial." />
+                </DockPanel>
+                <TextBlock DockPanel.Dock="Bottom" x:Name="StatusText" Foreground="{StaticResource Subtle}"
+                           FontSize="11" Margin="2,6,2,0" TextWrapping="Wrap" />
+                <DataGrid x:Name="SetGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                          HeadersVisibility="Column" GridLinesVisibility="All"
+                          Background="Transparent" RowBackground="Transparent" Foreground="{StaticResource Text}"
+                          BorderThickness="0" CanUserAddRows="False" CanUserResizeRows="False"
+                          CanUserSortColumns="False" SelectionUnit="Cell"
+                          FontFamily="Consolas" FontSize="12.5" />
+            </DockPanel>
+        </Border>
+
+        <GridSplitter Grid.Row="1" Grid.ColumnSpan="3" Height="8" HorizontalAlignment="Stretch"
+                      Background="Transparent" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" />
+
+        <!-- Trend charts — one per SiPhOG parameter, every DUT in the list (filter applied).
+             X = real time of each set, or one slot per DUT serial in first-snapshot order.
+             One coloured line per label (wet / uv1.0 / …). -->
+        <Border Grid.Row="2" Grid.ColumnSpan="3" Background="{StaticResource Panel}"
+                BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3">
+            <DockPanel Margin="8">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="2,2,2,8">
+                    <TextBlock Text="Trend" Foreground="{StaticResource Text}" FontSize="13" FontWeight="SemiBold"
+                               VerticalAlignment="Center" Margin="0,0,16,0" />
+                    <TextBlock Text="X axis" Foreground="{StaticResource Subtle}" FontSize="12"
+                               VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <RadioButton x:Name="TimelineRadio" Content="Timeline" GroupName="XAxis" IsChecked="True"
+                                 VerticalAlignment="Center" Foreground="{StaticResource Text}" Margin="0,0,10,0"
+                                 Checked="OnChartOptionChanged"
+                                 ToolTip="Every set of every DUT at its real time — spacing follows the clock" />
+                    <RadioButton x:Name="ByDutRadio" Content="By DUT serial" GroupName="XAxis"
+                                 VerticalAlignment="Center" Foreground="{StaticResource Text}" Margin="0,0,20,0"
+                                 Checked="OnChartOptionChanged"
+                                 ToolTip="One slot per DUT, ordered by its first snapshot (newest set per label); the selected DUT is marked" />
+                    <TextBlock Text="Label" Foreground="{StaticResource Subtle}" FontSize="12"
+                               VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <ComboBox x:Name="LabelCombo" Width="150" Height="24" VerticalContentAlignment="Center"
+                              SelectionChanged="OnChartOptionChanged"
+                              ToolTip="Plot every label (one line each) or just one" />
+                    <TextBlock x:Name="ChartStatus" Foreground="{StaticResource Subtle}" FontSize="11"
+                               VerticalAlignment="Center" Margin="16,0,0,0" />
+                </StackPanel>
+                <!-- Six charts, built in code (title + DutTrendChart each). -->
+                <UniformGrid x:Name="ChartGrid" Rows="2" Columns="3" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

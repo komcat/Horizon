@@ -118,6 +118,11 @@ defines its own program/recipe/position formats.
   `IProcessService.SetOperator`). Beyond the program-driven path, an **interactive DUT
   session** (`BeginDutRun`/`RecordDutValue`/`EndDutRun`) brackets operator-driven
   processes that don't execute a `WorkflowProgram` (FAAM's hand-clicked Run page).
+  **SiPhOG labelled snapshots** (`Dut/SiphogSnapshotStore` + `SiphogSnapshotSampler`): the
+  `siphog.saveSnapshot` block / `.moon` `machine.siphog.save(label, windowMs, note)` average the
+  six `siphog.*` signals over a window (mean/min/max/std) and append a labelled, operator-stamped
+  set to `products\{name}\siphog_data\{serial}.json` (one file per DUT, append-only `sets`,
+  schema `horizon.siphog-snapshots/1`; not cloned with the product). Best-effort (non-fatal).
 - **Program history / version repository (SQLite)** — `ProgramHistoryDb` writes a
   *machine-global* `%APPDATA%\Horizon\history.db` (`Microsoft.Data.Sqlite`): one
   operator-stamped, numbered snapshot per **commit**, plus normalized `block_revision` /
@@ -217,7 +222,7 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   **Repository** (version browse/checkout) and **DUT Data** (Operator-level viewer of the
   per-serial UV signal snapshots `uv1.0`/`uv1.1`/`uv2.0`/`uv2.1_final` that
   `dut.readAllSignals` files: one row per UV run, signal picker, detail grid, trend chart,
-  CSV export — `Views/DutDataView` + `DutUvData`). A SiPhOG TCP client lives under `Siphog/` (its Skia chart,
+  CSV export — `Views/DutDataView` + `DutUvData`; a second **SiPhOG snapshots** tab, `Views/SiphogSnapshotsView`, reviews the `siphog_data\` sets per serial with long-form CSV export, plus six per-parameter trend charts across every DUT — X = real timeline or DUT serial in first-snapshot order, one line per label). A SiPhOG TCP client lives under `Siphog/` (its Skia chart,
   `SiphogChart`, is no longer on the Run page); `MoveClick.cs` holds the shared
   `mm/pixel` jog maths.
 - **Vision Profile page** — authors a saved, per-position vision recipe (camera +

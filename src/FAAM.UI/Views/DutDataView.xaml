@@ -3,7 +3,11 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:v="clr-namespace:FAAM.UI.Views"
              Background="{StaticResource Bg}">
-    <Grid Margin="12">
+    <!-- Two views of the product's per-DUT data: the UV-cure snapshots in the DUT records,
+         and the labelled SiPhOG sets in siphog_data\. -->
+    <TabControl x:Name="Tabs" Margin="12" SelectionChanged="OnTabChanged">
+    <TabItem Header="UV runs">
+    <Grid Margin="0,8,0,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" MinHeight="120" />
@@ -130,4 +134,9 @@
             <v:DutTrendChart x:Name="Chart" Grid.Column="2" />
         </Grid>
     </Grid>
+    </TabItem>
+    <TabItem x:Name="SnapshotsTab" Header="SiPhOG snapshots">
+        <v:SiphogSnapshotsView x:Name="SnapshotsView" />
+    </TabItem>
+    </TabControl>
 </UserControl>

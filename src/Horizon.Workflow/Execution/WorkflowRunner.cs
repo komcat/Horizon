@@ -50,6 +50,7 @@ internal sealed class WorkflowRunner
         Func<string, int, CancellationToken, Task<Result>> moveCameraToPartFiducial,
         Func<string, string, bool, CancellationToken, Task<Result>> moveCameraToPartObject,
         Func<string, CancellationToken, Task<Result>> runScript,
+        Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>> saveSiphogSnapshot,
         Func<IHillClimbFeedback?> hillClimbFeedback,
         Func<IUtilityAppHost?> utilityAppHost,
         Func<ISiphogSheetSink?> siphogSheetSink,
@@ -62,7 +63,7 @@ internal sealed class WorkflowRunner
         Action<WorkflowStepEvent> onStep,
         Action<LogLevel, string> log)
     {
-        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, runDispenseRoutine, runNeedleApproach, moveCameraToTool, moveToolToCamera, moveToolToPose, moveObjectToCamera, runPartAlignment, moveCameraToPartFiducial, moveCameraToPartObject, runScript, hillClimbFeedback, utilityAppHost, siphogSheetSink, signals, deviceLinks, log);
+        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, runDispenseRoutine, runNeedleApproach, moveCameraToTool, moveToolToCamera, moveToolToPose, moveObjectToCamera, runPartAlignment, moveCameraToPartFiducial, moveCameraToPartObject, runScript, saveSiphogSnapshot, hillClimbFeedback, utilityAppHost, siphogSheetSink, signals, deviceLinks, log);
         _loadProgram = loadProgram;
         _prompt = prompt;
         _setDutSerial = setDutSerial;
@@ -690,7 +691,7 @@ internal sealed class WorkflowRunner
     /// active DUT serial, no sink registered when run from a non-SiPhOG head, a server
     /// ERR / Google round-trip hiccup); none of those should stop the process.
     /// </summary>
-    private static bool IsNonFatalOp(string op) => op is "siphog.updatesheet";
+    private static bool IsNonFatalOp(string op) => op is "siphog.updatesheet" or "siphog.savesnapshot";
 
     /// <summary>
     /// A motion move failed (e.g. the controller rejected an unreachable target).

@@ -420,6 +420,17 @@ public static class OpCatalog
                 new ParamSpec("completed", "Mark stage completed", ParamKind.Bool, "true"),
             }),
 
+        // Freezes the six SiPhOG panel values (averaged over windowMs, with min/max/std) for the
+        // run's DUT serial, tagged with a label, and appends the set to the product's
+        // siphog_data\{serial}.json. Best-effort: a failure is a warning and the run continues.
+        new("siphog.saveSnapshot", "Save SiPhOG Snapshot", "Signal", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("label", "Label (e.g. wet, uv1.0, final)", ParamKind.Text, "snapshot"),
+                new ParamSpec("windowMs", "Average over (ms, 0 = single frame)", ParamKind.Number, "500"),
+                new ParamSpec("note", "Note (optional)", ParamKind.Text, ""),
+            }),
+
         // ---- Script ----
         // Runs a saved .moon script from the active product to completion, inline in the
         // sequence. The script drives the same hardware through the 'machine' table and can

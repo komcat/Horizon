@@ -31,6 +31,11 @@ public partial class DutTrendChart : UserControl
     private IReadOnlyList<string> _xLabels = Array.Empty<string>();
     private IReadOnlyList<ChartSeries> _series = Array.Empty<ChartSeries>();
     private int _highlight = -1;
+    private IReadOnlyList<double>? _xPositions;   // null = evenly spaced categories
+    private bool _connectGaps;
+
+    /// <summary>Text drawn when there is nothing to plot.</summary>
+    public string EmptyText { get; set; } = "No UV data for this selection";
 
     private readonly SKPaint _gridPaint = new() { Color = new SKColor(0x2A, 0x2A, 0x30), StrokeWidth = 1 };
     private readonly SKPaint _highlightPaint = new() { Color = new SKColor(0xE0, 0xE0, 0xE0, 0x90), StrokeWidth = 1.5f, IsAntialias = true };
@@ -45,12 +50,20 @@ public partial class DutTrendChart : UserControl
 
     public DutTrendChart() => InitializeComponent();
 
-    /// <summary>Replaces the plotted data. Every series must have one value slot per X label.</summary>
-    public void SetSeries(string unit, IReadOnlyList<string> xLabels, IReadOnlyList<ChartSeries> series)
+    /// <summary>
+    /// Replaces the plotted data. Every series must have one value slot per X label.
+    /// <paramref name="xPositions"/> (one per label, ascending, e.g. time ticks) spaces the
+    /// slots proportionally instead of evenly; <paramref name="connectGaps"/> draws each
+    /// series' line through slots where it has no value (a sparse time series).
+    /// </summary>
+    public void SetSeries(string unit, IReadOnlyList<string> xLabels, IReadOnlyList<ChartSeries> series,
+        IReadOnlyList<double>? xPositions = null, bool connectGaps = false)
     {
         _unit = unit ?? "";
         _xLabels = xLabels ?? Array.Empty<string>();
         _series = series ?? Array.Empty<ChartSeries>();
+        _xPositions = xPositions != null && xPositions.Count == _xLabels.Count ? xPositions : null;
+        _connectGaps = connectGaps;
         if (_highlight >= _xLabels.Count) _highlight = -1;
         Chart.InvalidateVisual();
     }
@@ -78,7 +91,7 @@ public partial class DutTrendChart : UserControl
         int n = _xLabels.Count;
         if (n == 0 || !FindRange(n, out double yMin, out double yMax))
         {
-            canvas.DrawText("No UV data for this selection", w / 2f, h / 2f, SKTextAlign.Center, _legendFont, _emptyPaint);
+            canvas.DrawText(EmptyText, w / 2f, h / 2f, SKTextAlign.Center, _legendFont, _emptyPaint);
             return;
         }
 
@@ -146,8 +159,16 @@ public partial class DutTrendChart : UserControl
         return yMin <= yMax;
     }
 
-    private static float XAt(int i, int n, float cx, float cw)
-        => n == 1 ? cx + cw / 2f : cx + cw * i / (n - 1);
+    private float XAt(int i, int n, float cx, float cw)
+    {
+        if (n == 1) return cx + cw / 2f;
+        if (_xPositions is { } p)
+        {
+            double lo = p[0], hi = p[n - 1];
+            if (hi - lo > 0) return cx + (float)(cw * (p[i] - lo) / (hi - lo));
+        }
+        return cx + cw * i / (n - 1);
+    }
 
     private void DrawSeries(SKCanvas canvas, ChartSeries series, int n,
         double yMin, double range, float cx, float cy, float cw, float chh, float s)
@@ -161,7 +182,7 @@ public partial class DutTrendChart : UserControl
         {
             if (series.Values[i] is not double v || double.IsNaN(v) || double.IsInfinity(v))
             {
-                started = false;   // a gap breaks the line
+                if (!_connectGaps) started = false;   // a gap breaks the line (unless joining a sparse series)
                 continue;
             }
             float x = XAt(i, n, cx, cw);

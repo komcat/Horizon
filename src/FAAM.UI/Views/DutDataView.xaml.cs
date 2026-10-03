@@ -67,6 +67,7 @@ public partial class DutDataView : UserControl
     {
         _host = host;
         _host.Process.ProductChanged += OnProductChanged;
+        SnapshotsView.Attach(host);
     }
 
     /// <summary>Loads (or reloads, after a product switch) the product's records when the page is shown.</summary>
@@ -75,6 +76,14 @@ public partial class DutDataView : UserControl
         _visible = true;
         RefreshTitle();
         if (_stale) BeginLoad();
+        if (ReferenceEquals(Tabs.SelectedItem, SnapshotsTab)) SnapshotsView.Reload();
+    }
+
+    /// <summary>The SiPhOG snapshots tab re-lists its serials each time it's shown (cheap: one dir listing).</summary>
+    private void OnTabChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, Tabs)) return;   // ignore bubbling from inner grids / lists
+        if (_visible && ReferenceEquals(Tabs.SelectedItem, SnapshotsTab)) SnapshotsView.Reload();
     }
 
     /// <summary>Stops an in-flight load; the next <see cref="Activate"/> starts over.</summary>
@@ -90,6 +99,8 @@ public partial class DutDataView : UserControl
         {
             _stale = true;
             _runs = Array.Empty<UvRun>();
+            SnapshotsView.Clear();
+            if (_visible && ReferenceEquals(Tabs.SelectedItem, SnapshotsTab)) SnapshotsView.Reload();
             if (_visible) BeginLoad();
             else ClearViews();
         });

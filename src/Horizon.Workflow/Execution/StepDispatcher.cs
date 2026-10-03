@@ -45,6 +45,8 @@ internal sealed class StepDispatcher
     private readonly Func<string, string, bool, CancellationToken, Task<Result>> _moveCameraToPartObject;
     // (scriptName, ct) — runs a saved per-product .moon script to completion. Drives script.run.
     private readonly Func<string, CancellationToken, Task<Result>> _runScript;
+    // Takes one labelled SiPhOG snapshot into siphog_data\{serial}.json. Drives siphog.saveSnapshot.
+    private readonly Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>> _saveSiphogSnapshot;
     // Supplies the hill-climb signal source (Layer 3 SiPhOG). Returns null when no head
     // has registered one — hillclimb.* steps then fail with a clear message rather than crash.
     private readonly Func<IHillClimbFeedback?> _hillClimbFeedback;
@@ -85,6 +87,7 @@ internal sealed class StepDispatcher
         Func<string, int, CancellationToken, Task<Result>> moveCameraToPartFiducial,
         Func<string, string, bool, CancellationToken, Task<Result>> moveCameraToPartObject,
         Func<string, CancellationToken, Task<Result>> runScript,
+        Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>> saveSiphogSnapshot,
         Func<IHillClimbFeedback?> hillClimbFeedback,
         Func<IUtilityAppHost?> utilityAppHost,
         Func<ISiphogSheetSink?> siphogSheetSink,
@@ -107,6 +110,7 @@ internal sealed class StepDispatcher
         _moveCameraToPartFiducial = moveCameraToPartFiducial;
         _moveCameraToPartObject = moveCameraToPartObject;
         _runScript = runScript;
+        _saveSiphogSnapshot = saveSiphogSnapshot;
         _hillClimbFeedback = hillClimbFeedback;
         _utilityAppHost = utilityAppHost;
         _siphogSheetSink = siphogSheetSink;
@@ -1059,6 +1063,23 @@ internal sealed class StepDispatcher
                 // 'completed' defaults to true — a save normally means the stage is done.
                 var completed = !Has(step, "completed") || Bool(step, "completed", ctx);
                 return await sink.UpdateSagAsync(bench, stage, completed, ct).ConfigureAwait(false);
+            }
+
+            // --- SiPhOG labelled snapshot: samples the six SiPhOG values for 'windowMs'
+            //     (mean/min/max/std) and appends them, tagged 'label', to the product's
+            //     siphog_data\{serial}.json. Best-effort (non-fatal in the runner). ---
+            case "siphog.savesnapshot":
+            {
+                var label = Str(step, "label", ctx).Trim();
+                if (string.IsNullOrWhiteSpace(label))
+                    return Result.Fail(ErrorCode.InvalidParameter, "siphog.saveSnapshot: no label given.");
+                var windowMs = Has(step, "windowMs") ? (int)Num(step, "windowMs", ctx) : 500;
+                var note = Str(step, "note", ctx);
+                var r = await _saveSiphogSnapshot(new SiphogSnapshotRequest(
+                    label, windowMs, string.IsNullOrWhiteSpace(note) ? null : note,
+                    Serial: ctx.DutSerial, Program: ctx.Dut?.Source,
+                    Step: string.IsNullOrWhiteSpace(step.Name) ? null : step.Name), ct).ConfigureAwait(false);
+                return r.IsSuccess ? Result.Ok() : Result.Fail(r.Error, r.Message);
             }
 
             default:

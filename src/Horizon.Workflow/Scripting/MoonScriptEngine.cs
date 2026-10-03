@@ -1,3 +1,4 @@
+using Horizon.Common;
 using Horizon.Engine;
 using MoonSharp.Interpreter;
 
@@ -44,6 +45,7 @@ public sealed class MoonScriptEngine
     private readonly PartAlignmentScriptHost? _partAlignment;
     private readonly IOperatorPrompt? _prompt;
     private readonly Action<ScriptProgress>? _progress;
+    private readonly Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? _siphogSnapshot;
 
     public MoonScriptEngine(
         IHorizonEngine engine,
@@ -53,10 +55,12 @@ public sealed class MoonScriptEngine
         IOperatorPrompt? operatorPrompt = null,
         IImageDisplaySink? imageDisplay = null,
         PartAlignmentScriptHost? partAlignment = null,
-        Action<ScriptProgress>? progress = null)
+        Action<ScriptProgress>? progress = null,
+        Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? siphogSnapshot = null)
     {
         _partAlignment = partAlignment;
         _progress = progress;
+        _siphogSnapshot = siphogSnapshot;
         _engine = engine;
         _mover = namedPositionMover;
         _signalReader = signalReader;
@@ -87,7 +91,7 @@ public sealed class MoonScriptEngine
 
         var script = new Script(CoreModules.Preset_HardSandbox);
         script.Options.DebugPrint = Log;     // Lua print(...) → output
-        new MachineApi(script, _engine, _mover, _signalReader, _visionRunner, _imageDisplay, _prompt, Log, ct, _partAlignment, _progress).Install();
+        new MachineApi(script, _engine, _mover, _signalReader, _visionRunner, _imageDisplay, _prompt, Log, ct, _partAlignment, _progress, _siphogSnapshot).Install();
 
         DynValue function;
         try

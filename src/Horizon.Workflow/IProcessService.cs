@@ -715,6 +715,22 @@ public interface IProcessService
     /// <summary>Raised when the running program's paused state changes (true = paused).</summary>
     event Action<bool>? PausedChanged;
 
+    // --- SiPhOG labelled snapshots (product folder siphog_data\{serial}.json) ---
+
+    /// <summary>
+    /// Samples the six SiPhOG values for <see cref="SiphogSnapshotRequest.WindowMs"/> (mean /
+    /// min / max / std), stamps label + time + operator, and appends the set to the DUT's
+    /// <c>siphog_data\{serial}.json</c>. Serial defaults to <see cref="ActiveSerial"/>. Drives the
+    /// <c>siphog.saveSnapshot</c> block and <c>machine.siphog.save</c>.
+    /// </summary>
+    Task<Result<SiphogSnapshotSet>> SaveSiphogSnapshotAsync(SiphogSnapshotRequest request, CancellationToken ct = default);
+
+    /// <summary>Serials with a SiPhOG snapshot file in the active product.</summary>
+    IReadOnlyList<string> ListSiphogSnapshotSerials();
+
+    /// <summary>A DUT's SiPhOG snapshot file, or null when none / unreadable.</summary>
+    SiphogSnapshotFile? GetSiphogSnapshots(string serial);
+
     /// <summary>Raised before and after each executed step of a running program.</summary>
     event Action<WorkflowStepEvent>? StepEvent;
 

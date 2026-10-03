@@ -39,6 +39,11 @@ public sealed class SiphogSignalSource : ISignalSource
 
     public Task<Result<double>> ReadAsync(string key, CancellationToken ct = default)
     {
+        // Latest survives a dropped connection (cleared only on the next connect) — refuse
+        // to hand out that stale frame as a live reading.
+        if (!_client.IsConnected)
+            return Task.FromResult(Result<double>.Fail(ErrorCode.OperationFailed,
+                "signal.read: SiPhOG client not connected (open the SiPhOG panel on the Run page and Connect)."));
         if (_client.Latest is not { } f)
             return Task.FromResult(Result<double>.Fail(ErrorCode.OperationFailed,
                 "signal.read: no SiPhOG frame yet (is the SiPhOG client connected and streaming?)."));

@@ -201,6 +201,18 @@ public static class OpCatalogHelp
             Usage = "All channels are turned off before the link is closed, so a disconnected supply is never left driving the DUT.",
         },
 
+        ["siphog.saveSnapshot"] = new()
+        {
+            Summary = "Save a labelled snapshot of the six SiPhOG readings (SLED current, photo current, SLED temp, target SAG PWR, SAG PWR, TEC current) for this DUT.",
+            Usage = "Drop it at each point you want on record (e.g. \"wet\" after epoxy, \"uv1.0\" after the first cure, \"final\"). Each value is averaged over the window and stored with its min / max / std, the time, the operator and this block's name. Every snapshot is appended to the product folder's siphog_data\\<serial>.json, one file per DUT, so the sets stack up in order and can be compared on the DUT Data page. Re-using a label adds a new set; the newest one with that label is the one shown.\n\nNeeds a DUT serial (a \"DUT Entry\" step or an up-front serial) and the Run-page SiPhOG client connected. If either is missing, the block logs a warning and the run carries on, so it never stops the process.",
+            ParamNotes = new[]
+            {
+                ("label", "Name of this set, e.g. wet, uv1.0, final. Use var:name to take it from a context variable."),
+                ("windowMs", "How long to sample and average, in ms (SiPhOG streams about 200 Hz). 0 takes one frame. Maximum 10000."),
+                ("note", "Free text stored with the set (optional)."),
+            },
+        },
+
         // ===== DUT — per-unit traceability records =====
 
         ["dut.readAllSignals"] = new()

@@ -32,6 +32,7 @@ public sealed class ProcessService : IProcessService
     private PartAlignmentStore? _parts;   // per-product part alignment profiles (fiducials + local objects); null when no product is active
     private TaskCompletionSource<bool>? _deckGate;   // set while a deck waits for operator activation
     private DutStore? _dut;              // null when no product is active
+    private SiphogSnapshotStore? _siphogData;   // per-product siphog_data\ (labelled SiPhOG snapshots); null when no product is active
     private readonly ProgramHistoryDb _history = new();   // machine-global audit store (history.db)
     private readonly DeviceLinkStore _deviceLinks = new();   // machine-global, not per-product
     private readonly CameraNeedleCalibrationStore _cameraNeedle = new();   // machine-global camera->needle calibration
@@ -66,6 +67,7 @@ public sealed class ProcessService : IProcessService
             _gripped = new GrippedObjectStore(dir);
             _parts = new PartAlignmentStore(dir);
             _dut = new DutStore(dir, _products.ActiveProduct!);
+            _siphogData = new SiphogSnapshotStore(dir, _products.ActiveProduct!);
         }
     }
 
@@ -161,6 +163,7 @@ public sealed class ProcessService : IProcessService
             _decks = null;
             _dispense = null;
             _dut = null;
+            _siphogData = null;
             SetActiveSerial(null);
             ProductChanged?.Invoke(null);
         }
@@ -202,6 +205,7 @@ public sealed class ProcessService : IProcessService
         _gripped = new GrippedObjectStore(dir);
         _parts = new PartAlignmentStore(dir);
         _dut = new DutStore(dir, name);
+        _siphogData = new SiphogSnapshotStore(dir, name);
         SetActiveSerial(null);   // a serial belongs to a product — drop it on switch
         Log(LogLevel.Info, $"Product loaded: {name}");
         ProductChanged?.Invoke(name);
@@ -226,6 +230,7 @@ public sealed class ProcessService : IProcessService
         _visionProfiles = null;
         _dispense = null;
         _dut = null;
+        _siphogData = null;
         SetActiveSerial(null);
         Log(LogLevel.Info, "Product unloaded.");
         ProductChanged?.Invoke(null);
@@ -937,6 +942,7 @@ public sealed class ProcessService : IProcessService
             MoveCameraToPartFiducialAsync,
             MoveCameraToPartObjectAsync,
             RunScriptByNameAsync,
+            SaveSiphogSnapshotAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,
             () => _siphogSheetSink,
@@ -1088,6 +1094,73 @@ public sealed class ProcessService : IProcessService
         return _dut.List().Contains(serial.Trim(), StringComparer.OrdinalIgnoreCase)
             ? _dut.LoadOrCreate(serial.Trim())
             : null;
+    }
+
+    // --- SiPhOG labelled snapshots (siphog_data\{serial}.json) ---
+
+    public IReadOnlyList<string> ListSiphogSnapshotSerials() => _siphogData?.List() ?? Array.Empty<string>();
+
+    public SiphogSnapshotFile? GetSiphogSnapshots(string serial)
+        => _siphogData == null || string.IsNullOrWhiteSpace(serial) ? null : _siphogData.Load(serial.Trim());
+
+    public async Task<Result<SiphogSnapshotSet>> SaveSiphogSnapshotAsync(
+        SiphogSnapshotRequest request, CancellationToken ct = default)
+    {
+        var store = _siphogData;
+        if (store == null)
+            return Result<SiphogSnapshotSet>.Fail(ErrorCode.OperationFailed, "SiPhOG snapshot: no active product.");
+        var label = request.Label?.Trim();
+        if (string.IsNullOrWhiteSpace(label))
+            return Result<SiphogSnapshotSet>.Fail(ErrorCode.InvalidParameter, "SiPhOG snapshot: label is required.");
+        var serial = (string.IsNullOrWhiteSpace(request.Serial) ? ActiveSerial : request.Serial)?.Trim();
+        if (string.IsNullOrWhiteSpace(serial))
+            return Result<SiphogSnapshotSet>.Fail(ErrorCode.InvalidParameter,
+                "SiPhOG snapshot: no DUT serial — start a DUT run (or add a DUT Entry step) first.");
+
+        var windowMs = Math.Clamp(request.WindowMs, 0, SiphogSnapshotSampler.MaxWindowMs);
+        var timestamp = DateTimeOffset.Now;
+        var sample = await SiphogSnapshotSampler.SampleAsync(_signals, windowMs, ct).ConfigureAwait(false);
+        if (!sample.IsSuccess)
+            return Result<SiphogSnapshotSet>.Fail(sample.Error, sample.Message);
+
+        var v = sample.Value.Values;
+        double? sagPct = v.TryGetValue("sagPwrV", out var sag) && v.TryGetValue("targetSagPwrV", out var tgt)
+                         && Math.Abs(tgt.Mean) > 1e-12
+            ? Math.Round(sag.Mean / tgt.Mean * 100.0, 2) : null;
+
+        var op = _operator;
+        var set = new SiphogSnapshotSet
+        {
+            Label = label,
+            Timestamp = timestamp,
+            Operator = op == null ? null
+                : new SnapshotOperator(op.UserId, op.DisplayName, string.IsNullOrEmpty(op.Level) ? null : op.Level),
+            Station = string.IsNullOrWhiteSpace(op?.StationId) ? null : op!.StationId,
+            Source = request.Program == null && request.Step == null ? null
+                : new SnapshotSource(request.Program, request.Step),
+            Window = new SnapshotWindow
+            {
+                RequestedMs = windowMs, ActualMs = sample.Value.ActualMs, Samples = sample.Value.Samples,
+            },
+            Values = v,
+            SagPercentOfTarget = sagPct,
+            Note = request.Note,
+        };
+
+        try
+        {
+            store.Append(serial, set, SiphogSnapshotSampler.Signals.ToDictionary(s => s.Key, s => s.Unit));
+        }
+        catch (Exception ex)
+        {
+            return Result<SiphogSnapshotSet>.Fail(ErrorCode.OperationFailed, $"SiPhOG snapshot: write failed — {ex.Message}");
+        }
+
+        Log(LogLevel.Info, $"SiPhOG snapshot '{label}' saved for {serial}" +
+            (sag != null ? $" — SAG {sag.Mean:0.####} V" : "") +
+            (sagPct is { } p ? $" ({p:0.#}% of target)" : "") +
+            $" [{sample.Value.Samples} samples / {sample.Value.ActualMs} ms]");
+        return Result<SiphogSnapshotSet>.Ok(set);
     }
 
     // --- Operator identity (traceability) ---
@@ -1953,7 +2026,8 @@ public sealed class ProcessService : IProcessService
                 MoveCameraToPartFiducialAsync,
                 MoveCameraToPartObjectAsync,
                 MoveCameraToPartObjectPointAsync),
-            progress: p => ScriptProgressChanged?.Invoke(p));
+            progress: p => ScriptProgressChanged?.Invoke(p),
+            siphogSnapshot: SaveSiphogSnapshotAsync);
 
         void Sink(string line)
         {
@@ -2224,6 +2298,7 @@ public sealed class ProcessService : IProcessService
             MoveCameraToPartFiducialAsync,
             MoveCameraToPartObjectAsync,
             RunScriptByNameAsync,
+            SaveSiphogSnapshotAsync,
             () => _hillClimbFeedbackProvider?.Invoke(),
             () => _utilityAppHost,
             () => _siphogSheetSink,

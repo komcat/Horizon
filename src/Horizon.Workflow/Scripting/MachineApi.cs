@@ -70,6 +70,7 @@ internal sealed class MachineApi
     private readonly Action<string> _log;
     private readonly CancellationToken _ct;
     private readonly Action<ScriptProgress>? _progress;
+    private readonly Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? _siphogSnapshot;
 
     public MachineApi(
         Script script,
@@ -82,7 +83,8 @@ internal sealed class MachineApi
         Action<string> log,
         CancellationToken ct,
         PartAlignmentScriptHost? part = null,
-        Action<ScriptProgress>? progress = null)
+        Action<ScriptProgress>? progress = null,
+        Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? siphogSnapshot = null)
     {
         _script = script;
         _engine = engine;
@@ -95,6 +97,7 @@ internal sealed class MachineApi
         _log = log;
         _ct = ct;
         _progress = progress;
+        _siphogSnapshot = siphogSnapshot;
     }
 
     /// <summary>Installs the <c>machine</c> global into the script's environment.</summary>
@@ -116,6 +119,7 @@ internal sealed class MachineApi
         machine["signal"] = DynValue.NewTable(BuildSignal());
         machine["ui"] = DynValue.NewTable(BuildUi());
         machine["part"] = DynValue.NewTable(BuildPart());
+        machine["siphog"] = DynValue.NewTable(BuildSiphog());
         _script.Globals["machine"] = DynValue.NewTable(machine);
     }
 
@@ -731,6 +735,49 @@ internal sealed class MachineApi
                 return DynValue.Nil;
             }
             return DynValue.NewNumber(r.Value);
+        });
+
+        return s;
+    }
+
+    // --- SiPhOG labelled snapshots (product siphog_data\{serial}.json) ---
+
+    private Table BuildSiphog()
+    {
+        var s = new Table(_script);
+
+        // machine.siphog.save(label [, windowMs [, note]]) -> { sagPwrV = mean, ... } | nil
+        // Best-effort like the siphog.saveSnapshot block: a failure (no DUT serial, client not
+        // connected, write error) is logged and returns nil so the script carries on. Stop
+        // still cancels.
+        s["save"] = Cb(a =>
+        {
+            string label = ReqStr(a, 0, "siphog.save");
+            int windowMs = OptInt(a, 1, 500);
+            string? note = a.Count > 2 && !a[2].IsNil() ? a[2].CastToString() : null;
+            if (_siphogSnapshot == null)
+            {
+                _log("siphog.save: no Layer 2 host — snapshots unavailable in this context");
+                return DynValue.Nil;
+            }
+            Result<SiphogSnapshotSet> r;
+            try { r = _siphogSnapshot(new SiphogSnapshotRequest(label, windowMs, note, Step: "script"), _ct).GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) { throw Cancelled(); }
+            catch (Exception ex)
+            {
+                _log($"siphog.save({label}) failed: {ex.Message}");
+                return DynValue.Nil;
+            }
+            if (!r.IsSuccess)
+            {
+                _log($"siphog.save({label}) failed: {r.Message}");
+                return DynValue.Nil;
+            }
+            var t = new Table(_script);
+            foreach (var (key, stats) in r.Value.Values)
+                t[key] = DynValue.NewNumber(stats.Mean);
+            _log($"siphog.save({label}) — {r.Value.Window.Samples} samples");
+            return DynValue.NewTable(t);
         });
 
         return s;
