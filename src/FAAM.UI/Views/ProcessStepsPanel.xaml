@@ -32,8 +32,15 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
                             </Trigger>
+                            <!-- Locked while a step runs / an alignment holds the hexapod: dim the
+                                 buttons (the running one is restored to full strength below). -->
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.5" />
+                                <Setter Property="Cursor" Value="No" />
+                            </Trigger>
                             <!-- Bind to the ProcessStep.Status of the item (the button's DataContext). -->
                             <DataTrigger Binding="{Binding Status}" Value="Running">
+                                <Setter TargetName="Bd" Property="Opacity" Value="1" />
                                 <Setter TargetName="Bd" Property="Background" Value="{StaticResource StatusRunning}" />
                                 <Setter Property="Foreground" Value="Black" />
                             </DataTrigger>

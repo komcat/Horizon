@@ -335,14 +335,27 @@ internal sealed class WorkflowRunner
                 result = Result.Fail(ErrorCode.OperationFailed, ex.Message);
             }
 
-            // Best-effort ops (e.g. Save SAG to Sheet) fail silently: one warning line in
-            // the log, then the block counts as done (not red) and the run carries on —
-            // a missing DUT serial, an unregistered sink, a disconnected client or a server
-            // ERR / reply timeout is a nuisance, not a fault worth stopping the process over.
-            // A run cancel (STOP) still propagates as cancellation above.
+            // Best-effort ops (Save SAG to Sheet, Save SiPhOG Snapshot): a missing DUT serial,
+            // an unregistered sink, a disconnected client or a server ERR / reply timeout is a
+            // nuisance, not necessarily a fault worth stopping the process over. With the
+            // block's 'askOnFailure' on (default; also for blocks saved before it existed) the
+            // operator is asked Continue / Stop; off — or headless with no prompt — it skips
+            // with a warning. A skip counts as done (not red). STOP still propagates above.
             if (!result.IsSuccess && IsNonFatalOp(op))
             {
-                _log(LogLevel.Warning, $"Step {index + 1} '{desc}' skipped (non-fatal): {result.Message}");
+                bool ask = !step.Parameters.TryGetValue("askOnFailure", out var askRaw)
+                           || askRaw.Trim().ToLowerInvariant() is "true" or "1" or "on" or "yes";
+                if (ask && _prompt != null && !ct.IsCancellationRequested
+                    && !await PromptNonFatalFailureAsync(index, desc, result, ct).ConfigureAwait(false))
+                {
+                    _onStep(new WorkflowStepEvent(index, steps.Count, desc, Completed: true, Success: false,
+                        Message: $"stopped by operator: {result.Message}", Lane: lane));
+                    _log(LogLevel.Error, $"Step {index + 1} '{desc}' failed — operator stopped the run: {result.Message}");
+                    return Result.Fail(ErrorCode.ProcessCancelled,
+                        $"Step {index + 1} '{desc}': {result.Message} (operator stopped the run)");
+                }
+                _log(LogLevel.Warning, $"Step {index + 1} '{desc}' skipped (non-fatal): {result.Message}" +
+                    (ask && _prompt != null ? " — operator chose to continue." : ""));
                 result = Result.Ok($"skipped — {result.Message}");
             }
 
@@ -699,6 +712,16 @@ internal sealed class WorkflowRunner
     /// <c>true</c> to continue (logs a warning, re-marks the step as continued),
     /// <c>false</c> to abort. A run Stop arrives via <paramref name="ct"/>.
     /// </summary>
+    /// <summary>
+    /// A best-effort step failed: asks the operator whether to carry on without it
+    /// (<c>true</c>) or stop the run (<c>false</c>). A run Stop arrives via <paramref name="ct"/>.
+    /// </summary>
+    private Task<bool> PromptNonFatalFailureAsync(int index, string desc, Result failure, CancellationToken ct)
+        => _prompt!.ConfirmAsync("Step failed",
+            $"Step {index + 1} '{desc}' did not complete:\n\n{failure.Message}\n\n" +
+            "This step is optional — the process can carry on without it.\n\n" +
+            "Continue the program? (No stops the run.)", ct);
+
     private async Task<bool> PromptMoveFailureAsync(
         WorkflowStep step, int index, int total, string desc, Result failure, string? lane, CancellationToken ct)
     {

@@ -895,27 +895,49 @@ internal sealed class MachineApi
 
     // --- shared plumbing ---
 
-    /// <summary>Wraps a callback body with a cancellation check on every invocation.</summary>
+    /// <summary>
+    /// Wraps a callback body with cancellation handling. A STOP never leaves this frame as an
+    /// exception: the callback returns a <b>yield request</b> instead, which suspends the
+    /// script's coroutine; <c>MoonScriptEngine</c>'s pump then sees the token and ends the
+    /// run as cancelled. (Throwing through MoonSharp — even a <see cref="ScriptRuntimeException"/>
+    /// — trips Visual Studio's "user-unhandled" break, because the exception crosses
+    /// non-user interpreter frames before our catch.) Inside a body, a cancel is signalled
+    /// with the private <see cref="ScriptCancelledSignal"/>, always caught right here.
+    /// </summary>
     private DynValue Cb(Func<CallbackArguments, DynValue> body)
         => DynValue.NewCallback((_, a) =>
         {
-            StopIfCancelled();
-            return body(a);
+            if (_ct.IsCancellationRequested) return StopScript();
+            try
+            {
+                return body(a);
+            }
+            catch (ScriptCancelledSignal)
+            {
+                return StopScript();
+            }
+            catch (OperationCanceledException) when (_ct.IsCancellationRequested)
+            {
+                return StopScript();   // backstop: a facet call that threw the run's cancel
+            }
         });
 
-    /// <summary>
-    /// Stops the script when the run was cancelled — as a <see cref="ScriptRuntimeException"/>
-    /// (MoonSharp's normal callback-error channel) rather than an
-    /// <see cref="OperationCanceledException"/> that would escape the interpreter and trip
-    /// the debugger's user-unhandled first-chance break. Classified back to a cancel in
-    /// <c>MoonScriptEngine</c>.
-    /// </summary>
+    /// <summary>Suspends the script's coroutine so the host pump can observe the cancel and stop.</summary>
+    private static DynValue StopScript() => DynValue.NewYieldReq(Array.Empty<DynValue>());
+
+    /// <summary>Raises <see cref="ScriptCancelledSignal"/> when the run was cancelled (caught by <see cref="Cb"/>).</summary>
     private void StopIfCancelled()
     {
         if (_ct.IsCancellationRequested) throw Cancelled();
     }
 
-    private static ScriptRuntimeException Cancelled() => new("script cancelled");
+    private static ScriptCancelledSignal Cancelled() => new();
+
+    /// <summary>Internal "STOP was pressed" signal — thrown and caught within <see cref="Cb"/>, never seen by MoonSharp.</summary>
+    private sealed class ScriptCancelledSignal : Exception
+    {
+        public ScriptCancelledSignal() : base("script cancelled") { }
+    }
 
     /// <summary>Awaits a hardware task, converting a mid-call cancel into a clean script stop.</summary>
     private static T Block<T>(Task<T> task)

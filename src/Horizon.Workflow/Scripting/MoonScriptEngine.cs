@@ -130,7 +130,9 @@ public sealed class MoonScriptEngine
         }
         catch (ScriptRuntimeException ex)
         {
-            // A facet call that observed cancellation surfaces here; classify it as a cancel.
+            // A STOP normally arrives as a yield request from MachineApi.Cb (no exception). It can
+            // still surface here if a callback was reached where MoonSharp can't yield (e.g. from a
+            // metamethod) — classify any error raised after a cancel as the cancel.
             if (ct.IsCancellationRequested) return ScriptRunResult.CancelledRun(output);
             return ScriptRunResult.Failed(ex.DecoratedMessage ?? ex.Message, null, output);
         }

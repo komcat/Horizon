@@ -418,6 +418,7 @@ public static class OpCatalog
             {
                 new ParamSpec("stage", "Stage (ACTUAL / WET / UV)", ParamKind.Text, "ACTUAL"),
                 new ParamSpec("completed", "Mark stage completed", ParamKind.Bool, "true"),
+                new ParamSpec("askOnFailure", "Ask operator if it fails (else skip silently)", ParamKind.Bool, "true"),
             }),
 
         // Freezes the six SiPhOG panel values (averaged over windowMs, with min/max/std) for the
@@ -429,6 +430,7 @@ public static class OpCatalog
                 new ParamSpec("label", "Label (e.g. wet, uv1.0, final)", ParamKind.Text, "snapshot"),
                 new ParamSpec("windowMs", "Average over (ms, 0 = single frame)", ParamKind.Number, "500"),
                 new ParamSpec("note", "Note (optional)", ParamKind.Text, ""),
+                new ParamSpec("askOnFailure", "Ask operator if it fails (else skip silently)", ParamKind.Bool, "true"),
             }),
 
         // ---- Script ----

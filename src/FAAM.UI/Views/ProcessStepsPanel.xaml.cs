@@ -237,7 +237,30 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
     private void SetAlignmentBusy(bool busy)
     {
         _alignmentBusy = busy;
-        StepList.IsEnabled = !busy;
+        UpdateStepListEnabled();
+    }
+
+    /// <summary>
+    /// The step buttons and deck picker are usable only when nothing is running: no step of
+    /// this panel executing (one program at a time — STOP is the only way to abort it) and
+    /// no alignment/scan holding the hexapod. STOP and Auto-chain stay live.
+    /// </summary>
+    private void UpdateStepListEnabled()
+    {
+        bool idle = !_alignmentBusy && _executing == 0;
+        StepList.IsEnabled = idle;
+        DeckSelector.IsEnabled = idle;
+    }
+
+    /// <summary>
+    /// Why a new run can't start right now (a step of this panel executing, or a Layer 2
+    /// program / deck / recipe running from another page), or null when it may.
+    /// </summary>
+    private string? RunBlockedReason()
+    {
+        if (_executing > 0) return "a step is already running — wait for it to finish or press STOP";
+        if (_host?.Process.IsRunning ?? false) return "a program is already running — wait for it to finish or press STOP";
+        return null;
     }
 
     /// <summary>
@@ -269,6 +292,14 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
         if (_alignmentBusy)
         {
             Log(LogLevel.Warning, $"Step '{step.Label}' blocked — an alignment/scan is running. Stop it first.");
+            return;
+        }
+
+        // One program at a time: a click while something runs is refused, never a
+        // silent cancel-and-restart of the running step.
+        if (RunBlockedReason() is { } busy)
+        {
+            Log(LogLevel.Warning, $"Step '{step.Label}' blocked — {busy}.");
             return;
         }
 
@@ -460,6 +491,7 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
     {
         _executing = Math.Max(0, _executing + delta);
         bool busy = _executing > 0;
+        UpdateStepListEnabled();
 
         PanelRoot.SetResourceReference(Border.BackgroundProperty,
             busy ? SystemColors.ControlDarkBrushKey : "Panel");
@@ -911,6 +943,9 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
         if (_host.Engine.Safety.GetState().FlagRaised)
             return Result.Fail(ErrorCode.OperationFailed,
                 "a safety flag is raised — acknowledge it first");
+
+        if (RunBlockedReason() is { } busy)
+            return Result.Fail(ErrorCode.OperationFailed, busy);
 
         _runCts?.Cancel();
         _runCts?.Dispose();
