@@ -59,6 +59,14 @@
                 <Button x:Name="DutDataTile" Content="DUT Data"
                         Style="{StaticResource Tile}" Click="OnDutDataClick"
                         ToolTip="Per-serial DUT data: UV signal snapshots and labelled SiPhOG snapshots, with charts and CSV export" />
+                <Button x:Name="VersionTile" Style="{StaticResource Tile}" Click="OnVersionClick"
+                        ToolTip="This build's version and git id, and the release history">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="Version" HorizontalAlignment="Center" />
+                        <TextBlock x:Name="VersionTileText" FontSize="13" Margin="0,6,0,0" HorizontalAlignment="Center"
+                                   Foreground="{StaticResource Subtle}" FontFamily="Consolas" />
+                    </StackPanel>
+                </Button>
             </UniformGrid>
             <!-- Shown when no screen is available (signed out). -->
             <TextBlock x:Name="NoTilesText" Text="Sign in to use this station."

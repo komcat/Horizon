@@ -1,0 +1,46 @@
+<Window x:Class="FAAM.UI.VersionHistoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Version history"
+        Height="440" Width="640"
+        WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip"
+        Background="{StaticResource Bg}">
+    <!-- Brief build identity: this build (version · git id · time) on top, then every
+         release (v* tag) with its date and git id. Data: AppVersionInfo (embedded at build). -->
+    <DockPanel Margin="14">
+        <!-- This build -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock x:Name="VersionText" Foreground="{StaticResource Accent}" FontSize="20" FontWeight="SemiBold" />
+                <TextBlock x:Name="CommitText" Foreground="{StaticResource Text}" FontFamily="Consolas" FontSize="13" Margin="0,6,0,0" />
+                <TextBlock x:Name="BuiltText" Foreground="{StaticResource Subtle}" FontSize="12" Margin="0,4,0,0" />
+                <TextBlock x:Name="NoteText" Foreground="{StaticResource Warn}" FontSize="12" Margin="0,4,0,0"
+                           TextWrapping="Wrap" Visibility="Collapsed" />
+            </StackPanel>
+        </Border>
+
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="False">
+            <Button DockPanel.Dock="Right" Content="Close" Width="90" Height="28" IsCancel="True" IsDefault="True"
+                    Click="OnClose" />
+            <Button DockPanel.Dock="Left" Content="Copy" Width="90" Height="28" Click="OnCopy"
+                    ToolTip="Copy this build's version and git id (for a support message)" />
+        </DockPanel>
+
+        <!-- Releases -->
+        <TextBlock DockPanel.Dock="Top" Text="Releases" Foreground="{StaticResource Text}" FontSize="13"
+                   FontWeight="SemiBold" Margin="2,0,0,6" />
+        <DataGrid x:Name="ReleaseGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                  HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                  Background="Transparent" RowBackground="Transparent" Foreground="{StaticResource Text}"
+                  BorderBrush="{StaticResource Edge}" BorderThickness="1" CanUserAddRows="False"
+                  CanUserResizeRows="False" SelectionMode="Single" FontSize="13">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Release" Binding="{Binding Tag}" Width="90" />
+                <DataGridTextColumn Header="Date" Binding="{Binding DateText}" Width="150" />
+                <DataGridTextColumn Header="Git id" Binding="{Binding Commit}" Width="90" FontFamily="Consolas" />
+                <DataGridTextColumn Header="Note" Binding="{Binding Title}" Width="*" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>

@@ -44,7 +44,13 @@ public partial class HomeView : UserControl
     public event Action? DutDataRequested;
 
 
-    public HomeView() => InitializeComponent();
+    public HomeView()
+    {
+        InitializeComponent();
+        var v = AppVersionInfo.Current;
+        VersionTileText.Text = $"v{v.Version}" + (string.IsNullOrEmpty(v.ShortCommit) ? "" : $" · {v.ShortCommit}")
+                               + (v.Dirty ? " *" : "");
+    }
 
     /// <summary>Supplies the engine host and populates the product bar.</summary>
     public void Attach(EngineHost host)
@@ -76,6 +82,7 @@ public partial class HomeView : UserControl
         Gate(CalibrationTile, AccessPolicy.Calibration);
         Gate(RepositoryTile, AccessPolicy.Repository);
         Gate(DutDataTile, AccessPolicy.DutData);
+        Gate(VersionTile, AccessPolicy.VersionHistory);
         NoTilesText.Visibility = TileGrid.Children.OfType<Button>().Any(b => b.Visibility == Visibility.Visible)
             ? Visibility.Collapsed : Visibility.Visible;
 
@@ -259,4 +266,8 @@ public partial class HomeView : UserControl
     private void OnRepositoryClick(object sender, RoutedEventArgs e) => RepositoryRequested?.Invoke();
 
     private void OnDutDataClick(object sender, RoutedEventArgs e) => DutDataRequested?.Invoke();
+
+    /// <summary>Opens the brief version / release history window (no page switch).</summary>
+    private void OnVersionClick(object sender, RoutedEventArgs e)
+        => new VersionHistoryWindow { Owner = Window.GetWindow(this) }.ShowDialog();
 }

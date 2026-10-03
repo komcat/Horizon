@@ -42,6 +42,9 @@ public static class AccessPolicy
     /// </summary>
     public const AccessLevel DutData = AccessLevel.Operator;
 
+    /// <summary>Home › Version — this build's version / git id and the release list. Read-only.</summary>
+    public const AccessLevel VersionHistory = AccessLevel.Operator;
+
     /// <summary>Write and run <c>.moon</c> scripts against live hardware.</summary>
     public const AccessLevel Script = AccessLevel.Engineer;
 

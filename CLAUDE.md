@@ -273,6 +273,11 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   `users.json` carries employee records (id = employee number, `level`) plus
   `levelPasswords`; a file written before levels existed is upgraded on load by
   promoting everyone to Admin, so a new build never locks the station out.
+- **Version history** (Home › Version tile → `VersionHistoryWindow`): `build/version-info.ps1`
+  runs before each FAAM.UI build (target `FaamVersionInfo` in `FAAM.UI.csproj`) and embeds
+  `version_info.json` — `<Version>`, git id / branch / `describe`, dirty flag, and the `v*`
+  release tags from `deploy/release.ps1` — read by `AppVersionInfo`. Rewritten only on change;
+  never fails the build (no git → assembly version only).
 - **Theme rule (both heads)**: use the Windows `SystemColors` palette via the
   `App.xaml` brushes (`Bg/Panel/Text/Subtle/Edge/Accent`), not hardcoded dark hex.
 
