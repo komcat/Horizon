@@ -259,6 +259,25 @@ public partial class TimelineEditorView : UserControl
             _vm.LoadProgramByName(name);
     }
 
+    /// <summary>
+    /// Program list row click — opens that program (asking first if the editor has unsaved
+    /// changes). Clicks on the row's hide/show eye button are left to the button.
+    /// </summary>
+    private void OnProgramItemClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is not ListBoxItem { DataContext: ProgramListItem item }) return;
+        for (var d = e.OriginalSource as DependencyObject; d != null && d != sender;
+             d = System.Windows.Media.VisualTreeHelper.GetParent(d))
+            if (d is System.Windows.Controls.Primitives.ButtonBase) return;   // the eye toggle
+
+        if (item.IsCurrent && !_vm.IsDirty) return;
+        if (_vm.IsDirty && MessageBox.Show(Window.GetWindow(this)!,
+                $"Discard unsaved changes to '{_vm.ProgramName}' and open '{item.Name}'?",
+                "Open program", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+        _vm.LoadProgramByName(item.Name);
+    }
+
     private void OnCopyUid(object sender, RoutedEventArgs e)
     {
         if (_vm.SelectedBlock is { } block)

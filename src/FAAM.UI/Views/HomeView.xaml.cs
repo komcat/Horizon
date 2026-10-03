@@ -76,6 +76,8 @@ public partial class HomeView : UserControl
         Gate(CalibrationTile, AccessPolicy.Calibration);
         Gate(RepositoryTile, AccessPolicy.Repository);
         Gate(DutDataTile, AccessPolicy.DutData);
+        NoTilesText.Visibility = TileGrid.Children.OfType<Button>().Any(b => b.Visibility == Visibility.Visible)
+            ? Visibility.Collapsed : Visibility.Visible;
 
         // Switching to an existing product is floor work; creating one is authoring.
         var canSwitch = session.Has(AccessPolicy.ProductSwitch);
@@ -87,13 +89,11 @@ public partial class HomeView : UserControl
         {
             if (!_tileTips.ContainsKey(tile)) _tileTips[tile] = tile.ToolTip;
 
+            // Only what this level can open is shown — a locked screen is hidden, not greyed.
             var allowed = session.Has(required);
             tile.IsEnabled = allowed;
-            tile.ToolTip = allowed
-                ? _tileTips[tile]
-                : session.IsLoggedIn
-                    ? $"Needs {required} level — you are signed in as {session.Level}."
-                    : "Sign in to use this station.";
+            tile.Visibility = allowed ? Visibility.Visible : Visibility.Collapsed;
+            tile.ToolTip = _tileTips[tile];
         }
     }
 

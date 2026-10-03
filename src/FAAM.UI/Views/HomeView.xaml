@@ -7,10 +7,6 @@
             <Setter Property="FontSize" Value="22" />
             <Setter Property="Margin" Value="10" />
         </Style>
-        <!-- A dimmed tile for the not-yet-built slots. -->
-        <Style x:Key="ReserveTile" TargetType="Button" BasedOn="{StaticResource Tile}">
-            <Setter Property="IsEnabled" Value="False" />
-        </Style>
     </UserControl.Resources>
 
     <Grid Margin="6">
@@ -38,39 +34,36 @@
             </StackPanel>
         </Border>
 
+        <!-- Launcher: a fixed 4 × 4 grid. Only the screens the signed-in level may open are
+             shown (ApplyAccess collapses the rest, see AccessPolicy) — UniformGrid skips
+             collapsed tiles, so the available ones pack from the top-left and every tile
+             keeps a quarter of the width and height. Add a new screen as another Button here. -->
         <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
-
-            <!-- Tiles are enabled per signed-in level by ApplyAccess (see AccessPolicy);
-                 a disabled tile carries a tooltip saying which level it needs. -->
-            <Button x:Name="RunTile" Grid.Row="0" Grid.Column="0" Content="RUN"
-                    Style="{StaticResource Tile}" Click="OnRunClick" />
-            <Button x:Name="EngineerTile" Grid.Row="0" Grid.Column="1" Content="Engineer"
-                    Style="{StaticResource Tile}" Click="OnEngineerClick" />
-            <Button x:Name="MachineTile" Grid.Row="1" Grid.Column="0" Content="Machine"
-                    Style="{StaticResource Tile}" Click="OnMachineClick" />
-            <Button x:Name="VisionAlignmentTile" Grid.Row="1" Grid.Column="1" Content="Vision Alignment"
-                    Style="{StaticResource Tile}" Click="OnVisionAlignmentClick"
-                    ToolTip="Vision profiles (per-position recipes) and the gripped FAU teach, in one page" />
-            <Button x:Name="ScriptTile" Grid.Row="2" Grid.Column="0" Content="Script"
-                    Style="{StaticResource Tile}" Click="OnScriptClick" />
-            <Button x:Name="CalibrationTile" Grid.Row="2" Grid.Column="1" Content="Calibration"
-                    Style="{StaticResource Tile}" Click="OnCalibrationClick" />
-            <Button x:Name="RepositoryTile" Grid.Row="3" Grid.Column="0" Content="Repository"
-                    Style="{StaticResource Tile}" Click="OnRepositoryClick"
-                    ToolTip="Browse program / deck versions and checkout an earlier one" />
-            <Button x:Name="DutDataTile" Grid.Row="3" Grid.Column="1" Content="DUT Data"
-                    Style="{StaticResource Tile}" Click="OnDutDataClick"
-                    ToolTip="UV signal snapshots (uv1.0 … uv2.1_final) per serial, with chart and CSV export" />
+            <UniformGrid x:Name="TileGrid" Rows="4" Columns="4">
+                <Button x:Name="RunTile" Content="RUN"
+                        Style="{StaticResource Tile}" Click="OnRunClick" />
+                <Button x:Name="EngineerTile" Content="Engineer"
+                        Style="{StaticResource Tile}" Click="OnEngineerClick" />
+                <Button x:Name="MachineTile" Content="Machine"
+                        Style="{StaticResource Tile}" Click="OnMachineClick" />
+                <Button x:Name="VisionAlignmentTile" Content="Vision Alignment"
+                        Style="{StaticResource Tile}" Click="OnVisionAlignmentClick"
+                        ToolTip="Vision profiles (per-position recipes) and the gripped FAU teach, in one page" />
+                <Button x:Name="ScriptTile" Content="Script"
+                        Style="{StaticResource Tile}" Click="OnScriptClick" />
+                <Button x:Name="CalibrationTile" Content="Calibration"
+                        Style="{StaticResource Tile}" Click="OnCalibrationClick" />
+                <Button x:Name="RepositoryTile" Content="Repository"
+                        Style="{StaticResource Tile}" Click="OnRepositoryClick"
+                        ToolTip="Browse program / deck versions and checkout an earlier one" />
+                <Button x:Name="DutDataTile" Content="DUT Data"
+                        Style="{StaticResource Tile}" Click="OnDutDataClick"
+                        ToolTip="Per-serial DUT data: UV signal snapshots and labelled SiPhOG snapshots, with charts and CSV export" />
+            </UniformGrid>
+            <!-- Shown when no screen is available (signed out). -->
+            <TextBlock x:Name="NoTilesText" Text="Sign in to use this station."
+                       Foreground="{StaticResource Subtle}" FontSize="18"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
         </Grid>
     </Grid>
 </UserControl>

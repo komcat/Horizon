@@ -95,6 +95,40 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public ObservableCollection<string> Programs { get; } = new();
     public ObservableCollection<string> Log { get; } = new();
 
+    // --- left-hand program list (search + hide/show, per-product hidden set) ---
+
+    /// <summary>The program list as shown: <see cref="ProgramFilter"/> applied, hidden programs
+    /// omitted unless <see cref="ShowHiddenPrograms"/>.</summary>
+    public ObservableCollection<ProgramListItem> ProgramList { get; } = new();
+
+    private string _programFilter = string.Empty;
+    public string ProgramFilter
+    {
+        get => _programFilter;
+        set { if (SetField(ref _programFilter, value ?? string.Empty)) RebuildProgramList(); }
+    }
+
+    private bool _showHiddenPrograms;
+    /// <summary>On: every program, hidden ones dimmed. Off (default): only visible programs.</summary>
+    public bool ShowHiddenPrograms
+    {
+        get => _showHiddenPrograms;
+        set { if (SetField(ref _showHiddenPrograms, value)) RebuildProgramList(); }
+    }
+
+    private string _programListSummary = string.Empty;
+    public string ProgramListSummary { get => _programListSummary; private set => SetField(ref _programListSummary, value); }
+
+    private string _commandFilter = string.Empty;
+    /// <summary>Filters the command palette by name, op key or category.</summary>
+    public string CommandFilter
+    {
+        get => _commandFilter;
+        set { if (SetField(ref _commandFilter, value ?? string.Empty)) ApplyCommandFilter(); }
+    }
+
+    private readonly List<PaletteCategoryViewModel> _paletteAll = new();   // unfiltered palette
+
     /// <summary>
     /// When false (default), only lanes that carry a block are shown — a loaded program
     /// shows just the devices it uses. Flip on to reveal every device lane so an op can
@@ -183,7 +217,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public string? SelectedProgram
     {
         get => _selectedProgram;
-        set { if (SetField(ref _selectedProgram, value) && value != null) LoadProgram(value); }
+        set { if (SetField(ref _selectedProgram, value) && value != null) { MarkCurrentProgram(); LoadProgram(value); } }
     }
 
     /// <summary>The block whose parameters the right panel edits.</summary>
@@ -371,7 +405,30 @@ public sealed class TimelineEditorViewModel : ObservableObject
             var cat = new PaletteCategoryViewModel(category);
             foreach (var spec in OpCatalog.All.Where(s => s.Category == category))
                 cat.Items.Add(new PaletteItemViewModel(spec, AddToSelectedCell));
-            Palette.Add(cat);
+            _paletteAll.Add(cat);
+        }
+        ApplyCommandFilter();
+    }
+
+    /// <summary>
+    /// Rebuilds <see cref="Palette"/> from the full catalog, keeping only commands whose name,
+    /// op key or category contains every word of <see cref="CommandFilter"/>; empty categories drop out.
+    /// </summary>
+    private void ApplyCommandFilter()
+    {
+        var words = _commandFilter.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Palette.Clear();
+        foreach (var cat in _paletteAll)
+        {
+            if (words.Length == 0) { Palette.Add(cat); continue; }
+            var hits = cat.Items.Where(i => words.All(w =>
+                i.Display.Contains(w, StringComparison.OrdinalIgnoreCase)
+                || i.Spec.OpKey.Contains(w, StringComparison.OrdinalIgnoreCase)
+                || cat.Category.Contains(w, StringComparison.OrdinalIgnoreCase))).ToList();
+            if (hits.Count == 0) continue;
+            var filtered = new PaletteCategoryViewModel(cat.Category);
+            foreach (var h in hits) filtered.Items.Add(h);
+            Palette.Add(filtered);
         }
     }
 
@@ -627,10 +684,65 @@ public sealed class TimelineEditorViewModel : ObservableObject
     private void RefreshPrograms()
     {
         var names = _host.Process.ListPrograms();
-        if (Programs.SequenceEqual(names)) return;
-        Programs.Clear();
-        foreach (var name in names)
-            Programs.Add(name);
+        if (!Programs.SequenceEqual(names))
+        {
+            Programs.Clear();
+            foreach (var name in names)
+                Programs.Add(name);
+        }
+        RebuildProgramList();
+    }
+
+    /// <summary>
+    /// Re-fills <see cref="ProgramList"/> from <see cref="Programs"/>: the active product's
+    /// hidden set (<see cref="HiddenProgramStore"/>), the search text (every word must match),
+    /// and the Show-hidden switch. The open program is marked current.
+    /// </summary>
+    private void RebuildProgramList()
+    {
+        var hidden = HiddenProgramStore.Load(_host.Process.ActiveProduct);
+        var words = _programFilter.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        ProgramList.Clear();
+        int hiddenCount = 0;
+        foreach (var name in Programs)
+        {
+            bool isHidden = hidden.Contains(name);
+            if (isHidden) hiddenCount++;
+            if (isHidden && !_showHiddenPrograms) continue;
+            if (!words.All(w => name.Contains(w, StringComparison.OrdinalIgnoreCase))) continue;
+            ProgramList.Add(new ProgramListItem(name, isHidden, ToggleProgramHidden)
+            {
+                IsCurrent = string.Equals(name, _selectedProgram, StringComparison.OrdinalIgnoreCase),
+            });
+        }
+        ProgramListSummary = $"{ProgramList.Count} of {Programs.Count}" + (hiddenCount > 0 ? $" · {hiddenCount} hidden" : "");
+    }
+
+    /// <summary>Hides a visible program / un-hides a hidden one, saved per product.</summary>
+    private void ToggleProgramHidden(ProgramListItem item)
+    {
+        var product = _host.Process.ActiveProduct;
+        if (string.IsNullOrWhiteSpace(product)) { Status = "No active product."; return; }
+        var hidden = HiddenProgramStore.Load(product);
+        if (!hidden.Remove(item.Name)) hidden.Add(item.Name);
+        try
+        {
+            HiddenProgramStore.Save(product, hidden);
+        }
+        catch (Exception ex)
+        {
+            Status = $"Could not save hidden programs: {ex.Message}";
+            return;
+        }
+        Status = hidden.Contains(item.Name) ? $"Hidden '{item.Name}' from the list." : $"'{item.Name}' is visible again.";
+        RebuildProgramList();
+    }
+
+    /// <summary>Marks the row of the program open in the editor (none for an unsaved new program).</summary>
+    private void MarkCurrentProgram()
+    {
+        foreach (var item in ProgramList)
+            item.IsCurrent = string.Equals(item.Name, _selectedProgram, StringComparison.OrdinalIgnoreCase);
     }
 
     private void NewProgram()
@@ -638,6 +750,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         _suppressDirty = true;
         _selectedProgram = null;
         OnPropertyChanged(nameof(SelectedProgram));
+        MarkCurrentProgram();
         ProgramName = "New Program";
         ClearAllStages();
         AddStage();
@@ -660,6 +773,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(name)) return;
         _selectedProgram = name;
         OnPropertyChanged(nameof(SelectedProgram));
+        MarkCurrentProgram();
         LoadProgram(name);
     }
 
@@ -919,6 +1033,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         RefreshPrograms();
         _selectedProgram = programName;
         OnPropertyChanged(nameof(SelectedProgram));
+        MarkCurrentProgram();
         IsDirty = false;
         RefreshVersionText();   // a commit bumps the version; a plain save leaves it
     }

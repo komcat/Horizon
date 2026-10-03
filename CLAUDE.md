@@ -263,7 +263,9 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   `faam_run_layout.json` (Run-page camera-column splitter width),
   `faam_run_durations.json` (per product/program top-level block timings from earlier runs —
   weights the Run-page progress bar by time and estimates blocks that report no progress;
-  a `.moon` script reports its own via `machine.progress(pct, msg)`);
+  a `.moon` script reports its own via `machine.progress(pct, msg)`),
+  `faam_hidden_programs.json` (per product, programs hidden from the Engineer page's
+  searchable program list — view preference only);
   plus shared `app_settings.json` (`AppSettings`/`AppSettingsStore` in `Horizon.Common`:
   `mm/pixel`, MoveClick mapping, jog velocity presets, `StationId`) and the engine
   device configs. Operator directory `users.json` and the program-history
