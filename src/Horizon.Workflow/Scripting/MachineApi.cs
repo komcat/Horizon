@@ -690,6 +690,33 @@ internal sealed class MachineApi
             return DynValue.NewNumber(r.Value);
         });
 
+        // Non-throwing read: nil when the source is missing or the read fails, so a
+        // script (no pcall in the sandbox) can skip feedback-dependent work. Stop still
+        // cancels — only read failures are swallowed.
+        s["tryRead"] = Cb(a =>
+        {
+            string key = ReqStr(a, 0, "signal.tryRead");
+            if (_signalReader == null)
+            {
+                _log($"signal.tryRead({key}): no signal host");
+                return DynValue.Nil;
+            }
+            Result<double> r;
+            try { r = _signalReader(key, _ct).GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) { throw Cancelled(); }
+            catch (Exception ex)
+            {
+                _log($"signal.tryRead({key}) failed: {ex.Message}");
+                return DynValue.Nil;
+            }
+            if (!r.IsSuccess)
+            {
+                _log($"signal.tryRead({key}) failed: {r.Message}");
+                return DynValue.Nil;
+            }
+            return DynValue.NewNumber(r.Value);
+        });
+
         return s;
     }
 

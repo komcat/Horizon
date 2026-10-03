@@ -147,6 +147,7 @@ public static class MachineApiCatalog
 
         // signal
         new("signal", "read", "machine.signal.read(key) -> number", "Read a unified signal (e.g. smu.PIC.ch1.current)."),
+        new("signal", "tryRead", "machine.signal.tryRead(key) -> number|nil", "Like read, but returns nil (and logs) instead of failing the script when the read fails."),
 
         // part alignment (fiducials + local objects taught on Vision Alignment)
         new("part", "run", "machine.part.run(part) -> snapshot", "Camera to E1 / E2, detect, rebuild the frame, re-measure every object (vision profiles only); returns the snapshot {originX, originY, angleDeg, e1, e2, objects={ {name, kind, measured, x, y, targetX, targetY, points} }}."),
