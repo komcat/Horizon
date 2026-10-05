@@ -731,6 +731,9 @@ public interface IProcessService
     /// <summary>A DUT's SiPhOG snapshot file, or null when none / unreadable.</summary>
     SiphogSnapshotFile? GetSiphogSnapshots(string serial);
 
+    /// <summary>Raised (on the saving thread) after a SiPhOG snapshot set is written; arg = the DUT serial.</summary>
+    event Action<string>? SiphogSnapshotSaved;
+
     /// <summary>Raised before and after each executed step of a running program.</summary>
     event Action<WorkflowStepEvent>? StepEvent;
 

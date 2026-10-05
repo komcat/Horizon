@@ -67,7 +67,17 @@ public partial class DutDataView : UserControl
     {
         _host = host;
         _host.Process.ProductChanged += OnProductChanged;
+        _host.Process.SiphogSnapshotSaved += OnSiphogSnapshotSaved;
         SnapshotsView.Attach(host);
+    }
+
+    /// <summary>A snapshot was just written (any thread) — refresh the SiPhOG tab live when it's on screen.</summary>
+    private void OnSiphogSnapshotSaved(string serial)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (_visible && ReferenceEquals(Tabs.SelectedItem, SnapshotsTab)) SnapshotsView.Reload();
+        });
     }
 
     /// <summary>Loads (or reloads, after a product switch) the product's records when the page is shown.</summary>

@@ -123,6 +123,10 @@ defines its own program/recipe/position formats.
   six `siphog.*` signals over a window (mean/min/max/std) and append a labelled, operator-stamped
   set to `products\{name}\siphog_data\{serial}.json` (one file per DUT, append-only `sets`,
   schema `horizon.siphog-snapshots/1`; not cloned with the product). Best-effort (non-fatal).
+  Each set carries a `runId`/`runStarted`: a run = one pass of the unit, begun each time the serial
+  is entered (`dut.promptSerial` / up-front serial / Run-page Start) and ended by `dut.close`,
+  Run-page Pass/Fail, serial clear or product switch — so a re-run serial never mixes attempts
+  (`SiphogSnapshotFile.Runs()` groups them; pre-tracking sets form one untracked run).
 - **Program history / version repository (SQLite)** — `ProgramHistoryDb` writes a
   *machine-global* `%APPDATA%\Horizon\history.db` (`Microsoft.Data.Sqlite`): one
   operator-stamped, numbered snapshot per **commit**, plus normalized `block_revision` /

@@ -36,10 +36,15 @@
             <DockPanel Margin="8">
                 <DockPanel DockPanel.Dock="Top" Margin="2,2,2,8">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <TextBlock Text="Run" Foreground="{StaticResource Subtle}" FontSize="12"
+                                   VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <ComboBox x:Name="RunCombo" Width="230" Height="24" VerticalContentAlignment="Center"
+                                  Margin="0,0,14,0" SelectionChanged="OnRunPicked"
+                                  ToolTip="A run is one pass of the unit — it starts each time the serial is entered. Show the latest run, one earlier run, or every run side by side." />
                         <CheckBox x:Name="AllSetsCheck" Content="Every set" VerticalAlignment="Center"
                                   Foreground="{StaticResource Text}" Margin="0,0,12,0"
                                   Checked="OnOptionChanged" Unchecked="OnOptionChanged"
-                                  ToolTip="Show every saved set, including earlier sets with a re-used label (default: newest per label)" />
+                                  ToolTip="Show every saved set of the run, including retakes of a label (default: newest per label in each run)" />
                         <CheckBox x:Name="MinMaxCheck" Content="Min / max" VerticalAlignment="Center"
                                   Foreground="{StaticResource Text}" Margin="0,0,12,0"
                                   Checked="OnOptionChanged" Unchecked="OnOptionChanged"
@@ -83,7 +88,7 @@
                     <RadioButton x:Name="ByDutRadio" Content="By DUT serial" GroupName="XAxis"
                                  VerticalAlignment="Center" Foreground="{StaticResource Text}" Margin="0,0,20,0"
                                  Checked="OnChartOptionChanged"
-                                 ToolTip="One slot per DUT, ordered by its first snapshot (newest set per label); the selected DUT is marked" />
+                                 ToolTip="One slot per DUT, ordered by its first snapshot (its latest run, newest set per label); the selected DUT is marked" />
                     <TextBlock Text="Label" Foreground="{StaticResource Subtle}" FontSize="12"
                                VerticalAlignment="Center" Margin="0,0,6,0" />
                     <ComboBox x:Name="LabelCombo" Width="150" Height="24" VerticalContentAlignment="Center"

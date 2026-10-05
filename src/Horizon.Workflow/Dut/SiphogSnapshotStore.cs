@@ -20,6 +20,28 @@ public sealed class SiphogSnapshotFile
     public Dictionary<string, string> Units { get; set; } = new();
 
     public List<SiphogSnapshotSet> Sets { get; set; } = new();
+
+    /// <summary>
+    /// The sets grouped into runs (one pass of the unit through the process), oldest first,
+    /// numbered from 1. Sets written before run tracking (no <see cref="SiphogSnapshotSet.RunId"/>)
+    /// form one untracked run.
+    /// </summary>
+    public IReadOnlyList<SiphogSnapshotRun> Runs()
+        => Sets.GroupBy(s => s.RunId ?? string.Empty, StringComparer.Ordinal)
+            .Select(g => (Key: g.Key, Sets: g.OrderBy(s => s.Timestamp).ToList()))
+            .OrderBy(g => g.Sets[0].Timestamp)
+            .Select((g, i) => new SiphogSnapshotRun(
+                i + 1,
+                g.Key.Length == 0 ? null : g.Key,
+                g.Sets[0].RunStarted ?? g.Sets[0].Timestamp,
+                g.Sets))
+            .ToList();
+}
+
+/// <summary>One run's sets (chronological). <see cref="Id"/> null = sets saved before run tracking.</summary>
+public sealed record SiphogSnapshotRun(int Number, string? Id, DateTimeOffset Started, IReadOnlyList<SiphogSnapshotSet> Sets)
+{
+    public bool Tracked => Id != null;
 }
 
 /// <summary>One labelled snapshot: averaged SiPhOG values over a short sampling window.</summary>
@@ -29,6 +51,17 @@ public sealed class SiphogSnapshotSet
 
     /// <summary>Local time with offset — operator-readable and unambiguous.</summary>
     public DateTimeOffset Timestamp { get; set; }
+
+    /// <summary>
+    /// The run (one pass of the unit through the process) this set belongs to — a new id each time
+    /// the serial is entered (<c>dut.promptSerial</c>, an up-front serial, a Run-page DUT start), so a
+    /// re-run of the same serial never mixes with the earlier attempt. Null in files written before
+    /// run tracking.
+    /// </summary>
+    public string? RunId { get; set; }
+
+    /// <summary>When that run began (serial entered); null when <see cref="RunId"/> is null.</summary>
+    public DateTimeOffset? RunStarted { get; set; }
 
     public SnapshotOperator? Operator { get; set; }
     public string? Station { get; set; }

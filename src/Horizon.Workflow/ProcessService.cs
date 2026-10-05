@@ -100,12 +100,14 @@ public sealed class ProcessService : IProcessService
     public event Action<bool>? PausedChanged;
     public event Action<string?>? ProductChanged;
     public event Action<string?>? ActiveSerialChanged;
+    public event Action<string>? SiphogSnapshotSaved;
 
     public string? ActiveSerial { get; private set; }
 
     /// <summary>Updates <see cref="ActiveSerial"/> and notifies the front-end (no-op if unchanged).</summary>
     private void SetActiveSerial(string? serial)
     {
+        if (serial == null) EndSiphogRun();   // product switch / Clear — the unit's pass is over
         if (string.Equals(ActiveSerial, serial, StringComparison.Ordinal)) return;
         ActiveSerial = serial;
         ActiveSerialChanged?.Invoke(serial);
@@ -1030,6 +1032,7 @@ public sealed class ProcessService : IProcessService
         if (begun == null)
             return Result.Fail(ErrorCode.OperationFailed, "Could not open the DUT record.");
         _runDut = begun;
+        BeginSiphogRun(begun.Value.Record.Serial);   // serial entered → a new pass, even for a repeat serial
         ctx.DutIsFallback = false;
         return Result.Ok();
     }
@@ -1052,6 +1055,7 @@ public sealed class ProcessService : IProcessService
         {
             EndDut(_runDut, verdict);   // adds the run to the record + persists
             _runDut = null;
+            EndSiphogRun();             // the unit is closed — its snapshot pass ends here
         }
         else
         {
@@ -1098,6 +1102,37 @@ public sealed class ProcessService : IProcessService
 
     // --- SiPhOG labelled snapshots (siphog_data\{serial}.json) ---
 
+    // Snapshot run grouping: one run = one pass of a unit through the process. A run begins each
+    // time a serial is entered (dut.promptSerial, an up-front serial, Run-page DUT start) — so a
+    // repeat serial starts a fresh run — and ends at dut.close / Run-page Pass-Fail / serial clear /
+    // product switch. A program's own end does NOT end it: the pass spans several programs.
+    private sealed record SiphogRun(string Serial, string Id, DateTimeOffset Started);
+    private SiphogRun? _siphogRun;
+    private readonly object _siphogRunGate = new();
+
+    private void BeginSiphogRun(string serial)
+    {
+        lock (_siphogRunGate)
+            _siphogRun = new SiphogRun(serial.Trim(), Guid.NewGuid().ToString("N"), DateTimeOffset.Now);
+    }
+
+    private void EndSiphogRun()
+    {
+        lock (_siphogRunGate) _siphogRun = null;
+    }
+
+    /// <summary>The open run for <paramref name="serial"/>; starts one when none is open for it
+    /// (snapshot saved after a close, or for a serial set some other way).</summary>
+    private SiphogRun SiphogRunFor(string serial)
+    {
+        lock (_siphogRunGate)
+        {
+            if (_siphogRun == null || !string.Equals(_siphogRun.Serial, serial, StringComparison.OrdinalIgnoreCase))
+                _siphogRun = new SiphogRun(serial, Guid.NewGuid().ToString("N"), DateTimeOffset.Now);
+            return _siphogRun;
+        }
+    }
+
     public IReadOnlyList<string> ListSiphogSnapshotSerials() => _siphogData?.List() ?? Array.Empty<string>();
 
     public SiphogSnapshotFile? GetSiphogSnapshots(string serial)
@@ -1129,10 +1164,13 @@ public sealed class ProcessService : IProcessService
             ? Math.Round(sag.Mean / tgt.Mean * 100.0, 2) : null;
 
         var op = _operator;
+        var pass = SiphogRunFor(serial);
         var set = new SiphogSnapshotSet
         {
             Label = label,
             Timestamp = timestamp,
+            RunId = pass.Id,
+            RunStarted = pass.Started,
             Operator = op == null ? null
                 : new SnapshotOperator(op.UserId, op.DisplayName, string.IsNullOrEmpty(op.Level) ? null : op.Level),
             Station = string.IsNullOrWhiteSpace(op?.StationId) ? null : op!.StationId,
@@ -1160,6 +1198,8 @@ public sealed class ProcessService : IProcessService
             (sag != null ? $" — SAG {sag.Mean:0.####} V" : "") +
             (sagPct is { } p ? $" ({p:0.#}% of target)" : "") +
             $" [{sample.Value.Samples} samples / {sample.Value.ActualMs} ms]");
+        try { SiphogSnapshotSaved?.Invoke(serial); }
+        catch (Exception ex) { Log(LogLevel.Warning, $"SiPhOG snapshot: SiphogSnapshotSaved handler failed — {ex.Message}"); }
         return Result<SiphogSnapshotSet>.Ok(set);
     }
 
@@ -1209,6 +1249,7 @@ public sealed class ProcessService : IProcessService
             _interactiveDut = (record, run);
             TrySaveDut(record, "run started");
         }
+        BeginSiphogRun(record.Serial);
         SetActiveSerial(record.Serial);
         Log(LogLevel.Info, $"DUT run started: {record.Serial} [{source}]" +
             (_operator != null ? $" by {_operator.DisplayName}" : ""));
@@ -1250,6 +1291,7 @@ public sealed class ProcessService : IProcessService
             // The run was added to record.Runs and persisted at Start (BeginDutRun); here we
             // just finalise it in place — do NOT add it again.
             _interactiveDut = null;
+            EndSiphogRun();
 
             if (_dut == null)
             {
@@ -1299,6 +1341,7 @@ public sealed class ProcessService : IProcessService
         if (!string.IsNullOrWhiteSpace(serial))
         {
             _runDut = BeginDut(serial, source, ctx);
+            if (_runDut != null) BeginSiphogRun(_runDut.Value.Record.Serial);   // up-front serial = a new pass
             return _runDut?.Record.Serial;
         }
         if (_interactiveDut != null)

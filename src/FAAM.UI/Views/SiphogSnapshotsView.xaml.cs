@@ -17,9 +17,11 @@ namespace FAAM.UI.Views;
 /// <c>siphog.saveSnapshot</c> block / <c>machine.siphog.save</c> append to the product's
 /// <c>siphog_data\{serial}.json</c>. Pick a serial; its sets show as columns (chronological,
 /// newest set per label unless "Every set" is on) against the six SiPhOG parameters
-/// (mean ± std, optional min / max rows) plus SAG % of target, time, operator, window and
-/// source. Read-only; file reads run off the UI thread. Export writes every set of the
-/// listed serials in long form (one row per set × parameter).
+/// (mean ± std, optional min / max rows) plus SAG % of target, run, time, operator, window and
+/// source. A re-run serial has several runs (one per serial entry); the table shows the latest
+/// run unless an earlier run / All runs is picked, so two attempts never mix in one view.
+/// Read-only; file reads run off the UI thread. Export writes every set of the listed serials
+/// in long form (one row per set × parameter, with its run).
 /// </summary>
 public partial class SiphogSnapshotsView : UserControl
 {
@@ -53,7 +55,19 @@ public partial class SiphogSnapshotsView : UserControl
     private IReadOnlyList<string> _serials = Array.Empty<string>();
     private IReadOnlyList<SiphogSnapshotFile> _allFiles = Array.Empty<SiphogSnapshotFile>();   // every DUT, for the charts
     private SiphogSnapshotFile? _file;
-    private int _generation;
+    private int _generation;       // per-serial table loads
+    private int _loadGeneration;   // whole-list reloads (Refresh / snapshot saved)
+
+    // Run picker: a run number, or one of these. Latest follows new runs as they arrive.
+    private const int LatestRun = -1;
+    private const int AllRuns = 0;
+    private int _runPick = LatestRun;
+    private bool _suppressRunPick;
+
+    private sealed record RunChoice(int Key, string Text)
+    {
+        public override string ToString() => Text;
+    }
     private readonly DutTrendChart[] _charts = new DutTrendChart[Params.Length];
     private bool _suppressChartOptions = true;   // radio/combo events fire during InitializeComponent
 
@@ -87,10 +101,14 @@ public partial class SiphogSnapshotsView : UserControl
     /// <summary>Drops everything shown (product switched while hidden).</summary>
     public void Clear()
     {
+        ++_loadGeneration;   // an in-flight reload belongs to the old product
+        ++_generation;
         _serials = Array.Empty<string>();
         _allFiles = Array.Empty<SiphogSnapshotFile>();
         _file = null;
+        _runPick = LatestRun;
         SerialList.ItemsSource = null;
+        SetRunChoices(Array.Empty<SiphogSnapshotRun>());
         SetGrid.Columns.Clear();
         SetGrid.ItemsSource = null;
         HeaderText.Text = "Select a DUT serial.";
@@ -102,29 +120,47 @@ public partial class SiphogSnapshotsView : UserControl
     {
         if (_host == null) return;
         var process = _host.Process;
-        var keep = SerialList.SelectedItem as string;
+        var load = ++_loadGeneration;
         ChartStatus.Text = "Loading…";
+        IReadOnlyList<string> serials;
+        IReadOnlyList<SiphogSnapshotFile> files;
         try
         {
             // One small file per DUT — read them all (off the UI thread) so the charts span every DUT.
-            (_serials, _allFiles) = await Task.Run(() =>
+            (serials, files) = await Task.Run(() =>
             {
-                var serials = process.ListSiphogSnapshotSerials()
-                    .OrderByDescending(s => s, StringComparer.OrdinalIgnoreCase).ToList();
-                var files = serials.Select(process.GetSiphogSnapshots)
-                    .Where(f => f != null).Cast<SiphogSnapshotFile>().ToList();
-                return ((IReadOnlyList<string>)serials, (IReadOnlyList<SiphogSnapshotFile>)files);
+                var s = process.ListSiphogSnapshotSerials()
+                    .OrderByDescending(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+                var f = s.Select(process.GetSiphogSnapshots)
+                    .Where(x => x != null).Cast<SiphogSnapshotFile>().ToList();
+                return ((IReadOnlyList<string>)s, (IReadOnlyList<SiphogSnapshotFile>)f);
             });
         }
         catch (Exception ex)
         {
+            if (load != _loadGeneration) return;
             StatusText.Text = $"Could not list snapshot files: {ex.Message}";
             ChartStatus.Text = string.Empty;
             return;
         }
+        if (load != _loadGeneration) return;   // a newer reload (e.g. another snapshot saved) superseded this one
+
+        // Read the selection only now: the operator may have picked a serial while the files loaded.
+        var keep = SerialList.SelectedItem as string;
+        (_serials, _allFiles) = (serials, files);
         RefreshLabelChoices();
-        ApplyFilter();
-        if (keep != null && SerialList.Items.Contains(keep)) SerialList.SelectedItem = keep;
+        ApplyFilter();   // swapping ItemsSource keeps an equal string selected — no SelectionChanged fires
+
+        if (keep != null && SerialList.Items.Contains(keep))
+        {
+            // Show the freshly read file for the kept serial directly; re-selecting it would be a
+            // no-op (same item) and leave the table on the stale copy.
+            ++_generation;   // drop any in-flight per-serial load — this data is newer
+            _file = _allFiles.FirstOrDefault(f => string.Equals(f.Serial, keep, StringComparison.OrdinalIgnoreCase));
+            SerialList.SelectedItem = keep;
+            Render();
+            if (ByDutRadio.IsChecked == true) RenderCharts();   // re-place the selected-DUT marker
+        }
         else { _file = null; Render(); }
     }
 
@@ -155,6 +191,8 @@ public partial class SiphogSnapshotsView : UserControl
         try { file = await Task.Run(() => process.GetSiphogSnapshots(serial)); }
         catch (Exception ex) { file = null; StatusText.Text = ex.Message; }
         if (gen != _generation) return;   // a newer selection superseded this load
+        if (!string.Equals(_file?.Serial, serial, StringComparison.OrdinalIgnoreCase))
+            _runPick = LatestRun;         // another DUT — start on its latest run
         _file = file;
         Render();
         if (ByDutRadio.IsChecked == true) RenderCharts();   // move the selected-DUT marker
@@ -162,21 +200,85 @@ public partial class SiphogSnapshotsView : UserControl
 
     // ---------------------------------------------------------------- grid
 
+    private void OnRunPicked(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressRunPick || RunCombo.SelectedItem is not RunChoice c) return;
+        _runPick = c.Key;
+        Render();
+    }
+
+    /// <summary>Re-fills the run picker (Latest, All, then each run newest first), keeping the pick.</summary>
+    private void SetRunChoices(IReadOnlyList<SiphogSnapshotRun> runs)
+    {
+        var items = new List<RunChoice>();
+        if (runs.Count > 0)
+        {
+            items.Add(new RunChoice(LatestRun, $"Latest run (Run {runs.Count})"));
+            items.Add(new RunChoice(AllRuns, $"All runs ({runs.Count})"));
+            items.AddRange(runs.Reverse().Select(r => new RunChoice(r.Number,
+                $"Run {r.Number} · {r.Started.ToLocalTime():MM-dd HH:mm} · {r.Sets.Count} set(s)" +
+                (r.Tracked ? "" : " · untracked"))));
+        }
+        var pick = items.FirstOrDefault(i => i.Key == _runPick) ?? items.FirstOrDefault();
+        _runPick = pick?.Key ?? LatestRun;
+        _suppressRunPick = true;
+        RunCombo.ItemsSource = items;
+        RunCombo.SelectedItem = pick;
+        _suppressRunPick = false;
+    }
+
     private void Render()
     {
         SetGrid.Columns.Clear();
         SetGrid.ItemsSource = null;
         if (_file == null)
         {
+            SetRunChoices(Array.Empty<SiphogSnapshotRun>());
             HeaderText.Text = SerialList.SelectedItem is string s ? $"DUT {s} — file unreadable." : "Select a DUT serial.";
             return;
         }
 
-        var sets = SelectSets(_file, AllSetsCheck.IsChecked == true);
-        var labels = _file.Sets.Select(x => x.Label).Distinct(StringComparer.OrdinalIgnoreCase).Count();
-        HeaderText.Text = $"DUT {_file.Serial} — {_file.Sets.Count} set(s), {labels} label(s)";
-        StatusText.Text = sets.Count == 0 ? "No sets in this file." : string.Empty;
+        var runs = _file.Runs();
+        SetRunChoices(runs);
+        var shownRuns = _runPick == AllRuns ? runs
+            : runs.Where(r => r.Number == (_runPick == LatestRun ? runs.Count : _runPick)).ToList();
+        bool every = AllSetsCheck.IsChecked == true;
+        var cols = shownRuns.SelectMany(r => SelectSets(r.Sets, every).Select(x => (Run: r, Set: x))).ToList();
 
+        var labels = _file.Sets.Select(x => x.Label).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        HeaderText.Text = $"DUT {_file.Serial} — {runs.Count} run(s), {_file.Sets.Count} set(s), {labels} label(s)";
+        StatusText.Text = RunStatus(runs, shownRuns, cols.Count);
+
+        var sets = cols.Select(c => c.Set).ToList();
+        var table = BuildTable(_file, sets, cols.Select(c => c.Run).ToList());
+
+        SetGrid.Columns.Add(new DataGridTextColumn { Header = "Parameter", Binding = new Binding("p"), MinWidth = 170 });
+        for (int i = 0; i < cols.Count; i++)
+        {
+            var (run, s) = cols[i];
+            var head = _runPick == AllRuns ? $"Run {run.Number} · {s.Label}" : s.Label;
+            SetGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = $"{head}\n{s.Timestamp.ToLocalTime():HH:mm:ss}",
+                Binding = new Binding("c" + i),
+                MinWidth = 140,
+            });
+        }
+        SetGrid.ItemsSource = table.DefaultView;
+    }
+
+    private string RunStatus(IReadOnlyList<SiphogSnapshotRun> runs, IReadOnlyList<SiphogSnapshotRun> shown, int columns)
+    {
+        if (columns == 0) return "No sets in this file.";
+        if (runs.Count < 2 || _runPick == AllRuns) return string.Empty;
+        var r = shown[0];
+        return $"Showing run {r.Number} of {runs.Count} (started {r.Started.ToLocalTime():yyyy-MM-dd HH:mm:ss})" +
+               (r.Number == runs.Count ? " — this serial was run before; pick an earlier run or All runs to compare attempts." : ".");
+    }
+
+    /// <summary>One row per parameter (+ min/max), then run / time / operator / window / source / note.</summary>
+    private DataTable BuildTable(SiphogSnapshotFile file, IReadOnlyList<SiphogSnapshotSet> sets, IReadOnlyList<SiphogSnapshotRun> setRuns)
+    {
         var table = new DataTable();
         table.Columns.Add("p", typeof(string));
         for (int i = 0; i < sets.Count; i++) table.Columns.Add("c" + i, typeof(string));
@@ -192,31 +294,24 @@ public partial class SiphogSnapshotsView : UserControl
         bool minMax = MinMaxCheck.IsChecked == true;
         foreach (var (key, name) in Params)
         {
-            var unit = Unit(_file, key);
+            var unit = Unit(file, key);
             Row($"{name} ({unit})", s => s.Values.TryGetValue(key, out var v) ? $"{Fmt(v.Mean)} ± {Fmt(v.Std)}" : "—");
             if (!minMax) continue;
             Row("   min", s => s.Values.TryGetValue(key, out var v) ? Fmt(v.Min) : "");
             Row("   max", s => s.Values.TryGetValue(key, out var v) ? Fmt(v.Max) : "");
         }
         Row("SAG % of target", s => s.SagPercentOfTarget is { } p ? p.ToString("0.0", CultureInfo.InvariantCulture) + " %" : "—");
+        var runOf = new Dictionary<SiphogSnapshotSet, SiphogSnapshotRun>(ReferenceEqualityComparer.Instance);
+        for (int i = 0; i < sets.Count; i++) runOf[sets[i]] = setRuns[i];
+        Row("Run", s => runOf.TryGetValue(s, out var r)
+            ? $"Run {r.Number} · {r.Started.ToLocalTime():MM-dd HH:mm}" + (r.Tracked ? "" : " (untracked)")
+            : "");
         Row("Time", s => s.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
         Row("Operator", s => s.Operator == null ? "" : $"{s.Operator.Name} ({s.Operator.Id})");
         Row("Window", s => $"{s.Window.Samples} × / {s.Window.ActualMs} ms");
         Row("Source", s => s.Source == null ? "" : string.Join(" › ", new[] { s.Source.Program, s.Source.Step }.Where(x => !string.IsNullOrWhiteSpace(x))));
         Row("Note", s => s.Note ?? "");
-
-        SetGrid.Columns.Add(new DataGridTextColumn { Header = "Parameter", Binding = new Binding("p"), MinWidth = 170 });
-        for (int i = 0; i < sets.Count; i++)
-        {
-            var s = sets[i];
-            SetGrid.Columns.Add(new DataGridTextColumn
-            {
-                Header = $"{s.Label}\n{s.Timestamp.ToLocalTime():HH:mm:ss}",
-                Binding = new Binding("c" + i),
-                MinWidth = 140,
-            });
-        }
-        SetGrid.ItemsSource = table.DefaultView;
+        return table;
     }
 
     // ---------------------------------------------------------------- trend charts
@@ -271,8 +366,9 @@ public partial class SiphogSnapshotsView : UserControl
         {
             var duts = files.Where(f => f.Sets.Count > 0).OrderBy(f => f.Sets.Min(x => x.Timestamp)).ToList();
             xLabels = duts.Select(f => f.Serial).ToList();
+            // A re-run DUT plots its latest run only, so one slot never mixes two attempts.
             foreach (var f in duts)
-                slots.Add(SelectSets(f, all: false).ToDictionary(x => x.Label, StringComparer.OrdinalIgnoreCase));
+                slots.Add(SelectSets(f.Runs()[^1].Sets, all: false).ToDictionary(x => x.Label, StringComparer.OrdinalIgnoreCase));
         }
         else
         {
@@ -316,12 +412,12 @@ public partial class SiphogSnapshotsView : UserControl
                     : $"{slots.Count} set(s) from {files.Count} DUT(s)";
     }
 
-    /// <summary>All sets in file order, or the newest set per label ordered by its time.</summary>
-    private static List<SiphogSnapshotSet> SelectSets(SiphogSnapshotFile file, bool all)
+    /// <summary>All sets in order, or the newest set per label ordered by its time.</summary>
+    private static List<SiphogSnapshotSet> SelectSets(IReadOnlyList<SiphogSnapshotSet> sets, bool all)
     {
-        if (all) return file.Sets.ToList();
+        if (all) return sets.ToList();
         var latest = new Dictionary<string, SiphogSnapshotSet>(StringComparer.OrdinalIgnoreCase);
-        foreach (var s in file.Sets)
+        foreach (var s in sets)
             if (!latest.TryGetValue(s.Label, out var cur) || s.Timestamp >= cur.Timestamp)
                 latest[s.Label] = s;
         return latest.Values.OrderBy(s => s.Timestamp).ToList();
@@ -384,14 +480,17 @@ public partial class SiphogSnapshotsView : UserControl
     {
         var inv = CultureInfo.InvariantCulture;
         var sb = new StringBuilder();
-        sb.AppendLine("Serial,Label,Timestamp,Operator Id,Operator,Station,Program,Step,Parameter,Unit,Mean,Min,Max,Std,Samples,Window ms,SAG % of target,Note");
+        sb.AppendLine("Serial,Run,Run Id,Run Started,Label,Timestamp,Operator Id,Operator,Station,Program,Step,Parameter,Unit,Mean,Min,Max,Std,Samples,Window ms,SAG % of target,Note");
         int rows = 0;
         foreach (var f in files)
-            foreach (var s in f.Sets)
+            foreach (var (run, s) in f.Runs().SelectMany(r => r.Sets.Select(x => (r, x))))
                 foreach (var (key, _) in Params)
                 {
                     if (!s.Values.TryGetValue(key, out var v)) continue;
                     sb.Append(Csv(f.Serial)).Append(',')
+                      .Append(run.Number).Append(',')
+                      .Append(run.Id ?? "").Append(',')
+                      .Append(run.Started.ToString("yyyy-MM-dd HH:mm:ss.fff zzz", inv)).Append(',')
                       .Append(Csv(s.Label)).Append(',')
                       .Append(s.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff zzz", inv)).Append(',')
                       .Append(Csv(s.Operator?.Id ?? "")).Append(',')
