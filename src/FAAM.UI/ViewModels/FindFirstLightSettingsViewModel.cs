@@ -20,6 +20,10 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
     private double _lineJumpUm = 60;
     private double _lineStepUm = 5;
     private int _lineSteps = 24;
+    private bool _lineYSweepEnabled = true;
+    private double _lineYRangeUm = 50;
+    private double _lineYStepUm = 10;
+    private double _exitAboveV = 0.1;
 
     private bool _stage2Enabled = true;
     private int _gridYRows = 12;
@@ -58,6 +62,10 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
     public double LineJumpUm { get => _lineJumpUm; set => SetField(ref _lineJumpUm, value); }
     public double LineStepUm { get => _lineStepUm; set => SetField(ref _lineStepUm, value); }
     public int LineSteps { get => _lineSteps; set => SetField(ref _lineSteps, value); }
+    public bool LineYSweepEnabled { get => _lineYSweepEnabled; set => SetField(ref _lineYSweepEnabled, value); }
+    public double LineYRangeUm { get => _lineYRangeUm; set => SetField(ref _lineYRangeUm, value); }
+    public double LineYStepUm { get => _lineYStepUm; set => SetField(ref _lineYStepUm, value); }
+    public double ExitAboveV { get => _exitAboveV; set => SetField(ref _exitAboveV, value); }
 
     // --- Stage 2: XY grid fallback ---
     public bool Stage2Enabled { get => _stage2Enabled; set => SetField(ref _stage2Enabled, value); }
@@ -93,6 +101,10 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
         LineJumpUm = s.LineJumpUm;
         LineStepUm = s.LineStepUm;
         LineSteps = s.LineSteps;
+        LineYSweepEnabled = s.LineYSweepEnabled;
+        LineYRangeUm = s.LineYRangeUm;
+        LineYStepUm = s.LineYStepUm;
+        ExitAboveV = s.ExitAboveV;
         Stage2Enabled = s.Stage2Enabled;
         GridYRows = s.GridYRows;
         GridStepUm = s.GridStepUm;
@@ -115,6 +127,10 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
         LineJumpUm = _lineJumpUm,
         LineStepUm = _lineStepUm,
         LineSteps = _lineSteps,
+        LineYSweepEnabled = _lineYSweepEnabled,
+        LineYRangeUm = _lineYRangeUm,
+        LineYStepUm = _lineYStepUm,
+        ExitAboveV = _exitAboveV,
         Stage2Enabled = _stage2Enabled,
         GridYRows = _gridYRows,
         GridStepUm = _gridStepUm,

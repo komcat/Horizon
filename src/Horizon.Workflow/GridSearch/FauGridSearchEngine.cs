@@ -13,7 +13,10 @@ namespace Horizon.Workflow.GridSearch;
 /// then sweep back in −X by <c>LineStepUm</c> for <c>LineSteps</c> steps. A reading that clears
 /// <c>vBase + DetectDeltaV</c> means "signal seen"; once seen, the sweep ends early when it has
 /// clearly walked off the crest (drop &gt; <c>DropFraction · (peak − vBase)</c> for
-/// <c>DropConfirmCount</c> readings). On signal, the stage parks at the line peak.</para>
+/// <c>DropConfirmCount</c> readings). On signal, the stage parks at the line peak. With
+/// <c>LineYSweepEnabled</c>, every −X step is followed by a Y sweep ±<c>LineYRangeUm</c> at
+/// <c>LineYStepUm</c> pitch (the crest test then uses the best reading of that X column). Any
+/// reading above <c>ExitAboveV</c> ends the search at once, parked at that point.</para>
 ///
 /// <para><b>Stage 2 — Y+ line-scan fallback.</b> Only if Stage 1 saw nothing: step Y+ for
 /// <c>GridYRows</c> rows at <c>GridStepUm</c> pitch (centre upward only, never −Y) and run a
@@ -52,6 +55,7 @@ public sealed class FauGridSearchEngine
     private double[]? _posPeak;
     private int _pointsMeasured;
     private int _measIndex;
+    private bool _exitHit;
 
     public event EventHandler<GridSearchStateChangedEventArgs>? StateChanged;
     public event EventHandler<GridSearchBaselineRecordedEventArgs>? BaselineRecorded;
@@ -110,6 +114,7 @@ public sealed class FauGridSearchEngine
         _posPeak = null;
         _pointsMeasured = 0;
         _measIndex = 0;
+        _exitHit = false;
 
         try
         {
@@ -145,10 +150,15 @@ public sealed class FauGridSearchEngine
 
             // ---- Stage 1: X line (skipped when disabled) ----
             bool signalSeen = false;
-            if (_config.Stage1Enabled)
+            if (CheckExit(_vBase, "centre"))
+            {
+                signalSeen = true;   // already above the stop level at centre — no search needed
+            }
+            else if (_config.Stage1Enabled)
             {
                 SetState(GridSearchState.LineSearch);
-                signalSeen = await LineSearchAsync(_posCentre, GridSearchPhase.Line, string.Empty, ct).ConfigureAwait(false);
+                signalSeen = await LineSearchAsync(_posCentre, GridSearchPhase.Line, string.Empty,
+                    _config.LineYSweepEnabled, ct).ConfigureAwait(false);
             }
             else
             {
@@ -159,7 +169,9 @@ public sealed class FauGridSearchEngine
             {
                 await ParkAtAsync(_posPeak!, ct).ConfigureAwait(false);
                 FillResult(result, GridSearchStopReason.SignalFoundLine, signalFound: true);
-                result.Message = $"Stage 1: signal found — peak {_peakV:F6} V at line ({result.PointsMeasured} pts). Hand off to hill climb.";
+                result.Message = _exitHit
+                    ? $"Stage 1: {_peakV:F6} V > exit {_config.ExitAboveV:0.###} V — stopped there ({result.PointsMeasured} pts). Hand off to hill climb."
+                    : $"Stage 1: signal found — peak {_peakV:F6} V at line ({result.PointsMeasured} pts). Hand off to hill climb.";
             }
             else
             {
@@ -250,27 +262,31 @@ public sealed class FauGridSearchEngine
     /// once the sweep has confirmedly walked off the crest. Returns true when signal was seen. Shared
     /// by Stage 1 (row centre = the captured centre) and Stage 2 (one call per Y+ row, with the row's
     /// Y already baked into <paramref name="rowCentre"/>). <paramref name="rowLabel"/> prefixes the
-    /// measured-event labels (empty for Stage 1).
+    /// measured-event labels (empty for Stage 1). With <paramref name="ySweep"/>, each −X step is
+    /// followed by a Y sweep ±<c>LineYRangeUm</c> about the row's Y. Any reading above
+    /// <c>ExitAboveV</c> returns at once (signal seen, hexapod left at that point = the peak).
     /// </summary>
-    private async Task<bool> LineSearchAsync(double[] rowCentre, GridSearchPhase phase, string rowLabel, CancellationToken ct)
+    private async Task<bool> LineSearchAsync(double[] rowCentre, GridSearchPhase phase, string rowLabel,
+        bool ySweep, CancellationToken ct)
     {
         int axis = _config.LineAxisIndex;
+        int yAxis = _config.GridYAxisIndex;
         double centreAxis = rowCentre[axis];
         double jumpMm = _config.LineJumpUm / 1000.0;
         double stepMm = _config.LineStepUm / 1000.0;
+        int yHalf = ySweep ? _config.LineYHalfSteps : 0;
 
         bool signalSeen = false;
         int dipCount = 0;
 
         // Apex: absolute move to row centre + jump (drift-free; X set, the row Y already in rowCentre).
         await MoveToPeakOrThrowAsync(WithAxis(rowCentre, axis, centreAxis + jumpMm), "line apex", ct).ConfigureAwait(false);
-        await SettleAsync(ct).ConfigureAwait(false);
         {
-            double v = await SampleAsync(ct).ConfigureAwait(false);
-            double[] pos = await ReadPositionAsync(ct).ConfigureAwait(false);
-            UpdatePeak(v, pos);
+            string label = RowLabel(rowLabel, $"+{_config.LineJumpUm:0.#} µm");
+            double v = await MeasureHereAsync(ct).ConfigureAwait(false);
             if (v > _detectLevel) signalSeen = true;
-            RaiseMeasured(phase, RowLabel(rowLabel, $"+{_config.LineJumpUm:0.#} µm"), v, signalSeen);
+            RaiseMeasured(phase, label, v, signalSeen);
+            if (CheckExit(v, label)) return true;
         }
 
         // Downward sweep: apex − k·step, in absolute coordinates from the row centre.
@@ -279,21 +295,39 @@ public sealed class FauGridSearchEngine
             ct.ThrowIfCancellationRequested();
 
             double offsetUm = _config.LineJumpUm - (k * _config.LineStepUm);
-            await MoveToPeakOrThrowAsync(
-                WithAxis(rowCentre, axis, centreAxis + jumpMm - (k * stepMm)), "line step", ct).ConfigureAwait(false);
-            await SettleAsync(ct).ConfigureAwait(false);
-            double v = await SampleAsync(ct).ConfigureAwait(false);
-            double[] pos = await ReadPositionAsync(ct).ConfigureAwait(false);
-
-            UpdatePeak(v, pos);
+            string xLabel = RowLabel(rowLabel, $"{offsetUm:+0.#;-0.#} µm");
+            double[] stepPos = WithAxis(rowCentre, axis, centreAxis + jumpMm - (k * stepMm));
+            await MoveToPeakOrThrowAsync(stepPos, "line step", ct).ConfigureAwait(false);
+            double v = await MeasureHereAsync(ct).ConfigureAwait(false);
             if (v > _detectLevel) signalSeen = true;
+            RaiseMeasured(phase, xLabel, v, signalSeen);
+            if (CheckExit(v, xLabel)) return true;
+
+            // Y sweep at this X: −range … +range (centre already measured above). The next X step's
+            // absolute move returns Y to the row centre.
+            double columnBest = v;
+            for (int j = -yHalf; j <= yHalf; j++)
+            {
+                if (j == 0) continue;
+                ct.ThrowIfCancellationRequested();
+
+                double yUm = j * _config.LineYStepUm;
+                string yLabel = $"{xLabel} Y{yUm:+0.#;-0.#} µm";
+                await MoveToPeakOrThrowAsync(
+                    WithAxis(stepPos, yAxis, stepPos[yAxis] + (yUm / 1000.0)), "Y sweep step", ct).ConfigureAwait(false);
+                double vy = await MeasureHereAsync(ct).ConfigureAwait(false);
+                if (vy > _detectLevel) signalSeen = true;
+                RaiseMeasured(phase, yLabel, vy, signalSeen);
+                if (CheckExit(vy, yLabel)) return true;
+                columnBest = Math.Max(columnBest, vy);
+            }
 
             // Past-crest guardrail: drop measured against the peak's height above baseline, which is
-            // ≥ DetectDeltaV > 0 once signalSeen — well-defined for any baseline sign.
-            if (signalSeen && (_peakV - v) > _config.DropFraction * (_peakV - _vBase))
+            // ≥ DetectDeltaV > 0 once signalSeen — well-defined for any baseline sign. With a Y sweep
+            // the column's best reading stands for this X step.
+            if (signalSeen && (_peakV - columnBest) > _config.DropFraction * (_peakV - _vBase))
             {
                 dipCount++;
-                RaiseMeasured(phase, RowLabel(rowLabel, $"{offsetUm:+0.#;-0.#} µm"), v, signalSeen);
                 if (dipCount >= _config.DropConfirmCount)
                 {
                     _log(LogLevel.Info, $"Grid search: crest passed at line offset {offsetUm:+0.#;-0.#} µm — ending sweep early.");
@@ -303,10 +337,31 @@ public sealed class FauGridSearchEngine
             }
 
             dipCount = 0;
-            RaiseMeasured(phase, RowLabel(rowLabel, $"{offsetUm:+0.#;-0.#} µm"), v, signalSeen);
         }
 
         return signalSeen;
+    }
+
+    /// <summary>Settle, sample, and fold the reading into the peak tracker at the current pose.</summary>
+    private async Task<double> MeasureHereAsync(CancellationToken ct)
+    {
+        await SettleAsync(ct).ConfigureAwait(false);
+        double v = await SampleAsync(ct).ConfigureAwait(false);
+        double[] pos = await ReadPositionAsync(ct).ConfigureAwait(false);
+        UpdatePeak(v, pos);
+        return v;
+    }
+
+    /// <summary>
+    /// True (and logs) when <paramref name="v"/> exceeds the absolute <c>ExitAboveV</c> stop level.
+    /// Every earlier reading was below it, so this point is also the peak the caller parks at.
+    /// </summary>
+    private bool CheckExit(double v, string label)
+    {
+        if (_config.ExitAboveV <= 0 || v <= _config.ExitAboveV) return false;
+        _exitHit = true;
+        _log(LogLevel.Info, $"Grid search: {v:F6} V > exit {_config.ExitAboveV:0.###} V at {label} — stopping search.");
+        return true;
     }
 
     /// <summary>Prefixes an X-step label with the Y row (Stage 2); returns the X label alone for Stage 1.</summary>
@@ -342,7 +397,7 @@ public sealed class FauGridSearchEngine
 
             double yUm = iy * _config.GridStepUm;
             double[] rowCentre = WithAxis(_posCentre, ay, cy + (iy * yStepMm));
-            bool seen = await LineSearchAsync(rowCentre, GridSearchPhase.Grid, $"Y+{yUm:0.#}µm", ct).ConfigureAwait(false);
+            bool seen = await LineSearchAsync(rowCentre, GridSearchPhase.Grid, $"Y+{yUm:0.#}µm", ySweep: false, ct).ConfigureAwait(false);
             if (seen)
             {
                 _log(LogLevel.Info, $"Grid search: signal in the Y+{yUm:0.#} µm row = {_peakV:F6} V — handing off to hill climb.");

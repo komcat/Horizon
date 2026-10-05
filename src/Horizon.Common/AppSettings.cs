@@ -172,6 +172,18 @@ public sealed record FindFirstLightSettings
     /// <summary>Number of −X steps after the apex.</summary>
     public int LineSteps { get; init; } = 24;
 
+    /// <summary>After each −X step, sweep Y ±<see cref="LineYRangeUm"/> at <see cref="LineYStepUm"/> pitch.</summary>
+    public bool LineYSweepEnabled { get; init; } = true;
+
+    /// <summary>Half-width of the per-X-step Y sweep (µm).</summary>
+    public double LineYRangeUm { get; init; } = 50;
+
+    /// <summary>Y pitch of the per-X-step sweep (µm).</summary>
+    public double LineYStepUm { get; init; } = 10;
+
+    /// <summary>Stop the search as soon as any reading exceeds this absolute level (V); 0 = off.</summary>
+    public double ExitAboveV { get; init; } = 0.1;
+
     // --- Stage 2: Y+ line-scan fallback ---
 
     /// <summary>Run Stage 2 (the Y+ line-scan fallback) when Stage 1 finds nothing.</summary>

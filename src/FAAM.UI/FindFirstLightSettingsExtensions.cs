@@ -18,6 +18,10 @@ public static class FindFirstLightSettingsExtensions
         c.LineJumpUm = s.LineJumpUm;
         c.LineStepUm = s.LineStepUm;
         c.LineSteps = s.LineSteps;
+        c.LineYSweepEnabled = s.LineYSweepEnabled;
+        c.LineYRangeUm = s.LineYRangeUm;
+        c.LineYStepUm = s.LineYStepUm;
+        c.ExitAboveV = s.ExitAboveV;
         c.Stage2Enabled = s.Stage2Enabled;
         c.GridYRows = s.GridYRows;
         c.GridStepUm = s.GridStepUm;

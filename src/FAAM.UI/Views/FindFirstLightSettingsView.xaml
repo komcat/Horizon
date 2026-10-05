@@ -92,6 +92,32 @@
                 <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding LineSteps}" />
                 <TextBlock Grid.Row="2" Grid.Column="2" Text="number of −X steps after the apex" Style="{StaticResource Hint}" />
             </Grid>
+            <CheckBox Content="Sweep Y at every −X step" Foreground="{StaticResource Text}" Margin="0,4,0,8"
+                      IsChecked="{Binding LineYSweepEnabled}" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Y sweep range ± (µm)" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding LineYRangeUm}" />
+                <TextBlock Grid.Row="0" Grid.Column="2" Text="Y sweep covers −range … +range about centre at each X step" Style="{StaticResource Hint}" />
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Y sweep step (µm)" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding LineYStepUm}" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="Y pitch of the per-X-step sweep" Style="{StaticResource Hint}" />
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Exit above (V)" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding ExitAboveV}" />
+                <TextBlock Grid.Row="2" Grid.Column="2" Text="stop the search where SAG PWR exceeds this (absolute); 0 = off" Style="{StaticResource Hint}" />
+            </Grid>
 
             <!-- ===== Stage 2: Y+ line-scan fallback ===== -->
             <TextBlock Text="Stage 2 — Y+ line scan" Style="{StaticResource SectionHeader}" />
@@ -122,7 +148,7 @@
 
                 <TextBlock Grid.Row="2" Grid.Column="0" Text="Max grid nodes" Style="{StaticResource FieldLabel}" />
                 <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding MaxGridNodes}" />
-                <TextBlock Grid.Row="2" Grid.Column="2" Text="runaway-sweep cap: Y rows × (line steps + 1)" Style="{StaticResource Hint}" />
+                <TextBlock Grid.Row="2" Grid.Column="2" Text="runaway-sweep cap: Y rows × (line steps + 1); also caps Stage 1 with the Y sweep" Style="{StaticResource Hint}" />
             </Grid>
 
             <!-- ===== Detection (shared) ===== -->

@@ -6,7 +6,9 @@ namespace Horizon.Workflow.GridSearch;
 /// <list type="number">
 ///   <item><b>Stage 1</b> — a 1-D X line search: jump <see cref="LineJumpUm"/> in +X, then step
 ///         back in −X by <see cref="LineStepUm"/> for <see cref="LineSteps"/> steps, watching for
-///         the signal to clear the baseline by <see cref="DetectDeltaV"/> and then crest.</item>
+///         the signal to clear the baseline by <see cref="DetectDeltaV"/> and then crest. With
+///         <see cref="LineYSweepEnabled"/>, each −X step also sweeps Y ±<see cref="LineYRangeUm"/>;
+///         any reading above <see cref="ExitAboveV"/> stops the search there.</item>
 ///   <item><b>Stage 2</b> — only if Stage 1 saw nothing: step Y+ for <see cref="GridYRows"/> rows at
 ///         <see cref="GridStepUm"/> pitch and run a Stage-1-style X line scan at each row, stopping at
 ///         the first row that clears the detect level so the caller can hand off to the hill climber.</item>
@@ -29,6 +31,22 @@ public sealed class GridSearchConfig
     public int LineSteps { get; set; } = 24;
     /// <summary>Index of the line-scan axis into the 6-DOF pose (X,Y,Z,U,V,W). Default X.</summary>
     public int LineAxisIndex { get; set; }
+
+    /// <summary>
+    /// When true, every −X step of Stage 1 is followed by a Y sweep: ±<see cref="LineYRangeUm"/>
+    /// about the row's Y at <see cref="LineYStepUm"/> pitch (on <see cref="GridYAxisIndex"/>).
+    /// </summary>
+    public bool LineYSweepEnabled { get; set; } = true;
+    /// <summary>Half-width of the per-X-step Y sweep (µm): the sweep covers −this … +this.</summary>
+    public double LineYRangeUm { get; set; } = 50.0;
+    /// <summary>Y pitch of the per-X-step sweep (µm).</summary>
+    public double LineYStepUm { get; set; } = 10.0;
+
+    /// <summary>
+    /// Absolute stop level (V): the moment any search reading exceeds this, the search ends and
+    /// parks at that point (signal found → hill-climb hand-off). 0 disables the early stop.
+    /// </summary>
+    public double ExitAboveV { get; set; } = 0.1;
 
     // ---- Stage 2: Y+ line-scan fallback ----
 
@@ -92,6 +110,9 @@ public sealed class GridSearchConfig
 
     public static GridSearchConfig Default => new();
 
+    /// <summary>Y sweep points on each side of centre: ⌊<see cref="LineYRangeUm"/> / <see cref="LineYStepUm"/>⌋ (50/10 → 5).</summary>
+    public int LineYHalfSteps => (int)Math.Floor((LineYRangeUm / LineYStepUm) + 1e-9);
+
     public GridSearchConfig Clone() => new()
     {
         Stage1Enabled = Stage1Enabled,
@@ -100,6 +121,10 @@ public sealed class GridSearchConfig
         LineStepUm = LineStepUm,
         LineSteps = LineSteps,
         LineAxisIndex = LineAxisIndex,
+        LineYSweepEnabled = LineYSweepEnabled,
+        LineYRangeUm = LineYRangeUm,
+        LineYStepUm = LineYStepUm,
+        ExitAboveV = ExitAboveV,
         GridYRows = GridYRows,
         GridStepUm = GridStepUm,
         GridYAxisIndex = GridYAxisIndex,
@@ -121,6 +146,18 @@ public sealed class GridSearchConfig
         if (LineJumpUm <= 0) throw new ArgumentException("LineJumpUm must be positive.");
         if (LineStepUm <= 0) throw new ArgumentException("LineStepUm must be positive.");
         if (LineSteps < 1) throw new ArgumentException("LineSteps must be at least 1.");
+        if (LineYSweepEnabled)
+        {
+            if (LineYStepUm <= 0) throw new ArgumentException("LineYStepUm must be positive.");
+            if (LineYRangeUm < LineYStepUm) throw new ArgumentException("LineYRangeUm must be at least LineYStepUm.");
+            // Stage-1 node count with the sweep: apex + LineSteps × (centre + 2·half-steps).
+            long stage1Nodes = 1 + ((long)LineSteps * (1 + (2 * LineYHalfSteps)));
+            if (stage1Nodes > MaxGridNodes)
+                throw new ArgumentException(
+                    $"Stage 1 with Y sweep = {stage1Nodes} nodes exceeds the {MaxGridNodes}-node cap — " +
+                    "reduce line steps / Y range or raise the cap.");
+        }
+        if (ExitAboveV < 0) throw new ArgumentException("ExitAboveV must be ≥ 0 (0 disables the early stop).");
         if (GridYRows < 1) throw new ArgumentException("GridYRows must be at least 1.");
         if (GridStepUm <= 0) throw new ArgumentException("GridStepUm must be positive.");
         if (MaxGridNodes < 1) throw new ArgumentException("MaxGridNodes must be at least 1.");
