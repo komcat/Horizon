@@ -35,6 +35,13 @@
             <SolidColorBrush x:Key="Crosshair" Color="#CCFFD500" />
             <SolidColorBrush x:Key="Roi"       Color="#FFD500" />
 
+            <!-- Fixed operator-prompt colours (SerialEntryWindow / OperatorPromptWindow) —
+                 a solid blue popup so a run prompt stands out from the page behind it. -->
+            <SolidColorBrush x:Key="PromptBg"    Color="#0D47A1" />
+            <SolidColorBrush x:Key="PromptEdge"  Color="#90CAF9" />
+            <SolidColorBrush x:Key="PromptTitle" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="PromptText"  Color="#E3F2FD" />
+
             <!-- Raised "3D" button: a top-lit gradient face (system ControlLightLight → Control
                  bevel shades) with a soft drop shadow, a 1px ControlDark edge, an accent-lit hover
                  that lifts the shadow, and a pressed state that inverts the gradient, sinks the
