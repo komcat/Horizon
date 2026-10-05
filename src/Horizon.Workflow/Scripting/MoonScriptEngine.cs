@@ -108,8 +108,10 @@ public sealed class MoonScriptEngine
             var co = script.CreateCoroutine(function).Coroutine;
             co.AutoYieldCounter = AutoYieldInstructions;
 
+            // An auto-yield leaves the coroutine ForceSuspended (a STOP yield request leaves it
+            // Suspended) — both must be resumed, or a script ends silently after ~20k instructions.
             _ = co.Resume();
-            for (long pump = 0; co.State == CoroutineState.Suspended && pump < MaxPumps; pump++)
+            for (long pump = 0; IsSuspended(co) && pump < MaxPumps; pump++)
             {
                 if (ct.IsCancellationRequested) break;   // cooperative stop — no exception thrown
                 _ = co.Resume();
@@ -118,7 +120,7 @@ public sealed class MoonScriptEngine
             if (ct.IsCancellationRequested)
                 return ScriptRunResult.CancelledRun(output);
 
-            if (co.State == CoroutineState.Suspended)
+            if (IsSuspended(co))
                 return ScriptRunResult.Failed(
                     "script exceeded its execution budget (possible runaway loop)", null, output);
 
@@ -141,4 +143,7 @@ public sealed class MoonScriptEngine
             return ScriptRunResult.Failed(ex.DecoratedMessage ?? ex.Message, null, output);
         }
     }
+
+    private static bool IsSuspended(Coroutine co)
+        => co.State is CoroutineState.Suspended or CoroutineState.ForceSuspended;
 }
