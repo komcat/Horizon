@@ -184,6 +184,67 @@ public sealed class ACSMotionController : IMotionController
         catch { return 0; }
     }
 
+    public bool SetAxisEnabled(string axis, bool enabled)
+    {
+        if (!_connected || !_axisMap.TryGetValue(axis, out var acsAxis)) return false;
+        try
+        {
+            if (enabled) _api.Enable(acsAxis);
+            else _api.Disable(acsAxis);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "[Motion] ACS '{Device}' {Op} axis {Axis} threw",
+                DeviceName, enabled ? "Enable" : "Disable", axis);
+            return false;
+        }
+    }
+
+    public int? GetEnabledMask()
+    {
+        if (!_connected) return null;
+        try
+        {
+            int mask = 0;
+            for (int i = 0; i < AxisNames.Count; i++)
+            {
+                if (!_axisMap.TryGetValue(AxisNames[i], out var acsAxis)) continue;
+                if ((_api.GetMotorState(acsAxis) & MotorStates.ACSC_MST_ENABLE) != 0)
+                    mask |= 1 << i;
+            }
+            return mask;
+        }
+        catch { return null; }
+    }
+
+    // Transaction sends the line exactly as typed in the SPiiPlus terminal and returns the
+    // reply. The controller answers a rejected command with "?<error code>" (the library may
+    // also throw) — both are reported as failure with the reply/exception text.
+    public bool SendTerminalCommand(string command, out string reply)
+    {
+        reply = "";
+        if (!_connected) { reply = "not connected"; return false; }
+        try
+        {
+            reply = (_api.Transaction(command) ?? "").Trim();
+            return !reply.StartsWith('?');
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "[Motion] ACS '{Device}' terminal '{Command}' threw", DeviceName, command);
+            reply = ex.Message;
+            return false;
+        }
+    }
+
+    public bool? IsBufferRunning(int buffer)
+    {
+        if (!_connected || buffer < 0) return null;
+        try { return (_api.GetProgramState((ProgramBuffer)buffer) & ProgramStates.ACSC_PST_RUN) != 0; }
+        catch { return null; }
+    }
+
     private void WaitForMotionComplete(Axis axis, int timeoutMs = 30000)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();

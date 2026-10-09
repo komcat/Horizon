@@ -6,6 +6,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -49,8 +50,77 @@
             </StackPanel>
         </Border>
 
+        <!-- ACS-only: axis enable, program buffer run/stop, Z park move -->
+        <Border Grid.Row="2" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Padding="12,8"
+                Visibility="{Binding IsAcs, Converter={StaticResource BoolToVis}}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Axes" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                <Button Content="Enable all" Height="26" Padding="10,0" Margin="8,0,6,0"
+                        Command="{Binding EnableAllCommand}" />
+                <Button Content="Disable all" Height="26" Padding="10,0" Margin="0,0,24,0"
+                        Command="{Binding DisableAllCommand}" />
+
+                <TextBlock Text="{Binding BufferLabel}" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                <Ellipse Width="12" Height="12" Margin="8,0,4,0" VerticalAlignment="Center">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Fill" Value="{StaticResource Subtle}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding BufferRunning}" Value="True">
+                                    <Setter Property="Fill" Value="{StaticResource Ok}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
+                <TextBlock Text="{Binding BufferStateText}" Foreground="{StaticResource Text}"
+                           Width="60" VerticalAlignment="Center" />
+                <Button Content="{Binding RunBufferText}" Height="26" Padding="10,0" Margin="0,0,6,0"
+                        Command="{Binding RunBufferCommand}"
+                        ToolTip="{Binding RunBufferTip}" />
+                <Button Content="{Binding StopBufferText}" Height="26" Padding="10,0" Margin="0,0,24,0"
+                        FontWeight="Bold" Foreground="White" Background="{StaticResource Danger}" BorderThickness="0"
+                        Command="{Binding StopBufferCommand}"
+                        ToolTip="{Binding StopBufferTip}" />
+
+                <Button Content="{Binding MoveZText}" Height="26" Padding="10,0"
+                        Command="{Binding MoveZCommand}"
+                        ToolTip="Absolute move of the Z axis" />
+            </StackPanel>
+        </Border>
+
+        <!-- PI-only: hexapod referencing (FRF, all axes) -->
+        <Border Grid.Row="2" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Padding="12,8"
+                Visibility="{Binding IsPi, Converter={StaticResource BoolToVis}}">
+            <StackPanel Orientation="Horizontal">
+                <Ellipse Width="12" Height="12" Margin="0,0,6,0" VerticalAlignment="Center">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Fill" Value="{StaticResource Subtle}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsReferenced}" Value="True">
+                                    <Setter Property="Fill" Value="{StaticResource Ok}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsReferenced}" Value="False">
+                                    <Setter Property="Fill" Value="{StaticResource Danger}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Referencing}" Value="True">
+                                    <Setter Property="Fill" Value="{StaticResource Warn}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
+                <TextBlock Text="{Binding ReferenceStateText}" Foreground="{StaticResource Text}"
+                           Width="110" VerticalAlignment="Center" />
+                <Button Content="Reference" Height="26" Padding="12,0"
+                        Command="{Binding ReferenceCommand}"
+                        ToolTip="Reference every hexapod axis (FRF), then restore the configured pivot point. STOP aborts." />
+            </StackPanel>
+        </Border>
+
         <!-- Per-axis position + jog -->
-        <ItemsControl Grid.Row="2" ItemsSource="{Binding Axes}" Margin="0,8,0,0">
+        <ItemsControl Grid.Row="3" ItemsSource="{Binding Axes}" Margin="0,8,0,0">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
                     <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Padding="12,6">
@@ -63,6 +133,37 @@
                                     FontSize="16" Command="{Binding JogNegativeCommand}" />
                             <Button Content="+" Width="44" Height="28"
                                     FontSize="16" Command="{Binding JogPositiveCommand}" />
+                            <!-- Absolute move to a typed target — hexapod rows -->
+                            <StackPanel Orientation="Horizontal" Margin="24,0,0,0"
+                                        Visibility="{Binding ShowAbsoluteMove, Converter={StaticResource BoolToVis}}">
+                                <TextBox Width="90" Height="26" VerticalContentAlignment="Center" Margin="0,0,6,0"
+                                         FontFamily="Consolas"
+                                         Text="{Binding TargetText, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="Absolute target for this axis" />
+                                <Button Content="Move" Width="64" Height="28"
+                                        Command="{Binding MoveAbsoluteCommand}"
+                                        ToolTip="Move this axis to the absolute target" />
+                            </StackPanel>
+                            <!-- Enable state + toggle — only for controllers that report it (ACS) -->
+                            <StackPanel Orientation="Horizontal" Margin="24,0,0,0"
+                                        Visibility="{Binding HasEnable, Converter={StaticResource BoolToVis}}">
+                                <Ellipse Width="12" Height="12" Margin="0,0,6,0" VerticalAlignment="Center">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Fill" Value="{StaticResource Danger}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsEnabled}" Value="True">
+                                                    <Setter Property="Fill" Value="{StaticResource Ok}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <TextBlock Text="{Binding EnableText}" Foreground="{StaticResource Text}"
+                                           Width="64" VerticalAlignment="Center" />
+                                <Button Content="{Binding ToggleText}" Width="72" Height="28"
+                                        Command="{Binding ToggleEnableCommand}" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </DataTemplate>
@@ -70,7 +171,7 @@
         </ItemsControl>
 
         <!-- Named positions (active product) — each row recalls its position via Layer 2. -->
-        <Grid Grid.Row="3" Margin="0,12,0,0">
+        <Grid Grid.Row="4" Margin="0,12,0,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />

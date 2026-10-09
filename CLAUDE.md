@@ -264,6 +264,9 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   `faam_psu_panel.json` (Run-page PSU channels shown, per supply),
   `faam_psu_defaults.json` (per supply/channel V + I-limit the Run-page PSU ON button
   applies via a verified `PsuPowerUp`, default CV 3.3 V / 1.0 A; edited on Machine › Settings),
+  `faam_hexapod_pivot.json` (per PI hexapod pivot R/S/T, default -14.52/0/111; the C-887 resets
+  it to 0,0,0 at power-down, so `EngineHost` writes it back after connect and after a Reference
+  whenever the controller's differs; edited on Machine › Settings),
   `faam_run_layout.json` (Run-page camera-column splitter width),
   `faam_run_durations.json` (per product/program top-level block timings from earlier runs —
   weights the Run-page progress bar by time and estimates blocks that report no progress;

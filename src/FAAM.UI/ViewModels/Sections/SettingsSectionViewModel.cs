@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Horizon.Common;
+using Horizon.Engine;
 using FAAM.UI.Mvvm;
 
 namespace FAAM.UI.ViewModels.Sections;
@@ -56,6 +57,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
         AddUserCommand = new RelayCommand(AddUser);
         DeleteUserCommand = new RelayCommand(DeleteUser);
         ResetPsuSetpointsCommand = new RelayCommand(ResetPsuSetpoints);
+        ResetPivotsCommand = new RelayCommand(ResetPivots);
         RefreshUsers();
         // The Engineer › Find First Light tab also edits this flag — pick up its saves so our Save doesn't revert it.
         _store.Changed += s => AutoVisionUCorrection = s.FindFirstLight.AutoVisionUCorrection;
@@ -182,6 +184,55 @@ public sealed class SettingsSectionViewModel : ObservableObject
             channels[r.Channel.ToString()] = new PsuChannelSetpoint { Volts = r.Volts, Amps = r.Amps };
         }
         PsuChannelDefaults.SaveAll(all);
+    }
+
+    // --- PI hexapod pivot point (R, S, T): restored on the controller at startup ---
+
+    /// <summary>One row per PI hexapod (saved with the Save button).</summary>
+    public ObservableCollection<PivotSettingRow> PivotSettings { get; } = new();
+
+    /// <summary>True when at least one PI hexapod is configured (hides the block otherwise).</summary>
+    public bool HasHexapod => PivotSettings.Count > 0;
+
+    public RelayCommand ResetPivotsCommand { get; }
+
+    private void LoadPivotSettings()
+    {
+        PivotSettings.Clear();
+        var saved = HexapodPivotDefaults.LoadAll();
+        foreach (var device in _host.Engine.Motion.DeviceNames.Where(_host.IsPiHexapod))
+        {
+            var p = HexapodPivotDefaults.Lookup(saved, device);
+            var row = new PivotSettingRow(_host, device, p.R, p.S, p.T);
+            PivotSettings.Add(row);
+            _ = row.ReadAsync();   // show what the controller holds now
+        }
+        OnPropertyChanged(nameof(HasHexapod));
+    }
+
+    /// <summary>Puts every row back to R=-14.52 S=0 T=111 (not saved until Save).</summary>
+    private void ResetPivots()
+    {
+        foreach (var r in PivotSettings)
+        {
+            r.R = HexapodPivotDefaults.DefaultR;
+            r.S = HexapodPivotDefaults.DefaultS;
+            r.T = HexapodPivotDefaults.DefaultT;
+        }
+        Status = $"Pivot reset to R={HexapodPivotDefaults.DefaultR} S={HexapodPivotDefaults.DefaultS} T={HexapodPivotDefaults.DefaultT} — press Save to keep.";
+    }
+
+    /// <summary>Writes the pivot rows (validated by <see cref="Save"/>). Throws on I/O failure.</summary>
+    private void SavePivotSettings()
+    {
+        // Start from the file so entries for hexapods not configured right now are kept.
+        var all = HexapodPivotDefaults.LoadAll();
+        foreach (var r in PivotSettings)
+        {
+            var key = all.Keys.FirstOrDefault(k => string.Equals(k, r.Device, StringComparison.OrdinalIgnoreCase)) ?? r.Device;
+            all[key] = new HexapodPivotSetting { R = r.R, S = r.S, T = r.T };
+        }
+        HexapodPivotDefaults.SaveAll(all);
     }
 
     // --- Machine identity: stamped onto every DUT run (see Session / OperatorContext) ---
@@ -331,6 +382,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
         CameraNeedleDebounceMs = cn.OutputDebounceMs;
 
         LoadPsuSetpoints();
+        LoadPivotSettings();
     }
 
     private void Save()
@@ -341,6 +393,13 @@ public sealed class SettingsSectionViewModel : ObservableObject
         if (psuError != null)
         {
             Status = $"Not saved — {psuError.Device} CH{psuError.Channel}: voltage must be ≥ 0 and current limit > 0.";
+            return;
+        }
+        var pivotError = PivotSettings.FirstOrDefault(r =>
+            !HexapodPivotDefaults.IsValid(new HexapodPivotSetting { R = r.R, S = r.S, T = r.T }));
+        if (pivotError != null)
+        {
+            Status = $"Not saved — {pivotError.Device} pivot: R, S and T must be numbers.";
             return;
         }
 
@@ -371,7 +430,8 @@ public sealed class SettingsSectionViewModel : ObservableObject
                 _cameraNeedleOffsetX, _cameraNeedleOffsetY, _cameraNeedleApproachMm,
                 _cameraNeedleTouchZAdjustMm, _cameraNeedleDwellMs, _cameraNeedleDebounceMs);
             SavePsuSetpoints();
-            Status = "Saved to app_settings.json + faam_psu_defaults.json";
+            SavePivotSettings();
+            Status = "Saved to app_settings.json + faam_psu_defaults.json + faam_hexapod_pivot.json";
         }
         catch (Exception ex)
         {
@@ -411,6 +471,66 @@ public sealed class SettingsSectionViewModel : ObservableObject
                 values.Add(v * unitToMm);
         values.Sort();
         return values.Count > 0 ? values.ToArray() : fallback;
+    }
+}
+
+/// <summary>
+/// One editable Settings row: a PI hexapod's configured pivot point (R, S, T), what the
+/// controller holds right now, and Read / Apply buttons. Apply writes the typed values to
+/// the controller immediately; Save (section-level) makes them the startup default.
+/// </summary>
+public sealed class PivotSettingRow : ObservableObject
+{
+    private readonly EngineHost _host;
+    private double _r;
+    private double _s;
+    private double _t;
+    private string _controllerText = "—";
+
+    public PivotSettingRow(EngineHost host, string device, double r, double s, double t)
+    {
+        _host = host;
+        Device = device;
+        _r = r;
+        _s = s;
+        _t = t;
+        ReadCommand = new AsyncRelayCommand(ReadAsync);
+        ApplyCommand = new AsyncRelayCommand(ApplyAsync);
+    }
+
+    public string Device { get; }
+
+    public double R { get => _r; set => SetField(ref _r, value); }
+    public double S { get => _s; set => SetField(ref _s, value); }
+    public double T { get => _t; set => SetField(ref _t, value); }
+
+    /// <summary>Pivot last read from the controller, or the read / apply outcome.</summary>
+    public string ControllerText { get => _controllerText; private set => SetField(ref _controllerText, value); }
+
+    public AsyncRelayCommand ReadCommand { get; }
+    public AsyncRelayCommand ApplyCommand { get; }
+
+    public async Task ReadAsync()
+    {
+        if (!_host.Engine.Motion.IsConnected(Device))
+        {
+            ControllerText = "controller: not connected";
+            return;
+        }
+        var r = await _host.Engine.Motion.GetPivotAsync(Device).ConfigureAwait(true);
+        ControllerText = r.IsSuccess ? $"controller: {r.Value}" : $"controller: {r.Message}";
+    }
+
+    private async Task ApplyAsync()
+    {
+        var pivot = new PivotPoint(_r, _s, _t);
+        var r = await _host.Engine.Motion.SetPivotAsync(Device, pivot).ConfigureAwait(true);
+        if (!r.IsSuccess)
+        {
+            ControllerText = r.Message;
+            return;
+        }
+        await ReadAsync().ConfigureAwait(true);
     }
 }
 

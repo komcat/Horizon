@@ -10,10 +10,30 @@ namespace FAAM.UI.ViewModels.Sections;
 /// The Machine page's Motion section — a device picker, live per-axis position,
 /// jog controls with a shared step, a device-velocity setter, and a prominent
 /// Stop. Refreshed from the engine's cached <c>MotionDeviceState</c> by the
-/// shared sampler each tick.
+/// shared sampler each tick. ACS devices (gantry-main) also get per-axis
+/// enable/disable, Run/Stop of program buffer <see cref="ProgramBuffer"/>, and a
+/// one-click absolute move of Z to <see cref="ZTarget"/>.
 /// </summary>
 public sealed class MotionSectionViewModel : ObservableObject
 {
+    /// <summary>ACSPL+ buffer driven by the Run / Stop buffer buttons.</summary>
+    public const int ProgramBuffer = 1;
+
+    /// <summary>Label in <see cref="ProgramBuffer"/> the Run button starts from.</summary>
+    public const string ProgramLabel = "STARTUP";
+
+    /// <summary>Terminal line sent by Run — same as typing it in the SPiiPlus terminal.</summary>
+    public static readonly string RunBufferCommandText = $"START {ProgramBuffer}, {ProgramLabel}";
+
+    /// <summary>Terminal line sent by Stop buffer.</summary>
+    public static readonly string StopBufferCommandText = $"STOP {ProgramBuffer}";
+
+    /// <summary>Absolute Z target (mm) of the Move Z button.</summary>
+    public const double ZTarget = 25.0;
+
+    // Buffer state is not in the cached device state — read it on demand at most this often.
+    private const long BufferPollMs = 500;
+
     private readonly EngineHost _host;
     private string? _selectedDevice;
     private bool _connected;
@@ -22,6 +42,14 @@ public sealed class MotionSectionViewModel : ObservableObject
     private double _velocity = 10.0;
     private string _status = "—";
     private string _newPositionName = string.Empty;
+    private bool _isAcs;
+    private bool? _bufferRunning;
+    private bool _bufferPollInFlight;
+    private long _lastBufferPoll;
+    private bool _isPi;
+    private bool? _isReferenced;
+    private bool _referencing;
+    private CancellationTokenSource? _referenceCts;
 
     public MotionSectionViewModel(EngineHost host)
     {
@@ -32,6 +60,13 @@ public sealed class MotionSectionViewModel : ObservableObject
         ApplyVelocityCommand = new AsyncRelayCommand(ApplyVelocityAsync, () => _selectedDevice != null);
         SaveNewPositionCommand = new AsyncRelayCommand(SaveNewPositionAsync, () => _selectedDevice != null);
         AddPositionCommand = new RelayCommand(AddPosition, () => _selectedDevice != null);
+        EnableAllCommand = new AsyncRelayCommand(() => SetAllEnabledAsync(true), () => _isAcs && _connected);
+        DisableAllCommand = new AsyncRelayCommand(() => SetAllEnabledAsync(false), () => _isAcs && _connected);
+        RunBufferCommand = new AsyncRelayCommand(RunBufferAsync, () => _isAcs && _connected && _bufferRunning != true);
+        // Safety stop: available whenever connected, whatever the last-read buffer state.
+        StopBufferCommand = new AsyncRelayCommand(StopBufferAsync, () => _isAcs && _connected);
+        MoveZCommand = new AsyncRelayCommand(MoveZAsync, () => _isAcs && _connected && HasZ);
+        ReferenceCommand = new AsyncRelayCommand(ReferenceAsync, () => _isPi && _connected && !_referencing);
         RebuildAxes();
     }
 
@@ -52,7 +87,15 @@ public sealed class MotionSectionViewModel : ObservableObject
         set { if (SetField(ref _selectedDevice, value)) RebuildAxes(); }
     }
 
-    public bool Connected { get => _connected; private set => SetField(ref _connected, value); }
+    public bool Connected
+    {
+        get => _connected;
+        private set
+        {
+            if (!SetField(ref _connected, value)) return;
+            RaiseAcsCommands();
+        }
+    }
     public bool IsMoving { get => _isMoving; private set => SetField(ref _isMoving, value); }
 
     /// <summary>Relative distance applied by an axis jog −/+.</summary>
@@ -79,22 +122,130 @@ public sealed class MotionSectionViewModel : ObservableObject
         set => SetField(ref _newPositionName, value);
     }
 
+    /// <summary>True for ACS controllers — shows the enable / buffer / Move Z row.</summary>
+    public bool IsAcs
+    {
+        get => _isAcs;
+        private set
+        {
+            if (!SetField(ref _isAcs, value)) return;
+            RaiseAcsCommands();
+        }
+    }
+
+    /// <summary>Whether the selected device has an axis named Z (for the Move Z button).</summary>
+    public bool HasZ => Axes.Any(a => a.Name.Equals("Z", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Last read state of <see cref="ProgramBuffer"/>; null = unknown.</summary>
+    public bool? BufferRunning
+    {
+        get => _bufferRunning;
+        private set
+        {
+            if (!SetField(ref _bufferRunning, value)) return;
+            OnPropertyChanged(nameof(BufferStateText));
+            RunBufferCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    public string BufferStateText => _bufferRunning switch
+    {
+        true => "Running",
+        false => "Stopped",
+        null => "—",
+    };
+
+    public string RunBufferText => $"Run buffer {ProgramBuffer}";
+
+    public string StopBufferText => $"Stop buffer {ProgramBuffer}";
+
+    public string RunBufferTip => $"Sends \"{RunBufferCommandText}\" to the controller terminal";
+
+    public string StopBufferTip => $"Safety stop: sends \"{StopBufferCommandText}\", then stops all motion on this device";
+
+    public string BufferLabel => $"Buffer {ProgramBuffer}";
+
+    public string MoveZText => $"Move Z → {ZTarget:0.###} mm";
+
+    /// <summary>True for PI hexapods — shows the Reference row.</summary>
+    public bool IsPi
+    {
+        get => _isPi;
+        private set
+        {
+            if (!SetField(ref _isPi, value)) return;
+            ReferenceCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    /// <summary>Polled "every axis referenced" state; null = unknown / not reported.</summary>
+    public bool? IsReferenced
+    {
+        get => _isReferenced;
+        private set
+        {
+            if (!SetField(ref _isReferenced, value)) return;
+            OnPropertyChanged(nameof(ReferenceStateText));
+        }
+    }
+
+    /// <summary>True while a reference move started here is in progress.</summary>
+    public bool Referencing
+    {
+        get => _referencing;
+        private set
+        {
+            if (!SetField(ref _referencing, value)) return;
+            OnPropertyChanged(nameof(ReferenceStateText));
+            ReferenceCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    public string ReferenceStateText => _referencing
+        ? "Referencing…"
+        : _isReferenced switch
+        {
+            true => "Referenced",
+            false => "Not referenced",
+            null => "—",
+        };
+
+    public AsyncRelayCommand ReferenceCommand { get; }
+
     public AsyncRelayCommand StopCommand { get; }
+    public AsyncRelayCommand EnableAllCommand { get; }
+    public AsyncRelayCommand DisableAllCommand { get; }
+    public AsyncRelayCommand RunBufferCommand { get; }
+    public AsyncRelayCommand StopBufferCommand { get; }
+    public AsyncRelayCommand MoveZCommand { get; }
     public AsyncRelayCommand ApplyVelocityCommand { get; }
     public AsyncRelayCommand SaveNewPositionCommand { get; }
     public RelayCommand AddPositionCommand { get; }
 
     private void RebuildAxes()
     {
+        foreach (var a in Axes) a.CommandFailed -= OnAxisCommandFailed;
         Axes.Clear();
+        BufferRunning = null;
         var device = _selectedDevice;
-        if (device == null) return;
-
-        var info = _host.Engine.Motion.GetDevice(device);
-        if (info == null) return;
+        var info = device == null ? null : _host.Engine.Motion.GetDevice(device);
+        IsAcs = info != null && info.ControllerType.Equals("ACS", StringComparison.OrdinalIgnoreCase);
+        IsPi = info != null && info.ControllerType.Equals("PI", StringComparison.OrdinalIgnoreCase);
+        IsReferenced = null;
+        if (device == null || info == null)
+        {
+            OnPropertyChanged(nameof(HasZ));
+            return;
+        }
 
         foreach (var axis in info.Axes)
-            Axes.Add(new MotionAxisViewModel(_host, device, axis, () => _jogStep));
+        {
+            var vm = new MotionAxisViewModel(_host, device, axis, () => _jogStep, showAbsoluteMove: _isPi);
+            vm.CommandFailed += OnAxisCommandFailed;
+            Axes.Add(vm);
+        }
+        OnPropertyChanged(nameof(HasZ));
+        MoveZCommand.RaiseCanExecuteChanged();
 
         RebuildPositions();
     }
@@ -130,12 +281,166 @@ public sealed class MotionSectionViewModel : ObservableObject
         var components = state.Position.Components;
         for (int i = 0; i < Axes.Count && i < components.Count; i++)
             Axes[i].Apply(components[i]);
+
+        // Axis index aligns with the EnabledMask bits; null mask = not reported (PI).
+        var mask = Connected ? state.EnabledMask : null;
+        for (int i = 0; i < Axes.Count; i++)
+            Axes[i].ApplyEnabled(mask.HasValue ? (mask.Value & (1 << i)) != 0 : null);
+
+        if (_isAcs && Connected) PollBuffer(device);
+        else BufferRunning = null;
+
+        IsReferenced = Connected ? state.IsReferenced : null;
+    }
+
+    /// <summary>
+    /// References the hexapod (FRF, all axes) after an operator confirm, then re-checks
+    /// the pivot point. STOP cancels it.
+    /// </summary>
+    private async Task ReferenceAsync()
+    {
+        var device = _selectedDevice;
+        if (device == null) return;
+        if (MessageBox.Show(
+                $"Reference {device}? Every axis moves to its reference switch and back — " +
+                "make sure the gripper and tooling are clear.",
+                "Reference hexapod", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+            return;
+
+        using var cts = new CancellationTokenSource();
+        _referenceCts = cts;
+        Referencing = true;
+        Status = $"Referencing {device}…";
+        try
+        {
+            var r = await _host.Engine.Motion.ReferenceAsync(device, cts.Token).ConfigureAwait(true);
+            if (!r.IsSuccess)
+            {
+                Status = r.Message;
+                return;
+            }
+            var pivot = await _host.EnsureHexapodPivotAsync(device).ConfigureAwait(true);
+            Status = pivot.IsSuccess ? $"{device} referenced. {pivot.Message}" : $"{device} referenced; {pivot.Message}";
+        }
+        catch (OperationCanceledException)
+        {
+            Status = $"Reference {device} — cancelled.";
+        }
+        finally
+        {
+            _referenceCts = null;
+            Referencing = false;
+        }
+    }
+
+    /// <summary>
+    /// Reads the buffer state off the UI thread (the facet call is async), at most
+    /// every <see cref="BufferPollMs"/> and never overlapping a previous read.
+    /// </summary>
+    private async void PollBuffer(string device)
+    {
+        var now = Environment.TickCount64;
+        if (_bufferPollInFlight || now - _lastBufferPoll < BufferPollMs) return;
+        _bufferPollInFlight = true;
+        _lastBufferPoll = now;
+        try
+        {
+            var r = await _host.Engine.Motion.IsBufferRunningAsync(device, ProgramBuffer).ConfigureAwait(true);
+            // Ignore a late answer for a device the operator has since switched away from.
+            if (device == _selectedDevice) BufferRunning = r.IsSuccess ? r.Value : null;
+        }
+        catch (Exception)
+        {
+            BufferRunning = null;
+        }
+        finally
+        {
+            _bufferPollInFlight = false;
+        }
+    }
+
+    private void RaiseAcsCommands()
+    {
+        ReferenceCommand.RaiseCanExecuteChanged();
+        EnableAllCommand.RaiseCanExecuteChanged();
+        DisableAllCommand.RaiseCanExecuteChanged();
+        RunBufferCommand.RaiseCanExecuteChanged();
+        StopBufferCommand.RaiseCanExecuteChanged();
+        MoveZCommand.RaiseCanExecuteChanged();
+    }
+
+    private void OnAxisCommandFailed(string message) => Status = message;
+
+    private async Task SetAllEnabledAsync(bool enabled)
+    {
+        var device = _selectedDevice;
+        if (device == null) return;
+        if (!enabled && MessageBox.Show(
+                $"Disable ALL axes of {device}? The servos release — an unbraked axis may drift or drop.",
+                "Disable axes", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+            return;
+
+        foreach (var axis in Axes.Select(a => a.Name).ToList())
+        {
+            var r = await _host.Engine.Motion.SetAxisEnabledAsync(device, axis, enabled).ConfigureAwait(true);
+            if (!r.IsSuccess)
+            {
+                Status = r.Message;
+                return;
+            }
+        }
+        Status = enabled ? "All axes enabled" : "All axes disabled";
+    }
+
+    private async Task RunBufferAsync()
+    {
+        var device = _selectedDevice;
+        if (device == null) return;
+
+        var r = await _host.Engine.Motion.SendTerminalCommandAsync(device, RunBufferCommandText).ConfigureAwait(true);
+        Status = r.IsSuccess ? $"Sent \"{RunBufferCommandText}\"" : r.Message;
+        _lastBufferPoll = 0; // re-read the state on the next tick
+    }
+
+    /// <summary>
+    /// Safety stop: halts the buffer program (<c>STOP 1</c>), then kills the device's motion
+    /// so a move the program already commanded doesn't run on. Motion is stopped even if the
+    /// STOP command itself fails.
+    /// </summary>
+    private async Task StopBufferAsync()
+    {
+        var device = _selectedDevice;
+        if (device == null) return;
+
+        var stop = await _host.Engine.Motion.SendTerminalCommandAsync(device, StopBufferCommandText).ConfigureAwait(true);
+        var kill = await _host.Engine.Motion.StopAsync(device).ConfigureAwait(true);
+        Status = (stop.IsSuccess, kill.IsSuccess) switch
+        {
+            (true, true) => $"Sent \"{StopBufferCommandText}\"; motion stopped",
+            (false, true) => $"{stop.Message} — motion stopped",
+            (true, false) => $"Sent \"{StopBufferCommandText}\"; {kill.Message}",
+            _ => $"{stop.Message}; {kill.Message}",
+        };
+        _lastBufferPoll = 0;
+    }
+
+    private async Task MoveZAsync()
+    {
+        var device = _selectedDevice;
+        if (device == null) return;
+        var axis = Axes.FirstOrDefault(a => a.Name.Equals("Z", StringComparison.OrdinalIgnoreCase))?.Name;
+        if (axis == null) return;
+
+        Status = $"Moving Z → {ZTarget:0.###} mm…";
+        var r = await _host.Engine.Motion.MoveAbsoluteAsync(device, axis, ZTarget).ConfigureAwait(true);
+        Status = r.IsSuccess ? $"Z at {ZTarget:0.###} mm" : r.Message;
     }
 
     private async Task StopAsync()
     {
         var device = _selectedDevice;
         if (device == null) return;
+        _referenceCts?.Cancel();   // ends a reference wait started here (the engine also stops the device)
         var result = await _host.Engine.Motion.StopAsync(device).ConfigureAwait(true);
         Status = result.IsSuccess ? "Stopped" : result.Message;
     }

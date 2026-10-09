@@ -18,6 +18,7 @@ internal sealed class MotionFacet : IMotionFacet, IAsyncDisposable
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
     private const int MoveTimeoutMs = 60_000;
+    private const int ReferenceTimeoutMs = 180_000;
 
     private readonly UnifiedMotionManager _manager;
     private readonly Action<HardwareStatusChanged> _emitStatus;
@@ -184,6 +185,145 @@ internal sealed class MotionFacet : IMotionFacet, IAsyncDisposable
         return Result.Ok();
     }
 
+    public async Task<Result> SetAxisEnabledAsync(string device, string axis, bool enabled)
+    {
+        var ctrl = _manager.GetController(device);
+        if (ctrl == null)
+            return Result.Fail(ErrorCode.MotionDeviceNotFound, $"Motion device '{device}' not found.");
+        if (!IsAcs(device))
+            return Result.Fail(ErrorCode.NotSupported, $"'{device}' has no per-axis enable.");
+
+        var ok = await WithLock(device, CancellationToken.None, () => ctrl.SetAxisEnabled(axis, enabled))
+            .ConfigureAwait(false);
+        _log(ok ? LogLevel.Info : LogLevel.Warning,
+            $"{(enabled ? "Enable" : "Disable")} {device}.{axis} — {(ok ? "ok" : "failed")}.");
+        return ok
+            ? Result.Ok()
+            : Result.Fail(ErrorCode.MotionAxisError, $"{(enabled ? "Enable" : "Disable")} failed: {device}.{axis}.");
+    }
+
+    public async Task<Result<bool>> IsBufferRunningAsync(string device, int buffer)
+    {
+        var ctrl = _manager.GetController(device);
+        if (ctrl == null)
+            return Result<bool>.Fail(ErrorCode.MotionDeviceNotFound, $"Motion device '{device}' not found.");
+        if (!IsAcs(device))
+            return Result<bool>.Fail(ErrorCode.NotSupported, $"'{device}' has no program buffers.");
+
+        var running = await WithLock(device, CancellationToken.None, () => ctrl.IsBufferRunning(buffer))
+            .ConfigureAwait(false);
+        return running.HasValue
+            ? Result<bool>.Ok(running.Value)
+            : Result<bool>.Fail(ErrorCode.MotionCommunicationError, $"Buffer {buffer} state unreadable on '{device}'.");
+    }
+
+    public async Task<Result<string>> SendTerminalCommandAsync(string device, string command)
+    {
+        var ctrl = _manager.GetController(device);
+        if (ctrl == null)
+            return Result<string>.Fail(ErrorCode.MotionDeviceNotFound, $"Motion device '{device}' not found.");
+        if (!IsAcs(device))
+            return Result<string>.Fail(ErrorCode.NotSupported, $"'{device}' has no command terminal.");
+        if (string.IsNullOrWhiteSpace(command))
+            return Result<string>.Fail(ErrorCode.InvalidParameter, "Empty terminal command.");
+
+        var (ok, reply) = await WithLock(device, CancellationToken.None, () =>
+        {
+            var sent = ctrl.SendTerminalCommand(command, out var r);
+            return (sent, r);
+        }).ConfigureAwait(false);
+        _log(ok ? LogLevel.Info : LogLevel.Warning,
+            $"Terminal {device}: '{command}' — {(ok ? "ok" : "failed")}{(reply.Length > 0 ? $" ({reply})" : "")}.");
+        return ok
+            ? Result<string>.Ok(reply)
+            : Result<string>.Fail(ErrorCode.OperationFailed, $"'{command}' failed on '{device}': {reply}".TrimEnd(' ', ':'));
+    }
+
+    public async Task<Result> ReferenceAsync(string device, CancellationToken ct = default)
+    {
+        var ctrl = _manager.GetController(device);
+        if (ctrl == null)
+            return Result.Fail(ErrorCode.MotionDeviceNotFound, $"Motion device '{device}' not found.");
+        if (!IsPi(device))
+            return Result.Fail(ErrorCode.NotSupported, $"'{device}' is not a PI hexapod — no reference move.");
+
+        var started = await WithLock(device, ct, () => ctrl.StartReference() ? (string?)null : ctrl.GetLastErrorText() ?? "")
+            .ConfigureAwait(false);
+        if (started != null)
+        {
+            _log(LogLevel.Warning, $"Reference {device} — failed to start. {started}");
+            return Result.Fail(ErrorCode.MotionAxisError, $"Reference {device} — failed to start. {started}".TrimEnd());
+        }
+        _log(LogLevel.Info, $"Reference {device} — started.");
+
+        // A full hexapod FRF takes tens of seconds; poll until all axes report referenced and still.
+        var deadline = Environment.TickCount64 + ReferenceTimeoutMs;
+        while (Environment.TickCount64 < deadline)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                await StopAsync(device).ConfigureAwait(false);
+                return Result.Fail(ErrorCode.OperationFailed, $"Reference {device} — cancelled.");
+            }
+
+            await Task.Delay(250, CancellationToken.None).ConfigureAwait(false);
+            var (referenced, moving) = await WithLock(device, CancellationToken.None,
+                () => (ctrl.IsReferenced(), _manager.IsMoving(device))).ConfigureAwait(false);
+            if (referenced == true && !moving)
+            {
+                _log(LogLevel.Info, $"Reference {device} — done.");
+                return Result.Ok();
+            }
+        }
+
+        await StopAsync(device).ConfigureAwait(false);
+        _log(LogLevel.Warning, $"Reference {device} — timed out.");
+        return Result.Fail(ErrorCode.MotionTimeout, $"Reference {device} — timed out.");
+    }
+
+    public async Task<Result<PivotPoint>> GetPivotAsync(string device)
+    {
+        var ctrl = _manager.GetController(device);
+        if (ctrl == null)
+            return Result<PivotPoint>.Fail(ErrorCode.MotionDeviceNotFound, $"Motion device '{device}' not found.");
+        if (!IsPi(device))
+            return Result<PivotPoint>.Fail(ErrorCode.NotSupported, $"'{device}' has no pivot point.");
+
+        var p = await WithLock(device, CancellationToken.None, ctrl.GetPivot).ConfigureAwait(false);
+        return p.HasValue
+            ? Result<PivotPoint>.Ok(new PivotPoint(p.Value.R, p.Value.S, p.Value.T))
+            : Result<PivotPoint>.Fail(ErrorCode.MotionCommunicationError, $"Pivot point unreadable on '{device}'.");
+    }
+
+    public async Task<Result> SetPivotAsync(string device, PivotPoint pivot)
+    {
+        var ctrl = _manager.GetController(device);
+        if (ctrl == null)
+            return Result.Fail(ErrorCode.MotionDeviceNotFound, $"Motion device '{device}' not found.");
+        if (!IsPi(device))
+            return Result.Fail(ErrorCode.NotSupported, $"'{device}' has no pivot point.");
+        if (!double.IsFinite(pivot.R) || !double.IsFinite(pivot.S) || !double.IsFinite(pivot.T))
+            return Result.Fail(ErrorCode.InvalidParameter, $"Pivot point {pivot} is not a finite coordinate.");
+
+        var error = await WithLock(device, CancellationToken.None,
+            () => ctrl.SetPivot(pivot.R, pivot.S, pivot.T) ? (string?)null : ctrl.GetLastErrorText() ?? "").ConfigureAwait(false);
+        if (error != null)
+        {
+            _log(LogLevel.Warning, $"Set pivot {device} {pivot} — failed. {error}");
+            return Result.Fail(ErrorCode.MotionAxisError, $"Set pivot {device} {pivot} failed. {error}".TrimEnd());
+        }
+        _log(LogLevel.Info, $"Set pivot {device} {pivot}.");
+        return Result.Ok();
+    }
+
+    private bool IsPi(string device)
+        => _devices.TryGetValue(device, out var info)
+           && info.ControllerType.Equals("PI", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsAcs(string device)
+        => _devices.TryGetValue(device, out var info)
+           && info.ControllerType.Equals("ACS", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Connects all motion devices and starts polling. Called by the engine during ConnectAll.</summary>
     public async Task ConnectAllInternalAsync(IProgress<string>? progress)
     {
@@ -256,8 +396,11 @@ internal sealed class MotionFacet : IMotionFacet, IAsyncDisposable
                 {
                     var p = _manager.GetCurrentPosition(name);
                     var moving = _manager.IsMoving(name);
+                    var ctrl = _manager.GetController(name);
+                    var enabled = ctrl?.GetEnabledMask();
+                    var referenced = ctrl?.IsReferenced();
                     return new MotionDeviceState(p != null, moving,
-                        p != null ? ToPosition(p) : MotionPosition.Zero);
+                        p != null ? ToPosition(p) : MotionPosition.Zero, enabled, referenced);
                 }).ConfigureAwait(false);
             }
             catch (OperationCanceledException)

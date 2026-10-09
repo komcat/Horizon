@@ -298,6 +298,53 @@ public sealed class EngineHost : IAsyncDisposable
                 await ForceAutoExposureAsync(cam).ConfigureAwait(true);
             }
         }
+
+        // The C-887 forgets its pivot point at power-down (back to 0,0,0) — put the
+        // configured one back on every connected PI hexapod.
+        foreach (var device in Engine.Motion.DeviceNames)
+        {
+            if (!IsPiHexapod(device) || !Engine.Motion.IsConnected(device)) continue;
+            progress.Report($"Motion: checking {device} pivot point…");
+            await EnsureHexapodPivotAsync(device).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>True for a PI motion device (the hexapods) — the ones with a pivot point and FRF referencing.</summary>
+    public bool IsPiHexapod(string device)
+        => string.Equals(Engine.Motion.GetDevice(device)?.ControllerType, "PI", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Reads the hexapod's pivot point and, when it differs from the configured one
+    /// (<see cref="HexapodPivotDefaults"/> — typically 0,0,0 after a controller power-down),
+    /// writes the configured value. Logged either way; failures are never fatal.
+    /// </summary>
+    public async Task<Result> EnsureHexapodPivotAsync(string device)
+    {
+        var wanted = HexapodPivotDefaults.Get(device);
+        try
+        {
+            var read = await Engine.Motion.GetPivotAsync(device).ConfigureAwait(false);
+            if (read.IsSuccess && read.Value.Matches(wanted))
+            {
+                Log.Add(new LogEntry(LogLevel.Info, DateTimeOffset.Now, "FAAM",
+                    $"{device}: pivot point {read.Value} already as configured."));
+                return Result.Ok($"Pivot already {wanted}.");
+            }
+
+            var before = read.IsSuccess ? read.Value.ToString() : $"unreadable ({read.Message})";
+            var set = await Engine.Motion.SetPivotAsync(device, wanted).ConfigureAwait(false);
+            Log.Add(new LogEntry(set.IsSuccess ? LogLevel.Info : LogLevel.Warning, DateTimeOffset.Now, "FAAM",
+                set.IsSuccess
+                    ? $"{device}: pivot point was {before} — set to configured {wanted}."
+                    : $"{device}: pivot point is {before}; setting {wanted} failed — {set.Message}"));
+            return set.IsSuccess ? Result.Ok($"Pivot set to {wanted} (was {before}).") : set;
+        }
+        catch (Exception ex)
+        {
+            Log.Add(new LogEntry(LogLevel.Warning, DateTimeOffset.Now, "FAAM",
+                $"{device}: pivot point check errored — {ex.Message}"));
+            return Result.Fail(ErrorCode.OperationFailed, ex.Message);
+        }
     }
 
     /// <summary>

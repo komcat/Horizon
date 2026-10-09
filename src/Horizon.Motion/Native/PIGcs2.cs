@@ -75,6 +75,16 @@ internal static class PIGcs2
     [DllImport(DllName, EntryPoint = "PI_qVLS")]
     internal static extern int qVLS(int iId, ref double pdVelocity);
 
+    // Pivot point (hexapod rotation centre) — axes "R S T". Volatile on the C-887:
+    // reset to 0,0,0 at controller power-up.
+    [DllImport(DllName, EntryPoint = "PI_SPI")]
+    internal static extern int SPI(int iId,
+        [MarshalAs(UnmanagedType.LPStr)] string szAxes, [MarshalAs(UnmanagedType.LPArray)] double[] pdValarray);
+
+    [DllImport(DllName, EntryPoint = "PI_qSPI")]
+    internal static extern int qSPI(int iId,
+        [MarshalAs(UnmanagedType.LPStr)] string szAxes, [MarshalAs(UnmanagedType.LPArray)] double[] pdValarray);
+
     [DllImport(DllName, EntryPoint = "PI_GetError")]
     internal static extern int GetError(int iId);
 

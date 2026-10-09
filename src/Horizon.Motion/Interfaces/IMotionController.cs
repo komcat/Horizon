@@ -45,6 +45,50 @@ public interface IMotionController
     bool SetSystemVelocity(double speed) => false;
     double GetSystemVelocity() => 0;
 
+    /// <summary>
+    /// Enables (servo on) or disables (servo off) one axis. Default: not supported
+    /// (PI controllers keep servo control internal to the hexapod).
+    /// </summary>
+    bool SetAxisEnabled(string axis, bool enabled) => false;
+
+    /// <summary>
+    /// Bit i set = axis <c>AxisNames[i]</c> is enabled. Null when the controller
+    /// does not report a per-axis enable state.
+    /// </summary>
+    int? GetEnabledMask() => null;
+
+    /// <summary>
+    /// Sends one raw controller command, as typed in the vendor terminal (ACS: e.g.
+    /// <c>START 1, STARTUP</c> / <c>STOP 1</c>). <paramref name="reply"/> carries the
+    /// controller's answer or the error text. Default: not supported.
+    /// </summary>
+    bool SendTerminalCommand(string command, out string reply)
+    {
+        reply = "not supported";
+        return false;
+    }
+
+    /// <summary>Whether a program buffer is executing; null when unsupported or unreadable.</summary>
+    bool? IsBufferRunning(int buffer) => null;
+
+    /// <summary>
+    /// Starts a reference move of every axis (PI hexapod: FRF). Non-blocking — poll
+    /// <see cref="IsReferenced"/>. Default: not supported.
+    /// </summary>
+    bool StartReference() => false;
+
+    /// <summary>True when every axis is referenced; null when unsupported or unreadable.</summary>
+    bool? IsReferenced() => null;
+
+    /// <summary>Sets the pivot point (PI hexapod R, S, T). Default: not supported.</summary>
+    bool SetPivot(double r, double s, double t) => false;
+
+    /// <summary>Reads the pivot point (PI hexapod R, S, T); null when unsupported or unreadable.</summary>
+    (double R, double S, double T)? GetPivot() => null;
+
+    /// <summary>Controller's last error as text (clears it on PI), or null when none / unsupported.</summary>
+    string? GetLastErrorText() => null;
+
     string ControllerType { get; }
     string DeviceName { get; }
     List<string> AxisNames { get; }

@@ -217,6 +217,40 @@
                     Padding="10,0" Margin="0,0,0,4" Command="{Binding ResetPsuSetpointsCommand}"
                     ToolTip="Puts every channel back to CV 3.3 V / 1.0 A — press Save to keep it" />
 
+            <!-- PI hexapod pivot point: the C-887 resets it to 0,0,0 at power-down; FAAM restores this at startup. -->
+            <StackPanel Visibility="{Binding HasHexapod, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Hexapod pivot point" Foreground="{StaticResource Text}"
+                           FontSize="14" FontWeight="SemiBold" Margin="0,14,0,4" />
+                <TextBlock Foreground="{StaticResource Subtle}" TextWrapping="Wrap" MaxWidth="760"
+                           HorizontalAlignment="Left" Margin="0,0,0,8"
+                           Text="Rotation centre (R, S, T) for U/V/W moves. The controller forgets it at power-down (0, 0, 0); at startup and after Reference, FAAM writes this value back whenever the controller's differs. Default R=-14.52 S=0 T=111. Save keeps it as the startup value; Apply writes it to the controller now (it may be refused while U/V/W are not zero)." />
+                <ItemsControl ItemsSource="{Binding PivotSettings}" Margin="0,0,0,4">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Device}" Width="140" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="R" Style="{StaticResource FieldLabel}" />
+                                <TextBox Width="80" Margin="0,0,12,8" Text="{Binding R}" />
+                                <TextBlock Text="S" Style="{StaticResource FieldLabel}" />
+                                <TextBox Width="80" Margin="0,0,12,8" Text="{Binding S}" />
+                                <TextBlock Text="T" Style="{StaticResource FieldLabel}" />
+                                <TextBox Width="80" Margin="0,0,12,8" Text="{Binding T}" />
+                                <Button Content="Read" Width="64" Height="26" Margin="0,0,6,8"
+                                        Command="{Binding ReadCommand}"
+                                        ToolTip="Read the pivot the controller holds now" />
+                                <Button Content="Apply" Width="64" Height="26" Margin="0,0,12,8"
+                                        Command="{Binding ApplyCommand}"
+                                        ToolTip="Write these R/S/T values to the controller now (does not save)" />
+                                <TextBlock Text="{Binding ControllerText}" Style="{StaticResource FieldLabel}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button Content="Reset to default (R -14.52 / S 0 / T 111)" HorizontalAlignment="Left" Height="26"
+                        Padding="10,0" Margin="0,0,0,4" Command="{Binding ResetPivotsCommand}"
+                        ToolTip="Puts every hexapod back to R=-14.52 S=0 T=111 — press Save to keep it" />
+            </StackPanel>
+
             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                 <Button Content="Save" Width="90" Height="30" Command="{Binding SaveCommand}" />
                 <Button Content="Reload" Width="90" Height="30" Margin="8,0,0,0" Command="{Binding ReloadCommand}" />

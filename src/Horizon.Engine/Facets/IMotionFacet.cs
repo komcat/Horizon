@@ -63,6 +63,39 @@ public interface IMotionFacet
     /// </summary>
     Task<Result> SetDeviceVelocityAsync(string device, double velocity);
 
+    /// <summary>
+    /// Enables (servo on) or disables (servo off) one axis. Fails with
+    /// <see cref="ErrorCode.NotSupported"/> on controllers without per-axis enable (PI).
+    /// The polled state is reported in <see cref="MotionDeviceState.EnabledMask"/>.
+    /// </summary>
+    Task<Result> SetAxisEnabledAsync(string device, string axis, bool enabled);
+
+    /// <summary>
+    /// Sends one raw command line to an ACS controller, exactly as typed in the SPiiPlus
+    /// terminal (e.g. <c>START 1, STARTUP</c>, <c>STOP 1</c>); returns the controller's reply.
+    /// Fails with <see cref="ErrorCode.NotSupported"/> on other controllers.
+    /// </summary>
+    Task<Result<string>> SendTerminalCommandAsync(string device, string command);
+
+    /// <summary>Reads whether an on-controller program buffer is executing.</summary>
+    Task<Result<bool>> IsBufferRunningAsync(string device, int buffer);
+
+    /// <summary>
+    /// References every axis of a PI hexapod (FRF) and completes when the controller
+    /// reports all axes referenced and motion has stopped. On cancel or timeout the
+    /// device is stopped. The polled state is reported in <see cref="MotionDeviceState.IsReferenced"/>.
+    /// </summary>
+    Task<Result> ReferenceAsync(string device, CancellationToken ct = default);
+
+    /// <summary>Reads the pivot point (R, S, T) of a PI hexapod.</summary>
+    Task<Result<PivotPoint>> GetPivotAsync(string device);
+
+    /// <summary>
+    /// Sets the pivot point (R, S, T) of a PI hexapod. The C-887 holds it only until
+    /// power-down (it resets to 0,0,0), and may refuse it while U/V/W are not zero.
+    /// </summary>
+    Task<Result> SetPivotAsync(string device, PivotPoint pivot);
+
     /// <summary>Raised (edge-triggered) when a device's polled state changes.</summary>
     event Action<MotionStateChanged>? StateChanged;
 }

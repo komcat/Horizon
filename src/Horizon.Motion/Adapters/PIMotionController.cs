@@ -192,6 +192,47 @@ public sealed class PIMotionController : IMotionController
         catch { return 0; }
     }
 
+    private string AllAxes => string.Join(" ", AxisNames);
+
+    public bool StartReference()
+    {
+        if (!IsConnected) return false;
+        return PIGcs2.FRF(_connectionId, AllAxes) != 0;
+    }
+
+    public bool? IsReferenced()
+    {
+        if (!IsConnected) return null;
+        var flags = new int[AxisNames.Count];
+        if (PIGcs2.qFRF(_connectionId, AllAxes, flags) == 0) return null;
+        return flags.All(f => f != 0);
+    }
+
+    public bool SetPivot(double r, double s, double t)
+    {
+        if (!IsConnected) return false;
+        return PIGcs2.SPI(_connectionId, "R S T", new[] { r, s, t }) != 0;
+    }
+
+    public (double R, double S, double T)? GetPivot()
+    {
+        if (!IsConnected) return null;
+        var v = new double[3];
+        if (PIGcs2.qSPI(_connectionId, "R S T", v) == 0) return null;
+        return (v[0], v[1], v[2]);
+    }
+
+    public string? GetLastErrorText()
+    {
+        if (!IsConnected) return null;
+        var code = PIGcs2.GetError(_connectionId);
+        if (code == 0) return null;
+        var sb = new System.Text.StringBuilder(512);
+        return PIGcs2.TranslateError(code, sb, sb.Capacity) != 0
+            ? $"PI error {code}: {sb}"
+            : $"PI error {code}";
+    }
+
     private void WaitForMotionComplete(string axis, int timeoutMs = 30000)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
