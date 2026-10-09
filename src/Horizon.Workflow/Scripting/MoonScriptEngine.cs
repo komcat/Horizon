@@ -46,6 +46,7 @@ public sealed class MoonScriptEngine
     private readonly IOperatorPrompt? _prompt;
     private readonly Action<ScriptProgress>? _progress;
     private readonly Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? _siphogSnapshot;
+    private readonly Func<double, CancellationToken, Task<Result>>? _siphogSetCurrent;
 
     public MoonScriptEngine(
         IHorizonEngine engine,
@@ -56,11 +57,13 @@ public sealed class MoonScriptEngine
         IImageDisplaySink? imageDisplay = null,
         PartAlignmentScriptHost? partAlignment = null,
         Action<ScriptProgress>? progress = null,
-        Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? siphogSnapshot = null)
+        Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? siphogSnapshot = null,
+        Func<double, CancellationToken, Task<Result>>? siphogSetCurrent = null)
     {
         _partAlignment = partAlignment;
         _progress = progress;
         _siphogSnapshot = siphogSnapshot;
+        _siphogSetCurrent = siphogSetCurrent;
         _engine = engine;
         _mover = namedPositionMover;
         _signalReader = signalReader;
@@ -91,7 +94,7 @@ public sealed class MoonScriptEngine
 
         var script = new Script(CoreModules.Preset_HardSandbox);
         script.Options.DebugPrint = Log;     // Lua print(...) → output
-        new MachineApi(script, _engine, _mover, _signalReader, _visionRunner, _imageDisplay, _prompt, Log, ct, _partAlignment, _progress, _siphogSnapshot).Install();
+        new MachineApi(script, _engine, _mover, _signalReader, _visionRunner, _imageDisplay, _prompt, Log, ct, _partAlignment, _progress, _siphogSnapshot, _siphogSetCurrent).Install();
 
         DynValue function;
         try

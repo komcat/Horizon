@@ -30,4 +30,12 @@ public interface ISiphogSheetSink
     /// <c>ERR:</c>, timeout, or a disconnected client.
     /// </summary>
     Task<Result> UpdateSagAsync(string bench, string stage, bool completed, CancellationToken ct);
+
+    /// <summary>
+    /// Sets the SiPhOG SLED drive current — the server's <c>SET_CURRENT:&lt;mA&gt;</c> command
+    /// (drives <c>machine.siphog.setCurrent</c>). Returns success on <c>ACK:</c>, a failure
+    /// (with the server message) on <c>ERR:</c> — e.g. out of the server's allowed range —,
+    /// timeout, or a disconnected client.
+    /// </summary>
+    Task<Result> SetSledCurrentAsync(double milliAmps, CancellationToken ct);
 }

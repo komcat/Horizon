@@ -149,6 +149,7 @@ public static class MachineApiCatalog
         // signal
         // siphog
         new("siphog", "save", "machine.siphog.save(label [, windowMs [, note]]) -> table|nil", "Average the six SiPhOG values over windowMs (default 500) and append them, labelled, to the product's siphog_data/<serial>.json; returns the means (sagPwrV, ...) or nil on failure."),
+        new("siphog", "setCurrent", "machine.siphog.setCurrent(mA)", "Set the SiPhOG SLED current (SET_CURRENT on fnw_server); fails the script if the server refuses it."),
 
         new("signal", "read", "machine.signal.read(key) -> number", "Read a unified signal (e.g. smu.PIC.ch1.current)."),
         new("signal", "tryRead", "machine.signal.tryRead(key) -> number|nil", "Like read, but returns nil (and logs) instead of failing the script when the read fails."),

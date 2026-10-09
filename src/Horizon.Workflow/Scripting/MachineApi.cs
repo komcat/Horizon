@@ -71,6 +71,7 @@ internal sealed class MachineApi
     private readonly CancellationToken _ct;
     private readonly Action<ScriptProgress>? _progress;
     private readonly Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? _siphogSnapshot;
+    private readonly Func<double, CancellationToken, Task<Result>>? _siphogSetCurrent;
 
     public MachineApi(
         Script script,
@@ -84,7 +85,8 @@ internal sealed class MachineApi
         CancellationToken ct,
         PartAlignmentScriptHost? part = null,
         Action<ScriptProgress>? progress = null,
-        Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? siphogSnapshot = null)
+        Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? siphogSnapshot = null,
+        Func<double, CancellationToken, Task<Result>>? siphogSetCurrent = null)
     {
         _script = script;
         _engine = engine;
@@ -98,6 +100,7 @@ internal sealed class MachineApi
         _ct = ct;
         _progress = progress;
         _siphogSnapshot = siphogSnapshot;
+        _siphogSetCurrent = siphogSetCurrent;
     }
 
     /// <summary>Installs the <c>machine</c> global into the script's environment.</summary>
@@ -778,6 +781,16 @@ internal sealed class MachineApi
                 t[key] = DynValue.NewNumber(stats.Mean);
             _log($"siphog.save({label}) — {r.Value.Window.Samples} samples");
             return DynValue.NewTable(t);
+        });
+
+        // machine.siphog.setCurrent(mA) — SET_CURRENT on the SiPhOG server. Unlike save this
+        // fails the script: data measured after a refused current change would be mislabelled.
+        s["setCurrent"] = Cb(a =>
+        {
+            double mA = ReqNum(a, 0, "siphog.setCurrent");
+            if (_siphogSetCurrent == null)
+                throw new ScriptRuntimeException("siphog.setCurrent needs a Layer 2 host with a SiPhOG client — unavailable in this context");
+            return Do(_siphogSetCurrent(mA, _ct), $"siphog.setCurrent({mA:0.###} mA)");
         });
 
         return s;

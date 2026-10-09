@@ -2070,7 +2070,10 @@ public sealed class ProcessService : IProcessService
                 MoveCameraToPartObjectAsync,
                 MoveCameraToPartObjectPointAsync),
             progress: p => ScriptProgressChanged?.Invoke(p),
-            siphogSnapshot: SaveSiphogSnapshotAsync);
+            siphogSnapshot: SaveSiphogSnapshotAsync,
+            siphogSetCurrent: (mA, token) => _siphogSheetSink?.SetSledCurrentAsync(mA, token)
+                ?? Task.FromResult(Result.Fail(ErrorCode.OperationFailed,
+                    "siphog.setCurrent: no SiPhOG client registered (open the Run page first).")));
 
         void Sink(string line)
         {

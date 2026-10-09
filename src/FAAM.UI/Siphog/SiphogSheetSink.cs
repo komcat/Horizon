@@ -1,3 +1,4 @@
+using System.Globalization;
 using Horizon.Common;
 using Horizon.Workflow;
 
@@ -43,5 +44,19 @@ public sealed class SiphogSheetSink : ISiphogSheetSink
         return reply.StartsWith("ACK:", StringComparison.Ordinal)
             ? Result.Ok()
             : Result.Fail(ErrorCode.OperationFailed, $"siphog.updateSheet failed: {reply}");
+    }
+
+    public async Task<Result> SetSledCurrentAsync(double milliAmps, CancellationToken ct)
+    {
+        if (!_client.IsConnected)
+            return Result.Fail(ErrorCode.OperationFailed,
+                "siphog.setCurrent: SiPhOG client not connected (open the SiPhOG panel on the Run page first).");
+
+        var reply = await _client.SendCommandAsync(
+            "SET_CURRENT:" + milliAmps.ToString("0.###", CultureInfo.InvariantCulture), ct).ConfigureAwait(false);
+
+        return reply.StartsWith("ACK:", StringComparison.Ordinal)
+            ? Result.Ok()
+            : Result.Fail(ErrorCode.OperationFailed, $"siphog.setCurrent failed: {reply}");
     }
 }
