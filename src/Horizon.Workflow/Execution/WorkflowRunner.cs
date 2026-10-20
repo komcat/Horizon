@@ -306,6 +306,16 @@ internal sealed class WorkflowRunner
                 continue;
             }
 
+            // Asks the operator to type free text and files it in the open DUT record
+            // under 'key' (and/or a context variable).
+            if (op == "dut.prompttext")
+            {
+                var fail = await PromptTextAsync(step, ctx, index, steps.Count, desc, lane, ct).ConfigureAwait(false);
+                if (fail != null) return fail.Value;
+                index++;
+                continue;
+            }
+
             if (op == "dut.close")
             {
                 CloseDut(step, ctx, index, steps.Count, desc, lane);
@@ -653,6 +663,71 @@ internal sealed class WorkflowRunner
 
         _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: true, Message: serial, Lane: lane));
         _log(LogLevel.Info, $"Step {index + 1}: DUT serial set → {serial}" +
+            (string.IsNullOrWhiteSpace(varName) ? "" : $" → {varName}"));
+        return null;
+    }
+
+    /// <summary>
+    /// Handles a <c>dut.promptText</c> step: asks the operator for free text and records
+    /// it in the open DUT record under <c>key</c> (always as a String, so e.g. "007" keeps
+    /// its zeros), optionally stashing it in the <c>var</c> context variable. With no DUT
+    /// open and no <c>var</c> the prompt is skipped (nowhere to put the answer). Cancel
+    /// fails the run when <c>required</c> (default); otherwise it is skipped with a warning.
+    /// </summary>
+    private async Task<Result?> PromptTextAsync(
+        WorkflowStep step, WorkflowContext ctx, int index, int total, string desc, string? lane, CancellationToken ct)
+    {
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: false, Success: false, Message: "", Lane: lane));
+
+        var key = step.Parameters.GetValueOrDefault("key", "note").Trim();
+        if (string.IsNullOrEmpty(key)) key = "note";
+        var varName = step.Parameters.GetValueOrDefault("var", string.Empty);
+        var required = !step.Parameters.TryGetValue("required", out var reqRaw)
+                       || reqRaw.Trim().ToLowerInvariant() is "true" or "1" or "on" or "yes";
+
+        if (ctx.Dut == null && string.IsNullOrWhiteSpace(varName))
+        {
+            const string skipped = "no DUT open — text entry skipped";
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: true, Message: skipped, Lane: lane));
+            _log(LogLevel.Warning, $"Step {index + 1} '{desc}' — {skipped}.");
+            return null;
+        }
+
+        if (_prompt == null)
+        {
+            const string err = "no operator-prompt handler registered";
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: false, Message: err, Lane: lane));
+            _log(LogLevel.Error, $"Step {index + 1} '{desc}' failed: {err}");
+            return Result.Fail(ErrorCode.NotSupported, $"Step {index + 1} '{desc}': {err}");
+        }
+
+        var title = step.Parameters.GetValueOrDefault("title", "DUT Entry");
+        var message = step.Parameters.GetValueOrDefault("message", "Enter text for this unit:");
+        var defaultValue = step.Parameters.GetValueOrDefault("default", string.Empty);
+
+        var text = await _prompt.InputTextAsync(title, message, defaultValue, ct).ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            const string cancelled = "text entry cancelled by operator";
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: !required,
+                Message: required ? cancelled : $"skipped — {cancelled}", Lane: lane));
+            _log(LogLevel.Warning, $"Step {index + 1} '{desc}' — {cancelled}.");
+            return required
+                ? Result.Fail(ErrorCode.OperationFailed, $"Step {index + 1} '{desc}': {cancelled}")
+                : null;
+        }
+
+        text = text.Trim();
+        if (ctx.Dut != null)
+            ctx.Dut.Entries.Add(new DutEntry(DateTime.UtcNow, key, text, DutValueType.String));
+        else
+            _log(LogLevel.Warning, $"Step {index + 1} '{desc}' — no DUT open; '{key}' not recorded.");
+        if (!string.IsNullOrWhiteSpace(varName))
+            ctx.Set(varName, text);
+
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: true, Message: $"{key} = {text}", Lane: lane));
+        _log(LogLevel.Info, $"Step {index + 1}: DUT text '{key}' = {text}" +
             (string.IsNullOrWhiteSpace(varName) ? "" : $" → {varName}"));
         return null;
     }

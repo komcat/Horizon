@@ -216,6 +216,21 @@ public static class OpCatalogHelp
 
         // ===== DUT — per-unit traceability records =====
 
+        ["dut.promptText"] = new()
+        {
+            Summary = "Ask the operator to type text (lot number, remark, rework reason…) and save it in the DUT record.",
+            Usage = "A dialog pops up with the prompt; the operator types (or scans) and presses OK or Enter. The text is stored in the unit's DUT record under the key, exactly as typed (always as text, so \"007\" keeps its zeros). Use one block per field you want on record.\n\nNeeds a DUT serial for the run (a \"DUT Entry\" step or an up-front serial). With no DUT open and no variable set, the block is skipped with a warning, since there is nowhere to put the answer.",
+            ParamNotes = new[]
+            {
+                ("key", "Name the text is filed under in the DUT record, e.g. \"lot\", \"remark\". Defaults to \"note\"."),
+                ("title", "Dialog window title."),
+                ("message", "The question shown to the operator."),
+                ("default", "Text already in the box when the dialog opens (optional)."),
+                ("var", "Also store the text in this context variable for later blocks (optional)."),
+                ("required", "On: Cancel stops the run. Off: Cancel skips the block and the run carries on."),
+            },
+        },
+
         ["dut.readAllSignals"] = new()
         {
             Summary = "Snapshot EVERY available signal into the DUT record as one named data set — all SiPhOG readings plus every connected SMU / PSU / Measurement / TEC / Laser channel.",

@@ -139,6 +139,7 @@ public sealed class ProcessBlockViewModel : ObservableObject
                 "flow.ifposition" => $"if {Or(P("device"), "?")} {Or(P("axis"), "?")} {Or(P("op"), "?")} {Or(P("value"), "?")}",
                 "signal.read" => $"{Or(P("signal"), "?")} → {Or(P("storeAs"), P("signal"))}",
                 "dut.promptserial" => "ask DUT serial",
+                "dut.prompttext" => $"ask → {Or(P("key"), "note")}",
                 "script.run" => Or(P("script"), "(no script)"),
                 "flow.log" => Or(P("message"), "(message)"),
                 "pneumatic.extend" => "extend",

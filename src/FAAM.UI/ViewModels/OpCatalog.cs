@@ -451,6 +451,19 @@ public static class OpCatalog
                 new ParamSpec("message", "Prompt", ParamKind.Text, "Enter or scan the unit serial number:"),
                 new ParamSpec("var", "Store serial in variable (optional)", ParamKind.Text),
             }),
+        // Prompts the operator (modal) to type free text (lot number, remark, rework
+        // reason…) and records it in the open DUT record under 'key'. Cancel fails the
+        // program unless 'required' is off. Handled by WorkflowRunner (dut.promptText).
+        new("dut.promptText", "DUT Text Entry", "DUT", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("key", "Record as (DUT key)", ParamKind.Text, "note"),
+                new ParamSpec("title", "Dialog title", ParamKind.Text, "DUT Entry"),
+                new ParamSpec("message", "Prompt", ParamKind.Text, "Enter text for this unit:"),
+                new ParamSpec("default", "Pre-filled text (optional)", ParamKind.Text),
+                new ParamSpec("var", "Store text in variable (optional)", ParamKind.Text),
+                new ParamSpec("required", "Cancel stops the run", ParamKind.Bool, "true"),
+            }),
         // Snapshots EVERY signal in the unified catalog (all SiPhOG fields plus every
         // connected SMU / PSU / Measurement / TEC / Laser channel) into one grouped DUT
         // entry, named by 'dataset'. One block = the unit's full telemetry at this point.
