@@ -89,6 +89,21 @@ public interface IOperatorPrompt
     /// </summary>
     Task AcknowledgeAsync(string title, string message, CancellationToken ct) => Task.CompletedTask;
 
+    /// <summary>
+    /// A big-STOP window shown while a guarded slow move runs — the back-end for the
+    /// <c>motion.slowApproach</c> step. Completes <c>true</c> when the operator presses STOP
+    /// (the runner then halts the device). The runner cancels <paramref name="ct"/> when the
+    /// move ends on its own, which closes the window; the task then completes <c>false</c>
+    /// (or cancelled). The default implementation has no UI: it just waits for
+    /// <paramref name="ct"/> and returns <c>false</c> (no one can press STOP).
+    /// </summary>
+    async Task<bool> MotionStopAsync(string title, string message, CancellationToken ct)
+    {
+        try { await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { /* the move ended — close */ }
+        return false;
+    }
+
     // Room to grow without touching IProcessService — add when a step op needs it:
     // Task<int?> ChooseAsync(string title, IReadOnlyList<string> options, CancellationToken ct);
 }

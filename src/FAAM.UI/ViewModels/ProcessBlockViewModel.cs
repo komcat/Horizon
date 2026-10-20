@@ -132,6 +132,7 @@ public sealed class ProcessBlockViewModel : ObservableObject
                 "motion.moverelative" => $"{Or(P("axis"), "?")} {Or(P("distance"), "?")} mm",
                 "motion.movetoposition" => Or(P("position"), "(no position)"),
                 "motion.setvelocity" => $"{Or(P("speed"), "?")} mm/s",
+                "motion.slowapproach" => $"{Or(P("position"), "(no position)")} @ {Or(P("speed"), "0.2")} mm/s",
                 "io.setoutputbyname" => $"{Or(P("pin"), "(pin?)")} → {(Truthy(P("state")) ? "ON" : "OFF")}",
                 "io.alertbuzzer" => $"alert \"{Or(P("title"), "?")}\" · {Or(P("pin"), "no buzzer")}",
                 "flow.wait" => $"wait {Or(P("ms"), "?")} ms",

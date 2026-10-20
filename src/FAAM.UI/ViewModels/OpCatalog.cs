@@ -69,6 +69,23 @@ public static class OpCatalog
             }),
         new("motion.setVelocity", "Set Velocity", "Motion", DeviceKind.Motion,
             new[] { new ParamSpec("speed", "Speed (mm/s)", ParamKind.Number, "10") }),
+        // Teach-or-approach a hand-reached final position: first run = manual jog, saved on
+        // Continue; later runs offer a slow move there (velocity snapshot → crawl Z, then Y,
+        // then X under a big STOP window → restore), then the manual jog for fine adjust. Handled by
+        // WorkflowRunner (motion.slowApproach); type a new name to create the position.
+        new("motion.slowApproach", "Slow Approach (teach / auto)", "Motion", DeviceKind.Motion,
+            new[]
+            {
+                new ParamSpec("position", "Final position (saved on first run)", ParamKind.PositionName),
+                new ParamSpec("speed", "Approach speed (mm/s)", ParamKind.Number, "0.2"),
+                new ParamSpec("axes", "Approach axes", ParamKind.Text, "XYZ"),
+                new ParamSpec("maxDistance", "Max approach distance (mm)", ParamKind.Number, "10"),
+                new ParamSpec("jogAfterApproach", "Manual adjust after arriving", ParamKind.Bool, "true"),
+                new ParamSpec("updateAfterJog", "Re-save position after every adjust", ParamKind.Bool, "false"),
+                new ParamSpec("message", "Jog popup message", ParamKind.Text),
+                new ParamSpec("jogAxes", "Jog axes", ParamKind.Text, "XYZ"),
+                new ParamSpec("step", "Jog default step (mm)", ParamKind.Number, "0.01"),
+            }),
 
         // ---- IO ----
         new("io.setOutputByName", "Set Output", "IO", DeviceKind.Io,

@@ -19,6 +19,9 @@ internal sealed class WorkflowRunner
     private const int MaxSubProgramDepth = 16;
 
     private readonly StepDispatcher _dispatcher;
+    private readonly IHorizonEngine _engine;
+    private readonly Func<string, string, NamedPosition?> _getPosition;
+    private readonly Func<string, string, MotionPosition, double, Result> _savePosition;
     private readonly Func<string, WorkflowProgram?> _loadProgram;
     private readonly IOperatorPrompt? _prompt;
     private readonly Func<string, WorkflowContext, Result>? _setDutSerial;
@@ -64,6 +67,9 @@ internal sealed class WorkflowRunner
         Action<LogLevel, string> log)
     {
         _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, runDispenseRoutine, runNeedleApproach, moveCameraToTool, moveToolToCamera, moveToolToPose, moveObjectToCamera, runPartAlignment, moveCameraToPartFiducial, moveCameraToPartObject, runScript, saveSiphogSnapshot, hillClimbFeedback, utilityAppHost, siphogSheetSink, signals, deviceLinks, log);
+        _engine = engine;
+        _getPosition = getPosition;
+        _savePosition = savePosition;
         _loadProgram = loadProgram;
         _prompt = prompt;
         _setDutSerial = setDutSerial;
@@ -291,6 +297,17 @@ internal sealed class WorkflowRunner
             if (op == "flow.jogpopup")
             {
                 var fail = await JogPopupAsync(step, index, steps.Count, desc, lane, ct).ConfigureAwait(false);
+                if (fail != null) return fail.Value;
+                index++;
+                continue;
+            }
+
+            // Teach-or-approach a final position: first run = manual jog then save it; later
+            // runs offer a crawl to the saved point under a big STOP window (velocity
+            // snapshot → crawl → restore), then the manual jog for fine adjust.
+            if (op == "motion.slowapproach")
+            {
+                var fail = await SlowApproachStepAsync(step, index, steps.Count, desc, lane, ct).ConfigureAwait(false);
                 if (fail != null) return fail.Value;
                 index++;
                 continue;
@@ -917,6 +934,164 @@ internal sealed class WorkflowRunner
         _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: false, Message: cancelled, Lane: lane));
         _log(LogLevel.Warning, $"Step {index + 1} '{desc}' — {cancelled}.");
         return Result.Fail(ErrorCode.OperationFailed, $"Step {index + 1} '{desc}': {cancelled}");
+    }
+
+    /// <summary>
+    /// Handles a <c>motion.slowApproach</c> step — teach-or-approach a final position that
+    /// the operator reaches by hand (e.g. the dispense point after the head is down).
+    /// <list type="bullet">
+    /// <item>Position not saved yet: the manual-jog popup opens; on Continue the device's
+    /// current coordinates are saved under the position name.</item>
+    /// <item>Position saved: the operator is asked whether to crawl there automatically. Yes →
+    /// <see cref="SlowApproach"/> snapshots the velocity, crawls at <c>speed</c> under a big
+    /// STOP window, and restores the velocity. Then the manual-jog popup opens for fine
+    /// adjust (skipped after a clean arrival when <c>jogAfterApproach</c> is off).</item>
+    /// </list>
+    /// A refused / failed / STOPPED approach falls back to the manual jog, so the operator
+    /// can recover or Cancel. Jog Cancel fails the run. Returns <c>null</c> on success.
+    /// </summary>
+    private async Task<Result?> SlowApproachStepAsync(
+        WorkflowStep step, int index, int total, string desc, string? lane, CancellationToken ct)
+    {
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: false, Success: false, Message: "", Lane: lane));
+
+        Result Fail(ErrorCode code, string err)
+        {
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: false, Message: err, Lane: lane));
+            _log(LogLevel.Error, $"Step {index + 1} '{desc}' failed: {err}");
+            return Result.Fail(code, $"Step {index + 1} '{desc}': {err}");
+        }
+        bool Flag(string key, bool fallback) => step.Parameters.TryGetValue(key, out var raw)
+            ? raw.Trim().ToLowerInvariant() is "true" or "1" or "on" or "yes"
+            : fallback;
+
+        if (_prompt == null)
+            return Fail(ErrorCode.NotSupported, "no operator-prompt handler registered");
+
+        var device = step.Device;
+        var name = step.Parameters.GetValueOrDefault("position", string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(device))
+            return Fail(ErrorCode.InvalidParameter, "no motion device.");
+        if (string.IsNullOrEmpty(name))
+            return Fail(ErrorCode.InvalidParameter, "no position name.");
+
+        var speed = ParseDouble(step.Parameters.GetValueOrDefault("speed"), 0.2);
+        // Translational axes only — the distance guard is in mm.
+        var axes = new string(step.Parameters.GetValueOrDefault("axes", "XYZ").ToUpperInvariant()
+            .Where(c => c is 'X' or 'Y' or 'Z').Distinct().ToArray());
+        if (axes.Length == 0) axes = "XYZ";
+        var maxDistance = ParseDouble(step.Parameters.GetValueOrDefault("maxDistance"), 10.0);
+        var jogAfter = Flag("jogAfterApproach", true);
+        var updateAfterJog = Flag("updateAfterJog", false);
+        var userMessage = step.Parameters.GetValueOrDefault("message", string.Empty);
+
+        var saved = _getPosition(device, name);
+        string note;
+        bool arrived = false;
+
+        if (saved == null)
+        {
+            note = $"No saved '{name}' yet — jog {device} to the final position. " +
+                   "It is saved when you press Continue.";
+            _log(LogLevel.Info, $"Step {index + 1}: '{name}' not saved on {device} — manual teach.");
+        }
+        else
+        {
+            (note, arrived) = await OfferApproachAsync(step, index, desc, device, name, saved, axes, speed, maxDistance, ct)
+                .ConfigureAwait(false);
+        }
+
+        bool showJog = !arrived || jogAfter;
+        if (showJog)
+        {
+            var devices = (step.Parameters.GetValueOrDefault("jogDevices") ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var request = new JogPopupRequest(
+                Title: step.Parameters.GetValueOrDefault("jogTitle", "Manual adjust"),
+                Message: string.IsNullOrWhiteSpace(userMessage) ? note : $"{note}\n\n{userMessage}",
+                Devices: devices.Length > 0 ? devices : new[] { device },
+                Axes: step.Parameters.GetValueOrDefault("jogAxes", "XYZ"),
+                DefaultStepMm: ParseDouble(step.Parameters.GetValueOrDefault("step"), 0.01),
+                MaxSeconds: Math.Clamp((int)ParseDouble(step.Parameters.GetValueOrDefault("timeoutSec"), 3600), 1, 3600));
+
+            if (!await _prompt.JogPopupAsync(request, ct).ConfigureAwait(false))
+            {
+                const string cancelled = "manual adjust cancelled by operator";
+                _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: false, Message: cancelled, Lane: lane));
+                _log(LogLevel.Warning, $"Step {index + 1} '{desc}' — {cancelled}.");
+                return Result.Fail(ErrorCode.OperationFailed, $"Step {index + 1} '{desc}': {cancelled}");
+            }
+        }
+
+        // First run (nothing saved) always records the point; later runs only when asked to.
+        string outcome = arrived ? "arrived" : "adjusted";
+        if (saved == null || (updateAfterJog && showJog))
+        {
+            var cur = await _engine.Motion.GetPositionAsync(device).ConfigureAwait(false);
+            if (!cur.IsSuccess) return Fail(cur.Error, $"read position to save '{name}': {cur.Message}");
+            var write = _savePosition(device, name, cur.Value, saved?.Velocity ?? 0.0);
+            if (!write.IsSuccess) return Fail(write.Error, $"save '{name}': {write.Message}");
+            var p = cur.Value;
+            _log(LogLevel.Info, $"Step {index + 1}: saved '{name}' on {device} = ({p.X:F4}, {p.Y:F4}, {p.Z:F4}).");
+            outcome = saved == null ? "taught" : "updated";
+        }
+
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: true, Message: outcome, Lane: lane));
+        return null;
+    }
+
+    /// <summary>
+    /// The saved-position half of <c>motion.slowApproach</c>: asks the operator whether to
+    /// crawl to <paramref name="saved"/>, and if so runs <see cref="SlowApproach"/>. Returns the
+    /// note for the manual-jog popup and whether the device arrived cleanly. Never fails the
+    /// step — a declined / refused / faulted / STOPPED approach just hands over to manual jog.
+    /// </summary>
+    private async Task<(string Note, bool Arrived)> OfferApproachAsync(
+        WorkflowStep step, int index, string desc, string device, string name, NamedPosition saved,
+        string axes, double speed, double maxDistance, CancellationToken ct)
+    {
+        var prompt = _prompt!;   // the caller has already checked for a prompt handler
+        var go = await prompt.ConfirmAsync(
+            step.Parameters.GetValueOrDefault("title", "Auto approach"),
+            $"Move {device} automatically to the last saved '{name}' position?\n\n" +
+            $"One axis at a time ({string.Join(" → ", "ZYX".Where(c => axes.Contains(c)))}) at {speed:0.###} mm/s. " +
+            "A STOP window is shown during the move.\n\n" +
+            "No = adjust manually.", ct).ConfigureAwait(false);
+        if (!go)
+        {
+            _log(LogLevel.Info, $"Step {index + 1}: auto approach declined — manual adjust.");
+            return ($"Adjust {device} manually to the final position.", false);
+        }
+
+        // Only the chosen axes go to the saved coordinates; the rest hold where they are.
+        var cur = await _engine.Motion.GetPositionAsync(device).ConfigureAwait(false);
+        if (!cur.IsSuccess)
+            return ($"Automatic approach did not run: read position — {cur.Message}\nAdjust manually, or Cancel to stop the run.", false);
+        var c = cur.Value;
+        var s = saved.Coordinates;
+        var target = c with
+        {
+            X = axes.Contains('X') ? s.X : c.X,
+            Y = axes.Contains('Y') ? s.Y : c.Y,
+            Z = axes.Contains('Z') ? s.Z : c.Z,
+        };
+
+        var stopTitle = $"Approaching '{name}'";
+        var stopMessage = $"{device} is moving slowly to '{name}' at {speed:0.###} mm/s.\nPress STOP if anything looks wrong.";
+        var r = await SlowApproach.RunAsync(_engine.Motion, device, target, axes, speed, maxDistance,
+            t => prompt.MotionStopAsync(stopTitle, stopMessage, t), _log, ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+
+        if (!r.IsSuccess)
+        {
+            _log(LogLevel.Warning, $"Step {index + 1} '{desc}': approach failed — {r.Message}");
+            return ($"Automatic approach did not complete: {r.Message}\nAdjust manually, or Cancel to stop the run.", false);
+        }
+        if (r.Value)
+            return ("Approach STOPPED. Jog clear / adjust manually, or Cancel to stop the run.", false);
+
+        _log(LogLevel.Info, $"Step {index + 1}: reached '{name}' on {device}.");
+        return ($"Arrived at '{name}'. Fine-adjust if needed, then Continue.", true);
     }
 
     private static double ParseDouble(string? raw, double fallback)

@@ -157,6 +157,54 @@ public sealed class OperatorPrompt : IOperatorPrompt
     }
 
     /// <summary>
+    /// Non-modal, always-on-top big-STOP window shown while <c>motion.slowApproach</c> crawls.
+    /// Completes <c>true</c> when the operator presses STOP; the runner cancels
+    /// <paramref name="ct"/> when the move ends, which closes the window → <c>false</c>.
+    /// </summary>
+    public Task<bool> MotionStopAsync(string title, string message, CancellationToken ct)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null)
+            return Task.FromResult(false);
+
+        // InvokeAsync(...).Task is Task<Task<bool>> — unwrap the inner STOP task.
+        return dispatcher.InvokeAsync(() => ShowMotionStop(title, message, ct)).Task.Unwrap();
+    }
+
+    private static Task<bool> ShowMotionStop(string title, string message, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (ct.IsCancellationRequested)
+        {
+            tcs.TrySetResult(false);   // the move already ended — nothing to show
+            return tcs.Task;
+        }
+
+        var window = new MotionStopWindow(title, message)
+        {
+            Owner = Application.Current.MainWindow,
+        };
+
+        // Move ended (or run Stop) — close the window; Finished(false) resolves the task.
+        var registration = ct.Register(() =>
+            window.Dispatcher.BeginInvoke(() =>
+            {
+                tcs.TrySetResult(false);
+                if (window.IsLoaded) window.Close();
+            }));
+
+        window.Finished += stop =>
+        {
+            registration.Dispose();
+            tcs.TrySetResult(stop);
+            if (window.IsLoaded) window.Close();
+        };
+
+        window.Show();
+        return tcs.Task;
+    }
+
+    /// <summary>
     /// Non-modal, always-on-top manual-jog popup — the <c>flow.jogPopup</c> step blocks
     /// on the returned task until the operator presses Continue (true) or Cancel/timeout
     /// (false → the step fails the run). A run Stop closes the window and surfaces as a

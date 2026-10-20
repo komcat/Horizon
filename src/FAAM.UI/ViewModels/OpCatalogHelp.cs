@@ -73,6 +73,26 @@ public static class OpCatalogHelp
             },
         },
 
+        // ===== Motion =====
+
+        ["motion.slowApproach"] = new()
+        {
+            Summary = "Reach a hand-adjusted final position (e.g. the dispense point): teach it by jogging on the first run, then offer a slow automatic move to it on later runs.",
+            Usage = "Put it in the device's lane right after the move to the start point (e.g. PreDispense, head down).\n\nFirst run (position not saved yet): the manual-jog popup opens; when the operator presses Continue, the current coordinates are saved under the position name.\n\nLater runs: the operator is asked \"move automatically to the last saved position?\". Yes → the device's current velocity is snapshotted, set to the approach speed, and the stage moves there slowly ONE AXIS AT A TIME — Z first, then Y, then X — while a window with one big STOP button is shown (STOP halts the stage and skips the remaining axes); the velocity is put back afterwards (also after STOP, a fault or a run Stop). Then the manual-jog popup opens for fine adjust. No → manual jog only.\n\nA STOPPED, refused (too far / too slow for the 55 s move limit) or failed approach falls back to the manual jog — jog clear, or Cancel to stop the run. Jog Cancel fails the run. The saved position is only rewritten when 'Re-save position' is on. To re-teach, delete the position on the Machine page.",
+            ParamNotes = new[]
+            {
+                ("position", "Name of the final position. Type a new name — it is created on the first run."),
+                ("speed", "Approach speed in mm/s (default 0.2). Clamped to the controller range (ACS ≥ 0.1)."),
+                ("axes", "Which of X/Y/Z move to the saved values; the others hold where they are. Default XYZ. They always move in the order Z → Y → X, whatever order you type."),
+                ("maxDistance", "Refuse the automatic move if the total travel (Z + Y + X) is more than this (mm) — then adjust manually."),
+                ("jogAfterApproach", "On: the jog popup still opens after arriving, for fine adjust. Off: a clean arrival continues straight on."),
+                ("updateAfterJog", "On: every manual adjust overwrites the saved position. Off (default): it is only saved the first time."),
+                ("message", "Extra line shown in the jog popup."),
+                ("jogAxes", "Axes shown on the jog pad (default XYZ)."),
+                ("step", "Jog pad default step in mm."),
+            },
+        },
+
         // ===== IO =====
 
         ["io.alertBuzzer"] = new()
