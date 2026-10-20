@@ -31,27 +31,35 @@
             </Setter>
         </Style>
 
-        <!-- Step-size preset — small selectable chip; accent when active. -->
+        <!-- Step-size preset — selectable chip. Unselected chips get a dark outline so they
+             stand clear of the gray window; the active one is a solid accent fill, bold. -->
         <Style x:Key="StepBtn" TargetType="ToggleButton">
             <Setter Property="Width" Value="52" />
-            <Setter Property="Height" Value="26" />
+            <Setter Property="Height" Value="28" />
             <Setter Property="Margin" Value="2" />
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{StaticResource Text}" />
             <Setter Property="Background" Value="{StaticResource Bg}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{StaticResource Edge}"
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{StaticResource Subtle}"
                                 BorderThickness="1" CornerRadius="3">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                            </Trigger>
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="{StaticResource Accent}" />
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
-                                <Setter Property="Foreground" Value="White" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Text}" />
+                                <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                                <Setter Property="Foreground" Value="{StaticResource OnAccent}" />
+                                <Setter Property="FontWeight" Value="Bold" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>

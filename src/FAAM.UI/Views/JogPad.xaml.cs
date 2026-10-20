@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
+using Horizon.Common;
 using Horizon.Engine;
 
 namespace FAAM.UI.Views;
@@ -24,6 +25,8 @@ public partial class JogPad : UserControl
         ("10µm", 0.01), ("50µm", 0.05), ("100µm", 0.1), ("0.5mm", 0.5), ("1mm", 1.0),
     };
 
+    private const string PrefsFile = "faam_jog_pad";   // { "stepMm": 0.1 } — last step the operator picked
+
     private readonly JogTransformStore _transforms = new();
     private readonly List<ToggleButton> _stepButtons = new();
     private readonly DispatcherTimer _poll;
@@ -45,12 +48,13 @@ public partial class JogPad : UserControl
     /// Wires the pad to the engine. <paramref name="devices"/> limits the picker to
     /// those motion devices (empty = every connected motion device);
     /// <paramref name="axes"/> is the subset of <c>XYZUVW</c> to expose;
-    /// <paramref name="defaultStepMm"/> pre-selects the nearest step preset.
+    /// <paramref name="defaultStepMm"/> pre-selects the nearest step preset, unless the
+    /// operator picked one in an earlier popup — that saved choice wins.
     /// </summary>
     public void Configure(EngineHost host, IReadOnlyList<string> devices, string axes, double defaultStepMm)
     {
         _host = host;
-        BuildSteps(defaultStepMm);
+        BuildSteps(LoadSavedStep() ?? defaultStepMm);
         BuildAxes(axes);
         BuildDevices(devices);
         _poll.Start();
@@ -162,6 +166,39 @@ public partial class JogPad : UserControl
         foreach (var b in _stepButtons) b.IsChecked = false;
         tb.IsChecked = true;
         _stepMm = mm;
+        SaveStep(mm);
+    }
+
+    /// <summary>Saved step-size choice (<c>faam_jog_pad.json</c>).</summary>
+    private sealed class JogPadPrefs
+    {
+        public double? StepMm { get; set; }
+    }
+
+    /// <summary>The step the operator last picked in any jog popup, or null if none saved.</summary>
+    private static double? LoadSavedStep()
+    {
+        try
+        {
+            var prefs = ConfigLoader.LoadJson<JogPadPrefs>(ConfigLoader.GetConfigDirectory(), PrefsFile);
+            return prefs?.StepMm is double mm && double.IsFinite(mm) && mm > 0 ? mm : null;
+        }
+        catch
+        {
+            return null;   // unreadable prefs → fall back to the block's default step
+        }
+    }
+
+    private void SaveStep(double mm)
+    {
+        try
+        {
+            ConfigLoader.SaveJson(ConfigLoader.GetConfigDirectory(), PrefsFile, new JogPadPrefs { StepMm = mm });
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Could not save step size: {ex.Message}");
+        }
     }
 
     private async void OnJog(object sender, RoutedEventArgs e)
