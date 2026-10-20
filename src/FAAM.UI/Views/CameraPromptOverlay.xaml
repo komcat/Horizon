@@ -36,7 +36,7 @@
          are hit-test islands. Collapsed by default. -->
     <Grid x:Name="Root" Visibility="Collapsed">
         <!-- ① / ④  Banner: white text on black, top-centre. -->
-        <Border VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,43,0,0"
+        <Border x:Name="BannerBox" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,43,0,0"
                 Background="#D8000000" CornerRadius="3" Padding="12,6" MaxWidth="560">
             <TextBlock x:Name="BannerText" Foreground="White" FontSize="15" FontWeight="SemiBold"
                        TextWrapping="Wrap" TextAlignment="Center" />

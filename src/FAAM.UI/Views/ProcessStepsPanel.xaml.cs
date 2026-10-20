@@ -45,12 +45,6 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
     private CancellationTokenSource? _runCts;   // cancels the in-flight step sequence on STOP
     private WorkflowDeck? _deck;                 // selected deck (null = built-in steps) — drives Auto-chain
 
-    // Set when a step was cancelled at an operator gate (or aborted part-way): the
-    // part is in an unknown state — the machine may have stopped mid-move with the
-    // gripper open — so nothing may run until the operator reloads the part and
-    // re-runs the first step, which re-homes and re-opens the gripper.
-    private bool _restartRequired;
-
     private string _title = "FAU ATTACH STEPS";   // deck title shown while idle
     private int _executing;                       // steps in flight (a new click can overlap a superseded one)
     private readonly RunProgressTracker _progress = new();   // drives the progress bar under the title
@@ -314,23 +308,10 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
 
         var isFirstStep = ReferenceEquals(step, (StepList.ItemsSource as IEnumerable<ProcessStep>)?.FirstOrDefault());
 
-        // After a cancelled/aborted step the sequence may not be resumed part-way —
-        // the operator must reload the part and start again from the first step.
-        if (_restartRequired && !isFirstStep)
-        {
-            Log(LogLevel.Warning,
-                $"Step '{step.Label}' blocked — the previous step was cancelled. Reload the part and run step (1) first.");
-            Info("The previous step was cancelled.\n\nReload the part, then start again from step (1).");
-            return;
-        }
-
         // Clicking the first step starts a fresh run — clear every button back to idle
         // (default colour). Re-clicking any later step leaves the prior colours intact.
         if (isFirstStep)
-        {
             ResetStepStatuses();
-            _restartRequired = false;   // step (1) re-homes and re-opens the gripper
-        }
 
         if (!_running)
             StartTimer();
@@ -410,7 +391,7 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
                     {
                         step.Status = StepStatus.Failed;   // program reported failure → red
                         if (result.Error == ErrorCode.ProcessCancelled)
-                            RequireRestart($"Step '{step.Label}' cancelled by the operator.");
+                            Log(LogLevel.Warning, $"Step '{step.Label}' cancelled by the operator.");
                         else
                             Log(LogLevel.Error, $"Step '{step.Label}' failed: {result.Message}");
                         return;
@@ -434,13 +415,11 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
         catch (StepCancelledException ex)
         {
             step.Status = StepStatus.Failed;              // operator declined a gate → red
-            RequireRestart($"Step '{step.Label}' cancelled — {ex.Message}");
+            Log(LogLevel.Warning, $"Step '{step.Label}' cancelled — {ex.Message}");
         }
         catch (OperationCanceledException)
         {
-            // STOP / safety / a superseding step click. No reload gate here: this path
-            // also fires on the step the operator deliberately clicked past, and STOP
-            // is already an explicit "I am taking over".
+            // STOP / safety / a superseding step click.
             step.Status = StepStatus.Failed;              // interrupted → red
             Log(LogLevel.Warning, $"Step '{step.Label}' aborted (STOP).");
         }
@@ -523,19 +502,6 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
     }
 
     /// <summary>
-    /// Latches the reload gate after a step was cancelled or aborted part-way: the
-    /// part's state is no longer known (the gripper may be open over the fixture, a
-    /// stage stopped mid-travel), so only the first step — which re-homes and
-    /// re-opens the gripper — may run until the operator reloads the part.
-    /// </summary>
-    private void RequireRestart(string reason)
-    {
-        _restartRequired = true;
-        Log(LogLevel.Warning, $"{reason} Process stopped — reload the part and run step (1) to start again.");
-        Info($"{reason}\n\nProcess stopped. Reload the part, then run step (1) to start again.");
-    }
-
-    /// <summary>
     /// Auto-chain (opt-in, off by default): after the clicked deck step's program runs,
     /// continue into the following deck entries whose transition is <c>Auto</c>, waiting
     /// each entry's <c>DelaySeconds</c> before running it. The walk stops at the first
@@ -605,7 +571,7 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
                 {
                     if (chained != null) chained.Status = StepStatus.Failed;
                     if (result.Error == ErrorCode.ProcessCancelled)
-                        RequireRestart($"Auto-chain stopped — '{label}' cancelled by the operator.");
+                        Log(LogLevel.Warning, $"Auto-chain stopped — '{label}' cancelled by the operator.");
                     else
                         Log(LogLevel.Error, $"Auto-chain stopped — '{label}' failed: {result.Message}.");
                     return;
@@ -1021,7 +987,7 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
     /// Operator gate that <b>stops the step</b> when declined — for confirmations
     /// that guard motion onto the part, where continuing past a No is never safe.
     /// Throws <see cref="StepCancelledException"/>, which <see cref="RunStepAsync"/>
-    /// turns into a red step plus the reload gate.
+    /// turns into a red step.
     /// </summary>
     private static void ConfirmOrAbort(string question, string reason)
     {
@@ -1167,8 +1133,7 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
 /// <summary>
 /// Thrown by a built-in step sequence when the operator declines a gate that guards
 /// motion onto the part. Distinct from <see cref="OperationCanceledException"/> (STOP
-/// / safety / a superseding click) because it latches the Run page's reload gate:
-/// the part must be reloaded and the sequence restarted from step (1).
+/// / safety / a superseding click) so it is reported as an operator cancel.
 /// </summary>
 public sealed class StepCancelledException : Exception
 {

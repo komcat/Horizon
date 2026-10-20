@@ -40,6 +40,26 @@ public partial class CameraPromptOverlay : UserControl, ICapturePromptSurface
         InitializeComponent();
     }
 
+    /// <summary>
+    /// Compact mode for a small surface (the Zoom2× inset): no banner, and small buttons
+    /// tucked into the lower-left / lower-right corners so the image stays visible.
+    /// </summary>
+    public bool Compact
+    {
+        get => BannerBox.Visibility != Visibility.Visible;
+        set
+        {
+            BannerBox.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+            foreach (var b in new[] { YesButton, NoButton })
+            {
+                b.FontSize = value ? 12 : 20;
+                b.MinWidth = value ? 64 : 168;
+                b.Height = value ? 26 : 68;
+                b.Margin = new Thickness(value ? 4 : 10);
+            }
+        }
+    }
+
     /// <summary>Shows the banner with the given text and button labels (marshals to the UI thread).</summary>
     public void Show(string text, string affirmText = "Yes", string negativeText = "No")
     {

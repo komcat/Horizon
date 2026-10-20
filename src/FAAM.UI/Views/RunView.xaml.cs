@@ -94,6 +94,7 @@ public partial class RunView : UserControl
         // operator can Capture/Apply from the camera view without looking at the side panel.
         // Registered on the shared hub so an open camera pop-out mirrors the same prompt.
         host.CapturePrompts.Add(MainPrompt);
+        host.CapturePrompts.Add(ZoomPrompt);   // compact Capture / Cancel on the Zoom2× inset
         AppHost.SetCapturePromptSurface(host.CapturePrompts);
 
         // The snapshot box beside the camera is the head's image panel: a .moon script
