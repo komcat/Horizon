@@ -5,7 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Run
 
 - **Solution**: `Horizon.sln` — 24 projects, all `net8.0`/`net8.0-windows`, x64 only. All projects live under `src/`.
-- **User compiles themselves** — do not run `dotnet build` or `msbuild`. The user also compiles CMake themselves.
+- **Claude compiles** — after making code changes, build the solution as **x64 Release**
+  (`dotnet build Horizon.sln -c Release -p:Platform=x64`) and fix any errors before reporting
+  done. The user still compiles CMake themselves.
 - **User tests themselves** — no test projects exist; skip test commands.
 - No CI/CD pipelines configured.
 - **Runnable entry points** (`OutputType=Exe`/`WinExe`):
