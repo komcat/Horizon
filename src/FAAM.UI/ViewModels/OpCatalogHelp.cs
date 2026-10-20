@@ -73,6 +73,24 @@ public static class OpCatalogHelp
             },
         },
 
+        // ===== IO =====
+
+        ["io.alertBuzzer"] = new()
+        {
+            Summary = "Show a yellow alert (e.g. \"UV complete\") and sound a buzzer output in a gentle pattern until the operator presses Acknowledge.",
+            Usage = "The sequence waits here until the operator acknowledges; the buzzer stops at once and its output is left OFF. STOP also silences it. The default pattern is a soft double chirp every ~3 s — tune it with the beep fields. A buzzer IO fault is logged as a warning and does not fail the run (the alert still shows).",
+            ParamNotes = new[]
+            {
+                ("title", "Large text on the alert, e.g. UV complete."),
+                ("message", "Optional second line, e.g. Remove the part from the fixture."),
+                ("pin", "Output pin that drives the buzzer on the selected IO device. Blank = alert only, no buzzer."),
+                ("beepCount", "Chirps in each group, 1–5 (default 2)."),
+                ("beepMs", "How long each chirp is ON, 20–2000 ms (default 120). Short = softer."),
+                ("beepGapMs", "Silence between chirps in a group, 20–2000 ms (default 180)."),
+                ("restMs", "Quiet time before the next group, 300–30000 ms (default 2500). Longer = calmer."),
+            },
+        },
+
         // ===== Lighting — CCS PD3 LED controller =====
         // Lights come from lighting_devices.json: a channel group — main_camera_light =
         // L1 collimate, L2 red, L3 green, L4 blue; side_camera_light = L5 collimate,

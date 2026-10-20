@@ -115,6 +115,48 @@ public sealed class OperatorPrompt : IOperatorPrompt
     }
 
     /// <summary>
+    /// Non-modal, always-on-top yellow alert — the <c>io.alertBuzzer</c> step sounds its
+    /// buzzer until the returned task completes (operator pressed Acknowledge). A run Stop
+    /// closes the window and surfaces as a cancellation.
+    /// </summary>
+    public Task AcknowledgeAsync(string title, string message, CancellationToken ct)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null)
+            return Task.CompletedTask;
+
+        // InvokeAsync(...).Task is Task<Task> — unwrap the inner acknowledge task.
+        return dispatcher.InvokeAsync(() => ShowAlert(title, message, ct)).Task.Unwrap();
+    }
+
+    private static Task ShowAlert(string title, string message, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var window = new AlertWindow(title, message)
+        {
+            Owner = Application.Current.MainWindow,
+        };
+
+        // A run Stop closes the window and surfaces as a cancellation to the runner.
+        var registration = ct.Register(() =>
+            window.Dispatcher.BeginInvoke(() =>
+            {
+                tcs.TrySetCanceled(ct);
+                if (window.IsLoaded) window.Close();
+            }));
+
+        window.Acknowledged += () =>
+        {
+            registration.Dispose();
+            tcs.TrySetResult();
+            if (window.IsLoaded) window.Close();
+        };
+
+        window.Show();
+        return tcs.Task;
+    }
+
+    /// <summary>
     /// Non-modal, always-on-top manual-jog popup — the <c>flow.jogPopup</c> step blocks
     /// on the returned task until the operator presses Continue (true) or Cancel/timeout
     /// (false → the step fails the run). A run Stop closes the window and surfaces as a

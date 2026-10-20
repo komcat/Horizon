@@ -86,6 +86,20 @@ public static class OpCatalog
                 new ParamSpec("startState", "Start state ON (off = unchecked)", ParamKind.SetClear, "false"),
                 new ParamSpec("dwellMs", "Dwell after each step (ms)", ParamKind.Number, "150"),
             }),
+        // Yellow alert the operator must acknowledge; the buzzer pin pulses a calm pattern
+        // (beepCount × beepMs chirps, beepGapMs apart, then restMs quiet) until they do.
+        // Blank pin = alert only. Handled by WorkflowRunner (io.alertBuzzer).
+        new("io.alertBuzzer", "Alert + Buzzer (acknowledge)", "IO", DeviceKind.Io,
+            new[]
+            {
+                new ParamSpec("title", "Alert title", ParamKind.Text, "UV complete"),
+                new ParamSpec("message", "Message", ParamKind.Text),
+                new ParamSpec("pin", "Buzzer output pin (blank = no buzzer)", ParamKind.OutputPin),
+                new ParamSpec("beepCount", "Beeps per group (1–5)", ParamKind.Number, "2"),
+                new ParamSpec("beepMs", "Beep length (ms)", ParamKind.Number, "120"),
+                new ParamSpec("beepGapMs", "Gap between beeps (ms)", ParamKind.Number, "180"),
+                new ParamSpec("restMs", "Quiet between groups (ms)", ParamKind.Number, "2500"),
+            }),
 
         // ---- Pneumatic ----
         new("pneumatic.extend", "Extend Slide", "Pneumatic", DeviceKind.Pneumatic, System.Array.Empty<ParamSpec>()),

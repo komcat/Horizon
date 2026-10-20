@@ -1093,6 +1093,69 @@ internal sealed class StepDispatcher
             $"{op}: no utility-app host registered (run from a head with the Run-page springboard).");
 
     /// <summary>
+    /// Pulses the buzzer output of an <c>io.alertBuzzer</c> step until <paramref name="ct"/>
+    /// is cancelled (the runner cancels it when the operator acknowledges, or on Stop). The
+    /// default pattern is deliberately calm — a soft double chirp, then a long rest:
+    /// <c>beepCount</c> beeps of <c>beepMs</c> separated by <c>beepGapMs</c>, then
+    /// <c>restMs</c> of silence, repeated. Blank pin = no buzzer (visual alert only).
+    /// Never throws; always ends with the output OFF (a bounded write on its own token).
+    /// </summary>
+    public async Task<Result> RunBuzzerAsync(WorkflowStep step, WorkflowContext ctx, CancellationToken ct)
+    {
+        var pin = Str(step, "pin", ctx).Trim();
+        if (pin.Length == 0 || string.IsNullOrWhiteSpace(step.Device)) return Result.Ok();
+
+        int beepMs = BoundedMs(step, ctx, "beepMs", 120, 20, 2000);
+        int gapMs = BoundedMs(step, ctx, "beepGapMs", 180, 20, 2000);
+        int restMs = BoundedMs(step, ctx, "restMs", 2500, 300, 30000);
+        int beeps = (int)Math.Clamp(Has(step, "beepCount") ? Num(step, "beepCount", ctx) : 2, 1, 5);
+
+        var fault = Result.Ok();
+        try
+        {
+            while (!ct.IsCancellationRequested && fault.IsSuccess)
+            {
+                for (int b = 0; b < beeps && fault.IsSuccess; b++)
+                {
+                    if (b > 0) await Task.Delay(gapMs, ct).ConfigureAwait(false);
+                    fault = await _engine.IO.SetOutputByNameAsync(step.Device, pin, true, ct).ConfigureAwait(false);
+                    if (!fault.IsSuccess) break;
+                    await Task.Delay(beepMs, ct).ConfigureAwait(false);
+                    fault = await _engine.IO.SetOutputByNameAsync(step.Device, pin, false, ct).ConfigureAwait(false);
+                }
+                if (fault.IsSuccess) await Task.Delay(restMs, ct).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Acknowledged / stopped — fall through to the silencing write.
+        }
+        catch (Exception ex)
+        {
+            fault = Result.Fail(ErrorCode.OperationFailed, ex.Message);
+        }
+
+        // Always leave the buzzer silent — independent of the (now cancelled) run token.
+        try
+        {
+            using var offCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            var off = await _engine.IO.SetOutputByNameAsync(step.Device, pin, false, offCts.Token).ConfigureAwait(false);
+            if (!off.IsSuccess && fault.IsSuccess) fault = off;
+        }
+        catch (Exception ex)
+        {
+            // Keep an earlier fault if there is one — it is the root cause.
+            if (fault.IsSuccess)
+                fault = Result.Fail(ErrorCode.OperationFailed, $"could not switch '{pin}' OFF: {ex.Message}");
+        }
+        return fault;
+    }
+
+    /// <summary>A millisecond parameter clamped to [min, max]; <paramref name="fallback"/> when blank.</summary>
+    private static int BoundedMs(WorkflowStep step, WorkflowContext ctx, string key, int fallback, int min, int max)
+        => (int)Math.Clamp(Has(step, key) ? Num(step, key, ctx) : fallback, min, max);
+
+    /// <summary>
     /// Evaluates a guided If condition (<c>flow.ifSignal</c> / <c>flow.ifPosition</c>) by
     /// reading its left-hand value LIVE — a registered signal, or a motion device's axis —
     /// and comparing it to the step's numeric <c>value</c> with the chosen operator. This

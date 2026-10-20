@@ -296,6 +296,16 @@ internal sealed class WorkflowRunner
                 continue;
             }
 
+            // Yellow notice (e.g. "UV complete") the operator must acknowledge, with a
+            // buzzer output pulsed in a gentle pattern until they do.
+            if (op == "io.alertbuzzer")
+            {
+                var fail = await AlertBuzzerAsync(step, ctx, index, steps.Count, desc, lane, ct).ConfigureAwait(false);
+                if (fail != null) return fail.Value;
+                index++;
+                continue;
+            }
+
             // Prompts the operator for a serial number and opens the DUT record for
             // this run, so later dut.* steps record into it. Cancelling fails the run.
             if (op == "dut.promptserial")
@@ -593,6 +603,55 @@ internal sealed class WorkflowRunner
         _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: false, Message: cancelled, Lane: lane));
         _log(LogLevel.Warning, $"Step {index + 1} '{desc}' — {cancelled}.");
         return Result.Fail(ErrorCode.OperationFailed, $"Step {index + 1} '{desc}': {cancelled}");
+    }
+
+    /// <summary>
+    /// Handles an <c>io.alertBuzzer</c> step: shows the operator an alert to acknowledge
+    /// while the dispatcher pulses the step's buzzer output in the background; the
+    /// buzzer is stopped (and its output left OFF) as soon as the alert is acknowledged
+    /// or the run is stopped. A buzzer IO fault is logged but does not fail the step —
+    /// the visual alert still did its job. Returns <c>null</c> once acknowledged; a
+    /// failure <see cref="Result"/> only when no operator-prompt handler is registered.
+    /// </summary>
+    private async Task<Result?> AlertBuzzerAsync(
+        WorkflowStep step, WorkflowContext ctx, int index, int total, string desc, string? lane, CancellationToken ct)
+    {
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: false, Success: false, Message: "", Lane: lane));
+
+        if (_prompt == null)
+        {
+            const string err = "no operator-prompt handler registered";
+            _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: false, Message: err, Lane: lane));
+            _log(LogLevel.Error, $"Step {index + 1} '{desc}' failed: {err}");
+            return Result.Fail(ErrorCode.NotSupported, $"Step {index + 1} '{desc}': {err}");
+        }
+
+        var title = step.Parameters.GetValueOrDefault("title", "Process complete");
+        var message = step.Parameters.GetValueOrDefault("message", string.Empty);
+        _log(LogLevel.Info, $"Step {index + 1}/{total}: alert '{title}' — waiting for operator acknowledge");
+
+        Result buzzer;
+        using (var buzzCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
+        {
+            var buzzTask = _dispatcher.RunBuzzerAsync(step, ctx, buzzCts.Token);
+            try
+            {
+                await _prompt.AcknowledgeAsync(title, message, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                // Acknowledge or Stop — silence the buzzer before anything else happens.
+                buzzCts.Cancel();
+                buzzer = await buzzTask.ConfigureAwait(false);
+            }
+        }
+
+        if (!buzzer.IsSuccess)
+            _log(LogLevel.Warning, $"Step {index + 1} '{desc}': buzzer fault — {buzzer.Message}");
+        _onStep(new WorkflowStepEvent(index, total, desc, Completed: true, Success: true,
+            Message: buzzer.IsSuccess ? "acknowledged" : $"acknowledged (buzzer fault: {buzzer.Message})", Lane: lane));
+        _log(LogLevel.Info, $"Step {index + 1}: alert '{title}' acknowledged.");
+        return null;
     }
 
     /// <summary>

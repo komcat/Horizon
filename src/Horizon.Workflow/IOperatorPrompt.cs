@@ -79,6 +79,16 @@ public interface IOperatorPrompt
     /// </summary>
     Task<bool> JogPopupAsync(JogPopupRequest request, CancellationToken ct) => Task.FromResult(true);
 
+    /// <summary>
+    /// A notice the operator must acknowledge (e.g. "UV complete") — the back-end for the
+    /// <c>io.alertBuzzer</c> step, which sounds its buzzer pattern until this task
+    /// completes. There is no decline: the task completes when the operator presses
+    /// Acknowledge. A run Stop arrives via <paramref name="ct"/>. The default
+    /// implementation has no UI and completes at once (no one to acknowledge, so the
+    /// buzzer is silenced immediately); a Layer 3 head overrides it with an alert window.
+    /// </summary>
+    Task AcknowledgeAsync(string title, string message, CancellationToken ct) => Task.CompletedTask;
+
     // Room to grow without touching IProcessService — add when a step op needs it:
     // Task<int?> ChooseAsync(string title, IReadOnlyList<string> options, CancellationToken ct);
 }

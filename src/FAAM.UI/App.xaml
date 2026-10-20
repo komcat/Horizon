@@ -42,6 +42,13 @@
             <SolidColorBrush x:Key="PromptTitle" Color="#FFFFFF" />
             <SolidColorBrush x:Key="PromptText"  Color="#E3F2FD" />
 
+            <!-- Fixed alert colours (AlertWindow, io.alertBuzzer) — a warm yellow notice
+                 with dark text, distinct from the blue question prompts. -->
+            <SolidColorBrush x:Key="AlertBg"    Color="#FFE873" />
+            <SolidColorBrush x:Key="AlertEdge"  Color="#F9A825" />
+            <SolidColorBrush x:Key="AlertTitle" Color="#3E2A00" />
+            <SolidColorBrush x:Key="AlertText"  Color="#4E3B0A" />
+
             <!-- Raised "3D" button: a top-lit gradient face (system ControlLightLight → Control
                  bevel shades) with a soft drop shadow, a 1px ControlDark edge, an accent-lit hover
                  that lifts the shadow, and a pressed state that inverts the gradient, sinks the
