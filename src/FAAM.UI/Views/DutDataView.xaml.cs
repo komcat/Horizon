@@ -432,6 +432,14 @@ public partial class DutDataView : UserControl
 
     private void OnRefresh(object sender, RoutedEventArgs e) => BeginLoad();
 
+    private void OnOpenFolder(object sender, RoutedEventArgs e)
+    {
+        var dir = _host?.Process.DutDataDirectory;
+        var error = FolderOpener.Open(dir);
+        StatusText.Text = error == null ? $"Opened {dir}" : $"Open folder failed: {error}";
+        if (error != null) Log(LogLevel.Warning, $"DUT Data: open folder failed: {error}");
+    }
+
     private void OnFilterChanged(object sender, TextChangedEventArgs e)
     {
         if (!IsLoaded || _runs.Count == 0) return;

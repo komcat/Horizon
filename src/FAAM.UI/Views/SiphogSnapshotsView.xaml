@@ -52,6 +52,8 @@
                         <Button Content="Refresh" Width="80" Height="26" Click="OnRefresh" />
                         <Button x:Name="ExportButton" Content="Export CSV" Width="100" Height="26" Margin="6,0,0,0"
                                 Click="OnExport" ToolTip="Save every set of the serials listed (filter applied) as a .csv — one row per set × parameter" />
+                        <Button Content="Open folder" Width="100" Height="26" Margin="6,0,0,0" Click="OnOpenFolder"
+                                ToolTip="Open the active product's siphog_data\ folder (one JSON file per serial) in Explorer" />
                     </StackPanel>
                     <TextBlock x:Name="HeaderText" Foreground="{StaticResource Text}" FontSize="13"
                                FontWeight="SemiBold" VerticalAlignment="Center" Text="Select a DUT serial." />

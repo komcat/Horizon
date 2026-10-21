@@ -129,6 +129,9 @@ internal sealed class SiphogSnapshotStore
         _product = productName;
     }
 
+    /// <summary>The product's <c>siphog_data\</c> folder (may not exist until the first snapshot is saved).</summary>
+    public string DirectoryPath => _dir;
+
     /// <summary>Serials that have a snapshot file in this product.</summary>
     public IReadOnlyList<string> List()
         => Directory.Exists(_dir)

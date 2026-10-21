@@ -30,6 +30,18 @@ public interface IProcessService
     /// <summary>Identity / metadata of the active product, or null if none is loaded.</summary>
     ProductInfo? ActiveProductInfo { get; }
 
+    /// <summary>
+    /// The active product's <c>dut\</c> folder (per-serial DUT records incl. the UV signal
+    /// snapshots), or null when no product is active. For "open in Explorer" style UI only.
+    /// </summary>
+    string? DutDataDirectory { get; }
+
+    /// <summary>
+    /// The active product's <c>siphog_data\</c> folder (per-serial labelled SiPhOG snapshot files),
+    /// or null when no product is active. May not exist on disk until the first snapshot is saved.
+    /// </summary>
+    string? SiphogDataDirectory { get; }
+
     /// <summary>Reads a product's identity / metadata without loading it; null if it does not exist.</summary>
     ProductInfo? GetProductInfo(string name);
 

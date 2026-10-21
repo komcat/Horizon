@@ -87,7 +87,7 @@
                 <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Fill="{StaticResource Crosshair}" />
 
                 <!-- Live registered-tool overlay (the same control the Run page uses). -->
-                <v:ToolOverlayView x:Name="ToolOverlay" />
+                <v:ToolOverlayView x:Name="ToolOverlay" AlwaysShow="True" />
 
                 <!-- Picked points + their average + outline preview (drawn in code-behind). -->
                 <Canvas x:Name="PointOverlay" IsHitTestVisible="False" ClipToBounds="True"

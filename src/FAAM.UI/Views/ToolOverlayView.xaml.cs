@@ -96,6 +96,13 @@ public partial class ToolOverlayView : UserControl
         set { _camera = value; Redraw(); }
     }
 
+    /// <summary>
+    /// True on the teach / registration pages, where the tool and gripped-object glyphs are the
+    /// point of the page and must draw regardless of <see cref="Horizon.Common.AppSettings.ShowToolOverlay"/>.
+    /// False (default) on the production surfaces, which honour that setting.
+    /// </summary>
+    public bool AlwaysShow { get; set; }
+
     /// <summary>Starts / stops the ~10 Hz redraw. Off = nothing drawn and no timer.</summary>
     public void SetActive(bool active)
     {
@@ -150,19 +157,27 @@ public partial class ToolOverlayView : UserControl
         Surface.Height = availH;
         var settings = _host.Settings.Current;
 
-        foreach (var reg in _regs)
+        if (AlwaysShow || settings.ShowToolOverlay)
         {
-            DrawOne(reg.ToolDevice, reg.Label, "tool", reg.CameraId,
-                () => _host.Process.LocateTool(reg.ToolDevice),
-                reg.OutlineWidthMm, reg.OutlineLengthMm, reg.OutlineOffsetXmm, reg.OutlineOffsetYmm,
-                ToolBrush, OutlineBrush, settings, availW, availH, scale);
+            foreach (var reg in _regs)
+            {
+                DrawOne(reg.ToolDevice, reg.Label, "tool", reg.CameraId,
+                    () => _host.Process.LocateTool(reg.ToolDevice),
+                    reg.OutlineWidthMm, reg.OutlineLengthMm, reg.OutlineOffsetXmm, reg.OutlineOffsetYmm,
+                    ToolBrush, OutlineBrush, settings, availW, availH, scale);
+            }
+            foreach (var obj in _objects)
+            {
+                DrawOne(ObjectKey(obj.Name), obj.Name, obj.Name, obj.CameraId,
+                    () => _host.Process.LocateGrippedObject(obj.Name),
+                    obj.OutlineWidthMm, obj.OutlineLengthMm, obj.OutlineOffsetXmm, obj.OutlineOffsetYmm,
+                    ObjectBrush, ObjectOutlineBrush, settings, availW, availH, scale);
+            }
         }
-        foreach (var obj in _objects)
+        else
         {
-            DrawOne(ObjectKey(obj.Name), obj.Name, obj.Name, obj.CameraId,
-                () => _host.Process.LocateGrippedObject(obj.Name),
-                obj.OutlineWidthMm, obj.OutlineLengthMm, obj.OutlineOffsetXmm, obj.OutlineOffsetYmm,
-                ObjectBrush, ObjectOutlineBrush, settings, availW, availH, scale);
+            // Setting is off on a production surface: keep the glyphs (cheap to re-show) but hide them.
+            foreach (var g in _glyphs.Values) g.Hide();
         }
 
         DrawParts(settings, availW, availH, scale);

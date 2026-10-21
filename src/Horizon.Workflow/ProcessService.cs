@@ -86,6 +86,10 @@ public sealed class ProcessService : IProcessService
 
     public ProductInfo? GetProductInfo(string name) => _products.ReadInfo(name);
 
+    public string? DutDataDirectory => _dut?.DirectoryPath;
+
+    public string? SiphogDataDirectory => _siphogData?.DirectoryPath;
+
     public event Action<WorkflowStepEvent>? StepEvent;
     public event Action<ScriptProgress>? ScriptProgressChanged;
     public event Action<DeckProgress>? DeckStepEvent;

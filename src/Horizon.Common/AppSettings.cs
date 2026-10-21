@@ -103,6 +103,14 @@ public sealed record AppSettings
     public bool ShowMainCameraOnStartup { get; init; } = true;
 
     /// <summary>
+    /// Draw the live device-registration overlay (registered tool / gripped-object crosshair,
+    /// outline box and label) on the production camera surfaces — the Run-page main feed, its
+    /// Zoom2× inset and the camera pop-out. Default off (hidden). The teach / registration
+    /// pages (Gripped FAU, Part Alignment, Machine › Registration) always draw it regardless.
+    /// </summary>
+    public bool ShowToolOverlay { get; init; }
+
+    /// <summary>
     /// Exposure presets (µs) for the jog-panel Camera section's preset buttons.
     /// A zero entry is an unset (blank) button — the operator right-clicks it to
     /// type and save a value. Four entries back the four preset buttons.

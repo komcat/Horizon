@@ -33,6 +33,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
     private string _hexStepPresetsText = "";
     private string _gantryStepPresetsText = "";
     private bool _showMainCameraOnStartup = true;
+    private bool _showToolOverlay;
     private bool _autoLoginOperator = true;
     private bool _autoVisionUCorrection;
     private string _status = "—";
@@ -111,6 +112,13 @@ public sealed class SettingsSectionViewModel : ObservableObject
     {
         get => _showMainCameraOnStartup;
         set => SetField(ref _showMainCameraOnStartup, value);
+    }
+
+    /// <summary>Draw the gripper / gripped-FAU overlay (crosshair, outline box, label) on the Run page feeds + camera pop-out.</summary>
+    public bool ShowToolOverlay
+    {
+        get => _showToolOverlay;
+        set => SetField(ref _showToolOverlay, value);
     }
 
     /// <summary>Sign in automatically as the first active operator at startup (skip the login prompt).</summary>
@@ -368,6 +376,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
         HexStepPresetsText = string.Join(", ", s.HexStepPresetsMm.Select(mm => Math.Round(mm * 1000.0, 4)));   // mm → µm for display
         GantryStepPresetsText = string.Join(", ", s.GantryStepPresetsMm);                                       // already mm
         ShowMainCameraOnStartup = s.ShowMainCameraOnStartup;
+        ShowToolOverlay = s.ShowToolOverlay;
         AutoLoginOperator = s.AutoLoginOperator;
         AutoVisionUCorrection = s.FindFirstLight.AutoVisionUCorrection;
         MachineNumber = s.StationId;
@@ -418,6 +427,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
             HexStepPresetsMm = ParseSteps(_hexStepPresetsText, 0.001, current.HexStepPresetsMm),   // µm entry → mm
             GantryStepPresetsMm = ParseSteps(_gantryStepPresetsText, 1.0, current.GantryStepPresetsMm), // mm entry
             ShowMainCameraOnStartup = _showMainCameraOnStartup,
+            ShowToolOverlay = _showToolOverlay,
             AutoLoginOperator = _autoLoginOperator,
             FindFirstLight = current.FindFirstLight with { AutoVisionUCorrection = _autoVisionUCorrection },
             StationId = (_machineNumber ?? "").Trim(),

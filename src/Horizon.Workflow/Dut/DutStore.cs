@@ -29,6 +29,9 @@ internal sealed class DutStore
         Directory.CreateDirectory(_dir);
     }
 
+    /// <summary>The product's <c>dut\</c> folder — one JSON file per serial.</summary>
+    public string DirectoryPath => _dir;
+
     /// <summary>Serial numbers that have a record in this product.</summary>
     public IReadOnlyList<string> List()
         => Directory.Exists(_dir)

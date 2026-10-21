@@ -179,6 +179,14 @@ public partial class SiphogSnapshotsView : UserControl
 
     private void OnRefresh(object sender, RoutedEventArgs e) => Reload();
 
+    private void OnOpenFolder(object sender, RoutedEventArgs e)
+    {
+        var dir = _host?.Process.SiphogDataDirectory;
+        var error = FolderOpener.Open(dir);
+        StatusText.Text = error == null ? $"Opened {dir}" : $"Open folder failed: {error}";
+        if (error != null) Log(LogLevel.Warning, $"DUT Data: open SiPhOG folder failed: {error}");
+    }
+
     private void OnOptionChanged(object sender, RoutedEventArgs e) => Render();
 
     private async void OnSerialSelected(object sender, SelectionChangedEventArgs e)

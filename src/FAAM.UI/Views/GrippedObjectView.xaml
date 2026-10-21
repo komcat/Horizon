@@ -98,7 +98,7 @@
                 <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Fill="{StaticResource Crosshair}" />
 
                 <!-- Live tool + gripped-object glyphs (same control as the Run page). -->
-                <v:ToolOverlayView x:Name="ToolOverlay" />
+                <v:ToolOverlayView x:Name="ToolOverlay" AlwaysShow="True" />
 
                 <!-- Taught points, centre and outline preview (purple, code-behind). -->
                 <Canvas x:Name="PointOverlay" IsHitTestVisible="False" ClipToBounds="True"

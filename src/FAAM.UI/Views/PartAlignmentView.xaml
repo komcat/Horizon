@@ -92,7 +92,7 @@
                 <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Fill="{StaticResource Crosshair}" />
 
                 <!-- Live glyphs: tools, gripped objects and saved parts (same control as the Run page). -->
-                <v:ToolOverlayView x:Name="ToolOverlay" />
+                <v:ToolOverlayView x:Name="ToolOverlay" AlwaysShow="True" />
 
                 <!-- Unsaved edit markers (E1 / E2 / the selected object's points), code-behind. -->
                 <Canvas x:Name="EditOverlay" IsHitTestVisible="False" ClipToBounds="True"

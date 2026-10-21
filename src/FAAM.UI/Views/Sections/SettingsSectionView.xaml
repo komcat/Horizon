@@ -165,6 +165,10 @@
             <CheckBox Content="Pop up the main_camera window automatically on startup"
                       Foreground="{StaticResource Text}" Margin="0,0,0,4"
                       IsChecked="{Binding ShowMainCameraOnStartup}" />
+            <CheckBox Content="Show the gripper / gripped-FAU overlay (crosshair, outline box and label) on the Run page and camera pop-out"
+                      Foreground="{StaticResource Text}" Margin="0,0,0,4"
+                      IsChecked="{Binding ShowToolOverlay}"
+                      ToolTip="Off (default): the Run-page main feed, Zoom2× inset and camera pop-out stay clean. The Gripped FAU, Part Alignment and Machine › Registration pages always draw the overlay." />
 
             <TextBlock Text="Startup" Foreground="{StaticResource Text}"
                        FontSize="14" FontWeight="SemiBold" Margin="0,14,0,8" />

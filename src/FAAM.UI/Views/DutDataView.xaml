@@ -32,6 +32,8 @@
                 <Button Content="Refresh" Width="80" Height="26" Margin="16,0,0,0" Click="OnRefresh" />
                 <Button x:Name="ExportButton" Content="Export CSV" Width="100" Height="26" Margin="6,0,0,0"
                         Click="OnExport" ToolTip="Save the rows shown below (all snapshots × all signals) as a .csv" />
+                <Button Content="Open folder" Width="100" Height="26" Margin="6,0,0,0" Click="OnOpenFolder"
+                        ToolTip="Open the active product's dut\ folder (one JSON file per serial) in Explorer" />
             </StackPanel>
             <TextBlock x:Name="StatusText" Foreground="{StaticResource Subtle}" FontSize="12"
                        VerticalAlignment="Center" Margin="16,0,0,0" />
