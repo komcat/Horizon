@@ -6,8 +6,8 @@
 .DESCRIPTION
   Captures a deployable "seed" of the FAAM/Horizon runtime data that lives OUTSIDE
   the repo. By default excludes logs\ (rolling, machine-local noise). Optionally
-  drops the per-product dut\ history and the machine-global history.db so the clone
-  starts with clean traceability.
+  drops the per-product dut\ and siphog_data\ history and the machine-global
+  history.db so the clone starts with clean traceability.
 
   Run this on the dev/golden box at a known-good moment (nothing mid-edit).
 
@@ -21,7 +21,7 @@ param(
     [string]$Output      = (Join-Path $PSScriptRoot '..\artifacts\deploy'),
     # Include rolling Serilog logs (normally useless on a new box).
     [switch]$IncludeLogs,
-    # Exclude history.db and every product's dut\ folder - fresh traceability on the clone.
+    # Exclude history.db and every product's dut\ + siphog_data\ folders - fresh traceability on the clone.
     [switch]$CleanHistory
 )
 
@@ -44,7 +44,7 @@ Write-Host "Snapshotting: $src" -ForegroundColor Cyan
 # robocopy mirrors the tree; /XD skips directories by name at any depth.
 $excludeDirs = @()
 if (-not $IncludeLogs)  { $excludeDirs += 'logs' }
-if ($CleanHistory)      { $excludeDirs += 'dut' }
+if ($CleanHistory)      { $excludeDirs += 'dut'; $excludeDirs += 'siphog_data' }
 
 $roboArgs = @($src, $dst, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:1', '/W:1')
 if ($excludeDirs.Count) { $roboArgs += '/XD'; $roboArgs += $excludeDirs }
@@ -54,7 +54,7 @@ if ($LASTEXITCODE -ge 8) { throw "robocopy failed (exit $LASTEXITCODE)" }
 
 if ($CleanHistory) {
     Remove-Item (Join-Path $dst 'history.db') -Force -ErrorAction SilentlyContinue
-    Write-Host "  (dropped history.db + dut\ - clean traceability)" -ForegroundColor DarkGray
+    Write-Host "  (dropped history.db + dut\ + siphog_data\ - clean traceability)" -ForegroundColor DarkGray
 }
 
 if (Test-Path $zip) { Remove-Item $zip -Force }

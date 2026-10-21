@@ -18,10 +18,47 @@ bottom-up bring-up (ConfigTool → Console → FAAM.UI) are unchanged from
 | `FAAM.UI-v0.4.0-win-x64.zip` | The operator application. Extract and run `FAAM.UI.exe`; .NET 8 Desktop runtime bundled. |
 | `Horizon.Console-v0.4.0-win-x64.zip` | Headless engine test rig over the same Layer 1/2 stack — prove the hardware before the operator app. |
 | `Horizon.ConfigTool-v0.4.0-win-x64.zip` | Hardware config authoring utility for `%APPDATA%\Horizon\config\` (no hardware access). |
-| `Horizon-appdata.zip` | The `%APPDATA%\Horizon` seed — `config\` + `products\`, with `history.db`, `dut\` and `logs\` stripped. |
+| `Horizon-appdata.zip` | The `%APPDATA%\Horizon` seed — `config\` + `products\`, with `history.db`, `dut\`, `siphog_data\` and `logs\` stripped. |
 | `restore-appdata.ps1` | Restores the seed on the target (run with Windows PowerShell 5.1: `powershell -ExecutionPolicy Bypass -File .\restore-appdata.ps1 -Zip .\Horizon-appdata.zip`). |
 
 ## What's new since v0.3
+
+### Machine › IO Watch (new section)
+- Read-only view of the engine's IO watchers: io-watch / safety-watch status, every
+  `io_watch.json` binding with live **input / output / indicator** state dots and its last
+  fire time, the safety-watched inputs, and an event log of binding fires and safety
+  trips / clears.
+- **Switch LED indicators**: a binding may name an `"indicator"` output (e.g.
+  `IOSwitch.switch_led_2`) that the IO watch keeps equal to the bound output's real state
+  every poll — whatever drove it (the switch, a program block, the Machine page). The seed's
+  bindings for switches 2–7 and 10 light their own `switch_led_N`. Editable in
+  `Horizon.ConfigTool` (IO watch › Indicator, `Device.Pin` or `-`); shown in
+  `Horizon.Console`.
+
+### New program blocks
+- **`motion.slowApproach`** — teach-or-approach a final position. First run: manual jog
+  popup, position saved under the block's name on Continue. Later runs: offers an automatic
+  approach at 0.2 mm/s, one axis at a time (Z, Y, X) under a large STOP window, restoring the
+  velocity afterwards (also on STOP / fault), then the jog popup for fine adjust. A refused,
+  failed or stopped approach falls back to the manual jog.
+- **`io.alertBuzzer`** — an always-on-top yellow alert (e.g. "UV complete") with a pulsed
+  buzzer output until the operator presses Acknowledge; STOP also silences it. A buzzer IO
+  fault is logged and does not fail the run.
+- **`dut.promptText`** (*DUT Text Entry*) — the operator types free text that is filed in
+  the open DUT record under `key` (optionally also a context variable). Cancel fails the run
+  unless `required` is off.
+
+### Run page
+- The **active DUT serial** is shown large on the live camera view (top-centre,
+  click-through) and above the process-steps title while a serial is set.
+- The **capture prompt** also appears, compact, on the Zoom2× inset. A cancelled / aborted
+  step no longer latches the "reload the part and run step (1)" gate.
+- **Jog popup** remembers the picked step size (`faam_jog_pad.json`); step chips have
+  higher contrast.
+
+### Engineer
+- Position drop-downs re-read the device's saved positions each time they open, so a position
+  taught elsewhere (Machine page, a `slowApproach` run) appears without reopening the editor.
 
 ### Machine › Motion — gantry-main (ACS)
 - **Axis enable**: each axis row shows an Enabled / Disabled indicator (polled from the
@@ -69,8 +106,10 @@ bottom-up bring-up (ConfigTool → Console → FAAM.UI) are unchanged from
 
 ## Upgrading a station from v0.3
 
-- No migrations. New per-station file on first Save in Machine › Settings:
-  `%APPDATA%\Horizon\config\faam_hexapod_pivot.json`. Without it the default pivot
+- No migrations. `io_watch.json` bindings without an `"indicator"` behave as before.
+- New per-station files: `faam_jog_pad.json` (on the first jog step pick) and, on first Save
+  in Machine › Settings, `%APPDATA%\Horizon\config\faam_hexapod_pivot.json`. Without the
+  pivot file the default pivot
   (−14.52 / 0 / 111) is used — **check it matches the rig's tooling before first use**, since
   FAAM writes it to the hexapod at startup.
 - The controller may refuse a pivot change while U / V / W are not zero; the startup log then
