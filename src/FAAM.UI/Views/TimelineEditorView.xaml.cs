@@ -45,6 +45,13 @@ public partial class TimelineEditorView : UserControl
     private Point _paletteDragStart;
     private PaletteItemViewModel? _paletteDragItem;
 
+    /// <summary>A param combo opened — re-read live options (e.g. the device's saved positions).</summary>
+    private void OnParamDropDownOpened(object sender, EventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is BlockParamViewModel p)
+            p.RefreshOptions();
+    }
+
     private void OnPaletteMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: PaletteItemViewModel item })

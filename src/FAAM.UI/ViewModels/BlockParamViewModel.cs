@@ -62,11 +62,39 @@ public sealed class BlockParamViewModel : ObservableObject
     /// <summary>Combo options for <see cref="ParamKind.PositionName"/> / <see cref="ParamKind.AxisName"/> / <see cref="ParamKind.SetClear"/>.</summary>
     public ObservableCollection<string> Options { get; } = new();
 
-    /// <summary>Replaces the position-name options (called when the block's device changes).</summary>
+    /// <summary>
+    /// Live source for options that can change while the editor is open (the device's
+    /// saved positions). When set, <see cref="RefreshOptions"/> re-reads it — the combo
+    /// calls that each time its drop-down opens.
+    /// </summary>
+    public Func<IEnumerable<string>>? OptionsProvider { get; set; }
+
+    /// <summary>Re-reads <see cref="OptionsProvider"/> (no-op without one), keeping the typed value.</summary>
+    public void RefreshOptions()
+    {
+        if (OptionsProvider == null) return;
+        var keep = _stringValue;
+        SetOptions(OptionsProvider());
+        if (_stringValue != keep) StringValue = keep;
+    }
+
+    /// <summary>
+    /// Replaces the options (called when the block's device changes, or on refresh). Synced
+    /// in place — only stale items removed / new ones inserted — so the combo's current
+    /// selection isn't dropped when it is still in the list.
+    /// </summary>
     public void SetOptions(IEnumerable<string> options)
     {
-        Options.Clear();
-        foreach (var o in options)
-            Options.Add(o);
+        var next = options.ToList();
+        for (int i = Options.Count - 1; i >= 0; i--)
+            if (!next.Contains(Options[i]))
+                Options.RemoveAt(i);
+        for (int i = 0; i < next.Count; i++)
+        {
+            int at = Options.IndexOf(next[i]);
+            if (at == i) continue;
+            if (at >= 0) Options.Move(at, i);
+            else Options.Insert(i, next[i]);
+        }
     }
 }

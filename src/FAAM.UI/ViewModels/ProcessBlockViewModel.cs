@@ -48,6 +48,13 @@ public sealed class ProcessBlockViewModel : ObservableObject
 
         EditPositionCommand = new RelayCommand(EditPosition, () => CanEditPosition());
 
+        // Position lists are re-read from the product each time the drop-down opens, so a
+        // position taught / deleted elsewhere (Machine page, a slowApproach run) shows up.
+        foreach (var bp in Params.Where(p => p.Kind == ParamKind.PositionName))
+            bp.OptionsProvider = () => string.IsNullOrEmpty(_selectedDevice)
+                ? Array.Empty<string>()
+                : _host.Process.GetPositionNames(_selectedDevice);
+
         // The Move block's recall preview tracks the chosen position name.
         if (PositionParam is { } posParam)
             posParam.PropertyChanged += (_, e) =>
