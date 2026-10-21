@@ -66,6 +66,14 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
         _progressTick.Tick += (_, _) => { _progress.Tick(); ShowProgress(); };
     }
 
+    /// <summary>Shows the active DUT serial large above the run title; null / blank hides it. UI thread.</summary>
+    public void SetDutSerial(string? serial)
+    {
+        bool has = !string.IsNullOrWhiteSpace(serial);
+        DutBannerText.Text = has ? serial!.Trim() : string.Empty;
+        DutBanner.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     /// <summary>Supplies the engine host (for the step sequences, teach, STOP, logging).</summary>
     public void Attach(EngineHost host)
     {

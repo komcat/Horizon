@@ -170,6 +170,18 @@
                             </Border>
                         </StackPanel>
 
+                        <!-- Top-centre: the active DUT serial, large — shown only while one is set.
+                             Click-through so MoveClick still works underneath. -->
+                        <Border x:Name="DutBanner" VerticalAlignment="Top" HorizontalAlignment="Center"
+                                Background="{StaticResource Overlay}" CornerRadius="4" Margin="0,6,0,0" Padding="16,2,16,4"
+                                IsHitTestVisible="False" Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="DUT" Foreground="White" Opacity="0.7" FontSize="16" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" Margin="0,4,10,0" />
+                                <TextBlock x:Name="DutBannerText" Foreground="White" FontSize="36" FontWeight="Bold" />
+                            </StackPanel>
+                        </Border>
+
                         <!-- Bottom-left: last MoveClick measurement. -->
                         <Border x:Name="MoveReadoutBox" VerticalAlignment="Bottom" HorizontalAlignment="Left"
                                 Background="{StaticResource Overlay}" CornerRadius="3" Margin="6" Padding="8,3"

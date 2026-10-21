@@ -107,6 +107,20 @@
     <!-- Panel fill darkens while a step is executing (SetExecuting in code-behind). -->
     <Border x:Name="PanelRoot" Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}" BorderThickness="2" CornerRadius="4">
         <DockPanel Margin="8">
+            <!-- Active DUT serial, large — shown only while one is set (SetDutSerial). The
+                 Viewbox shrinks a long serial to fit the panel width. -->
+            <Border DockPanel.Dock="Top" x:Name="DutBanner" Background="{StaticResource Bg}"
+                    BorderBrush="{StaticResource Accent}" BorderThickness="2" CornerRadius="3"
+                    Padding="8,2" Margin="0,0,0,8" Visibility="Collapsed">
+                <Viewbox StretchDirection="DownOnly" Height="44">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="DUT" Foreground="{StaticResource Subtle}" FontSize="16" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" Margin="0,4,10,0" />
+                        <TextBlock x:Name="DutBannerText" Foreground="{StaticResource Text}" FontSize="36" FontWeight="Bold" />
+                    </StackPanel>
+                </Viewbox>
+            </Border>
+
             <!-- Title bar — turns green and reads "RUNNING…" while a step is executing. -->
             <Border DockPanel.Dock="Top" x:Name="TitleBar" Background="Transparent" CornerRadius="3"
                     Padding="0,3" Margin="0,0,0,8">

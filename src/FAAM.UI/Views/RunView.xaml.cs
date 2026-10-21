@@ -86,6 +86,11 @@ public partial class RunView : UserControl
 
         PsuPanel.Attach(host);   // power-supply channel ON/OFF + live V / A
 
+        // Large DUT serial on the live view and above the run title, so the unit is obvious
+        // at a glance. The event can arrive off the UI thread. RunView lives as long as the shell.
+        host.Process.ActiveSerialChanged += s => Dispatcher.BeginInvoke(() => ShowDutSerial(s));
+        ShowDutSerial(host.Process.ActiveSerial);
+
         // The alignment-utilities grid owns the SiPhOG connection panel (and its client).
         AppHost.Attach(host);
         var siphog = AppHost.SiphogClient;
@@ -131,6 +136,15 @@ public partial class RunView : UserControl
         ZoomToolOverlay.Attach(host, ZoomImage, cover: false);
         ToolOverlay.Camera = _mainCamera;
         ZoomToolOverlay.Camera = _mainCamera;
+    }
+
+    /// <summary>Shows (or hides, when blank) the active DUT serial on the feed banner and the steps panel.</summary>
+    private void ShowDutSerial(string? serial)
+    {
+        bool has = !string.IsNullOrWhiteSpace(serial);
+        DutBannerText.Text = has ? serial!.Trim() : string.Empty;
+        DutBanner.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+        StepsPanel.SetDutSerial(serial);
     }
 
     /// <summary>Starts the process timer — called by the shell header when a DUT run begins.</summary>
