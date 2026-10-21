@@ -35,7 +35,10 @@ internal sealed class IoWatchFacet : IIoWatchFacet, IDisposable
             $"{b.Output.Device}.{b.Output.PinName}",
             b.Trigger.ToString(),
             b.DebounceMs,
-            b.Enabled)).ToList();
+            b.Enabled,
+            b.Indicator is { } ind && !string.IsNullOrWhiteSpace(ind.Device) && !string.IsNullOrWhiteSpace(ind.PinName)
+                ? $"{ind.Device}.{ind.PinName}"
+                : null)).ToList();
 
     public event Action<IoBindingFired>? Fired;
 

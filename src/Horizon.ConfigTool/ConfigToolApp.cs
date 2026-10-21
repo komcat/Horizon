@@ -374,14 +374,15 @@ internal sealed class ConfigToolApp
 
         AnsiConsole.MarkupLineInterpolated(
             $"Enabled: [aqua]{config.Enabled}[/]   Poll interval: [aqua]{config.PollingIntervalMs} ms[/]");
-        var table = NewTable("IO watch bindings", "Name", "Input", "Output", "Trigger", "Debounce", "Enabled");
+        var table = NewTable("IO watch bindings", "Name", "Input", "Output", "Indicator", "Trigger", "Debounce", "Enabled");
         if (config.Bindings.Count == 0)
-            table.AddRow("[grey]none[/]", "", "", "", "", "");
+            table.AddRow("[grey]none[/]", "", "", "", "", "", "");
         else
             foreach (var b in config.Bindings)
                 table.AddRow(Markup.Escape(b.Name),
                     Markup.Escape($"{b.Input.Device}.{b.Input.PinName}"),
                     Markup.Escape($"{b.Output.Device}.{b.Output.PinName}"),
+                    Markup.Escape(IndicatorText(b)),
                     b.Trigger.ToString(), $"{b.DebounceMs} ms", YesNo(b.Enabled));
         AnsiConsole.Write(table);
     }
@@ -621,10 +622,26 @@ internal sealed class ConfigToolApp
         new("Input pin", b => b.Input.PinName, b => b with { Input = b.Input with { PinName = Ask("Input pin", b.Input.PinName) } }),
         new("Output device", b => b.Output.Device, b => b with { Output = b.Output with { Device = Ask("Output device", b.Output.Device) } }),
         new("Output pin", b => b.Output.PinName, b => b with { Output = b.Output with { PinName = Ask("Output pin", b.Output.PinName) } }),
+        new("Indicator", b => IndicatorText(b), b => b with { Indicator = AskIndicator(b) }),
         new("Trigger", b => b.Trigger.ToString(), b => b with { Trigger = AskEnum("Trigger", b.Trigger) }),
         new("Debounce ms", b => b.DebounceMs.ToString(), b => b with { DebounceMs = AskInt("Debounce ms", b.DebounceMs) }),
         new("Enabled", b => YesNo(b.Enabled), b => b with { Enabled = AnsiConsole.Confirm("Enabled?", b.Enabled) }),
     };
+
+    /// <summary>A binding's indicator (the output that mirrors its output, e.g. a switch LED) as "Device.Pin", or "-".</summary>
+    private static string IndicatorText(IoBinding b) =>
+        b.Indicator is { } i && !string.IsNullOrWhiteSpace(i.Device) && !string.IsNullOrWhiteSpace(i.PinName)
+            ? $"{i.Device}.{i.PinName}"
+            : "-";
+
+    /// <summary>Prompts for an indicator as "Device.Pin"; "-" clears it.</summary>
+    private static IoEndpoint? AskIndicator(IoBinding b)
+    {
+        var text = Ask("Indicator output mirroring the output (Device.Pin, '-' = none)", IndicatorText(b));
+        var dot = text.IndexOf('.');
+        if (text == "-" || dot <= 0 || dot == text.Length - 1) return null;
+        return new IoEndpoint { Device = text[..dot].Trim(), PinName = text[(dot + 1)..].Trim() };
+    }
 
     private static List<FieldSpec<WatchedInput>> SafetyFields() => new()
     {

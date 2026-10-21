@@ -2030,13 +2030,14 @@ internal sealed partial class ConsoleApp
         table.AddColumn("Name");
         table.AddColumn("Input");
         table.AddColumn("Output");
+        table.AddColumn("Indicator");
         table.AddColumn("Trigger");
         table.AddColumn("Debounce");
         table.AddColumn("Enabled");
 
         if (bindings.Count == 0)
         {
-            table.AddRow("[grey]—[/]", "[grey]no bindings[/]", "[grey]—[/]", "[grey]—[/]", "[grey]—[/]", "[grey]—[/]");
+            table.AddRow("[grey]—[/]", "[grey]no bindings[/]", "[grey]—[/]", "[grey]—[/]", "[grey]—[/]", "[grey]—[/]", "[grey]—[/]");
         }
         else
         {
@@ -2045,6 +2046,7 @@ internal sealed partial class ConsoleApp
                     Markup.Escape(b.Name),
                     Markup.Escape(b.Input),
                     Markup.Escape(b.Output),
+                    b.Indicator == null ? "[grey]—[/]" : Markup.Escape(b.Indicator),
                     Markup.Escape(b.Trigger),
                     $"{b.DebounceMs} ms",
                     b.Enabled ? "[green]yes[/]" : "[grey]no[/]");

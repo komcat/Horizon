@@ -18,12 +18,22 @@ public record IoEndpoint
 /// <summary>
 /// One input→output binding: when <see cref="Input"/> sees <see cref="Trigger"/>
 /// (debounced by <see cref="DebounceMs"/>), the <see cref="Output"/> pin is driven.
+/// An optional <see cref="Indicator"/> output (e.g. the switch's LED) mirrors the
+/// <see cref="Output"/> pin's actual state, whatever drove it.
 /// </summary>
 public record IoBinding
 {
     public string Name { get; init; } = string.Empty;
     public IoEndpoint Input { get; init; } = new();
     public IoEndpoint Output { get; init; } = new();
+
+    /// <summary>
+    /// Optional output pin kept equal to <see cref="Output"/>'s read-back state every poll —
+    /// so a switch LED shows the real state even when a workflow or the Machine page
+    /// changed the output. Null / blank device = no indicator.
+    /// </summary>
+    public IoEndpoint? Indicator { get; init; }
+
     public IoEdge Trigger { get; init; } = IoEdge.Rising;
     public int DebounceMs { get; init; } = 100;
     public bool Enabled { get; init; } = true;

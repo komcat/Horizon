@@ -40,6 +40,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         Smu = new SmuSectionViewModel(host);
         Measurement = new MeasurementSectionViewModel(host);
         Io = new IoSectionViewModel(host);
+        IoWatch = new IoWatchSectionViewModel(host);
         Pneumatic = new PneumaticSectionViewModel(host);
         Motion = new MotionSectionViewModel(host);
         Laser = new LaserSectionViewModel(host);
@@ -85,7 +86,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         Sections.Clear();
         foreach (var section in new object[]
                  {
-                     Status, Motion, Io, Pneumatic, Laser, Tec,
+                     Status, Motion, Io, IoWatch, Pneumatic, Laser, Tec,
                      PowerSupply, Measurement, Smu, Camera,
                  })
             Sections.Add(section);
@@ -109,6 +110,9 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     /// <summary>The IO section, kept typed for the sampler to refresh its pin states.</summary>
     public IoSectionViewModel Io { get; }
+
+    /// <summary>The IO Watch section — io_watch bindings + safety-watched inputs, refreshed by the sampler.</summary>
+    public IoWatchSectionViewModel IoWatch { get; }
 
     /// <summary>The Pneumatic section, kept typed for the sampler to refresh its slide states.</summary>
     public PneumaticSectionViewModel Pneumatic { get; }
@@ -193,6 +197,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         Smu.Refresh();
         Measurement.Refresh();
         Io.Refresh();
+        IoWatch.Refresh();
         Pneumatic.Refresh();
         Motion.Refresh();
         Laser.Refresh();
@@ -264,6 +269,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         _host.Session.Changed -= RebuildSections;
         Camera.Dispose();   // unsubscribes the camera FrameReady hook (UI cleanup, not teardown)
         Registration.Dispose();
+        IoWatch.Dispose();      // unsubscribes the io-watch / safety event hooks
 
         // Pure UI cleanup only — no hardware teardown here. Stopping every
         // SMU/Measurement stream and disconnecting devices is owned by the
