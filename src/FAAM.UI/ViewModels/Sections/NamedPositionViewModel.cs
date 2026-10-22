@@ -13,20 +13,24 @@ namespace FAAM.UI.ViewModels.Sections;
 /// current pose under this name (preserving its stored velocity / camera) and
 /// refreshes the displayed coordinates. <b>Edit</b> opens the per-position editor
 /// so each axis value (plus velocity / camera / exposure) can be typed by hand
-/// instead of jogged to — no motion is commanded either way.
+/// instead of jogged to — no motion is commanded either way. <b>Map</b> puts the
+/// position on / takes it off the section's position map canvas.
 /// </summary>
 public sealed class NamedPositionViewModel : ObservableObject
 {
     private readonly EngineHost _host;
     private readonly string _device;
     private readonly IReadOnlyList<string> _axes;
+    private readonly PositionMapViewModel _map;
     private string _coordinates;
 
-    public NamedPositionViewModel(EngineHost host, string device, string name, IReadOnlyList<string> axes, Func<double> velocity)
+    public NamedPositionViewModel(EngineHost host, string device, string name, IReadOnlyList<string> axes, Func<double> velocity,
+                                  PositionMapViewModel map)
     {
         _host = host;
         _device = device;
         _axes = axes;
+        _map = map;
         Name = name;
         _coordinates = Summarize();
         // Use the Machine page's current velocity (operator's Apply box) so a manual
@@ -44,6 +48,24 @@ public sealed class NamedPositionViewModel : ObservableObject
         get => _coordinates;
         private set => SetField(ref _coordinates, value);
     }
+
+    /// <summary>Whether this position has a node on the position map — setting it adds / removes the node.</summary>
+    public bool IsOnMap
+    {
+        get => _map.Contains(Name);
+        set
+        {
+            if (value) _map.AddNode(Name);
+            else _map.RemoveNode(Name);
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Re-reads the stored coordinates (the position was re-taught from elsewhere, e.g. the map's Update).</summary>
+    public void RefreshCoordinates() => Coordinates = Summarize();
+
+    /// <summary>The map changed this position's node from elsewhere (canvas remove / drop) — refresh the toggle.</summary>
+    public void NotifyOnMapChanged() => OnPropertyChanged(nameof(IsOnMap));
 
     public AsyncRelayCommand MoveCommand { get; }
     public AsyncRelayCommand SaveCommand { get; }

@@ -113,9 +113,6 @@ public sealed class MotionInspectSession : ObservableObject
     /// <summary>Upper bound on the <c>device1/device2/…</c> probe of a parallel move (mirrors StepDispatcher).</summary>
     private const int MaxParallelDevices = 64;
 
-    /// <summary>A device counts as "standing on" a taught point within this much on every axis (mm / deg).</summary>
-    private const double MatchTolerance = 0.01;
-
     private readonly IMotionInspectHost _owner;
 
     public MotionInspectSession(IMotionInspectHost owner, string title, string subtitle)
@@ -461,7 +458,7 @@ public sealed class MotionInspectSession : ObservableObject
             bool at = row.IsTaught
                 && poses.TryGetValue(row.Device, out var live)
                 && axes.TryGetValue(row.Device, out var deviceAxes)
-                && Matches(_owner.Host.Process.GetPosition(row.Device, row.Position)?.Coordinates, live, deviceAxes);
+                && PositionMatch.Matches(_owner.Host.Process.GetPosition(row.Device, row.Position)?.Coordinates, live, deviceAxes);
             row.AtPosition = at;
             if (at && firstMatch < 0) firstMatch = i;
         }
@@ -471,27 +468,6 @@ public sealed class MotionInspectSession : ObservableObject
             ActiveIndex = firstMatch;
             Status = $"Machine is at step {Rows[firstMatch].Seq} — {Rows[firstMatch].Position}.";
         }
-    }
-
-    /// <summary>True when the live pose sits within tolerance of the taught point on every axis the device owns.</summary>
-    private static bool Matches(MotionPosition? taught, MotionPosition live, IReadOnlyList<string> axes)
-    {
-        if (taught == null) return false;
-        foreach (var axis in axes)
-        {
-            double delta = axis.Trim().ToUpperInvariant() switch
-            {
-                "X" => live.X - taught.X,
-                "Y" => live.Y - taught.Y,
-                "Z" => live.Z - taught.Z,
-                "U" => live.U - taught.U,
-                "V" => live.V - taught.V,
-                "W" => live.W - taught.W,
-                _ => 0,
-            };
-            if (Math.Abs(delta) > MatchTolerance) return false;
-        }
-        return true;
     }
 
     private void RaiseCanExecute()

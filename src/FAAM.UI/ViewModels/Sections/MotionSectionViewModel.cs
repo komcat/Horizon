@@ -50,12 +50,16 @@ public sealed class MotionSectionViewModel : ObservableObject
     private bool? _isReferenced;
     private bool _referencing;
     private CancellationTokenSource? _referenceCts;
+    private string? _shownProduct;
 
     public MotionSectionViewModel(EngineHost host)
     {
         _host = host;
         Devices = host.Engine.Motion.DeviceNames;
         _selectedDevice = Devices.Count > 0 ? Devices[0] : null;
+        Map = new PositionMapViewModel(MoveToPositionAsync, UpdatePositionAsync);
+        Map.MembershipChanged += name =>
+            Positions.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))?.NotifyOnMapChanged();
         StopCommand = new AsyncRelayCommand(StopAsync, () => _selectedDevice != null);
         ApplyVelocityCommand = new AsyncRelayCommand(ApplyVelocityAsync, () => _selectedDevice != null);
         SaveNewPositionCommand = new AsyncRelayCommand(SaveNewPositionAsync, () => _selectedDevice != null);
@@ -80,6 +84,9 @@ public sealed class MotionSectionViewModel : ObservableObject
 
     /// <summary>The selected device's named positions (active product) — each recallable via its Move command.</summary>
     public ObservableCollection<NamedPositionViewModel> Positions { get; } = new();
+
+    /// <summary>The position map canvas beside the list — the selected device's map in the active product.</summary>
+    public PositionMapViewModel Map { get; }
 
     public string? SelectedDevice
     {
@@ -250,16 +257,19 @@ public sealed class MotionSectionViewModel : ObservableObject
         RebuildPositions();
     }
 
-    /// <summary>Rebuilds the named-position list for the selected device from the active product.</summary>
+    /// <summary>Rebuilds the named-position list (and the map) for the selected device from the active product.</summary>
     private void RebuildPositions()
     {
         Positions.Clear();
         var device = _selectedDevice;
+        _shownProduct = _host.Process.ActiveProduct;
+        var names = device == null ? Array.Empty<string>() : _host.Process.GetPositionNames(device);
+        Map.Show(_shownProduct, device, names);
         if (device == null) return;
 
         var axes = _host.Engine.Motion.GetDevice(device)?.Axes ?? Array.Empty<string>();
-        foreach (var name in _host.Process.GetPositionNames(device))
-            Positions.Add(new NamedPositionViewModel(_host, device, name, axes, () => _velocity));
+        foreach (var name in names)
+            Positions.Add(new NamedPositionViewModel(_host, device, name, axes, () => _velocity, Map));
     }
 
     /// <summary>Refreshes connection / motion state and every axis position — called each sampler tick.</summary>
@@ -267,15 +277,29 @@ public sealed class MotionSectionViewModel : ObservableObject
     {
         var device = _selectedDevice;
         Connected = device != null && _host.Engine.Motion.IsConnected(device);
+        Map.SetCanAct(Connected && !_host.Process.IsRunning);
         if (device == null) return;
 
         var state = _host.Engine.Motion.GetState(device);
         IsMoving = state.IsMoving;
 
-        // Pick up positions taught/edited on other pages without recreating the
-        // list every tick — only rebuild when the set of names actually changes.
-        if (!_host.Process.GetPositionNames(device).SequenceEqual(Positions.Select(p => p.Name)))
+        // Pick up positions taught/edited on other pages (or a product switch) without
+        // recreating the list every tick — only rebuild when the product or the set of names changes.
+        if (!string.Equals(_host.Process.ActiveProduct, _shownProduct, StringComparison.OrdinalIgnoreCase)
+            || !_host.Process.GetPositionNames(device).SequenceEqual(Positions.Select(p => p.Name)))
             RebuildPositions();
+
+        // Light the map node(s) the device is standing on — from the cached pose, no extra I/O.
+        if (Connected && state.Valid)
+        {
+            var axisNames = Axes.Select(a => a.Name).ToList();
+            Map.UpdateAtPosition(name =>
+                PositionMatch.Matches(_host.Process.GetPosition(device, name)?.Coordinates, state.Position, axisNames));
+        }
+        else
+        {
+            Map.ClearAtPosition();
+        }
 
         // Axis index aligns with MotionPosition.Components (X,Y,Z,U,V,W).
         var components = state.Position.Components;
@@ -519,6 +543,39 @@ public sealed class MotionSectionViewModel : ObservableObject
         {
             Owner = Application.Current?.MainWindow,
         }.Show();
+    }
+
+    /// <summary>Map › Move — recalls the position at the section velocity, same as the row's Move.</summary>
+    private async Task<string> MoveToPositionAsync(string name)
+    {
+        var device = _selectedDevice;
+        if (device == null) return "No device selected.";
+        var r = await _host.Process.MoveToNamedPositionAsync(device, name, _velocity).ConfigureAwait(true);
+        return r.IsSuccess ? $"{device} at {name}." : r.Message;
+    }
+
+    /// <summary>
+    /// Map › Update — after a confirm showing stored vs current values, re-teaches the position
+    /// from the device's current pose (keeping its velocity / camera), like the row's Save.
+    /// </summary>
+    private async Task<string> UpdatePositionAsync(string name)
+    {
+        var device = _selectedDevice;
+        if (device == null) return "No device selected.";
+
+        var row = Positions.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+        var current = string.Join("  ", Axes.Select(a => $"{a.Name} {a.Position}"));
+        if (MessageBox.Show(
+                $"Overwrite '{name}' on {device} with the current axis position?\n\n" +
+                $"Stored:   {row?.Coordinates}\nCurrent:  {current}",
+                "Update position", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+            return $"Update of '{name}' cancelled.";
+
+        var velocity = _host.Process.GetPosition(device, name)?.Velocity ?? 0;
+        var r = await _host.Process.TeachPositionAsync(device, name, velocity).ConfigureAwait(true);
+        row?.RefreshCoordinates();
+        Status = r.IsSuccess ? $"Updated '{name}'" : r.Message;
+        return r.IsSuccess ? $"Updated '{name}' to the current axis position." : r.Message;
     }
 
     private Task ApplyAddAsync(PositionEditResult r)

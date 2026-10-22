@@ -31,6 +31,19 @@ the hardware adapters or the legacy `Core`/`Process` stack.
   Camera, **Registration** (Engineer), **Settings** (Admin)). Engine status + Reconnect
   live in the shell top bar. Registration registers the hex-right gripper to the
   gantry camera — see `docs/device-registration-design.md`.
+  - **Motion › Positions** is split list | map (draggable splitter). The **position map**
+    (`Views/Sections/PositionMapView`, `PositionMapViewModel`) is a canvas of circle nodes,
+    one per position put on it (row **Map** tick, or drag the row's name onto the canvas).
+    Drag nodes to arrange them; **Link** mode joins two nodes (click 1st, then 2nd) with an
+    undirected line; right-click a node / line (or Delete) removes it. A node turns green
+    while the device stands on that position (`PositionMatch`, 0.01 on every axis — the
+    same rule as the Run-page motion inspector), dashed if the position no longer exists.
+    Selecting a node shows **Move** (recall at the section velocity, like the row's Move) and
+    **Update** (re-teach from the current pose after a stored-vs-current confirm, like the
+    row's Save); both need the device connected and no program running. When the device
+    stands on a node, an arrow shows the trajectory to the selected node — dashed preview,
+    solid while the move runs (only when the move starts on a node).
+    One map per product + device in `faam_position_map.json`.
 - **Sign-in gate** — nothing in the shell works until an operator signs in with
   **level + employee number + level password**. Screens are gated by ranked
   `AccessLevel` through `AccessPolicy` (Operator: Run, DUT Data · Technician: + Machine, Vision
@@ -166,6 +179,7 @@ HillClimb / AutoW panels ─┘     (Category, action, Data)  └─▶ DutActiv
 | `jog_transforms.json` | FAAM (Layer 3) | per-device global→local jog matrices (seeded on first run) |
 | `faam_teach_points.json` | FAAM | taught process-step positions |
 | `faam_psu_panel.json` | FAAM `PsuQuickPanel` | Run-page PSU channels shown, per supply (`{ "UDP3305S": [1, 3] }`) |
+| `faam_position_map.json` | FAAM `PositionMapStore` | Machine › Motion position map: per product + device node spots and links, plus the list column width |
 
 (plus the engine's shared device configs: `io_devices.json`, `motor_devices.json`,
 `pneumatic_slides.json`, …)

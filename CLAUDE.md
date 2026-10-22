@@ -274,7 +274,10 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   weights the Run-page progress bar by time and estimates blocks that report no progress;
   a `.moon` script reports its own via `machine.progress(pct, msg)`),
   `faam_hidden_programs.json` (per product, programs hidden from the Engineer page's
-  searchable program list — view preference only);
+  searchable program list — view preference only),
+  `faam_position_map.json` (Machine › Motion position map — per product + device, node spots on
+  the canvas and undirected links between positions; a node lights green while the device is on it;
+  a selected node offers Move / Update with a current-node → target trajectory arrow);
   plus shared `app_settings.json` (`AppSettings`/`AppSettingsStore` in `Horizon.Common`:
   `mm/pixel`, MoveClick mapping, jog velocity presets, `StationId`) and the engine
   device configs. Operator directory `users.json` and the program-history
