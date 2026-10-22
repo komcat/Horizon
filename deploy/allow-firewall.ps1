@@ -40,7 +40,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$ExeNames  = @('FAAM.UI.exe', 'Horizon.UI.exe', 'Horizon.App.exe', 'Horizon.Console.exe', 'Horizon.Workflow.Console.exe')
+# Windows PowerShell 5.1 leaves $PSScriptRoot empty in a param() default when the
+# script is started with -File, which then reached the elevated relaunch as -Path "".
+if (-not $Path) { $Path = Split-Path -Parent $MyInvocation.MyCommand.Path }
+# A trailing backslash would escape the closing quote in the relaunch command line.
+$Path = $Path.TrimEnd('\')
+
+$ExeNames = @('FAAM.UI.exe', 'Horizon.UI.exe', 'Horizon.App.exe', 'Horizon.Console.exe', 'Horizon.Workflow.Console.exe')
 $RuleGroup = 'Horizon'
 
 # --- Elevate if needed (firewall rules need admin) ---

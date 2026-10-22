@@ -215,6 +215,11 @@ rig's harness before first motion. **Confirm E-Stop / safety pins first.**
 
 ## First-run smoke test on the target
 
+0. **Allow the camera stream through the firewall** — once per install folder
+   (rules are per `.exe` path, so every new version folder needs it again):
+   `powershell -ExecutionPolicy Bypass -File <folder>\allow-firewall.ps1`
+   (the script ships inside the `FAAM.UI\` / `Horizon.Console\` folders). Without
+   it a GigE camera connects and "grabs" but shows **no video**.
 1. Launch **Horizon.ConfigTool** → confirm every device file loads with no
    cross-reference errors.
 2. Launch **Horizon.Console** → `InitializeAsync` → `ConnectAllAsync`; confirm

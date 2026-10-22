@@ -110,6 +110,12 @@ foreach ($name in $Apps) {
         & (Join-Path $PSScriptRoot 'stage-vendor-runtime.ps1') -Target $dest
     }
 
+    # A camera-carrying app needs an inbound firewall rule per install path, or the
+    # GigE image stream is dropped ("no video"). Ship the script that adds it.
+    if (Test-Path (Join-Path $dest 'Basler.Pylon.dll')) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'allow-firewall.ps1') -Destination $dest -Force
+    }
+
     $staged += [pscustomobject]@{ Name = $name; Path = $dest }
     Write-Host "    -> $dest`n"
 }

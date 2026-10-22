@@ -13,6 +13,8 @@ deploy/
   release.ps1              DEV box  - tag + publish a GitHub release with the zipped app
   snapshot-appdata.ps1     DEV box  - zip %APPDATA%\Horizon (config + products + history)
   restore-appdata.ps1      TARGET   - unzip the seed into %APPDATA%\Horizon
+  allow-firewall.ps1       TARGET   - firewall Allow rule for the camera stream, per install folder
+                                      (publish.ps1 copies it into FAAM.UI\ and Horizon.Console\)
 ```
 
 Run the **DEV box** scripts with `pwsh` (PowerShell 7+). `restore-appdata.ps1` runs
@@ -103,7 +105,19 @@ PowerShell 7 and is usually not installed on a target station.
 - `%APPDATA%\Horizon\config\camera-config.json` -> `SerialNumber` (this camera's serial)
 - verify `motor_devices.json` / `camera-config.json` IPs match the rig
 
-**5. Smoke test** in order (isolates driver issues from the UI):
+**5. Allow the camera stream through Windows Firewall.** Rules are per `.exe`
+path, so do this for **every new install folder** (each new version) - without
+it a GigE camera connects and "grabs" but FAAM shows "no video":
+
+```
+powershell -ExecutionPolicy Bypass -File C:\Horizon\FAAM.UI\allow-firewall.ps1
+```
+
+It relaunches itself elevated, clears any Block rule left by a cancelled first-run
+prompt, and adds an inbound Allow rule for the `.exe` in its own folder (pass
+`-Path <folder>` to target another one).
+
+**6. Smoke test** in order (isolates driver issues from the UI):
 
 1. `Horizon.ConfigTool\Horizon.ConfigTool.exe` - config loads with no cross-ref errors
 2. `Horizon.Console\Horizon.Console.exe` - each device connects
