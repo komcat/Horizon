@@ -6,6 +6,7 @@ up on a new machine as a **clone of an existing rig**. Full reference:
 
 ```
 deploy/
+  build-deploy.bat         DEV box  - double-click: publish.ps1 -Snapshot -CleanHistory -> C:\Horizon-deploy
   publish.ps1              DEV box  - self-contained publish the 3 apps (+ -Snapshot to bundle data)
   stage-vendor-runtime.ps1 DEV box  - copy the native Basler pylon runtime into a published folder
                                       (called automatically by publish.ps1)
