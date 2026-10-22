@@ -156,6 +156,11 @@ public sealed class PositionMapViewModel : ObservableObject
         UpdateTrajectory();
     }
 
+    /// <summary>True when the map currently shows <paramref name="product"/> / <paramref name="device"/>.</summary>
+    public bool IsShowing(string? product, string? device)
+        => string.Equals(product, _product, StringComparison.OrdinalIgnoreCase)
+           && string.Equals(device, _device, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Whether Move / Update may run (device connected, no program running) — called each tick, raises only on change.</summary>
     public void SetCanAct(bool canAct)
     {

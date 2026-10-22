@@ -31,16 +31,19 @@ the hardware adapters or the legacy `Core`/`Process` stack.
   Camera, **Registration** (Engineer), **Settings** (Admin)). Engine status + Reconnect
   live in the shell top bar. Registration registers the hex-right gripper to the
   gantry camera — see `docs/device-registration-design.md`.
-  - **Motion › Positions** is split list | map (draggable splitter). The **position map**
+  - **Motion › Positions** is split grid | map (draggable splitter). The grid has one row per
+    position (Map tick, Name, one column per installed axis); **Move / Update / Edit…** in its
+    toolbar act on the selected row (double-click = Edit; Update confirms stored vs current
+    first). The **position map**
     (`Views/Sections/PositionMapView`, `PositionMapViewModel`) is a canvas of circle nodes,
     one per position put on it (row **Map** tick, or drag the row's name onto the canvas).
     Drag nodes to arrange them; **Link** mode joins two nodes (click 1st, then 2nd) with an
     undirected line; right-click a node / line (or Delete) removes it. A node turns green
     while the device stands on that position (`PositionMatch`, 0.01 on every axis — the
     same rule as the Run-page motion inspector), dashed if the position no longer exists.
-    Selecting a node shows **Move** (recall at the section velocity, like the row's Move) and
-    **Update** (re-teach from the current pose after a stored-vs-current confirm, like the
-    row's Save); both need the device connected and no program running. When the device
+    Selecting a node shows **Move** (recall at the section velocity) and **Update** (re-teach
+    from the current pose after a stored-vs-current confirm) — the same actions as the grid
+    toolbar; Move / Update (grid or map) need the device connected and no program running. When the device
     stands on a node, an arrow shows the trajectory to the selected node — dashed preview,
     solid while the move runs (only when the move starts on a node).
     One map per product + device in `faam_position_map.json`.

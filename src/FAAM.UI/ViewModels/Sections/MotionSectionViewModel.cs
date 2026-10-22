@@ -51,6 +51,8 @@ public sealed class MotionSectionViewModel : ObservableObject
     private bool _referencing;
     private CancellationTokenSource? _referenceCts;
     private string? _shownProduct;
+    private NamedPositionViewModel? _selectedPosition;
+    private bool _canMove;
 
     public MotionSectionViewModel(EngineHost host)
     {
@@ -64,6 +66,9 @@ public sealed class MotionSectionViewModel : ObservableObject
         ApplyVelocityCommand = new AsyncRelayCommand(ApplyVelocityAsync, () => _selectedDevice != null);
         SaveNewPositionCommand = new AsyncRelayCommand(SaveNewPositionAsync, () => _selectedDevice != null);
         AddPositionCommand = new RelayCommand(AddPosition, () => _selectedDevice != null);
+        MoveSelectedPositionCommand = new AsyncRelayCommand(MoveSelectedPositionAsync, () => _selectedPosition != null && _canMove);
+        UpdateSelectedPositionCommand = new AsyncRelayCommand(UpdateSelectedPositionAsync, () => _selectedPosition != null && _canMove);
+        EditSelectedPositionCommand = new RelayCommand(() => _selectedPosition?.Edit(), () => _selectedPosition != null);
         EnableAllCommand = new AsyncRelayCommand(() => SetAllEnabledAsync(true), () => _isAcs && _connected);
         DisableAllCommand = new AsyncRelayCommand(() => SetAllEnabledAsync(false), () => _isAcs && _connected);
         RunBufferCommand = new AsyncRelayCommand(RunBufferAsync, () => _isAcs && _connected && _bufferRunning != true);
@@ -87,6 +92,20 @@ public sealed class MotionSectionViewModel : ObservableObject
 
     /// <summary>The position map canvas beside the list — the selected device's map in the active product.</summary>
     public PositionMapViewModel Map { get; }
+
+    /// <summary>The grid's selected row — the target of the Move / Update / Edit toolbar buttons.</summary>
+    public NamedPositionViewModel? SelectedPosition
+    {
+        get => _selectedPosition;
+        set
+        {
+            if (!SetField(ref _selectedPosition, value)) return;
+            RaisePositionCommands();
+        }
+    }
+
+    /// <summary>The selected device's installed axes — one grid column each (raised on device change).</summary>
+    public IReadOnlyList<string> AxisNames => Axes.Select(a => a.Name).ToList();
 
     public string? SelectedDevice
     {
@@ -229,6 +248,15 @@ public sealed class MotionSectionViewModel : ObservableObject
     public AsyncRelayCommand SaveNewPositionCommand { get; }
     public RelayCommand AddPositionCommand { get; }
 
+    /// <summary>Moves the device to the selected row's position (section velocity).</summary>
+    public AsyncRelayCommand MoveSelectedPositionCommand { get; }
+
+    /// <summary>Re-teaches the selected row's position from the device's current pose (asks first).</summary>
+    public AsyncRelayCommand UpdateSelectedPositionCommand { get; }
+
+    /// <summary>Opens the editor for the selected row's position.</summary>
+    public RelayCommand EditSelectedPositionCommand { get; }
+
     private void RebuildAxes()
     {
         foreach (var a in Axes) a.CommandFailed -= OnAxisCommandFailed;
@@ -242,6 +270,7 @@ public sealed class MotionSectionViewModel : ObservableObject
         if (device == null || info == null)
         {
             OnPropertyChanged(nameof(HasZ));
+            OnPropertyChanged(nameof(AxisNames));
             return;
         }
 
@@ -252,24 +281,35 @@ public sealed class MotionSectionViewModel : ObservableObject
             Axes.Add(vm);
         }
         OnPropertyChanged(nameof(HasZ));
+        OnPropertyChanged(nameof(AxisNames));
         MoveZCommand.RaiseCanExecuteChanged();
 
         RebuildPositions();
     }
 
-    /// <summary>Rebuilds the named-position list (and the map) for the selected device from the active product.</summary>
+    /// <summary>
+    /// Rebuilds the named-position grid (and the map) for the selected device from the active
+    /// product, keeping the selected row (by name) when the same device / product is still shown.
+    /// </summary>
     private void RebuildPositions()
     {
-        Positions.Clear();
         var device = _selectedDevice;
-        _shownProduct = _host.Process.ActiveProduct;
+        var product = _host.Process.ActiveProduct;
+        var keepSelection = string.Equals(product, _shownProduct, StringComparison.OrdinalIgnoreCase)
+            && Map.IsShowing(product, device) ? _selectedPosition?.Name : null;
+
+        SelectedPosition = null;
+        Positions.Clear();
+        _shownProduct = product;
         var names = device == null ? Array.Empty<string>() : _host.Process.GetPositionNames(device);
         Map.Show(_shownProduct, device, names);
         if (device == null) return;
 
         var axes = _host.Engine.Motion.GetDevice(device)?.Axes ?? Array.Empty<string>();
         foreach (var name in names)
-            Positions.Add(new NamedPositionViewModel(_host, device, name, axes, () => _velocity, Map));
+            Positions.Add(new NamedPositionViewModel(_host, device, name, axes, Map));
+        if (keepSelection != null)
+            SelectedPosition = Positions.FirstOrDefault(p => string.Equals(p.Name, keepSelection, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>Refreshes connection / motion state and every axis position — called each sampler tick.</summary>
@@ -277,7 +317,13 @@ public sealed class MotionSectionViewModel : ObservableObject
     {
         var device = _selectedDevice;
         Connected = device != null && _host.Engine.Motion.IsConnected(device);
-        Map.SetCanAct(Connected && !_host.Process.IsRunning);
+        var canMove = Connected && !_host.Process.IsRunning;
+        Map.SetCanAct(canMove);
+        if (canMove != _canMove)
+        {
+            _canMove = canMove;
+            RaisePositionCommands();
+        }
         if (device == null) return;
 
         var state = _host.Engine.Motion.GetState(device);
@@ -545,7 +591,27 @@ public sealed class MotionSectionViewModel : ObservableObject
         }.Show();
     }
 
-    /// <summary>Map › Move — recalls the position at the section velocity, same as the row's Move.</summary>
+    private void RaisePositionCommands()
+    {
+        MoveSelectedPositionCommand.RaiseCanExecuteChanged();
+        UpdateSelectedPositionCommand.RaiseCanExecuteChanged();
+        EditSelectedPositionCommand.RaiseCanExecuteChanged();
+    }
+
+    private async Task MoveSelectedPositionAsync()
+    {
+        if (_selectedPosition is not { } row) return;
+        Status = $"Moving to {row.Name}…";
+        Status = await MoveToPositionAsync(row.Name).ConfigureAwait(true);
+    }
+
+    private async Task UpdateSelectedPositionAsync()
+    {
+        if (_selectedPosition is not { } row) return;
+        Status = await UpdatePositionAsync(row.Name).ConfigureAwait(true);
+    }
+
+    /// <summary>Recalls the position at the section velocity (Apply box) rather than its taught process velocity — grid toolbar and map Move.</summary>
     private async Task<string> MoveToPositionAsync(string name)
     {
         var device = _selectedDevice;
@@ -555,8 +621,8 @@ public sealed class MotionSectionViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Map › Update — after a confirm showing stored vs current values, re-teaches the position
-    /// from the device's current pose (keeping its velocity / camera), like the row's Save.
+    /// Grid toolbar / map Update — after a confirm showing stored vs current values, re-teaches
+    /// the position from the device's current pose (keeping its velocity / camera).
     /// </summary>
     private async Task<string> UpdatePositionAsync(string name)
     {
