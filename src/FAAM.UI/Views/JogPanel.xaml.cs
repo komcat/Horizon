@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Horizon.Engine;
+using FAAM.UI.ViewModels.Sections;
 
 namespace FAAM.UI.Views;
 
@@ -49,6 +50,8 @@ public partial class JogPanel : UserControl
     private readonly double[] _expPresetValues = new double[4];
     /// <summary>Last-known camera exposure — gain / frame-rate preserved across edits.</summary>
     private CameraExposure _camExposure = new(0, 0, false, false, 0);
+    /// <summary>Lighting tab — the Machine › Camera lighting view-model, following the picked camera.</summary>
+    private LightingPanelViewModel? _lighting;
 
     /// <summary>The active linear step set (mm) for the selected device's family.</summary>
     private double[] _stepSet = DefaultStepSet;
@@ -82,7 +85,7 @@ public partial class JogPanel : UserControl
         BuildThetaSteps();
         BuildExposurePresets();
         _poll = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        _poll.Tick += (_, _) => UpdatePosition();
+        _poll.Tick += (_, _) => { UpdatePosition(); RefreshLighting(); };
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -269,6 +272,7 @@ public partial class JogPanel : UserControl
     {
         _host = host;
         BuildDevices();
+        BuildLighting();         // before the camera picker, so the lights follow its first selection
         BuildCameras();          // populates the picker → fires OnCameraChanged → LoadCameraExposure
         LoadExposurePresets();
         _poll.Start();   // live position readout (~4 Hz, reads the engine's cached state)
@@ -631,7 +635,11 @@ public partial class JogPanel : UserControl
             LoadCameraExposure();   // no selection-change will fire — disable controls now
     }
 
-    private void OnCameraChanged(object sender, SelectionChangedEventArgs e) => LoadCameraExposure();
+    private void OnCameraChanged(object sender, SelectionChangedEventArgs e)
+    {
+        LoadCameraExposure();
+        if (_lighting != null) _lighting.Camera = CameraId;   // lighting rows follow the camera
+    }
 
     /// <summary>Pre-fills the exposure box + auto toggle from the selected camera's current settings.</summary>
     private void LoadCameraExposure()
@@ -746,4 +754,40 @@ public partial class JogPanel : UserControl
     }
 
     private void SetCamStatus(string text) => CamStatus.Text = text;
+
+    // -------------------------------------------------------------- Lighting
+
+    private void BuildLighting()
+    {
+        if (_host == null) return;
+        _lighting = new LightingPanelViewModel(_host);
+        LightingRoot.DataContext = _lighting;
+        LightingBody.Visibility = _lighting.HasDevices ? Visibility.Visible : Visibility.Collapsed;
+        LightingNone.Visibility = _lighting.HasDevices ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>Tracks the lighting connection on the poll tick (cached, non-blocking).</summary>
+    private void RefreshLighting()
+    {
+        try
+        {
+            _lighting?.Refresh();
+        }
+        catch
+        {
+            // Engine torn down — the next Attach rebuilds it; nothing to show meanwhile.
+            _lighting = null;
+        }
+    }
+
+    /// <summary>
+    /// Opening the Lighting tab re-reads the controller state, so levels changed on the
+    /// Machine page or by a program show here. Inner selectors raise SelectionChanged
+    /// too — only the tab control's own change counts.
+    /// </summary>
+    private void OnCamLightTabChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, CamLightTabs)) return;
+        if (LightingTab.IsSelected) _lighting?.Resync();
+    }
 }

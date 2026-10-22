@@ -88,6 +88,13 @@ public sealed class LightingPanelViewModel : ObservableObject
         Connected = _selectedDevice != null && _host.Engine.Lighting.IsConnected(_selectedDevice);
     }
 
+    /// <summary>Re-reads the controller state into the rows (e.g. when another panel changed it).</summary>
+    public void Resync()
+    {
+        Refresh();
+        if (_connected) SyncFromHardware();
+    }
+
     private void Rebuild()
     {
         Lights.Clear();

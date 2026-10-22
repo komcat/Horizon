@@ -228,14 +228,13 @@
             <TextBlock x:Name="JogStatus" Foreground="{StaticResource Subtle}" FontSize="11"
                        TextWrapping="Wrap" Margin="2,8,0,0" />
 
-            <!-- ============================ CAMERA ============================ -->
-            <Border Margin="0,12,0,0" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
-                    BorderThickness="1" CornerRadius="4" Padding="8">
-                <StackPanel>
-                    <TextBlock Text="CAMERA" Foreground="{StaticResource Subtle}" FontWeight="Bold"
-                               FontSize="12" Margin="0,0,0,6" />
-
-                    <!-- Camera selector: exposure controls drive the chosen camera. -->
+            <!-- ===================== CAMERA / LIGHTING tabs ===================== -->
+            <TabControl x:Name="CamLightTabs" Margin="0,12,0,0" Background="{StaticResource Bg}"
+                        BorderBrush="{StaticResource Edge}" SelectionChanged="OnCamLightTabChanged">
+            <TabItem Header="Camera">
+                <StackPanel Margin="4">
+                    <!-- Camera selector: exposure controls drive the chosen camera
+                         (the Lighting tab shows this camera's lights). -->
                     <ComboBox x:Name="CameraSelect" Height="26" VerticalContentAlignment="Center"
                               Margin="0,0,0,6" SelectionChanged="OnCameraChanged" />
 
@@ -266,17 +265,97 @@
                     <TextBlock x:Name="CamStatus" Foreground="{StaticResource Subtle}" FontSize="11"
                                TextWrapping="Wrap" Margin="0,6,0,0" />
                 </StackPanel>
-            </Border>
+            </TabItem>
 
-            <!-- =========================== LIGHTING =========================== -->
-            <Border Margin="0,8,0,0" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
-                    BorderThickness="1" CornerRadius="4" Padding="8">
-                <StackPanel>
-                    <TextBlock Text="LIGHTING" Foreground="{StaticResource Subtle}" FontWeight="Bold"
-                               FontSize="12" Margin="0,0,0,6" />
-                    <TextBlock Text="—" Foreground="{StaticResource Subtle}" FontSize="11" />
-                </StackPanel>
-            </Border>
+            <!-- Lighting: same view-model as Machine › Camera, laid out for the narrow rail.
+                 DataContext (LightingPanelViewModel) is set in Attach. -->
+            <TabItem x:Name="LightingTab" Header="Lighting">
+                <Grid x:Name="LightingRoot" Margin="4">
+                    <TextBlock x:Name="LightingNone" Text="No lighting controller configured."
+                               Foreground="{StaticResource Subtle}" FontSize="11" TextWrapping="Wrap" />
+                    <StackPanel x:Name="LightingBody" Visibility="Collapsed">
+                        <ListBox Style="{StaticResource DeviceSelector}" Margin="0,0,0,6"
+                                 ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}"
+                                 Visibility="{Binding HasMultipleDevices, Converter={StaticResource BoolToVis}}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <TextBlock Text="Connected" Foreground="{StaticResource Subtle}" FontSize="11" />
+                            <TextBlock Text="{Binding Connected}" Foreground="{StaticResource Text}" FontSize="11" Margin="6,0,0,0" />
+                        </StackPanel>
+                        <UniformGrid Columns="3">
+                            <Button Content="Connect" Height="26" Margin="2" Command="{Binding ConnectCommand}" />
+                            <Button Content="Disconnect" Height="26" Margin="2" Command="{Binding DisconnectCommand}" />
+                            <Button Content="All off" Height="26" Margin="2" Command="{Binding AllOffCommand}" />
+                        </UniformGrid>
+
+                        <TextBlock Text="{Binding Camera, StringFormat='Lights for {0}'}" Foreground="{StaticResource Subtle}"
+                                   FontSize="11" Margin="0,8,0,2" />
+                        <TextBlock Text="{Binding NoLightsText}" Foreground="{StaticResource Subtle}" FontStyle="Italic"
+                                   FontSize="11" TextWrapping="Wrap"
+                                   Visibility="{Binding NoLightsForCamera, Converter={StaticResource BoolToVis}}" />
+                        <ItemsControl ItemsSource="{Binding Lights}" IsEnabled="{Binding Connected}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="{StaticResource Edge}" BorderThickness="0,1,0,0" Padding="0,4" Margin="0,2">
+                                        <StackPanel>
+                                            <!-- Name + live read-out -->
+                                            <Grid>
+                                                <TextBlock Text="{Binding Name}" Foreground="{StaticResource Text}" FontSize="11"
+                                                           FontWeight="SemiBold" HorizontalAlignment="Left" />
+                                                <TextBlock Text="{Binding Summary}" Foreground="{StaticResource Accent}" FontFamily="Consolas"
+                                                           FontSize="11" HorizontalAlignment="Right" />
+                                            </Grid>
+
+                                            <!-- Level -->
+                                            <Slider Margin="0,4,0,0" Minimum="0" Maximum="100" SmallChange="1" LargeChange="10"
+                                                    IsSnapToTickEnabled="True" TickFrequency="1"
+                                                    Value="{Binding Percent}" />
+                                            <Grid Margin="0,4,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox Grid.Column="0" Width="44" Height="24" VerticalContentAlignment="Center"
+                                                         Text="{Binding Percent, UpdateSourceTrigger=LostFocus, StringFormat=0}" />
+                                                <TextBlock Grid.Column="1" Text="%" Foreground="{StaticResource Subtle}"
+                                                           VerticalAlignment="Center" Margin="2,0,0,0" />
+                                                <Button Grid.Column="3" Content="Off" Width="44" Height="24" Margin="0,0,4,0"
+                                                        Command="{Binding OffCommand}" />
+                                                <Button Grid.Column="4" Content="100%" Width="48" Height="24"
+                                                        Command="{Binding FullCommand}" />
+                                            </Grid>
+
+                                            <!-- Colour call-outs (only those the light has channels for) -->
+                                            <UniformGrid Columns="4" Margin="0,4,0,0"
+                                                         Visibility="{Binding HasRgb, Converter={StaticResource BoolToVis}}">
+                                                <Button Content="Red" Height="24" Margin="1" Command="{Binding RedCommand}" />
+                                                <Button Content="Green" Height="24" Margin="1" Command="{Binding GreenCommand}" />
+                                                <Button Content="Blue" Height="24" Margin="1" Command="{Binding BlueCommand}" />
+                                                <Button Content="White" Height="24" Margin="1" Command="{Binding WhiteCommand}"
+                                                        ToolTip="Red + green + blue mixed" />
+                                            </UniformGrid>
+                                            <UniformGrid Columns="2" Margin="0,2,0,0"
+                                                         Visibility="{Binding HasCollimate, Converter={StaticResource BoolToVis}}">
+                                                <Button Content="Collimate" Height="24" Margin="1" Command="{Binding CollimateCommand}" />
+                                                <Button Content="White + Collimate" Height="24" Margin="1"
+                                                        Command="{Binding WhiteCollimateCommand}"
+                                                        ToolTip="Collimate + red + green + blue together"
+                                                        Visibility="{Binding HasRgbAndCollimate, Converter={StaticResource BoolToVis}}" />
+                                            </UniformGrid>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Text="{Binding Status}" Foreground="{StaticResource Subtle}" FontStyle="Italic"
+                                   FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+            </TabControl>
         </StackPanel>
     </Border>
 </UserControl>

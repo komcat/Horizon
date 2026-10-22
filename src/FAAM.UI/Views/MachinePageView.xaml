@@ -12,7 +12,7 @@
              shell top bar — see ShellWindow). -->
         <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="170" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
@@ -20,20 +20,43 @@
                      SelectedItem="{Binding CurrentSection}"
                      Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" Foreground="{StaticResource Text}">
                 <ListBox.ItemContainerStyle>
+                    <!-- Own template: the stock one paints its pale selected-inactive brush over
+                         Background, which left the selected section near-invisible. -->
                     <Style TargetType="ListBoxItem">
-                        <Setter Property="Padding" Value="10,8" />
+                        <Setter Property="Padding" Value="12,9" />
+                        <Setter Property="Margin" Value="2,1" />
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        <Style.Triggers>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Background" Value="{StaticResource Accent}" />
-                                <Setter Property="Foreground" Value="White" />
-                            </Trigger>
-                        </Style.Triggers>
+                        <Setter Property="Foreground" Value="{StaticResource Text}" />
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="Cursor" Value="Hand" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                            BorderBrush="Transparent" BorderThickness="4,0,0,0" CornerRadius="3"
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource Bg}" />
+                                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Edge}" />
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource Accent}" />
+                                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Text}" />
+                                            <Setter Property="Foreground" Value="{StaticResource OnAccent}" />
+                                            <Setter Property="FontWeight" Value="Bold" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
                     </Style>
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <TextBlock Text="{Binding Title}" FontSize="13" />
+                        <TextBlock Text="{Binding Title}" FontSize="16" />
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
