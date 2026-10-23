@@ -283,6 +283,17 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   `faam_run_durations.json` (per product/program top-level block timings from earlier runs —
   weights the Run-page progress bar by time and estimates blocks that report no progress;
   a `.moon` script reports its own via `machine.progress(pct, msg)`),
+  `faam_scan_panel.json` (Run-page **Scanning** panel under Raster Climb / Auto W — `Views/ScanningPanel`
+  + `ScanPanelStore`: two hex-right saved-pose buttons that move the hexapod there, four (2×2) buttons that
+  run an assigned script preset or bare `.moon` script; captions / poses / scripts edited by right-click or on Machine › Settings),
+  `faam_script_presets.json` (`ScriptPresetStore`, Machine › Settings › Script presets: name + `.moon`
+  script + argument text — one script, several configurations, e.g. the `FAU_PowerClimb` coarse / fine /
+  XY-only presets. **Script arguments**: a Lua table literal (outer braces optional) that
+  `MoonScriptEngine` evaluates before `machine` is installed — data only — and hands the script as the
+  global `args` table; supplied by a preset, the Run Script block's `args` param, or the Script editor's
+  Args box; `MoonScriptEngine.ValidateArgs` syntax-checks it on Settings save. **`machine.onAbort(fn)`**:
+  on STOP or a script error the engine runs `fn(reason)` once with the machine API re-bound to a fresh
+  60 s token — `FAU_PowerClimb` uses it to return the FAU to its global peak),
   `faam_tower_light.json` (IO device + Green/Yellow/Red/Buzzer pins for the tower light, which
   follows the OEE state — `TowerLight.cs`, see `docs/oee-design.md`),
   `faam_hidden_programs.json` (per product, programs hidden from the Engineer page's

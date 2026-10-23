@@ -255,6 +255,94 @@
                         ToolTip="Puts every hexapod back to R=-14.52 S=0 T=111 — press Save to keep it" />
             </StackPanel>
 
+            <!-- Run-page Scanning panel: the same buttons the operator customises by right-click there. -->
+            <TextBlock Text="Run page scanning" Foreground="{StaticResource Text}"
+                       FontSize="14" FontWeight="SemiBold" Margin="0,14,0,4" />
+            <TextBlock Foreground="{StaticResource Subtle}" TextWrapping="Wrap" MaxWidth="760"
+                       HorizontalAlignment="Left" Margin="0,0,0,8"
+                       Text="Position buttons move the hexapod below to the saved pose (untick Saved to clear it); script buttons run a script preset (below) or else the named .moon script from the active product. Also editable by right-click on the Run page. Saved with the Save button below (faam_scan_panel.json)." />
+            <TextBlock Margin="0,0,0,4" Style="{StaticResource FieldLabel}">
+                <Run Text="Positions —" />
+                <Run Text="{Binding ScanDevice, Mode=OneWay}" FontWeight="SemiBold" />
+            </TextBlock>
+            <ItemsControl ItemsSource="{Binding ScanPositions}" Margin="0,0,0,4">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Text" Style="{StaticResource FieldLabel}" />
+                            <TextBox Width="110" Margin="0,0,12,8" Text="{Binding Label}" />
+                            <CheckBox Content="Saved" IsChecked="{Binding IsSaved}" Foreground="{StaticResource Text}"
+                                      VerticalAlignment="Center" Margin="0,0,12,8" />
+                            <TextBlock Text="X" Style="{StaticResource FieldLabel}" />
+                            <TextBox Width="72" Margin="0,0,8,8" Text="{Binding X}" IsEnabled="{Binding IsSaved}" />
+                            <TextBlock Text="Y" Style="{StaticResource FieldLabel}" />
+                            <TextBox Width="72" Margin="0,0,8,8" Text="{Binding Y}" IsEnabled="{Binding IsSaved}" />
+                            <TextBlock Text="Z" Style="{StaticResource FieldLabel}" />
+                            <TextBox Width="72" Margin="0,0,8,8" Text="{Binding Z}" IsEnabled="{Binding IsSaved}" />
+                            <TextBlock Text="U" Style="{StaticResource FieldLabel}" />
+                            <TextBox Width="72" Margin="0,0,8,8" Text="{Binding U}" IsEnabled="{Binding IsSaved}" />
+                            <TextBlock Text="V" Style="{StaticResource FieldLabel}" />
+                            <TextBox Width="72" Margin="0,0,8,8" Text="{Binding V}" IsEnabled="{Binding IsSaved}" />
+                            <TextBlock Text="W" Style="{StaticResource FieldLabel}" />
+                            <TextBox Width="72" Margin="0,0,8,8" Text="{Binding W}" IsEnabled="{Binding IsSaved}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="Scripts" Margin="0,0,0,4" Style="{StaticResource FieldLabel}" />
+            <ItemsControl ItemsSource="{Binding ScanScripts}" Margin="0,0,0,4">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Text" Style="{StaticResource FieldLabel}" />
+                            <TextBox Width="110" Margin="0,0,12,8" Text="{Binding Label}" />
+                            <TextBlock Text="Preset" Style="{StaticResource FieldLabel}" />
+                            <ComboBox Width="200" Height="26" Margin="0,0,12,8" IsEditable="True"
+                                      ItemsSource="{Binding DataContext.PresetNames,
+                                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                      Text="{Binding Preset, UpdateSourceTrigger=PropertyChanged}"
+                                      ToolTip="A script preset below — script + arguments (blank = use the script on the right)" />
+                            <TextBlock Text="or script" Style="{StaticResource FieldLabel}" />
+                            <ComboBox Width="200" Height="26" Margin="0,0,0,8" IsEditable="True"
+                                      ItemsSource="{Binding DataContext.ScriptNames,
+                                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                      Text="{Binding Script, UpdateSourceTrigger=PropertyChanged}"
+                                      ToolTip="A .moon script in the active product, run with no arguments — used only when no preset is set (blank = none)" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Script presets: one .moon script, several configurations (its global 'args' table). -->
+            <TextBlock Text="Script presets" Foreground="{StaticResource Text}"
+                       FontSize="14" FontWeight="SemiBold" Margin="0,14,0,4" />
+            <TextBlock Foreground="{StaticResource Subtle}" TextWrapping="Wrap" MaxWidth="760"
+                       HorizontalAlignment="Left" Margin="0,0,0,8"
+                       Text="A preset runs a .moon script (active product) with arguments — a Lua table the script reads as 'args', e.g. { sets = {{2,0.5},{1,0.5}} } or { z = false }. Blank arguments = the script's own defaults. The Run-page script buttons pick a preset. Saved with the Save button below (faam_script_presets.json)." />
+            <ItemsControl ItemsSource="{Binding ScriptPresets}" Margin="0,0,0,4">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Name" Style="{StaticResource FieldLabel}" />
+                            <TextBox Width="160" Margin="0,0,12,8" Text="{Binding Name}" />
+                            <TextBlock Text="Script" Style="{StaticResource FieldLabel}" />
+                            <ComboBox Width="160" Height="26" Margin="0,0,12,8" IsEditable="True"
+                                      ItemsSource="{Binding DataContext.ScriptNames,
+                                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                      Text="{Binding Script, UpdateSourceTrigger=PropertyChanged}"
+                                      ToolTip="The .moon script this preset runs (active product)" />
+                            <TextBlock Text="Arguments" Style="{StaticResource FieldLabel}" />
+                            <TextBox Width="380" Margin="0,0,8,8" Text="{Binding Args}" FontFamily="Consolas"
+                                     ToolTip="Lua table, e.g. { z = false, sets = {{0,0.5},{0,0.25}} } — checked when you Save" />
+                            <Button Content="Remove" Width="70" Height="26" Margin="0,0,0,8"
+                                    Command="{Binding RemoveCommand}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Content="Add preset" Width="100" Height="28" HorizontalAlignment="Left"
+                    Command="{Binding AddScriptPresetCommand}" />
+
             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                 <Button Content="Save" Width="90" Height="30" Command="{Binding SaveCommand}" />
                 <Button Content="Reload" Width="90" Height="30" Margin="8,0,0,0" Command="{Binding ReloadCommand}" />

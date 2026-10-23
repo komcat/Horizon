@@ -149,7 +149,9 @@ public sealed class ProcessBlockViewModel : ObservableObject
                 "signal.read" => $"{Or(P("signal"), "?")} → {Or(P("storeAs"), P("signal"))}",
                 "dut.promptserial" => "ask DUT serial",
                 "dut.prompttext" => $"ask → {Or(P("key"), "note")}",
-                "script.run" => Or(P("script"), "(no script)"),
+                "script.run" => string.IsNullOrWhiteSpace(P("args"))
+                    ? Or(P("script"), "(no script)")
+                    : $"{Or(P("script"), "(no script)")} {P("args").Trim()}",
                 "flow.log" => Or(P("message"), "(message)"),
                 "pneumatic.extend" => "extend",
                 "pneumatic.retract" => "retract",

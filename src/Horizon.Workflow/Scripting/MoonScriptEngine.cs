@@ -37,6 +37,13 @@ public sealed class MoonScriptEngine
     // keeps the host pump provably terminating (Power-of-10: no unbounded loops).
     private const long MaxPumps = 50_000_000L;
 
+    // Budget for evaluating the argument text (~20M Lua instructions) — a table literal needs
+    // a handful; this only bounds a pathological expression.
+    private const long MaxArgPumps = 1_000L;
+
+    // Upper bound on a machine.onAbort handler (it typically makes one return move).
+    private static readonly TimeSpan AbortHandlerTimeout = TimeSpan.FromSeconds(60);
+
     private readonly IHorizonEngine _engine;
     private readonly NamedPositionMover? _mover;
     private readonly SignalReader? _signalReader;
@@ -78,12 +85,73 @@ public sealed class MoonScriptEngine
     /// cancellation all come back as a <see cref="ScriptRunResult"/>.
     /// <paramref name="onOutput"/> receives each emitted line live (off the UI
     /// thread); the full list is also on the result.
+    /// <paramref name="args"/> is optional script-argument text — a Lua table literal such as
+    /// <c>{ preset = "fine", zBudgetUm = 30 }</c> (the outer braces may be omitted). It is
+    /// evaluated before <c>machine</c> is installed, so it is data only and cannot reach the
+    /// hardware, and it reaches the script as the global <c>args</c> (an empty table when none).
     /// </summary>
     public Task<ScriptRunResult> RunAsync(
-        string source, Action<string>? onOutput = null, CancellationToken ct = default)
-        => Task.Run(() => RunCore(source ?? string.Empty, onOutput, ct), ct);
+        string source, Action<string>? onOutput = null, CancellationToken ct = default, string? args = null)
+        => Task.Run(() => RunCore(source ?? string.Empty, args, onOutput, ct), ct);
 
-    private ScriptRunResult RunCore(string source, Action<string>? onOutput, CancellationToken ct)
+    /// <summary>
+    /// Syntax-checks script-argument text without running it — for editors that store
+    /// arguments (presets, the Run Script block). Returns null when the text is valid
+    /// (blank counts as valid: no arguments), otherwise the parser's message.
+    /// </summary>
+    public static string? ValidateArgs(string? args)
+    {
+        if (string.IsNullOrWhiteSpace(args)) return null;
+        try
+        {
+            new Script(CoreModules.Preset_HardSandbox).LoadString(ArgsChunk(args), null, "args");
+            return null;
+        }
+        catch (SyntaxErrorException ex)
+        {
+            return ex.DecoratedMessage ?? ex.Message;
+        }
+    }
+
+    // "return <table>" — braces added when the author left them off; newlines keep a trailing
+    // '--' comment in the text from swallowing the closing brace.
+    private static string ArgsChunk(string args)
+    {
+        var text = args.Trim();
+        return text.StartsWith('{') ? $"return {text}\n" : $"return {{\n{text}\n}}\n";
+    }
+
+    /// <summary>
+    /// Evaluates the argument text to a table, under the same auto-yield pump as the script
+    /// (a runaway expression is bounded and cancellable). Returns the error text, or null.
+    /// </summary>
+    private static string? EvaluateArgs(Script script, string? args, CancellationToken ct, out Table table)
+    {
+        table = new Table(script);
+        if (string.IsNullOrWhiteSpace(args)) return null;
+        try
+        {
+            var co = script.CreateCoroutine(script.LoadString(ArgsChunk(args), null, "args")).Coroutine;
+            co.AutoYieldCounter = AutoYieldInstructions;
+            var value = co.Resume();
+            for (long pump = 0; IsSuspended(co) && pump < MaxArgPumps; pump++)
+            {
+                if (ct.IsCancellationRequested) return "cancelled";
+                value = co.Resume();
+            }
+            if (IsSuspended(co)) return "script arguments took too long to evaluate";
+            if (value.Type != DataType.Table)
+                return "script arguments must be a Lua table, e.g. { preset = \"fine\" }";
+            table = value.Table;
+            return null;
+        }
+        catch (InterpreterException ex)
+        {
+            return $"script arguments: {ex.DecoratedMessage ?? ex.Message}";
+        }
+    }
+
+    private ScriptRunResult RunCore(string source, string? args, Action<string>? onOutput, CancellationToken ct)
     {
         var output = new List<string>();
         void Log(string line)
@@ -94,7 +162,17 @@ public sealed class MoonScriptEngine
 
         var script = new Script(CoreModules.Preset_HardSandbox);
         script.Options.DebugPrint = Log;     // Lua print(...) → output
-        new MachineApi(script, _engine, _mover, _signalReader, _visionRunner, _imageDisplay, _prompt, Log, ct, _partAlignment, _progress, _siphogSnapshot, _siphogSetCurrent).Install();
+
+        // Arguments first — before 'machine' exists, so the text can only build data.
+        if (!string.IsNullOrWhiteSpace(args))
+            Log("Script arguments: " + string.Join(" ", args.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)));
+        var argsError = EvaluateArgs(script, args, ct, out var argsTable);
+        if (ct.IsCancellationRequested) return ScriptRunResult.CancelledRun(output);
+        if (argsError != null) return ScriptRunResult.Failed(argsError, null, output);
+        script.Globals["args"] = DynValue.NewTable(argsTable);
+
+        var api = new MachineApi(script, _engine, _mover, _signalReader, _visionRunner, _imageDisplay, _prompt, Log, ct, _partAlignment, _progress, _siphogSnapshot, _siphogSetCurrent);
+        api.Install();
 
         DynValue function;
         try
@@ -106,6 +184,54 @@ public sealed class MoonScriptEngine
             return ScriptRunResult.Failed(ex.DecoratedMessage ?? ex.Message, null, output);
         }
 
+        var result = RunMain(script, function, output, ct);
+
+        // Stopped or failed: give the script's machine.onAbort handler its chance to put the
+        // hardware somewhere safe (e.g. the FAU back on its best point). The run still reports
+        // as stopped / failed.
+        if (!result.Success && api.AbortHandler is { } handler)
+            RunAbortHandler(script, api, handler, result.Cancelled ? "stopped" : "error", Log);
+        return result;
+    }
+
+    /// <summary>
+    /// Runs the script's <c>machine.onAbort</c> handler once, after a STOP or an error. The run's
+    /// own token is already cancelled (or the run is over), so the machine API is re-bound to a
+    /// fresh token bounded by <see cref="AbortHandlerTimeout"/> — the handler may move hardware,
+    /// but cannot run forever; on the timeout its move in progress is stopped. A failure inside
+    /// the handler is logged, never thrown.
+    /// </summary>
+    private static void RunAbortHandler(Script script, MachineApi api, DynValue handler, string reason, Action<string> log)
+    {
+        using var cts = new CancellationTokenSource(AbortHandlerTimeout);
+        api.UseToken(cts.Token);
+        log($"Running the script's abort handler ({reason})…");
+        try
+        {
+            var co = script.CreateCoroutine(handler).Coroutine;
+            co.AutoYieldCounter = AutoYieldInstructions;
+            _ = co.Resume(DynValue.NewString(reason));
+            for (long pump = 0; IsSuspended(co) && pump < MaxPumps; pump++)
+            {
+                if (cts.IsCancellationRequested) break;
+                _ = co.Resume();
+            }
+            if (cts.IsCancellationRequested) log($"Abort handler timed out after {AbortHandlerTimeout.TotalSeconds:0} s.");
+            else if (IsSuspended(co)) log("Abort handler exceeded its execution budget.");
+            else log("Abort handler finished.");
+        }
+        catch (InterpreterException ex)
+        {
+            log($"Abort handler failed: {ex.DecoratedMessage ?? ex.Message}");
+        }
+        catch (OperationCanceledException)
+        {
+            log($"Abort handler timed out after {AbortHandlerTimeout.TotalSeconds:0} s.");
+        }
+    }
+
+    private static ScriptRunResult RunMain(Script script, DynValue function, List<string> output, CancellationToken ct)
+    {
         try
         {
             var co = script.CreateCoroutine(function).Coroutine;

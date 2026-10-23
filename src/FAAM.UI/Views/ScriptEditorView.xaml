@@ -47,7 +47,12 @@
 
                 <Border Width="1" Background="{StaticResource Edge}" Margin="12,2" />
 
-                <Button x:Name="RunButton" Content="► Run" Width="76" Height="28"
+                <TextBlock Text="Args" Foreground="{StaticResource Subtle}" VerticalAlignment="Center"
+                           Margin="0,0,8,0" />
+                <TextBox x:Name="ArgsBox" Width="200" Height="28" VerticalContentAlignment="Center"
+                         FontFamily="Consolas"
+                         ToolTip="Optional arguments for Run — a Lua table the script reads as 'args', e.g. { z = false } (blank = none)" />
+                <Button x:Name="RunButton" Content="► Run" Width="76" Height="28" Margin="6,0,0,0"
                         Style="{StaticResource Bevel3D}" Click="OnRun" />
                 <Button x:Name="StopButton" Content="■ Stop" Width="76" Height="28" Margin="6,0,0,0"
                         IsEnabled="False" Style="{StaticResource Bevel3D}" Click="OnStop" />

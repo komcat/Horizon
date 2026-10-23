@@ -78,6 +78,11 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
         HillHost.Content = climb;
         AutoWHost.Content = autoW;
 
+        // Saved hex-right poses + assignable .moon scripts (faam_scan_panel.json).
+        var scan = new ScanningPanel();
+        scan.Attach(host);
+        ScanHost.Content = scan;
+
         // Thin adapters keep the id → panel + Start/Stop mapping for the app.* command seam.
         // The combined panel backs the chained "align" id plus the legacy "ucorrection" /
         // "faupre" ids (single-phase starts), so existing app.* steps keep working.

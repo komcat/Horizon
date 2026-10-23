@@ -31,6 +31,8 @@ public static class MachineApiCatalog
         new("", "wait", "machine.wait(ms)", "Sleep for ms milliseconds (cancellable)."),
         new("", "ask", "machine.ask(title [, message]) -> bool", "Blocking operator yes/no; returns true for yes."),
         new("", "progress", "machine.progress(percent [, message])", "Report run progress 0–100 (fills the Run-page progress bar for a Run Script block)."),
+        new("", "onAbort", "machine.onAbort(function(reason) ... end)",
+            "Register a handler that runs once if the script is stopped (reason \"stopped\") or fails (\"error\"); machine.* works again inside it for up to 60 s, e.g. to move back to a safe position. nil clears it."),
 
         // motion
         new("motion", "list", "machine.motion.list() -> {names}", "Configured motion device names."),

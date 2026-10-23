@@ -474,8 +474,13 @@ public static class OpCatalog
         // Runs a saved .moon script from the active product to completion, inline in the
         // sequence. The script drives the same hardware through the 'machine' table and can
         // push a captured still into the Run page's snapshot box (machine.ui.showImage).
+        // 'args' (optional Lua table text) reaches the script as its global 'args' table.
         new("script.run", "Run Script", "Flow", DeviceKind.None,
-            new[] { new ParamSpec("script", "Script (.moon)", ParamKind.ScriptName) }),
+            new[]
+            {
+                new ParamSpec("script", "Script (.moon)", ParamKind.ScriptName),
+                new ParamSpec("args", "Arguments (Lua table, optional)", ParamKind.Text),
+            }),
 
         // ---- DUT ----
         // Prompts the operator (modal) for a serial number and opens the DUT record

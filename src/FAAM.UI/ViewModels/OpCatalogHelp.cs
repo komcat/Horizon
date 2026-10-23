@@ -414,6 +414,7 @@ public static class OpCatalogHelp
             ParamNotes = new[]
             {
                 ("script", "Which .moon script to run — the drop-down lists this product's saved scripts."),
+                ("args", "Optional arguments, a Lua table the script reads as 'args' — e.g. { preset = \"fine\" } or { z = false, sets = {{0,0.5},{0,0.25}} }. The outer braces may be left off. Blank = the script's own defaults. Stored on the block, so the program's version history records them."),
             },
         },
 

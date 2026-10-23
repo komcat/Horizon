@@ -52,7 +52,7 @@ internal sealed class WorkflowRunner
         Func<string, CancellationToken, Task<Result<Registration.PartMeasurement>>> runPartAlignment,
         Func<string, int, CancellationToken, Task<Result>> moveCameraToPartFiducial,
         Func<string, string, bool, CancellationToken, Task<Result>> moveCameraToPartObject,
-        Func<string, CancellationToken, Task<Result>> runScript,
+        Func<string, string, CancellationToken, Task<Result>> runScript,
         Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>> saveSiphogSnapshot,
         Func<IHillClimbFeedback?> hillClimbFeedback,
         Func<IUtilityAppHost?> utilityAppHost,

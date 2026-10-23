@@ -544,9 +544,11 @@ public interface IProcessService
     /// Runs raw <c>.moon</c> source against the engine, streaming each emitted line to
     /// <paramref name="onOutput"/> (off the UI thread). The result carries success /
     /// cancel / error plus the full output. Drives the script editor's Run button.
+    /// <paramref name="args"/> is optional argument text (a Lua table literal, e.g.
+    /// <c>{ preset = "fine" }</c>) the script reads as the global <c>args</c>.
     /// </summary>
     Task<ScriptRunResult> RunScriptAsync(
-        string source, Action<string>? onOutput = null, CancellationToken ct = default);
+        string source, Action<string>? onOutput = null, CancellationToken ct = default, string? args = null);
 
     // --- Decks (ordered program chains, operate on the active product) ---
 

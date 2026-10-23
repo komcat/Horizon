@@ -2068,10 +2068,11 @@ public sealed class ProcessService : IProcessService
     /// Runs raw <c>.moon</c> source against the engine. The Lua <c>machine</c> API
     /// reaches every facet plus named-position <c>moveTo</c>, unified
     /// <c>signal.read</c>, and operator prompts (all wired to this active product).
-    /// Each emitted line is logged and streamed to <paramref name="onOutput"/>.
+    /// Each emitted line is logged and streamed to <paramref name="onOutput"/>; optional
+    /// <paramref name="args"/> text reaches the script as the global <c>args</c> table.
     /// </summary>
     public async Task<ScriptRunResult> RunScriptAsync(
-        string source, Action<string>? onOutput = null, CancellationToken ct = default)
+        string source, Action<string>? onOutput = null, CancellationToken ct = default, string? args = null)
     {
         var script = new MoonScriptEngine(
             _engine,
@@ -2101,7 +2102,7 @@ public sealed class ProcessService : IProcessService
 
         using var production = _oee.BeginProduction("script", null);
         Log(LogLevel.Info, "Script started.");
-        var result = await script.RunAsync(source, Sink, ct).ConfigureAwait(false);
+        var result = await script.RunAsync(source, Sink, ct, args).ConfigureAwait(false);
 
         if (result.Success)
             Log(LogLevel.Info, "Script completed.");
@@ -2117,9 +2118,10 @@ public sealed class ProcessService : IProcessService
     /// Runs a saved <c>.moon</c> script from the active product by name — the back-end
     /// for the <c>script.run</c> workflow step. Maps the script outcome onto a
     /// <see cref="Result"/> so a failing script fails the program like any other step;
-    /// a cancelled run reports as a cancellation rather than a defect.
+    /// a cancelled run reports as a cancellation rather than a defect. <paramref name="args"/>
+    /// is the step's optional argument text (blank = none).
     /// </summary>
-    private async Task<Result> RunScriptByNameAsync(string name, CancellationToken ct)
+    private async Task<Result> RunScriptByNameAsync(string name, string args, CancellationToken ct)
     {
         if (_scripts == null)
             return Result.Fail(ErrorCode.OperationFailed, "No active product — cannot run a script.");
@@ -2130,7 +2132,7 @@ public sealed class ProcessService : IProcessService
         if (source == null)
             return Result.Fail(ErrorCode.FileNotFound, $"Script '{name}' not found in the active product.");
 
-        var result = await RunScriptAsync(source, onOutput: null, ct).ConfigureAwait(false);
+        var result = await RunScriptAsync(source, onOutput: null, ct, args).ConfigureAwait(false);
         if (result.Success) return Result.Ok();
         return result.Cancelled
             ? Result.Fail(ErrorCode.ProcessCancelled, $"Script '{name}' was cancelled.")

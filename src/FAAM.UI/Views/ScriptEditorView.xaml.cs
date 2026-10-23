@@ -333,7 +333,8 @@ public partial class ScriptEditorView : UserControl
             var result = await _host.Process.RunScriptAsync(
                 Editor.Text ?? string.Empty,
                 onOutput: line => Ui(() => AppendOutput(line)),
-                ct: _cts.Token);
+                ct: _cts.Token,
+                args: ArgsBox.Text);
 
             if (result.Success) SetStatus("Completed.");
             else if (result.Cancelled) SetStatus("Cancelled.", warn: true);

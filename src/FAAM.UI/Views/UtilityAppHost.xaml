@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <!-- The Run-page alignment utilities, laid out directly and always ready to use:
          the combined U-correction → FAU pre-align panel + the SiPhOG connection panel on the
-         top row, Hill Climber + Auto W below. The old "phone" springboard (tiles + Back
+         top row, Hill Climber + Auto W below, the Scanning panel under both. The old "phone" springboard (tiles + Back
          navigation) was dropped per operator feedback, and the Hexapod Scan app is not used. -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Grid>
@@ -14,11 +14,15 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <ContentControl x:Name="AlignHost"  Grid.Row="0" Grid.Column="0" Margin="0,0,6,12" VerticalAlignment="Top" />
             <ContentControl x:Name="SiphogHost" Grid.Row="0" Grid.Column="1" Margin="6,0,0,12" VerticalAlignment="Top" />
             <ContentControl x:Name="HillHost"   Grid.Row="1" Grid.Column="0" Margin="0,0,6,0"  VerticalAlignment="Top" />
             <ContentControl x:Name="AutoWHost"  Grid.Row="1" Grid.Column="1" Margin="6,0,0,0"  VerticalAlignment="Top" />
+            <!-- Scanning: hex-right saved-pose buttons + .moon script buttons, across both columns. -->
+            <ContentControl x:Name="ScanHost"   Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,12,0,0"
+                            VerticalAlignment="Top" HorizontalContentAlignment="Stretch" />
         </Grid>
     </ScrollViewer>
 </UserControl>

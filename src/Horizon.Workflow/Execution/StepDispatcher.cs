@@ -43,8 +43,9 @@ internal sealed class StepDispatcher
     private readonly Func<string, CancellationToken, Task<Result<Registration.PartMeasurement>>> _runPartAlignment;
     private readonly Func<string, int, CancellationToken, Task<Result>> _moveCameraToPartFiducial;
     private readonly Func<string, string, bool, CancellationToken, Task<Result>> _moveCameraToPartObject;
-    // (scriptName, ct) — runs a saved per-product .moon script to completion. Drives script.run.
-    private readonly Func<string, CancellationToken, Task<Result>> _runScript;
+    // (scriptName, args, ct) — runs a saved per-product .moon script to completion with optional
+    // argument text (the script's 'args' table). Drives script.run.
+    private readonly Func<string, string, CancellationToken, Task<Result>> _runScript;
     // Takes one labelled SiPhOG snapshot into siphog_data\{serial}.json. Drives siphog.saveSnapshot.
     private readonly Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>> _saveSiphogSnapshot;
     // Supplies the hill-climb signal source (Layer 3 SiPhOG). Returns null when no head
@@ -86,7 +87,7 @@ internal sealed class StepDispatcher
         Func<string, CancellationToken, Task<Result<Registration.PartMeasurement>>> runPartAlignment,
         Func<string, int, CancellationToken, Task<Result>> moveCameraToPartFiducial,
         Func<string, string, bool, CancellationToken, Task<Result>> moveCameraToPartObject,
-        Func<string, CancellationToken, Task<Result>> runScript,
+        Func<string, string, CancellationToken, Task<Result>> runScript,
         Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>> saveSiphogSnapshot,
         Func<IHillClimbFeedback?> hillClimbFeedback,
         Func<IUtilityAppHost?> utilityAppHost,
@@ -897,9 +898,10 @@ internal sealed class StepDispatcher
 
             // Runs a saved .moon script from the active product, to completion, inside the
             // step. The script reaches the same hardware through the 'machine' table and can
-            // push a picture to the head's image panel (machine.ui.showImage).
+            // push a picture to the head's image panel (machine.ui.showImage). Optional 'args'
+            // text (a Lua table literal) reaches the script as its global 'args' table.
             case "script.run":
-                return await _runScript(Str(step, "script", ctx), ct);
+                return await _runScript(Str(step, "script", ctx), Str(step, "args", ctx), ct);
 
             case "flow.wait":
             {

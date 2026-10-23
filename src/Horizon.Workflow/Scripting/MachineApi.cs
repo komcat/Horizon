@@ -68,7 +68,9 @@ internal sealed class MachineApi
     private readonly IOperatorPrompt? _prompt;
     private readonly PartAlignmentScriptHost? _part;
     private readonly Action<string> _log;
-    private readonly CancellationToken _ct;
+    // Not readonly: re-bound by UseToken for the machine.onAbort handler, which runs after the
+    // run's own token was cancelled. Every callback reads it at call time.
+    private CancellationToken _ct;
     private readonly Action<ScriptProgress>? _progress;
     private readonly Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? _siphogSnapshot;
     private readonly Func<double, CancellationToken, Task<Result>>? _siphogSetCurrent;
@@ -102,6 +104,15 @@ internal sealed class MachineApi
         _siphogSnapshot = siphogSnapshot;
         _siphogSetCurrent = siphogSetCurrent;
     }
+
+    /// <summary>The Lua function registered with <c>machine.onAbort</c>, or null.</summary>
+    public DynValue? AbortHandler { get; private set; }
+
+    /// <summary>
+    /// Re-binds every <c>machine.*</c> call to <paramref name="ct"/> — used by the host to run the
+    /// abort handler under a fresh, time-bounded token once the run's own token is cancelled.
+    /// </summary>
+    public void UseToken(CancellationToken ct) => _ct = ct;
 
     /// <summary>Installs the <c>machine</c> global into the script's environment.</summary>
     public void Install()
@@ -156,6 +167,18 @@ internal sealed class MachineApi
             // stop the script cleanly (no TaskCanceledException escaping the interpreter).
             if (ms > 0) _ct.WaitHandle.WaitOne(ms);
             StopIfCancelled();
+            return DynValue.Nil;
+        });
+
+        // machine.onAbort(fn | nil) — fn(reason) runs once if the script is stopped ("stopped") or
+        // fails ("error"), with the machine API usable again for up to 60 s, so the script can put
+        // the hardware somewhere safe. The latest registration wins; nil clears it.
+        machine["onAbort"] = Cb(a =>
+        {
+            var fn = a.Count > 0 ? a[0] : DynValue.Nil;
+            if (!fn.IsNil() && fn.Type != DataType.Function)
+                throw new ScriptRuntimeException("machine.onAbort: expects a function (or nil to clear it)");
+            AbortHandler = fn.IsNil() ? null : fn;
             return DynValue.Nil;
         });
 
