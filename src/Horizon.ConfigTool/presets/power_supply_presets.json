@@ -2,7 +2,9 @@
   // Power-supply preset catalog. Each entry is a full PowerSupplyConfig.
   // Keysight E36xxx = LXI (ip/port). UNI-T UDP3305S-E = LAN (ip/port, raw SCPI
   // socket) or VISA (visaResource: USB0::0x0483::0x5740::<serial>::INSTR or
-  // TCPIP0::<ip>::INSTR). visaResource wins when both are set.
+  // TCPIP0::<ip>::INSTR). Siglent SPD1305X = USB (visaResource:
+  // USB0::0xF4EC::0x1410::<serial>::INSTR) or LAN (ip/port 5025).
+  // visaResource wins when both are set.
   "presets": [
     {
       "name": "UDP3305S",
@@ -10,6 +12,12 @@
       "ip": "192.168.0.88",
       "port": 5025,
       "channels": 3
+    },
+    {
+      "name": "SPD1305X",
+      "type": "siglent_spd1305x",
+      "visaResource": "USB0::0xF4EC::0x1410::SPD13DCQ7R0719::INSTR",
+      "channels": 1
     },
     {
       "name": "PSU1",

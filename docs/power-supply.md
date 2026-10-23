@@ -1,4 +1,4 @@
-# Power supply — UNI-T UDP3305S-E (and Keysight E36xxx)
+# Power supply — UNI-T UDP3305S-E, Siglent SPD1305X (and Keysight E36xxx)
 
 How a programmable power supply reaches every layer of Horizon, with the UNI-T
 UDP3305S-E on the LAN as the worked example.
@@ -8,6 +8,7 @@ UDP3305S-E on the LAN as the worked example.
 | Model | Channels / ranges | Transport | `type` |
 |---|---|---|---|
 | UNI-T **UDP3305S-E** | CH1, CH2: 0–32 V / 0–5 A · CH3: 0–6 V / 0–3 A | LAN (raw SCPI socket) **or** NI-VISA (USBTMC / VXI-11) | `unit_t_udp3305s` |
+| Siglent **SPD1305X** | CH1: 0–30 V / 0–5 A | NI-VISA USBTMC (`USB0::0xF4EC::0x1410::<serial>::INSTR`) **or** LAN (raw SCPI socket :5025) | `siglent_spd1305x` |
 | Keysight E36441A / E36103B | 4 / 1 | LXI — SCPI on TCP :5025 | `keysight_e36441a_direct`, `keysight_e36103b_direct` |
 
 ## Config — `%APPDATA%\Horizon\config\power_supply_devices.json`
@@ -24,10 +25,21 @@ UDP3305S-E on the LAN as the worked example.
       // or instead of ip/port (wins when both are set):
       // "visaResource": "TCPIP0::192.168.0.88::INSTR"             (VXI-11 via NI-VISA)
       // "visaResource": "USB0::0x0483::0x5740::<serial>::INSTR"   (USBTMC; UNI-T uses the STMicro VID)
+    },
+    {
+      "name": "SPD1305X",          // Siglent, single channel, over USB
+      "type": "siglent_spd1305x",
+      "visaResource": "USB0::0xF4EC::0x1410::SPD13DCQ7R0719::INSTR",
+      "channels": 1
     }
   ]
 }
 ```
+
+> **Finding the Siglent's resource string:** Windows lists the supply as a *USB Test and
+> Measurement Device (IVI)* with instance id `USB\VID_F4EC&PID_1410\<serial>`; the VISA
+> string is `USB0::0xF4EC::0x1410::<serial>::INSTR` (NI MAX shows the same). It needs the
+> NI-VISA runtime (`visa64.dll`). For LAN instead, set `ip` / `port` 5025.
 
 > **Bench check:** SCPI port `5025` is the assumed default — confirm it on the
 > supply's front panel (Utility › LAN). If the socket doesn't answer, switch to the
@@ -41,6 +53,13 @@ UDP3305S-E on the LAN as the worked example.
 - `UnitTUDP3305SAdapter` picks the transport from config (`visaResource` → VISA, else
   `ip` → TCP). Setpoints outside a channel's rated range are refused **before anything
   is sent** (`PowerSupplyError.OutOfRange`). `Disconnect` forces every output OFF first.
+- `SiglentSpd1305xAdapter` — same transport selection and range refusal, single channel
+  (0–30 V / 0–5 A). Siglent command set: `CH1:VOLTage` / `CH1:CURRent`, `OUTPut CH1,ON|OFF`,
+  `MEASure:VOLTage? CH1` / `MEASure:CURRent? CH1`. Two SPD quirks are handled in the
+  adapter: there is **no `OUTPut?` query** — the output state is bit 4 of the
+  `SYSTem:STATus?` hex bitmask (bit 0 = CC mode, bit 5 = 4-wire sense) — and the firmware
+  **drops back-to-back commands**, so every transaction is paced ≥ 60 ms after the previous
+  one (a full `GetStatus` is three queries ≈ 200 ms; the facet's 2 s poll is unaffected).
 - `PowerSupplyManager` dispatches on `type` (unknown types fall back to Keysight).
 
 ## Layer 1 — `IPowerSupplyFacet`

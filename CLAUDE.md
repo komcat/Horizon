@@ -348,7 +348,7 @@ both — a single process owns the hardware SDKs. `docs/architecture_layers.md` 
 | Pneumatic | IPneumaticSlide | PneumaticSlide | Uses IIODevice output pins |
 | Current Measurement | ICurrentMeasurementDevice | Keithley6482Adapter | visa64.dll P/Invoke (NI-VISA) |
 | Laser Controller | ILaserControllerDevice | CLD101xAdapter | Thorlabs CLD101x SCPI over USB |
-| Power Supply | IPowerSupplyDevice | KeysightPowerSupplyAdapter, UnitTUDP3305SAdapter | Keysight E36xxx (LXI TCP); UNI-T UDP3305S-E (LAN raw SCPI socket, or VISA USBTMC / VXI-11 — `Transport/ScpiTransport.cs`) |
+| Power Supply | IPowerSupplyDevice | KeysightPowerSupplyAdapter, UnitTUDP3305SAdapter, SiglentSpd1305xAdapter | Keysight E36xxx (LXI TCP); UNI-T UDP3305S-E and Siglent SPD1305X (LAN raw SCPI socket, or VISA USBTMC / VXI-11 — `Transport/ScpiTransport.cs`; the SPD1305X paces commands ≥ 60 ms and reads output state from `SYST:STAT?`) |
 | Lighting | ILightingDevice | CcsPd3Adapter | CCS PD3 LED controller |
 | TEC | ITecDevice | Ted4015Adapter | Thorlabs TED4015 standalone TEC |
 | SMU | ISmuDevice | Keithley2400Adapter, Keithley2602BAdapter | Keithley SourceMeter via VISA |

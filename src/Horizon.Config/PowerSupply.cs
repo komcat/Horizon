@@ -5,24 +5,25 @@ namespace Horizon.Config;
 /// <summary>
 /// A programmable power supply. <see cref="Type"/> selects the adapter:
 /// Keysight E36xxx is reached over LXI (SCPI on a TCP socket); UNI-T UDP3305S-E
-/// over LAN (<see cref="Ip"/>/<see cref="Port"/>, raw SCPI socket) or VISA
-/// (<see cref="VisaResource"/>: USBTMC or VXI-11). Set one or the other — when
-/// both are set the UDP3305S adapter uses <see cref="VisaResource"/>.
+/// and Siglent SPD1305X over LAN (<see cref="Ip"/>/<see cref="Port"/>, raw SCPI
+/// socket) or VISA (<see cref="VisaResource"/>: USBTMC or VXI-11). Set one or the
+/// other — when both are set those adapters use <see cref="VisaResource"/>.
 /// </summary>
 public record PowerSupplyConfig
 {
     public string Name { get; init; } = string.Empty;
     /// <summary>
     /// e.g. <c>keysight_e36441a_direct</c>, <c>keysight_e36103b_direct</c> (LXI/TCP);
-    /// <c>unit_t_udp3305s</c> (LAN or USB/VISA).
+    /// <c>unit_t_udp3305s</c>, <c>siglent_spd1305x</c> (LAN or USB/VISA).
     /// </summary>
     public string Type { get; init; } = string.Empty;
     public string Ip { get; init; } = string.Empty;
     public int Port { get; init; } = 5025;
     /// <summary>
     /// VISA resource string for USB/USBTMC supplies, e.g.
-    /// <c>USB0::0x0483::0x5740::ADP3424500154::INSTR</c>. UNI-T enumerates with
-    /// the STMicro USB VID 0x0483, not a UNI-T VID.
+    /// <c>USB0::0x0483::0x5740::ADP3424500154::INSTR</c> (UNI-T enumerates with
+    /// the STMicro USB VID 0x0483, not a UNI-T VID) or
+    /// <c>USB0::0xF4EC::0x1410::SPD13DCQ7R0719::INSTR</c> (Siglent SPD1305X).
     /// </summary>
     public string VisaResource { get; init; } = string.Empty;
     /// <summary>Number of independent output channels.</summary>

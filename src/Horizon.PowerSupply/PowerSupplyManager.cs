@@ -31,6 +31,8 @@ public sealed class PowerSupplyManager : IDisposable
         {
             "unit_t_udp3305s" or "unitt_udp3305s" or "udp3305s"
                 => new UnitTUDP3305SAdapter(config),
+            "siglent_spd1305x" or "spd1305x"
+                => new SiglentSpd1305xAdapter(config),
             _   => new KeysightPowerSupplyAdapter(config),
         };
     }
