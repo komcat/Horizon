@@ -277,7 +277,9 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   searchable program list — view preference only),
   `faam_position_map.json` (Machine › Motion position map — per product + device, node spots on
   the canvas and undirected links between positions; a node lights green while the device is on it;
-  a selected node offers Move / Update with a current-node → target trajectory arrow);
+  a selected node offers Move / Update; **Follow path** (default on) moves leg by leg along the links,
+  fewest hops, confirming arrival after each leg, one arrow per leg; the jog rail's **Move map** tab
+  shows the same map view-only);
   plus shared `app_settings.json` (`AppSettings`/`AppSettingsStore` in `Horizon.Common`:
   `mm/pixel`, MoveClick mapping, jog velocity presets, `StationId`) and the engine
   device configs. Operator directory `users.json` and the program-history

@@ -6,15 +6,20 @@ using FAAM.UI.Mvvm;
 
 namespace FAAM.UI.ViewModels.Sections;
 
+/// <summary>Outcome of one map move leg — <see cref="Arrived"/> only when the device was confirmed standing on the position.</summary>
+public readonly record struct MapMoveResult(bool Arrived, string Message);
+
 /// <summary>
-/// The Machine › Motion position map — the canvas beside the position list. Each
-/// position the operator puts on the map is a circle node they can drag anywhere;
-/// <b>Link</b> mode joins two nodes (click the 1st, then the 2nd) with an undirected
-/// edge. A node turns green while the device stands on its position. Selecting a node
-/// offers <b>Move</b> (recall it) and <b>Update</b> (re-teach it from the current pose);
-/// when the device stands on another node, an arrow shows the trajectory from there to
-/// the selected node — dashed as a preview, solid while the move runs. One map per
-/// product + device, persisted by <see cref="PositionMapStore"/> on every edit.
+/// The position map — the canvas beside the Machine › Motion position list, and (read-only)
+/// the jog rail's Move map tab. Each position the operator puts on the map is a circle node
+/// they can drag anywhere; <b>Link</b> mode joins two nodes (click the 1st, then the 2nd)
+/// with an undirected edge. A node turns green while the device stands on its position.
+/// Selecting a node offers <b>Move</b> (recall it) and <b>Update</b> (re-teach it from the
+/// current pose). With <see cref="FollowPath"/> on (the default) Move travels along the
+/// links — node by node over the route with the fewest hops — instead of straight to the
+/// target; arrows show the route from the node the device stands on, dashed as a preview,
+/// the running leg solid. One map per product + device, persisted by
+/// <see cref="PositionMapStore"/> on every edit.
 /// </summary>
 public sealed class PositionMapViewModel : ObservableObject
 {
@@ -27,41 +32,61 @@ public sealed class PositionMapViewModel : ObservableObject
     private const int SpotColumns = 6, MaxSpots = 120;
     private const double MinNodeSpacing = 50;
 
-    private readonly Func<string, Task<string>> _moveTo;
-    private readonly Func<string, Task<string>> _updateTo;
+    private readonly Func<string, string, Task<MapMoveResult>> _moveTo;
+    private readonly Func<string, Task<string>>? _updateTo;
+    private readonly bool _editable;
     private string? _product;
     private string? _device;
+    private HashSet<string> _taught = new(StringComparer.OrdinalIgnoreCase);
     private bool _linkMode;
     private bool _canAct;
+    private bool _followPath = true;
+    private bool _reloadPending;
     private PositionNodeViewModel? _selected;
     private PositionNodeViewModel? _linkSource;
     private PositionNodeViewModel? _currentNode;
-    private PositionNodeViewModel? _moveFrom;
     private PositionNodeViewModel? _moveTarget;
-    private PositionTrajectoryViewModel? _trajectory;
+    private PositionNodeViewModel? _moveStart;
+    private List<PositionNodeViewModel>? _moveStops;
+    private int _moveLeg;
+    private CancellationTokenSource? _moveCts;
     private string _hint = string.Empty;
 
-    /// <param name="moveTo">Moves the device to the named position; returns the result line for <see cref="Hint"/>.</param>
-    /// <param name="updateTo">Re-teaches the named position from the device's current pose (confirming first); returns the result line.</param>
-    public PositionMapViewModel(Func<string, Task<string>> moveTo, Func<string, Task<string>> updateTo)
+    /// <param name="moveTo">Moves (device, position) and confirms arrival — one leg of a Move.</param>
+    /// <param name="updateTo">Re-teaches the named position from the device's current pose (confirming first); returns the result line. Null hides Update.</param>
+    /// <param name="editable">False = view-only map (jog rail): no drag / link / remove, never saved.</param>
+    public PositionMapViewModel(Func<string, string, Task<MapMoveResult>> moveTo,
+                                Func<string, Task<string>>? updateTo, bool editable = true)
     {
         _moveTo = moveTo;
         _updateTo = updateTo;
-        RemoveSelectedCommand = new RelayCommand(() => { if (_selected != null) RemoveNode(_selected); }, () => _selected != null);
+        _editable = editable;
+        RemoveSelectedCommand = new RelayCommand(() => { if (_selected != null) RemoveNode(_selected); }, () => _editable && _selected != null);
         MoveSelectedCommand = new AsyncRelayCommand(MoveSelectedAsync, CanActOnSelected);
-        UpdateSelectedCommand = new AsyncRelayCommand(UpdateSelectedAsync, CanActOnSelected);
+        UpdateSelectedCommand = new AsyncRelayCommand(UpdateSelectedAsync, () => _updateTo != null && CanActOnSelected());
+        PositionMapStore.Saved += OnStoreSaved;
+        StopRequested += CancelMove;
         UpdateHint();
     }
 
     public ObservableCollection<PositionNodeViewModel> Nodes { get; } = new();
     public ObservableCollection<PositionEdgeViewModel> Edges { get; } = new();
 
+    /// <summary>The move arrows: one per leg of the previewed / running route.</summary>
+    public ObservableCollection<PositionTrajectoryViewModel> Trajectories { get; } = new();
+
     public double Width => CanvasWidth;
     public double Height => CanvasHeight;
 
+    /// <summary>Nodes can be dragged / linked / removed (Machine page); false on the jog rail.</summary>
+    public bool IsEditable => _editable;
+
+    /// <summary>Shows the Update button.</summary>
+    public bool CanUpdate => _updateTo != null;
+
     public RelayCommand RemoveSelectedCommand { get; }
 
-    /// <summary>Moves the device to the selected node's position (section velocity).</summary>
+    /// <summary>Moves the device to the selected node — along the links when <see cref="FollowPath"/> is on.</summary>
     public AsyncRelayCommand MoveSelectedCommand { get; }
 
     /// <summary>Saves the device's current axis position into the selected node's position.</summary>
@@ -70,12 +95,28 @@ public sealed class PositionMapViewModel : ObservableObject
     /// <summary>Raised with a position name when it is added to or removed from the map.</summary>
     public event Action<string>? MembershipChanged;
 
+    /// <summary>
+    /// Move travels node by node along the links (the route with the fewest hops) instead of
+    /// straight to the target. Needs the device to stand on a node and a linked route to exist.
+    /// </summary>
+    public bool FollowPath
+    {
+        get => _followPath;
+        set
+        {
+            if (!SetField(ref _followPath, value)) return;
+            UpdateTrajectory();
+            if (_selected != null && !_linkMode) Hint = DescribeSelection(_selected);
+        }
+    }
+
     /// <summary>Link mode: clicks pick the two ends of a new edge instead of selecting / dragging.</summary>
     public bool LinkMode
     {
         get => _linkMode;
         set
         {
+            if (!_editable && value) return;
             if (!SetField(ref _linkMode, value)) return;
             LinkSource = null;
             if (value) Selected = null;
@@ -105,21 +146,6 @@ public sealed class PositionMapViewModel : ObservableObject
     /// <summary>A node is selected — shows the Move / Update buttons.</summary>
     public bool HasSelection => _selected != null;
 
-    /// <summary>The move arrow (current node → selected / target node); null when there is none to show.</summary>
-    public PositionTrajectoryViewModel? Trajectory
-    {
-        get => _trajectory;
-        private set
-        {
-            var old = _trajectory;
-            if (!SetField(ref _trajectory, value)) return;
-            old?.Detach();
-            OnPropertyChanged(nameof(HasTrajectory));
-        }
-    }
-
-    public bool HasTrajectory => _trajectory != null;
-
     private PositionNodeViewModel? LinkSource
     {
         get => _linkSource;
@@ -133,6 +159,22 @@ public sealed class PositionMapViewModel : ObservableObject
     }
 
     /// <summary>
+    /// After a move reported done, re-reads the live pose from the controller and checks the
+    /// device really stands on <paramref name="name"/>. A STOP mid-move also ends the move
+    /// "successfully" (motion simply ceased), so a path must not start its next leg on that alone.
+    /// </summary>
+    public static async Task<MapMoveResult> ConfirmArrivalAsync(EngineHost host, string device, string name)
+    {
+        var live = await host.Engine.Motion.GetPositionAsync(device).ConfigureAwait(true);
+        if (!live.IsSuccess)
+            return new MapMoveResult(false, $"Could not confirm {device} reached {name}: {live.Message}");
+        var axes = host.Engine.Motion.GetDevice(device)?.Axes ?? Array.Empty<string>();
+        return PositionMatch.Matches(host.Process.GetPosition(device, name)?.Coordinates, live.Value, axes)
+            ? new MapMoveResult(true, $"{device} at {name}.")
+            : new MapMoveResult(false, $"{device} stopped short of {name}");
+    }
+
+    /// <summary>
     /// Shows the map for <paramref name="product"/> / <paramref name="device"/> — reloaded from
     /// disk only when either changes — and flags nodes whose position no longer exists.
     /// </summary>
@@ -141,17 +183,14 @@ public sealed class PositionMapViewModel : ObservableObject
         if (!string.Equals(product, _product, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(device, _device, StringComparison.OrdinalIgnoreCase))
         {
+            _moveCts?.Cancel();   // a route belongs to the map it was planned on
             _product = product;
             _device = device;
             Load();
         }
 
-        var names = new HashSet<string>(positionNames, StringComparer.OrdinalIgnoreCase);
-        foreach (var node in Nodes)
-        {
-            node.IsTaught = names.Contains(node.Name);
-            if (!node.IsTaught) node.IsAtPosition = false;
-        }
+        _taught = new HashSet<string>(positionNames, StringComparer.OrdinalIgnoreCase);
+        ApplyTaught();
         RaiseActCommands();
         UpdateTrajectory();
     }
@@ -169,12 +208,20 @@ public sealed class PositionMapViewModel : ObservableObject
         RaiseActCommands();
     }
 
+    /// <summary>STOP was pressed — a path move in progress starts no further leg.</summary>
+    public void CancelMove() => _moveCts?.Cancel();
+
+    /// <summary>Any STOP: every map (Machine page and jog rail) abandons its path move.</summary>
+    public static void CancelAllMoves() => StopRequested?.Invoke();
+
+    private static event Action? StopRequested;
+
     public bool Contains(string name) => Find(name) != null;
 
     /// <summary>Puts <paramref name="name"/> on the map at (<paramref name="x"/>, <paramref name="y"/>), or the next free spot; an existing node is moved there instead.</summary>
     public void AddNode(string name, double? x = null, double? y = null)
     {
-        if (!CanEdit()) return;
+        if (!_editable || !CanEdit()) return;
         var node = Find(name);
         if (node != null)
         {
@@ -199,14 +246,13 @@ public sealed class PositionMapViewModel : ObservableObject
 
     public void RemoveNode(PositionNodeViewModel node)
     {
-        if (!Nodes.Contains(node)) return;
+        if (!_editable || !Nodes.Contains(node)) return;
         foreach (var edge in Edges.Where(e => e.Touches(node)).ToList())
             Edges.Remove(edge);
         Nodes.Remove(node);
         if (Selected == node) Selected = null;
         if (LinkSource == node) LinkSource = null;
         if (_currentNode == node) _currentNode = null;
-        if (_moveFrom == node) _moveFrom = null;
         UpdateTrajectory();
         Save();
         UpdateHint();
@@ -215,7 +261,8 @@ public sealed class PositionMapViewModel : ObservableObject
 
     public void RemoveEdge(PositionEdgeViewModel edge)
     {
-        if (!Edges.Remove(edge)) return;
+        if (!_editable || !Edges.Remove(edge)) return;
+        UpdateTrajectory();
         Save();
         Hint = $"Removed link {edge.A.Name} — {edge.B.Name}.";
     }
@@ -223,6 +270,7 @@ public sealed class PositionMapViewModel : ObservableObject
     /// <summary>Drag in progress — moves the node (clamped to the canvas); persisted by <see cref="CommitMove"/>.</summary>
     public void MoveNode(PositionNodeViewModel node, double x, double y)
     {
+        if (!_editable) return;
         node.X = Clamp(x, CanvasWidth);
         node.Y = Clamp(y, CanvasHeight);
     }
@@ -239,9 +287,7 @@ public sealed class PositionMapViewModel : ObservableObject
         if (!_linkMode)
         {
             Selected = node;
-            Hint = node.IsTaught
-                ? $"{node.Name} — Move goes there · Update saves the current axis position into it."
-                : $"{node.Name} — this position no longer exists for the device.";
+            Hint = DescribeSelection(node);
             return;
         }
 
@@ -265,6 +311,7 @@ public sealed class PositionMapViewModel : ObservableObject
             return;
         }
         Edges.Add(new PositionEdgeViewModel(from, node));
+        UpdateTrajectory();
         Save();
         Hint = $"Linked {from.Name} — {node.Name}. Click the next 1st node.";
     }
@@ -311,24 +358,93 @@ public sealed class PositionMapViewModel : ObservableObject
         UpdateSelectedCommand.RaiseCanExecuteChanged();
     }
 
+    private string DescribeSelection(PositionNodeViewModel node)
+    {
+        if (!node.IsTaught) return $"{node.Name} — this position no longer exists for the device.";
+        var update = _updateTo != null ? " · Update saves the current axis position into it." : ".";
+        var (start, stops, reason) = Plan(node);
+        if (stops == null) return $"{node.Name} — {reason}";
+        var via = stops.Count > 1 && start != null
+            ? " via " + string.Join(" → ", stops.SkipLast(1).Select(s => s.Name))
+            : string.Empty;
+        return $"{node.Name} — Move goes there{via}{update}";
+    }
+
     /// <summary>
-    /// Moves to the selected node. The trajectory is pinned to (start node → target) for the
-    /// whole move, so it stays drawn after the device leaves the start node; it is only drawn
-    /// when the move starts on a node.
+    /// The stops a Move to <paramref name="target"/> visits in order (ending at the target) and
+    /// the node it starts from (null = unknown). Direct: just the target. Follow path: every
+    /// node of the fewest-hop linked route after the start; null stops + the reason when the
+    /// device isn't on a node or no linked route reaches the target.
+    /// </summary>
+    private (PositionNodeViewModel? Start, List<PositionNodeViewModel>? Stops, string Reason) Plan(PositionNodeViewModel target)
+    {
+        var start = _currentNode;
+        if (!_followPath || start == target)
+            return (start, new List<PositionNodeViewModel> { target }, string.Empty);
+        if (start == null)
+            return (null, null, $"Follow path: the device isn't on a map node — move it onto one first, or untick Follow path to go straight to {target.Name}.");
+        var route = FindRoute(start, target);
+        return route == null
+            ? (start, null, $"Follow path: no linked route from {start.Name} to {target.Name} — link them, or untick Follow path.")
+            : (start, route.Skip(1).ToList(), string.Empty);
+    }
+
+    /// <summary>Fewest-hop route from → to over the links, through positions that still exist; null if none.</summary>
+    private List<PositionNodeViewModel>? FindRoute(PositionNodeViewModel from, PositionNodeViewModel to)
+    {
+        var prev = new Dictionary<PositionNodeViewModel, PositionNodeViewModel?> { [from] = null };
+        var queue = new Queue<PositionNodeViewModel>();
+        queue.Enqueue(from);
+        while (queue.Count > 0 && !prev.ContainsKey(to))
+        {
+            var node = queue.Dequeue();
+            foreach (var edge in Edges)
+            {
+                if (!edge.Touches(node)) continue;
+                var next = edge.A == node ? edge.B : edge.A;
+                if (!next.IsTaught || prev.ContainsKey(next)) continue;
+                prev[next] = node;
+                queue.Enqueue(next);
+            }
+        }
+        if (!prev.ContainsKey(to)) return null;
+
+        var route = new List<PositionNodeViewModel>();
+        for (PositionNodeViewModel? n = to; n != null; n = prev[n]) route.Add(n);
+        route.Reverse();
+        return route;
+    }
+
+    /// <summary>
+    /// Moves to the selected node — straight there, or leg by leg along the planned route. Each
+    /// leg must be confirmed arrived before the next starts; STOP (<see cref="CancelMove"/>), a
+    /// failed / short leg, or a device / product switch ends the route where it is. The route is
+    /// pinned for the whole move, so its arrows stay drawn as the device leaves each node.
     /// </summary>
     private async Task MoveSelectedAsync()
     {
         var target = _selected;
-        if (target == null) return;
+        var device = _device;
+        var product = _product;
+        if (target == null || device == null) return;
 
-        _moveFrom = _currentNode;
+        var (start, stops, reason) = Plan(target);
+        if (stops == null)
+        {
+            Hint = reason;
+            return;
+        }
+
+        using var cts = new CancellationTokenSource();
+        _moveCts = cts;
+        _moveStart = start;
+        _moveStops = stops;
+        _moveLeg = 0;
         _moveTarget = target;
         RaiseActCommands();
-        UpdateTrajectory();
-        Hint = $"Moving to {target.Name}…";
         try
         {
-            Hint = await _moveTo(target.Name).ConfigureAwait(true);
+            Hint = await RunRouteAsync(product, device, target, stops, cts.Token).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -336,17 +452,46 @@ public sealed class PositionMapViewModel : ObservableObject
         }
         finally
         {
-            _moveFrom = null;
+            _moveCts = null;
+            _moveStart = null;
+            _moveStops = null;
             _moveTarget = null;
             RaiseActCommands();
             UpdateTrajectory();
+            if (_reloadPending) Reload();
         }
+    }
+
+    private async Task<string> RunRouteAsync(string? product, string device, PositionNodeViewModel target,
+                                             List<PositionNodeViewModel> stops, CancellationToken ct)
+    {
+        string last = string.Empty;
+        for (int i = 0; i < stops.Count; i++)
+        {
+            var stop = stops[i];
+            if (ct.IsCancellationRequested || !IsShowing(product, device))
+                return $"Stopped — move to {target.Name} abandoned before {stop.Name}.";
+
+            _moveLeg = i;
+            UpdateTrajectory();
+            Hint = stops.Count > 1
+                ? $"Moving to {stop.Name} ({i + 1}/{stops.Count}) on the way to {target.Name}…"
+                : $"Moving to {target.Name}…";
+
+            var r = await _moveTo(device, stop.Name).ConfigureAwait(true);
+            if (!r.Arrived)
+                return stops.Count > 1 ? $"{r.Message} — path to {target.Name} ended at leg {i + 1}/{stops.Count}." : r.Message;
+            last = r.Message;
+        }
+        return stops.Count > 1
+            ? $"{device} at {target.Name} via {string.Join(" → ", stops.SkipLast(1).Select(s => s.Name))}."
+            : last;
     }
 
     private async Task UpdateSelectedAsync()
     {
         var target = _selected;
-        if (target == null) return;
+        if (target == null || _updateTo == null) return;
         try
         {
             Hint = await _updateTo(target.Name).ConfigureAwait(true);
@@ -358,37 +503,90 @@ public sealed class PositionMapViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The arrow to draw: during a map move, start node → target; otherwise a preview from the
-    /// node the device stands on to the selected node. None when either end is missing / the same.
+    /// Redraws the arrows: during a move the pinned route (running leg solid); otherwise a
+    /// dashed preview of what Move would do from the node the device stands on to the
+    /// selected node. None when the start is unknown or no route can be planned.
     /// </summary>
     private void UpdateTrajectory()
     {
-        var (from, to, active) = _moveTarget != null
-            ? (_moveFrom, _moveTarget, true)
-            : (_currentNode, _selected is { IsTaught: true } s ? s : null, false);
+        PositionNodeViewModel? start;
+        List<PositionNodeViewModel>? stops;
+        int activeLeg;
+        if (_moveTarget != null)
+        {
+            (start, stops, activeLeg) = (_moveStart, _moveStops, _moveLeg);
+        }
+        else
+        {
+            start = _currentNode;
+            stops = _selected is { IsTaught: true } s ? Plan(s).Stops : null;
+            activeLeg = -1;
+        }
 
-        if (from == null || to == null || from == to || !Nodes.Contains(from) || !Nodes.Contains(to))
+        var legs = new List<(PositionNodeViewModel From, PositionNodeViewModel To)>();
+        if (start != null && stops != null)
         {
-            Trajectory = null;
+            var from = start;
+            foreach (var to in stops)
+            {
+                if (from != to && Nodes.Contains(from) && Nodes.Contains(to)) legs.Add((from, to));
+                from = to;
+            }
+        }
+
+        bool same = legs.Count == Trajectories.Count
+            && legs.Select((l, i) => Trajectories[i].From == l.From && Trajectories[i].To == l.To).All(x => x);
+        if (!same)
+        {
+            foreach (var t in Trajectories) t.Detach();
+            Trajectories.Clear();
+            foreach (var (from, to) in legs) Trajectories.Add(new PositionTrajectoryViewModel(from, to));
+        }
+        // Leg index counts stops; a leg skipped above (start == first stop) shifts nothing visible.
+        for (int i = 0; i < Trajectories.Count; i++)
+            Trajectories[i].IsActive = activeLeg >= 0 && stops != null && activeLeg < stops.Count && Trajectories[i].To == stops[activeLeg];
+    }
+
+    private void ApplyTaught()
+    {
+        foreach (var node in Nodes)
+        {
+            node.IsTaught = _taught.Contains(node.Name);
+            if (!node.IsTaught) node.IsAtPosition = false;
+        }
+    }
+
+    /// <summary>Another map (the Machine page) saved this product / device — re-read it, keeping the selection.</summary>
+    private void OnStoreSaved(string product, string device, object? origin)
+    {
+        if (ReferenceEquals(origin, this) || !IsShowing(product, device)) return;
+        if (_moveTarget != null)
+        {
+            _reloadPending = true;   // never swap the nodes under a running route
             return;
         }
-        if (_trajectory != null && _trajectory.From == from && _trajectory.To == to)
-        {
-            _trajectory.IsActive = active;
-            return;
-        }
-        Trajectory = new PositionTrajectoryViewModel(from, to) { IsActive = active };
+        Reload();
+    }
+
+    private void Reload()
+    {
+        _reloadPending = false;
+        var keep = _selected?.Name;
+        Load();
+        ApplyTaught();
+        if (keep != null && Find(keep) is { } node) Selected = node;
+        UpdateTrajectory();
     }
 
     private void Load()
     {
+        foreach (var t in Trajectories) t.Detach();
+        Trajectories.Clear();
         Edges.Clear();
         Nodes.Clear();
         Selected = null;
         LinkSource = null;
         _currentNode = null;
-        _moveFrom = null;
-        Trajectory = null;
         if (_product != null && _device != null)
         {
             var layout = PositionMapStore.Load(_product, _device);
@@ -404,7 +602,7 @@ public sealed class PositionMapViewModel : ObservableObject
 
     private void Save()
     {
-        if (_product == null || _device == null) return;
+        if (!_editable || _product == null || _device == null) return;
         var layout = new PositionMapLayout
         {
             Nodes = Nodes.Select(n => new PositionMapNode { Name = n.Name, X = Math.Round(n.X, 1), Y = Math.Round(n.Y, 1) }).ToList(),
@@ -412,7 +610,7 @@ public sealed class PositionMapViewModel : ObservableObject
         };
         try
         {
-            PositionMapStore.Save(_product, _device, layout);
+            PositionMapStore.Save(_product, _device, layout, origin: this);
         }
         catch (Exception ex)
         {
@@ -431,8 +629,10 @@ public sealed class PositionMapViewModel : ObservableObject
     {
         Hint = _product == null ? "No active product."
             : _linkMode ? "Link mode: click the 1st node, then the 2nd."
-            : Nodes.Count == 0 ? "Tick “Map” on a position (or drag its name here) to add a node."
-            : "Click a node to Move / Update · drag to arrange · right-click a node or link to remove it.";
+            : Nodes.Count == 0
+                ? (_editable ? "Tick “Map” on a position (or drag its name here) to add a node." : "No map for this device yet — build it on Machine › Motion.")
+            : _editable ? "Click a node to Move / Update · drag to arrange · right-click a node or link to remove it."
+            : "Click a node, then Move.";
     }
 
     private PositionNodeViewModel? Find(string name)
@@ -458,6 +658,7 @@ public sealed class PositionMapViewModel : ObservableObject
         return Math.Clamp(v, PositionNodeViewModel.BoxWidth / 2, max - PositionNodeViewModel.BoxWidth / 2);
     }
 }
+
 
 /// <summary>A position on the map — <see cref="X"/>/<see cref="Y"/> is the circle's centre in canvas pixels.</summary>
 public sealed class PositionNodeViewModel : ObservableObject

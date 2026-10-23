@@ -8,41 +8,54 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Toolbar: Link mode, remove the selected node, hint / last result -->
+        <!-- Toolbar: Follow path, Move / Update, Link mode, remove the selected node, hint / last result.
+             Compact (jog rail) moves the hint onto its own wrapping row — see ApplyCompact. -->
         <Grid Grid.Row="0" Margin="2,0,0,6">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Map" Foreground="{StaticResource Subtle}"
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock x:Name="MapLabel" Grid.Column="0" Text="Map" Foreground="{StaticResource Subtle}"
                        FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" />
-            <TextBlock Grid.Column="1" Text="{Binding Hint}" Foreground="{StaticResource Subtle}" FontStyle="Italic"
-                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="HintText" Grid.Column="1" Text="{Binding Hint}" Foreground="{StaticResource Subtle}"
+                       FontStyle="Italic" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <CheckBox Content="Follow path" IsChecked="{Binding FollowPath}" VerticalAlignment="Center"
+                          Margin="8,0,10,0" Foreground="{StaticResource Text}"
+                          ToolTip="Move along the links, node by node (fewest hops), instead of straight to the target.&#x0a;The device must stand on a map node and a linked route must exist." />
                 <!-- Selected-node actions -->
-                <StackPanel Orientation="Horizontal" Margin="8,0,16,0"
+                <StackPanel Orientation="Horizontal" Margin="0,0,16,0"
                             Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
-                    <Button Content="Move" Height="26" Padding="14,0" Margin="0,0,6,0" FontWeight="SemiBold"
+                    <Button Content="Move" Height="26" Padding="14,0" FontWeight="SemiBold"
                             Command="{Binding MoveSelectedCommand}"
-                            ToolTip="Move the device to the selected node's position (section velocity). STOP aborts." />
-                    <Button Content="Update" Height="26" Padding="12,0"
+                            ToolTip="Move the device to the selected node's position — along the links when Follow path is ticked. STOP aborts." />
+                    <Button Content="Update" Height="26" Padding="12,0" Margin="6,0,0,0"
                             Command="{Binding UpdateSelectedCommand}"
+                            Visibility="{Binding CanUpdate, Converter={StaticResource BoolToVis}}"
                             ToolTip="Save the device's current axis position into the selected node's position (asks first)" />
                 </StackPanel>
-                <ToggleButton Content="Link" Height="26" Padding="12,0" Margin="0,0,6,0"
-                              IsChecked="{Binding LinkMode}"
-                              ToolTip="Link mode: click the 1st node, then the 2nd, to join them with a line" />
-                <Button Content="Remove" Height="26" Padding="12,0"
-                        Command="{Binding RemoveSelectedCommand}"
-                        ToolTip="Take the selected node (and its links) off the map — the position itself is kept (Delete)" />
+                <StackPanel Orientation="Horizontal"
+                            Visibility="{Binding IsEditable, Converter={StaticResource BoolToVis}}">
+                    <ToggleButton Content="Link" Height="26" Padding="12,0" Margin="0,0,6,0"
+                                  IsChecked="{Binding LinkMode}"
+                                  ToolTip="Link mode: click the 1st node, then the 2nd, to join them with a line" />
+                    <Button Content="Remove" Height="26" Padding="12,0"
+                            Command="{Binding RemoveSelectedCommand}"
+                            ToolTip="Take the selected node (and its links) off the map — the position itself is kept (Delete)" />
+                </StackPanel>
             </StackPanel>
         </Grid>
 
         <Border Grid.Row="1" BorderBrush="{StaticResource Edge}" BorderThickness="1">
-            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Focusable="False">
+            <ScrollViewer x:Name="Scroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                          Focusable="False" SizeChanged="OnScrollerSizeChanged">
                 <Grid x:Name="Surface" Width="{Binding Width}" Height="{Binding Height}"
-                      Background="{StaticResource Bg}" AllowDrop="True"
+                      Background="{StaticResource Bg}" AllowDrop="{Binding IsEditable}"
                       DragOver="OnDragOver" Drop="OnDrop"
                       MouseLeftButtonDown="OnSurfaceDown" MouseMove="OnSurfaceMove"
                       MouseLeftButtonUp="OnSurfaceUp" LostMouseCapture="OnSurfaceLostCapture">
@@ -56,7 +69,8 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Grid ToolTip="{Binding Label}">
+                                <Grid ToolTip="{Binding Label}"
+                                      ContextMenuService.IsEnabled="{Binding DataContext.IsEditable, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
                                     <Grid.ContextMenu>
                                         <ContextMenu>
                                             <MenuItem Header="Remove link" Click="OnRemoveEdge" />
@@ -71,28 +85,36 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <!-- Trajectory: current node → selected node. Dashed = preview, solid = the move is running. -->
-                    <Canvas IsHitTestVisible="False"
-                            Visibility="{Binding HasTrajectory, Converter={StaticResource BoolToVis}}">
-                        <Canvas DataContext="{Binding Trajectory}">
-                            <Line X1="{Binding X1}" Y1="{Binding Y1}" X2="{Binding X2}" Y2="{Binding Y2}"
-                                  Stroke="{StaticResource Accent}">
-                                <Line.Style>
-                                    <Style TargetType="Line">
-                                        <Setter Property="StrokeThickness" Value="2.5" />
-                                        <Setter Property="StrokeDashArray" Value="3 2" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                <Setter Property="StrokeThickness" Value="4" />
-                                                <Setter Property="StrokeDashArray" Value="{x:Null}" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Line.Style>
-                            </Line>
-                            <Polygon Points="{Binding Head}" Fill="{StaticResource Accent}" />
-                        </Canvas>
-                    </Canvas>
+                    <!-- Move route: one arrow per leg. Dashed = preview, solid = the leg now running. -->
+                    <ItemsControl ItemsSource="{Binding Trajectories}" IsHitTestVisible="False">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <Canvas />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Canvas>
+                                    <Line X1="{Binding X1}" Y1="{Binding Y1}" X2="{Binding X2}" Y2="{Binding Y2}"
+                                          Stroke="{StaticResource Accent}">
+                                        <Line.Style>
+                                            <Style TargetType="Line">
+                                                <Setter Property="StrokeThickness" Value="2.5" />
+                                                <Setter Property="StrokeDashArray" Value="3 2" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                        <Setter Property="StrokeThickness" Value="4" />
+                                                        <Setter Property="StrokeDashArray" Value="{x:Null}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Line.Style>
+                                    </Line>
+                                    <Polygon Points="{Binding Head}" Fill="{StaticResource Accent}" />
+                                </Canvas>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
                     <!-- Nodes: circle centred on (X, Y), name below. Green = the device is on this position. -->
                     <ItemsControl ItemsSource="{Binding Nodes}">
@@ -109,8 +131,19 @@
                         </ItemsControl.ItemContainerStyle>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Width="120" Cursor="SizeAll" MouseLeftButtonDown="OnNodeDown"
-                                            ToolTip="{Binding Name}">
+                                <StackPanel Width="120" MouseLeftButtonDown="OnNodeDown" ToolTip="{Binding Name}"
+                                            ContextMenuService.IsEnabled="{Binding DataContext.IsEditable, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Cursor" Value="SizeAll" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DataContext.IsEditable, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                             Value="False">
+                                                    <Setter Property="Cursor" Value="Hand" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
                                     <StackPanel.ContextMenu>
                                         <ContextMenu>
                                             <MenuItem Header="Remove from map" Click="OnRemoveNode" />

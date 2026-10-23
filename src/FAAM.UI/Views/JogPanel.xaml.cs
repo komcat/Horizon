@@ -52,6 +52,8 @@ public partial class JogPanel : UserControl
     private CameraExposure _camExposure = new(0, 0, false, false, 0);
     /// <summary>Lighting tab — the Machine › Camera lighting view-model, following the picked camera.</summary>
     private LightingPanelViewModel? _lighting;
+    /// <summary>Move map tab — the selected device's position map (view-only), following the rail's device.</summary>
+    private PositionMapViewModel? _map;
 
     /// <summary>The active linear step set (mm) for the selected device's family.</summary>
     private double[] _stepSet = DefaultStepSet;
@@ -85,7 +87,7 @@ public partial class JogPanel : UserControl
         BuildThetaSteps();
         BuildExposurePresets();
         _poll = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        _poll.Tick += (_, _) => { UpdatePosition(); RefreshLighting(); };
+        _poll.Tick += (_, _) => { UpdatePosition(); RefreshLighting(); RefreshMap(); };
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -271,6 +273,8 @@ public partial class JogPanel : UserControl
     public void Attach(EngineHost host)
     {
         _host = host;
+        _map = new PositionMapViewModel(MapMoveAsync, updateTo: null, editable: false);
+        MapView.DataContext = _map;
         BuildDevices();
         BuildLighting();         // before the camera picker, so the lights follow its first selection
         BuildCameras();          // populates the picker → fires OnCameraChanged → LoadCameraExposure
@@ -356,6 +360,7 @@ public partial class JogPanel : UserControl
         _device = dev;
         _matrix = _transforms.Get(dev);
         LoadPresets(dev);
+        RefreshMap();
 
         // Do NOT push a velocity to the controller on selection / startup — keep
         // whatever velocity the controller already has. Instead read and show the
@@ -488,6 +493,7 @@ public partial class JogPanel : UserControl
         // Drop any queued/in-flight jog so the pump does not re-issue a move after the halt.
         _pendingJog = null;
         _jogCts?.Cancel();
+        PositionMapViewModel.CancelAllMoves();   // no map path (rail or Machine page) starts a further leg
         // KILL every motion device. Report any device whose stop did not take so a
         // failed halt is never hidden behind a blanket "motion halted" message.
         var failed = new List<string>();
@@ -754,6 +760,68 @@ public partial class JogPanel : UserControl
     }
 
     private void SetCamStatus(string text) => CamStatus.Text = text;
+
+    // -------------------------------------------------------------- Move map
+
+    /// <summary>
+    /// One Move map leg on <paramref name="device"/> at the velocity picked in the rail's combo
+    /// (else the position's taught velocity), then a check that it really arrived.
+    /// </summary>
+    private async Task<MapMoveResult> MapMoveAsync(string device, string name)
+    {
+        if (_host is not { } host) return new MapMoveResult(false, "Engine not ready.");
+        var r = VelocityCombo.SelectedItem is ComboBoxItem { Tag: double v }
+            ? await host.Process.MoveToNamedPositionAsync(device, name, v)
+            : await host.Process.MoveToNamedPositionAsync(device, name);
+        if (!r.IsSuccess) return new MapMoveResult(false, r.Message);
+        return await PositionMapViewModel.ConfirmArrivalAsync(host, device, name);
+    }
+
+    /// <summary>
+    /// Keeps the Move map on the rail's device in the active product — node "at" marks and
+    /// Move enablement from the cached state (no extra I/O). Only while the tab is showing.
+    /// </summary>
+    private void RefreshMap()
+    {
+        if (_host is not { } host || _map is not { } map || !MapTab.IsSelected) return;
+        try
+        {
+            var device = _device;
+            var names = device == null ? Array.Empty<string>() : host.Process.GetPositionNames(device);
+            map.Show(host.Process.ActiveProduct, device, names);
+            if (device == null)
+            {
+                map.SetCanAct(false);
+                map.ClearAtPosition();
+                return;
+            }
+
+            bool connected = host.Engine.Motion.IsConnected(device);
+            map.SetCanAct(connected && !host.Process.IsRunning);
+            var state = host.Engine.Motion.GetState(device);
+            if (connected && state.Valid)
+            {
+                var axes = host.Engine.Motion.GetDevice(device)?.Axes ?? Array.Empty<string>();
+                map.UpdateAtPosition(n =>
+                    PositionMatch.Matches(host.Process.GetPosition(device, n)?.Coordinates, state.Position, axes));
+            }
+            else
+            {
+                map.ClearAtPosition();
+            }
+        }
+        catch
+        {
+            // Engine torn down — UpdatePosition stops the poll on the same tick.
+        }
+    }
+
+    /// <summary>Opening the Move map tab refreshes it at once. Inner selectors raise SelectionChanged too — only the tab control's own change counts.</summary>
+    private void OnJogTabChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, JogTabs)) return;
+        RefreshMap();
+    }
 
     // -------------------------------------------------------------- Lighting
 

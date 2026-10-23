@@ -1,6 +1,7 @@
 <UserControl x:Class="FAAM.UI.Views.JogPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sec="clr-namespace:FAAM.UI.Views.Sections">
     <UserControl.Resources>
         <!-- Jog direction button — press-and-hold to jog, release to stop. -->
         <Style x:Key="JogBtn" TargetType="Button">
@@ -152,9 +153,14 @@
                 </Grid>
             </Border>
 
+            <!-- ===================== JOG / MOVE MAP tabs ===================== -->
+            <TabControl x:Name="JogTabs" Margin="0,8,0,0" Background="{StaticResource Bg}"
+                        BorderBrush="{StaticResource Edge}" SelectionChanged="OnJogTabChanged">
+            <TabItem Header="Jog">
+            <StackPanel Margin="2">
             <!-- Step-size quick presets — set the linear X/Y/Z jog step (highlight tracks the current step).
                  Rows auto-size to the per-family step count (5 across). -->
-            <TextBlock Text="Step presets" Foreground="{StaticResource Subtle}" FontSize="11" Margin="2,8,0,2" />
+            <TextBlock Text="Step presets" Foreground="{StaticResource Subtle}" FontSize="11" Margin="2,4,0,2" />
             <UniformGrid x:Name="StepPresetList" Columns="5" />
 
             <!-- Step size — large readout; changed with Q (finer) / E (coarser) or the mouse wheel. -->
@@ -210,6 +216,15 @@
                 <Button Grid.Row="2" Grid.Column="2" Content="W-" Tag="W-" Style="{StaticResource JogBtn}" />
                 <Button Grid.Row="2" Grid.Column="3" Content="W+" Tag="W+" Style="{StaticResource JogBtn}" />
             </Grid>
+            </StackPanel>
+            </TabItem>
+
+            <!-- Move map: the selected device's Machine › Motion position map, view-only here
+                 (click a node, then Move). Arranging / linking stays on the Machine page. -->
+            <TabItem x:Name="MapTab" Header="Move map">
+                <sec:PositionMapView x:Name="MapView" Compact="True" Height="440" Margin="2" />
+            </TabItem>
+            </TabControl>
 
             <!-- Velocity (speed) for the selected device — applied immediately on select; flash confirms. -->
             <TextBlock Text="Velocity (mm/s)" Foreground="{StaticResource Subtle}" FontSize="11" Margin="2,12,0,2" />

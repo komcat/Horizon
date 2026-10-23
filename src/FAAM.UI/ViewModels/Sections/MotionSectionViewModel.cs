@@ -59,7 +59,7 @@ public sealed class MotionSectionViewModel : ObservableObject
         _host = host;
         Devices = host.Engine.Motion.DeviceNames;
         _selectedDevice = Devices.Count > 0 ? Devices[0] : null;
-        Map = new PositionMapViewModel(MoveToPositionAsync, UpdatePositionAsync);
+        Map = new PositionMapViewModel(MapMoveAsync, UpdatePositionAsync);
         Map.MembershipChanged += name =>
             Positions.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))?.NotifyOnMapChanged();
         StopCommand = new AsyncRelayCommand(StopAsync, () => _selectedDevice != null);
@@ -511,6 +511,7 @@ public sealed class MotionSectionViewModel : ObservableObject
         var device = _selectedDevice;
         if (device == null) return;
         _referenceCts?.Cancel();   // ends a reference wait started here (the engine also stops the device)
+        PositionMapViewModel.CancelAllMoves();   // no map path (here or on the jog rail) starts a further leg
         var result = await _host.Engine.Motion.StopAsync(device).ConfigureAwait(true);
         Status = result.IsSuccess ? "Stopped" : result.Message;
     }
@@ -611,7 +612,15 @@ public sealed class MotionSectionViewModel : ObservableObject
         Status = await UpdatePositionAsync(row.Name).ConfigureAwait(true);
     }
 
-    /// <summary>Recalls the position at the section velocity (Apply box) rather than its taught process velocity — grid toolbar and map Move.</summary>
+    /// <summary>One map Move leg on <paramref name="device"/> at the section velocity, then a check that it really arrived.</summary>
+    private async Task<MapMoveResult> MapMoveAsync(string device, string name)
+    {
+        var r = await _host.Process.MoveToNamedPositionAsync(device, name, _velocity).ConfigureAwait(true);
+        if (!r.IsSuccess) return new MapMoveResult(false, r.Message);
+        return await PositionMapViewModel.ConfirmArrivalAsync(_host, device, name).ConfigureAwait(true);
+    }
+
+    /// <summary>Recalls the position at the section velocity (Apply box) rather than its taught process velocity — grid toolbar.</summary>
     private async Task<string> MoveToPositionAsync(string name)
     {
         var device = _selectedDevice;

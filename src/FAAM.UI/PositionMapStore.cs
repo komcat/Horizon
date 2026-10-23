@@ -14,6 +14,9 @@ public static class PositionMapStore
 {
     private const string FileName = "faam_position_map";
 
+    /// <summary>Raised after a map is saved — (product, device, origin) — so other open maps of it reload.</summary>
+    public static event Action<string, string, object?>? Saved;
+
     /// <summary>The saved map for <paramref name="product"/> / <paramref name="device"/>; empty when none or unreadable.</summary>
     public static PositionMapLayout Load(string product, string device)
     {
@@ -32,9 +35,10 @@ public static class PositionMapStore
     /// <summary>
     /// Replaces the map for <paramref name="product"/> / <paramref name="device"/>, keeping every
     /// other product / device. Throws on I/O failure, or when the existing file can't be parsed
-    /// (rather than overwriting the other maps in it).
+    /// (rather than overwriting the other maps in it). <paramref name="origin"/> is passed on to
+    /// <see cref="Saved"/> so the saving map can ignore its own change.
     /// </summary>
-    public static void Save(string product, string device, PositionMapLayout layout)
+    public static void Save(string product, string device, PositionMapLayout layout, object? origin = null)
     {
         var file = Read();
         var devices = Find(file.Products, product);
@@ -45,6 +49,7 @@ public static class PositionMapStore
         }
         devices[KeyOf(devices, device)] = layout;
         ConfigLoader.SaveJson(ConfigLoader.GetConfigDirectory(), FileName, file);
+        Saved?.Invoke(product, device, origin);
     }
 
     /// <summary>Saved pixel width of the position list column; null = default.</summary>
