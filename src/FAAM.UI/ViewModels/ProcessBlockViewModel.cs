@@ -203,7 +203,7 @@ public sealed class ProcessBlockViewModel : ObservableObject
             // Move-to-Position falls back to the position's stored velocity at 0; a
             // relative move has no stored position, so 0 = the device's current velocity.
             var zeroMeans = Spec.OpKey.Equals("motion.moveToPosition", StringComparison.OrdinalIgnoreCase)
-                ? "0 = use the position's stored velocity"
+                ? "0 = use the position's stored velocity. Approach applies when both its distance and velocity are > 0; the velocity is restored on arrival"
                 : "0 = current velocity";
             return $"Allowed {min:0.##}–{max:0.##} mm/s ({family}); {zeroMeans}.";
         }

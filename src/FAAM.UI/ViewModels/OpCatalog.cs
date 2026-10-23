@@ -51,6 +51,10 @@ public static class OpCatalog
             {
                 new ParamSpec("position", "Position", ParamKind.PositionName),
                 new ParamSpec("velocity", "Velocity override (mm/s, 0 = use position)", ParamKind.Number, "0"),
+                // Approach: the last N mm at a slower velocity, then the velocity is restored.
+                // Both must be > 0 to apply (MoveApproach in Layer 2).
+                new ParamSpec("approachDistance", "Approach distance (mm before target, 0 = off)", ParamKind.Number, "0"),
+                new ParamSpec("approachVelocity", "Approach velocity (mm/s, 0 = off)", ParamKind.Number, "0"),
                 new ParamSpec("camera", "Camera override (blank = use position)", ParamKind.CameraName),
                 new ParamSpec("exposure", "Exposure override (µs, 0 = use position)", ParamKind.Number, "0"),
                 // Lighting call-out applied while travelling; blank light = leave lighting as is.
@@ -69,11 +73,13 @@ public static class OpCatalog
             }),
         new("motion.setVelocity", "Set Velocity", "Motion", DeviceKind.Motion,
             new[] { new ParamSpec("speed", "Speed (mm/s)", ParamKind.Number, "10") }),
+        // DEPRECATED — do not use in new programs (kept only so existing programs still load
+        // and run). For a slow final approach use Move to Position's approach distance / velocity.
         // Teach-or-approach a hand-reached final position: first run = manual jog, saved on
         // Continue; later runs offer a slow move there (velocity snapshot → crawl Z, then Y,
         // then X under a big STOP window → restore), then the manual jog for fine adjust. Handled by
         // WorkflowRunner (motion.slowApproach); type a new name to create the position.
-        new("motion.slowApproach", "Slow Approach (teach / auto)", "Motion", DeviceKind.Motion,
+        new("motion.slowApproach", "Slow Approach (DEPRECATED — do not use)", "Motion", DeviceKind.Motion,
             new[]
             {
                 new ParamSpec("position", "Final position (saved on first run)", ParamKind.PositionName),

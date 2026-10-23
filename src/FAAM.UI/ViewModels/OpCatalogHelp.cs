@@ -75,9 +75,22 @@ public static class OpCatalogHelp
 
         // ===== Motion =====
 
+        ["motion.moveToPosition"] = new()
+        {
+            Summary = "Move the device to a taught position, optionally slowing down for the last few mm.",
+            Usage = "Velocity, camera and exposure fall back to the position's stored values when left 0 / blank.\n\nApproach: set BOTH 'Approach distance' and 'Approach velocity' (> 0) to slow down near the target — e.g. 2 mm at 1 mm/s. The device travels at its normal velocity to a point that far short of the target (on the straight line, measured on X/Y/Z), checks it really stopped there, finishes at the approach velocity, then its velocity is put back to what it was (e.g. 20 → 1 → 20 mm/s) — also after STOP, a fault or a run Stop. A move that starts inside the approach distance runs slow all the way. The step is refused before any motion if the velocity can't be read (it could not be restored) or the slow part would take over 55 s.",
+            ParamNotes = new[]
+            {
+                ("position", "The taught position to move to."),
+                ("velocity", "Travel velocity in mm/s; 0 = the position's stored velocity (else the device's current one)."),
+                ("approachDistance", "How many mm before the target to slow down. 0 = no approach."),
+                ("approachVelocity", "Velocity (mm/s) for the approach. 0 = no approach. Clamped to the controller range (ACS 0.1–50, PI 0.01–10)."),
+            },
+        },
+
         ["motion.slowApproach"] = new()
         {
-            Summary = "Reach a hand-adjusted final position (e.g. the dispense point): teach it by jogging on the first run, then offer a slow automatic move to it on later runs.",
+            Summary = "DEPRECATED — do not use in new programs; use Move to Position's approach distance / velocity. Reach a hand-adjusted final position (e.g. the dispense point): teach it by jogging on the first run, then offer a slow automatic move to it on later runs.",
             Usage = "Put it in the device's lane right after the move to the start point (e.g. PreDispense, head down).\n\nFirst run (position not saved yet): the manual-jog popup opens; when the operator presses Continue, the current coordinates are saved under the position name.\n\nLater runs: the operator is asked \"move automatically to the last saved position?\". Yes → the device's current velocity is snapshotted, set to the approach speed, and the stage moves there slowly ONE AXIS AT A TIME — Z first, then Y, then X — while a window with one big STOP button is shown (STOP halts the stage and skips the remaining axes); the velocity is put back afterwards (also after STOP, a fault or a run Stop). Then the manual-jog popup opens for fine adjust. No → manual jog only.\n\nA STOPPED, refused (too far / too slow for the 55 s move limit) or failed approach falls back to the manual jog — jog clear, or Cancel to stop the run. Jog Cancel fails the run. The saved position is only rewritten when 'Re-save position' is on. To re-teach, delete the position on the Machine page.",
             ParamNotes = new[]
             {

@@ -4,6 +4,9 @@ using Horizon.Engine;
 namespace Horizon.Workflow;
 
 /// <summary>
+/// <b>DEPRECATED — do not use or build on this.</b> Kept only so existing programs with a
+/// <c>motion.slowApproach</c> step still run; a slow final approach is
+/// <see cref="MoveApproach"/> (Move to Position's approach distance / velocity).
 /// The guarded slow move behind the <c>motion.slowApproach</c> step: snapshot the device's
 /// current velocity, drop it to a crawl, move to the target ONE AXIS AT A TIME in the fixed
 /// order Z → Y → X while a STOP watch is shown, then put the snapshot velocity back — always,

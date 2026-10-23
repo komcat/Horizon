@@ -8,10 +8,13 @@ namespace Horizon.Workflow;
 /// a velocity (mm/s; 0 = leave current), and a camera + exposure (µs) to apply
 /// while the stage is already travelling. Empty fields leave the corresponding
 /// hardware untouched (for a named-position move, they fall back to the position's
-/// stored settings).
+/// stored settings). A named-position move may also slow down for the last
+/// <see cref="ApproachDistance"/> mm to <see cref="ApproachVelocity"/> mm/s, then restore its
+/// velocity on arrival — both must be &gt; 0 to apply (see <see cref="MoveApproach"/>).
 /// </summary>
 public sealed record MoveOverrides(
-    double Velocity = 0, string? Camera = null, double? ExposureUs = null, MoveLighting? Lighting = null);
+    double Velocity = 0, string? Camera = null, double? ExposureUs = null, MoveLighting? Lighting = null,
+    double ApproachDistance = 0, double ApproachVelocity = 0);
 
 /// <summary>
 /// A lighting call-out applied at the start of a move (null on <see cref="MoveOverrides"/>

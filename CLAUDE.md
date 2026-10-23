@@ -69,7 +69,11 @@ defines its own program/recipe/position formats.
   executable form of the Gantt editor's parallel stages. Move ops
   (`motion.moveToPosition` / `moveRelative`) take optional **`MoveOverrides`**
   (velocity / camera / exposure applied at the *start* of the move, so the camera
-  settle overlaps travel; `MoveExposure` is the shared apply helper).
+  settle overlaps travel; `MoveExposure` is the shared apply helper). `moveToPosition`
+  also takes an **approach** (`approachDistance` mm at `approachVelocity` mm/s, both > 0):
+  `MoveApproach` runs fast to that point short of the target, confirms it stopped there,
+  finishes slow, then restores the velocity snapshot. `motion.slowApproach` /
+  `SlowApproach` is **deprecated — do not use or build on it**.
   `MotionVelocityLimits` caps velocity by controller type (PI 0.01–10, ACS 0.1–50 mm/s).
 - `Execution/DeckRunner` + `DeckStore` — a **deck** is a chain of programs with
   transition conditions between them.

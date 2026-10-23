@@ -1396,7 +1396,7 @@ internal sealed class StepDispatcher
         return Result.Ok();
     }
 
-    /// <summary>Reads the optional velocity / camera / exposure params of a move step.</summary>
+    /// <summary>Reads the optional velocity / camera / exposure / approach params of a move step.</summary>
     private static MoveOverrides MoveOverridesOf(WorkflowStep step, WorkflowContext ctx)
     {
         var camera = Str(step, "camera", ctx);
@@ -1404,7 +1404,9 @@ internal sealed class StepDispatcher
         return new MoveOverrides(
             Num(step, "velocity", ctx),
             string.IsNullOrWhiteSpace(camera) ? null : camera,
-            exposure > 0 ? exposure : null);
+            exposure > 0 ? exposure : null,
+            ApproachDistance: Num(step, "approachDistance", ctx),
+            ApproachVelocity: Num(step, "approachVelocity", ctx));
     }
 
     private static string Str(WorkflowStep step, string key, WorkflowContext ctx)

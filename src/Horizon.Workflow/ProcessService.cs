@@ -354,9 +354,14 @@ public sealed class ProcessService : IProcessService
         }
 
         // 2) Start the move (do not await yet) so the camera exposure can be applied
-        //    AFTER the move has started — i.e. while the stage travels.
+        //    AFTER the move has started — i.e. while the stage travels. With an approach
+        //    set, the last ApproachDistance mm run at ApproachVelocity, then the velocity
+        //    from step 1 is restored.
         Log(LogLevel.Info, $"Move {device} -> '{name}'");
-        var moveTask = _engine.Motion.MoveToPositionAsync(device, np.Coordinates, ct);
+        var moveTask = MoveApproach.IsSet(overrides)
+            ? MoveApproach.RunAsync(_engine.Motion, device, np.Coordinates,
+                overrides.ApproachDistance, overrides.ApproachVelocity, Log, ct)
+            : _engine.Motion.MoveToPositionAsync(device, np.Coordinates, ct);
 
         // 3) While moving, apply the camera exposure — step override wins, else the
         //    position's pinned camera / exposure. Never fails the move.
