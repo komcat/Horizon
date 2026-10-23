@@ -6,7 +6,7 @@
 .DESCRIPTION
   Assumes the assets already exist - build them first with:
 
-    pwsh deploy/publish.ps1 -Zip -Snapshot -CleanHistory
+    pwsh deploy/publish.ps1 -Zip -Snapshot -CleanHistory -Scripts
 
   A release carries the operator app AND the two console tools, because a target
   is brought up bottom-up: Horizon.ConfigTool authors/validates the device config,
@@ -38,13 +38,17 @@ param(
     [string]$Version,
 
     # Files to attach. Defaults to the app zips for this version in
-    # artifacts\deploy, plus Horizon-appdata.zip + restore-appdata.ps1 if present.
+    # artifacts\deploy, plus Horizon-appdata.zip + restore-appdata.ps1 and the
+    # Horizon-scripts-v<Version>.zip scripts bundle if present.
     [Alias('Asset')]
     [string[]]$Assets,
 
     # Publish with only the app zips - skip the %APPDATA%\Horizon seed even if
     # snapshot-appdata.ps1 left one in artifacts\deploy.
     [switch]$NoAppData,
+
+    # Publish without the separate .moon scripts bundle even if one is present.
+    [switch]$NoScripts,
 
     # Do not tag or create anything: add/replace the assets on the EXISTING
     # release for this tag and refresh its body from the notes file. Use this to
@@ -79,11 +83,12 @@ $releaseApps = @('FAAM.UI', 'Horizon.Console', 'Horizon.ConfigTool')
 # The tag is coarse (v0.1) while the assembly version is a full triple (0.1.0),
 # and publish.ps1 names the zip after the latter. Accept the exact name first,
 # then any zip whose version refines the tag (0.1 -> 0.1.0).
-function Resolve-AppZip($deployDir, $app) {
-    $exact = Join-Path $deployDir "$app-v$Version-win-x64.zip"
+# $suffix is the runtime part of the name; the scripts bundle has none.
+function Resolve-AppZip($deployDir, $app, $suffix = '-win-x64') {
+    $exact = Join-Path $deployDir "$app-v$Version$suffix.zip"
     if (Test-Path -LiteralPath $exact) { return $exact }
 
-    $candidates = @(Get-ChildItem -LiteralPath $deployDir -Filter "$app-v$Version.*-win-x64.zip" -ErrorAction SilentlyContinue)
+    $candidates = @(Get-ChildItem -LiteralPath $deployDir -Filter "$app-v$Version.*$suffix.zip" -ErrorAction SilentlyContinue)
     if ($candidates.Count -eq 1) { return $candidates[0].FullName }
     if ($candidates.Count -gt 1) {
         Fail ("Ambiguous {0} asset for v{1} - pass -Assets explicitly:`n  {2}" -f $app, $Version, (($candidates.Name) -join "`n  "))
@@ -119,6 +124,14 @@ if (-not $Assets) {
             elseif ($UploadOnly) { Write-Host "  (no $extra in $deployDir - leaving as-is on the release)" -ForegroundColor DarkGray }
             else { Write-Host "  (no $extra in $deployDir - releasing without the data seed)" -ForegroundColor Yellow }
         }
+    }
+
+    # The .moon scripts bundle (bundle-scripts.ps1) - named by version, like the app zips.
+    if (-not $NoScripts) {
+        $scriptsZip = Resolve-AppZip $deployDir 'Horizon-scripts' ''
+        if ($scriptsZip) { $resolved += $scriptsZip }
+        elseif ($UploadOnly) { Write-Host "  (no Horizon-scripts-v$Version zip in $deployDir - leaving as-is on the release)" -ForegroundColor DarkGray }
+        else { Write-Host "  (no Horizon-scripts-v$Version zip in $deployDir - releasing without the scripts bundle)" -ForegroundColor Yellow }
     }
 
     $Assets = $resolved

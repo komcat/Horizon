@@ -28,6 +28,10 @@
 .EXAMPLE
   # Publish the apps AND bundle the %APPDATA%\Horizon seed in one shot:
   pwsh deploy/publish.ps1 -Snapshot -Output C:\Horizon-deploy
+
+.EXAMPLE
+  # Full GitHub release set: app zips + seed + the separate .moon scripts bundle:
+  pwsh deploy/publish.ps1 -Zip -Snapshot -CleanHistory -Scripts
 #>
 [CmdletBinding()]
 param(
@@ -50,7 +54,11 @@ param(
     # Also snapshot %APPDATA%\Horizon (config + products + history) into the output.
     [switch]$Snapshot,
     # With -Snapshot: drop history.db + each product's dut\ for fresh traceability.
-    [switch]$CleanHistory
+    [switch]$CleanHistory,
+
+    # Also zip every product's .moon scripts folder as Horizon-scripts-v<Version>.zip
+    # (deploy/bundle-scripts.ps1) - a station can take a script update on its own.
+    [switch]$Scripts
 )
 
 $ErrorActionPreference = 'Stop'
@@ -67,7 +75,7 @@ $projectFor = @{
 
 # Default the zip version to whatever FAAM.UI.csproj declares, so the release
 # asset name and the assembly version cannot drift apart.
-if ($Zip -and -not $Version) {
+if (($Zip -or $Scripts) -and -not $Version) {
     $faamProj = Join-Path $repo $projectFor['FAAM.UI']
     $m = [regex]::Match((Get-Content -LiteralPath $faamProj -Raw), '<Version>([^<]+)</Version>')
     if (-not $m.Success) { throw "-Zip needs -Version: no <Version> found in $faamProj" }
@@ -140,6 +148,12 @@ if ($Snapshot) {
     $snapArgs = @{ Output = $Output }
     if ($CleanHistory) { $snapArgs.CleanHistory = $true }
     & $snap @snapArgs
+}
+
+if ($Scripts) {
+    # After the publish too, for the same reason as the snapshot.
+    Write-Host "`n==> Bundling product scripts" -ForegroundColor Cyan
+    & (Join-Path $PSScriptRoot 'bundle-scripts.ps1') -Output $Output -Version $Version
 }
 
 Write-Host "`nNext: copy this folder to the target." -ForegroundColor Green

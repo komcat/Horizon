@@ -12,6 +12,8 @@ deploy/
                                       (called automatically by publish.ps1)
   release.ps1              DEV box  - tag + publish a GitHub release with the zipped app
   snapshot-appdata.ps1     DEV box  - zip %APPDATA%\Horizon (config + products + history)
+  bundle-scripts.ps1       DEV box  - zip every product's .moon scripts\ as Horizon-scripts-v<ver>.zip
+                                      (publish.ps1 -Scripts; release.ps1 attaches it)
   restore-appdata.ps1      TARGET   - unzip the seed into %APPDATA%\Horizon
   allow-firewall.ps1       TARGET   - firewall Allow rule for the camera stream, per install folder
                                       (publish.ps1 copies it into FAAM.UI\ and Horizon.Console\)
