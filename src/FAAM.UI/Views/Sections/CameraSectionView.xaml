@@ -91,8 +91,24 @@
                             <StackPanel Margin="0,2">
                                 <!-- Row 1: level -->
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding Name}" Foreground="{StaticResource Text}" Width="130"
-                                               VerticalAlignment="Center" />
+                                    <StackPanel Width="130" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <!-- The selected camera's own lights read in the accent colour. -->
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource Text}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsForSelectedCamera}" Value="True">
+                                                            <Setter Property="Foreground" Value="{StaticResource Accent}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding CameraLabel}" Foreground="{StaticResource Subtle}" FontSize="10"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Visibility="{Binding HasCamera, Converter={StaticResource BoolToVis}}" />
+                                    </StackPanel>
                                     <Slider Width="240" Minimum="0" Maximum="100" SmallChange="1" LargeChange="10"
                                             IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center"
                                             Value="{Binding Percent}" />

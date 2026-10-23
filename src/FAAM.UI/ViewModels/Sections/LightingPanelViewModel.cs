@@ -6,11 +6,12 @@ using FAAM.UI.Mvvm;
 namespace FAAM.UI.ViewModels.Sections;
 
 /// <summary>
-/// Lighting adjustment shown in the Machine page's Camera section (so exposure and
-/// illumination are tuned side by side). One row per light of the selected
-/// controller — a channel group (main_camera_light) or an ungrouped channel — with a
-/// 0..100 % slider and the call-outs the light has channels for (red / green / blue /
-/// white = R+G+B mix / collimate).
+/// Lighting adjustment shown in the Machine page's Camera section and the jog rail's
+/// Lighting tab. One row per light of the selected controller — a channel group
+/// (main_camera_light, side_camera_light) or an ungrouped channel — with a 0..100 % slider
+/// and the call-outs the light has channels for (red / green / blue / white = R+G+B mix /
+/// collimate). Every light is listed; the selected camera's lights come first and each
+/// row names the camera(s) it is tied to.
 /// All hardware calls go through the engine facet (off the UI thread).
 /// </summary>
 public sealed class LightingPanelViewModel : ObservableObject
@@ -45,8 +46,8 @@ public sealed class LightingPanelViewModel : ObservableObject
     private string? _camera;
 
     /// <summary>
-    /// The Camera section's selected camera. Only lights configured for this camera
-    /// (plus lights tied to no camera) are shown.
+    /// The selected camera. Its lights (and lights tied to no camera) are listed first and
+    /// marked; the other cameras' lights follow, still fully controllable.
     /// </summary>
     public string? Camera
     {
@@ -54,11 +55,11 @@ public sealed class LightingPanelViewModel : ObservableObject
         set { if (SetField(ref _camera, value)) Rebuild(); }
     }
 
-    /// <summary>True when the selected camera has no light on this controller — shows a note instead of rows.</summary>
+    /// <summary>True when the controller has no light at all — shows a note instead of rows.</summary>
     public bool NoLightsForCamera => Lights.Count == 0;
 
     /// <summary>The note shown when <see cref="NoLightsForCamera"/>.</summary>
-    public string NoLightsText => $"No lighting configured for {(_camera ?? "this camera")} (lighting_devices.json › \"camera\").";
+    public string NoLightsText => "No lights configured on this controller (lighting_devices.json › \"channels\").";
 
     public bool Connected
     {
@@ -115,13 +116,24 @@ public sealed class LightingPanelViewModel : ObservableObject
         var info = device == null ? null : _host.Engine.Lighting.GetDevice(device);
         if (device == null || info == null) return;
 
-        foreach (var light in info.Lights)
+        // Every light on the controller — the selected camera's first (stable within each half).
+        var rows = info.Lights
+            .Select(light => (Light: light, Channels: info.Channels.Where(c => InLight(c, light)).ToList()))
+            .Select(x => (x.Light, x.Channels, Mine: ForCamera(x.Channels)))
+            .OrderByDescending(x => x.Mine)
+            .ToList();
+        foreach (var (light, channels, mine) in rows)
         {
-            var channels = info.Channels.Where(c => InLight(c, light)).ToList();
-            if (!ForCamera(channels)) continue;
             var hasRgb = channels.Any(c => LightColors.IsPrimary(c.Color));
             var hasCollimate = channels.Any(c => LightColors.Matches(LightColor.Collimate, c.Color));
-            Lights.Add(new LightControlViewModel(_host, device, light, hasRgb, hasCollimate, SetStatus));
+            var cameras = string.Join(", ", channels
+                .Select(c => c.Camera).Where(c => !string.IsNullOrWhiteSpace(c))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+            Lights.Add(new LightControlViewModel(_host, device, light, hasRgb, hasCollimate, SetStatus)
+            {
+                CameraLabel = cameras,
+                IsForSelectedCamera = mine && _camera != null && cameras.Length > 0,
+            });
         }
         Refresh();
         if (_connected) SyncFromHardware();
@@ -195,8 +207,8 @@ public sealed class LightingPanelViewModel : ObservableObject
     private void SetStatus(string text) => Status = text;
 
     /// <summary>
-    /// Whether a light belongs on the selected camera: any of its channels is tied to
-    /// that camera, or none of them is tied to a camera at all.
+    /// Whether a light belongs to the selected camera (sorts it first): any of its channels
+    /// is tied to that camera, or none of them is tied to a camera at all.
     /// </summary>
     private bool ForCamera(IReadOnlyList<LightingChannelInfo> channels)
     {
@@ -250,6 +262,15 @@ public sealed class LightControlViewModel : ObservableObject
     }
 
     public string Name { get; }
+
+    /// <summary>The camera(s) this light is tied to (lighting_devices.json › "camera"); empty when none.</summary>
+    public string CameraLabel { get; init; } = "";
+
+    /// <summary>True when the light belongs to the panel's selected camera — its name is shown in the accent colour.</summary>
+    public bool IsForSelectedCamera { get; init; }
+
+    /// <summary>True when <see cref="CameraLabel"/> is set.</summary>
+    public bool HasCamera => CameraLabel.Length > 0;
 
     /// <summary>True when the light has red/green/blue channels — shows Red/Green/Blue/White (mix).</summary>
     public bool HasRgb { get; }
