@@ -21,7 +21,7 @@ param(
     [string]$Output      = (Join-Path $PSScriptRoot '..\artifacts\deploy'),
     # Include rolling Serilog logs (normally useless on a new box).
     [switch]$IncludeLogs,
-    # Exclude history.db and every product's dut\ + siphog_data\ folders - fresh traceability on the clone.
+    # Exclude history.db, oee.db and every product's dut\ + siphog_data\ folders - fresh traceability on the clone.
     [switch]$CleanHistory
 )
 
@@ -53,8 +53,11 @@ robocopy @roboArgs | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed (exit $LASTEXITCODE)" }
 
 if ($CleanHistory) {
-    Remove-Item (Join-Path $dst 'history.db') -Force -ErrorAction SilentlyContinue
-    Write-Host "  (dropped history.db + dut\ + siphog_data\ - clean traceability)" -ForegroundColor DarkGray
+    # oee.db is this station's uptime / downtime log - never clone it to another station.
+    foreach ($db in @('history.db', 'oee.db')) {
+        Remove-Item (Join-Path $dst $db) -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host "  (dropped history.db + oee.db + dut\ + siphog_data\ - clean traceability)" -ForegroundColor DarkGray
 }
 
 if (Test-Path $zip) { Remove-Item $zip -Force }

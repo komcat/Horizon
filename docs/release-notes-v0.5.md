@@ -18,7 +18,7 @@ bottom-up bring-up (ConfigTool → Console → FAAM.UI) are unchanged from
 | `FAAM.UI-v0.5.0-win-x64.zip` | The operator application. Extract and run `FAAM.UI.exe`; .NET 8 Desktop runtime bundled. |
 | `Horizon.Console-v0.5.0-win-x64.zip` | Headless engine test rig over the same Layer 1/2 stack — prove the hardware before the operator app. |
 | `Horizon.ConfigTool-v0.5.0-win-x64.zip` | Hardware config authoring utility for `%APPDATA%\Horizon\config\` (no hardware access). |
-| `Horizon-appdata.zip` | The `%APPDATA%\Horizon` seed — `config\` + `products\`, with `history.db`, `dut\`, `siphog_data\` and `logs\` stripped. |
+| `Horizon-appdata.zip` | The `%APPDATA%\Horizon` seed — `config\` + `products\`, with `history.db`, `oee.db`, `dut\`, `siphog_data\` and `logs\` stripped. |
 | `restore-appdata.ps1` | Restores the seed on the target (run with Windows PowerShell 5.1: `powershell -ExecutionPolicy Bypass -File .\restore-appdata.ps1 -Zip .\Horizon-appdata.zip`). |
 | `Horizon-scripts-v0.5.0.zip` | **New:** just the `.moon` scripts, laid out as `products\<name>\scripts\` — for updating a station's scripts without restoring the whole seed. See *Script bundle* below. |
 
