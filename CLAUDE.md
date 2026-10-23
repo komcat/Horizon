@@ -283,11 +283,13 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   `faam_run_durations.json` (per product/program top-level block timings from earlier runs —
   weights the Run-page progress bar by time and estimates blocks that report no progress;
   a `.moon` script reports its own via `machine.progress(pct, msg)`),
-  `faam_scan_panel.json` (Run-page **Scanning** panel under Raster Climb / Auto W — `Views/ScanningPanel`
-  + `ScanPanelStore`: two hex-right saved-pose buttons that move the hexapod there, four (2×2) buttons that
-  run an assigned script preset or bare `.moon` script; captions / poses / scripts edited by right-click or on Machine › Settings),
+  `faam_scan_panel.json` (Run-page **Scanning** panel under the alignment + SiPhOG panels — `Views/ScanningPanel`; it replaced the Raster Climb / Auto W panels, which are **deprecated — do not use or build on** `RasterClimbPanel` / `AutoWPanel` / `RasterClimbEngine` / `AutoWEngine` (`app.* hillclimb` / `autow` now fail with a deprecation message)
+  + `ScanPanelStore`: two hex-right pose slots — small Save1/Save2 buttons store the current pose, Move1/Move2
+  below move the hexapod there — and four (2×2) buttons that run an assigned script preset or bare `.moon`
+  script; captions / poses / scripts edited by right-click or on Machine › Settings),
   `faam_script_presets.json` (`ScriptPresetStore`, Machine › Settings › Script presets: name + `.moon`
-  script + argument text — one script, several configurations, e.g. the `FAU_PowerClimb` coarse / fine /
+  script + argument text + **No exit threshold** flag (adds `exit = false`; the Run-page button turns orange,
+  default blue) — one script, several configurations, e.g. the `FAU_PowerClimb` coarse / fine /
   XY-only presets. **Script arguments**: a Lua table literal (outer braces optional) that
   `MoonScriptEngine` evaluates before `machine` is installed — data only — and hands the script as the
   global `args` table; supplied by a preset, the Run Script block's `args` param, or the Script editor's

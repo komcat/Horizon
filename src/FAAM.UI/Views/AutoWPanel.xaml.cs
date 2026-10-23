@@ -11,6 +11,8 @@ using Horizon.Workflow.AutoW;
 namespace FAAM.UI.Views;
 
 /// <summary>
+/// <b>DEPRECATED — do not use or build on this.</b> Removed from the Run page; superseded by the Scanning panel's script presets (FAU_PowerClimb).
+///
 /// Run-page Auto W Maximizer panel — drives the Layer 2 <see cref="AutoWEngine"/>, a 1-D
 /// line search over the hexapod W (rotation) axis that re-peaks XY at each W to score it,
 /// maximising the SiPhOG <c>SAG PWR (V)</c>. Shares the same feedback seam

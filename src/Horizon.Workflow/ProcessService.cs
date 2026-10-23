@@ -2076,8 +2076,7 @@ public sealed class ProcessService : IProcessService
     {
         var script = new MoonScriptEngine(
             _engine,
-            namedPositionMover: (device, position, token) =>
-                MoveToNamedPositionCoreAsync(device, position, new MoveOverrides(), token),
+            namedPositionMover: MoveToNamedPositionCoreAsync,
             signalReader: (key, token) => _signals.ReadAsync(key, token),
             visionRunner: RunVisionProfileByNameAsync,
             operatorPrompt: OperatorPrompt,
@@ -2092,7 +2091,10 @@ public sealed class ProcessService : IProcessService
             siphogSnapshot: SaveSiphogSnapshotAsync,
             siphogSetCurrent: (mA, token) => _siphogSheetSink?.SetSledCurrentAsync(mA, token)
                 ?? Task.FromResult(Result.Fail(ErrorCode.OperationFailed,
-                    "siphog.setCurrent: no SiPhOG client registered (open the Run page first).")));
+                    "siphog.setCurrent: no SiPhOG client registered (open the Run page first).")),
+            positions: new PositionScriptHost(
+                GetPosition,
+                (device, name, coords) => SaveNamedPosition(device, name, coords, GetPosition(device, name)?.Velocity ?? 0)));
 
         void Sink(string line)
         {

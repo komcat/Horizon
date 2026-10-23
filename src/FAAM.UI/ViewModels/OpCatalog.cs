@@ -431,17 +431,17 @@ public static class OpCatalog
 
         // ---- App (Run-page utility springboard) ----
         // Drive the Run-page utility apps from a sequence. 'appId' is one of:
-        // ucorrection, faupre, hillclimb, siphog. Open/Home are navigation only.
+        // align, ucorrection, faupre (hillclimb / autow are DEPRECATED — removed from the Run page). Open/Home are navigation only.
         // Start ACTIVATES an app (foreground + begin its routine / connect) and returns
         // once started — it does NOT await completion (use hillclimb.start for the
         // headless, await-to-completion climb). Requires a head with the springboard.
         new("app.open", "Open App", "App", DeviceKind.None,
-            new[] { new ParamSpec("appId", "App (ucorrection / faupre / hillclimb / siphog)", ParamKind.Text, "hillclimb") }),
+            new[] { new ParamSpec("appId", "App (align / ucorrection / faupre)", ParamKind.Text, "align") }),
         new("app.home", "Home (Launcher)", "App", DeviceKind.None, System.Array.Empty<ParamSpec>()),
         new("app.start", "Open & Run App", "App", DeviceKind.None,
-            new[] { new ParamSpec("appId", "App (ucorrection / faupre / hillclimb / siphog)", ParamKind.Text, "hillclimb") }),
+            new[] { new ParamSpec("appId", "App (align / ucorrection / faupre)", ParamKind.Text, "align") }),
         new("app.stop", "Stop App", "App", DeviceKind.None,
-            new[] { new ParamSpec("appId", "App (ucorrection / faupre / hillclimb / siphog)", ParamKind.Text, "hillclimb") }),
+            new[] { new ParamSpec("appId", "App (align / ucorrection / faupre)", ParamKind.Text, "align") }),
 
         // ---- SiPhOG -> Google Sheet (V11 UPDATE_SAG) ----
         // Writes the bench row's current SAG-PWR readings into the chosen stage column of

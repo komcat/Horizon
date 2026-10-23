@@ -113,9 +113,10 @@ public sealed class FauPreAlignApp : ObservableObject, IUtilityApp
 }
 
 /// <summary>
+/// <b>DEPRECATED — do not use.</b> No longer registered: the Raster Climb panel was removed from the Run page.
 /// Raster Climb app (Z+ step → XY plane search → move to the plane's max). It took the
-/// hill climber's Run-page slot, and keeps the <c>hillclimb</c> id so authored
-/// <c>app.start hillclimb</c> / <c>app.stop hillclimb</c> steps keep working.
+/// hill climber's Run-page slot under the <c>hillclimb</c> id; <c>app.start hillclimb</c> /
+/// <c>app.stop hillclimb</c> steps now fail with a deprecation message.
 /// </summary>
 public sealed class RasterClimbApp : ObservableObject, IUtilityApp
 {
@@ -146,7 +147,7 @@ public sealed class RasterClimbApp : ObservableObject, IUtilityApp
     });
 }
 
-/// <summary>Auto W maximizer app (1-D W-axis line search re-peaking XY at each angle).</summary>
+/// <summary><b>DEPRECATED — do not use.</b> No longer registered (Auto W panel removed). Auto W maximizer app (1-D W-axis line search re-peaking XY at each angle).</summary>
 public sealed class AutoWApp : ObservableObject, IUtilityApp
 {
     private readonly AutoWPanel _panel;

@@ -9,8 +9,19 @@ namespace Horizon.Workflow.Scripting;
 /// host (<c>IProcessService</c>) so <c>machine.motion.moveTo</c> can reach the
 /// active product's positions. Null in engine-only contexts (e.g. the console
 /// test host), where <c>moveTo</c> reports that named positions are unavailable.
+/// <paramref name="overrides"/> carries the optional per-call camera / exposure / velocity.
 /// </summary>
-public delegate Task<Result> NamedPositionMover(string device, string position, CancellationToken ct);
+public delegate Task<Result> NamedPositionMover(string device, string position, MoveOverrides overrides, CancellationToken ct);
+
+/// <summary>
+/// The teach-point seam a Layer 2 host hands to scripts: read a named position of the
+/// active product, and write new coordinates over one (keeping its stored velocity,
+/// camera and exposure). Null in engine-only contexts, where <c>machine.motion.teachPoint</c>
+/// / <c>savePosition</c> report that named positions are unavailable.
+/// </summary>
+public sealed record PositionScriptHost(
+    Func<string, string, NamedPosition?> Get,
+    Func<string, string, MotionPosition, Result> Save);
 
 /// <summary>
 /// Reads one unified signal by key (e.g. <c>smu.PIC.ch1.current</c>) — the same
@@ -74,6 +85,7 @@ internal sealed class MachineApi
     private readonly Action<ScriptProgress>? _progress;
     private readonly Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? _siphogSnapshot;
     private readonly Func<double, CancellationToken, Task<Result>>? _siphogSetCurrent;
+    private readonly PositionScriptHost? _positions;
 
     public MachineApi(
         Script script,
@@ -88,7 +100,8 @@ internal sealed class MachineApi
         PartAlignmentScriptHost? part = null,
         Action<ScriptProgress>? progress = null,
         Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? siphogSnapshot = null,
-        Func<double, CancellationToken, Task<Result>>? siphogSetCurrent = null)
+        Func<double, CancellationToken, Task<Result>>? siphogSetCurrent = null,
+        PositionScriptHost? positions = null)
     {
         _script = script;
         _engine = engine;
@@ -103,6 +116,7 @@ internal sealed class MachineApi
         _progress = progress;
         _siphogSnapshot = siphogSnapshot;
         _siphogSetCurrent = siphogSetCurrent;
+        _positions = positions;
     }
 
     /// <summary>The Lua function registered with <c>machine.onAbort</c>, or null.</summary>
@@ -191,6 +205,34 @@ internal sealed class MachineApi
             bool ok = Block(_prompt.ConfirmAsync(title, message, _ct));
             return DynValue.NewBoolean(ok);
         });
+
+        // machine.jog(title, message [, {devices={...}, axes="XYZ", step=0.01, timeoutSec=3600}]) -> bool
+        // Non-modal manual-jog popup (the flow.jogPopup back-end): unlike ask, the main window
+        // stays usable, so the operator can jog / click-to-move to refine a crosshair. True on
+        // Continue, false on Cancel or timeout.
+        machine["jog"] = Cb(a =>
+        {
+            const string fn = "machine.jog";
+            if (_prompt == null)
+                throw new ScriptRuntimeException("machine.jog needs an operator-prompt host (none registered)");
+            string title = ReqStr(a, 0, fn);
+            string message = a.Count > 1 ? ReqStr(a, 1, fn) : string.Empty;
+            var opts = a.Count > 2 && a[2].Type == DataType.Table ? a[2].Table : null;
+
+            var devices = new List<string>();
+            if (opts?.Get("devices") is { Type: DataType.Table } list)
+                devices.AddRange(list.Table.Values.Where(v => v.Type == DataType.String).Select(v => v.String));
+            string axes = opts?.Get("axes") is { Type: DataType.String } ax ? ax.String : "XYZUVW";
+
+            var request = new JogPopupRequest(
+                Title: title,
+                Message: message,
+                Devices: devices,
+                Axes: axes,
+                DefaultStepMm: OptField(opts, "step", 0.01),
+                MaxSeconds: Math.Clamp((int)OptField(opts, "timeoutSec", 3600), 1, 3600));
+            return DynValue.NewBoolean(Block(_prompt.JogPopupAsync(request, _ct)));
+        });
     }
 
     // --- motion ---
@@ -230,7 +272,73 @@ internal sealed class MachineApi
             if (_mover == null)
                 throw new ScriptRuntimeException(
                     "motion.moveTo needs a Layer 2 host — named positions are unavailable in this context");
-            return Do(_mover(dev, position, _ct), $"motion.moveTo({dev},{position})");
+
+            // Optional {camera=, exposureUs=, velocity=} — applied at the start of the move, so
+            // the camera settles while the stage travels (the MoveOverrides recall path).
+            var opts = a.Count > 2 && a[2].Type == DataType.Table ? a[2].Table : null;
+            double exposure = OptField(opts, "exposureUs", 0);
+            var overrides = new MoveOverrides(
+                Velocity: OptField(opts, "velocity", 0),
+                Camera: opts?.Get("camera") is { Type: DataType.String } cam ? cam.String : null,
+                ExposureUs: exposure > 0 ? exposure : null);
+            return Do(_mover(dev, position, overrides, _ct), $"motion.moveTo({dev},{position})");
+        });
+
+        // machine.motion.movePose(device, {x=, y=, ...}) — one coordinated absolute move; an
+        // axis left out keeps its live value, so the given axes travel together.
+        m["movePose"] = Cb(a =>
+        {
+            const string fn = "motion.movePose";
+            string dev = ReqStr(a, 0, fn);
+            var t = a.AsType(1, fn, DataType.Table, false).Table;
+            var cur = Val(_engine.Motion.GetPositionAsync(dev), $"{fn}({dev}) read");
+            var target = new MotionPosition(
+                OptField(t, "x", cur.X), OptField(t, "y", cur.Y), OptField(t, "z", cur.Z),
+                OptField(t, "u", cur.U), OptField(t, "v", cur.V), OptField(t, "w", cur.W));
+            return Do(_engine.Motion.MoveToPositionAsync(dev, target, _ct),
+                $"{fn}({dev},X={target.X:F4},Y={target.Y:F4},Z={target.Z:F4},U={target.U:F4},V={target.V:F4},W={target.W:F4})");
+        });
+
+        // machine.motion.teachPoint(device, name) -> {x,y,z,u,v,w,velocity} | nil
+        m["teachPoint"] = Cb(a =>
+        {
+            const string fn = "motion.teachPoint";
+            string dev = ReqStr(a, 0, fn);
+            string name = ReqStr(a, 1, fn);
+            if (_positions == null)
+                throw new ScriptRuntimeException($"{fn} needs a Layer 2 host — named positions are unavailable in this context");
+            var p = _positions.Get(dev, name);
+            if (p == null) return DynValue.Nil;
+            var t = PositionTable(p.Coordinates);
+            t.Table["velocity"] = DynValue.NewNumber(p.Velocity);
+            return t;
+        });
+
+        // machine.motion.savePosition(device, name [, pos]) — writes the live position (or the
+        // given {x,y,z,u,v,w}; missing axes from the live position) over a named teach point.
+        m["savePosition"] = Cb(a =>
+        {
+            const string fn = "motion.savePosition";
+            string dev = ReqStr(a, 0, fn);
+            string name = ReqStr(a, 1, fn);
+            if (_positions == null)
+                throw new ScriptRuntimeException($"{fn} needs a Layer 2 host — named positions are unavailable in this context");
+            var cur = Val(_engine.Motion.GetPositionAsync(dev), $"{fn}({dev}) read");
+            var t = a.Count > 2 && a[2].Type == DataType.Table ? a[2].Table : null;
+            var pos = new MotionPosition(
+                OptField(t, "x", cur.X), OptField(t, "y", cur.Y), OptField(t, "z", cur.Z),
+                OptField(t, "u", cur.U), OptField(t, "v", cur.V), OptField(t, "w", cur.W));
+            var r = _positions.Save(dev, name, pos);
+            if (!r.IsSuccess) throw new ScriptRuntimeException($"{fn}({dev},{name}) failed: {r.Message}");
+            _log($"{fn}({dev},{name}) X={pos.X:F4} Y={pos.Y:F4} Z={pos.Z:F4}");
+            return DynValue.Nil;
+        });
+
+        // machine.motion.velocity(device) -> mm/s — the controller's current system velocity.
+        m["velocity"] = Cb(a =>
+        {
+            string dev = ReqStr(a, 0, "motion.velocity");
+            return DynValue.NewNumber(Val(_engine.Motion.GetSystemVelocityAsync(dev), $"motion.velocity({dev})"));
         });
 
         m["setVelocity"] = Cb(a =>
@@ -616,6 +724,17 @@ internal sealed class MachineApi
             return Do(_engine.Camera.ApplyExposureAsync(id,
                 new CameraExposure(us, ex.Gain, ex.AutoExposure, ex.AutoGain, ex.FrameRate)),
                 $"camera.setExposure({id},{us}us)");
+        });
+
+        // machine.camera.pointExposure(position) -> us | nil — the per-point exposure set in the
+        // head's exposure editor (app_settings PointExposureUs, keyed by position name). Read
+        // fresh each call so an edit made while the app runs is seen.
+        c["pointExposure"] = Cb(a =>
+        {
+            string name = ReqStr(a, 0, "camera.pointExposure");
+            return new AppSettingsStore().Current.PointExposureUs.TryGetValue(name, out var us) && us > 0
+                ? DynValue.NewNumber(us)
+                : DynValue.Nil;
         });
 
         c["snap"] = Cb(a =>

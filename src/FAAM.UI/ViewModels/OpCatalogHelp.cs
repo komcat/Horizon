@@ -33,7 +33,7 @@ public static class OpCatalogHelp
     private static readonly Dictionary<string, OpHelp> ByKey = new(StringComparer.OrdinalIgnoreCase)
     {
         // ===== App — the Run-page utility springboard =====
-        // The four apps are: ucorrection, faupre, hillclimb, siphog.
+        // The apps are: align, ucorrection, faupre (hillclimb / autow are DEPRECATED — removed from the Run page).
         // Two axes: Open/Home move the FOREGROUND (which screen shows); Open&Run/Stop
         // change the RUN-STATE (the routine), which keeps going in the background.
 
@@ -43,7 +43,7 @@ public static class OpCatalogHelp
             Usage = "Use it to show the operator the right app at the right moment (e.g. open FAU Pre-align just before a manual step). Returns immediately. To also start the routine, use \"Open & Run App\". Only works on a head that has the Run-page springboard (FAAM.UI); elsewhere the step fails with a clear message.",
             ParamNotes = new[]
             {
-                ("appId", "Which app to show: ucorrection, faupre, hillclimb, or siphog."),
+                ("appId", "Which app to show: align, ucorrection or faupre. (hillclimb / autow are deprecated — do not use.)"),
             },
         },
 
@@ -59,17 +59,17 @@ public static class OpCatalogHelp
             Usage = "Per app: siphog → connect (tile turns green); hillclimb → start a climb using the panel's current Distance/Target (tile turns yellow); ucorrection / faupre → begin the guided routine that the operator then drives (Capture/Apply).\n\nIMPORTANT: this returns ONCE STARTED — it does NOT wait for the routine to finish. For a climb that must block the sequence until done (with distance/target and captured results), use \"Start Hill Climb\" (Align) instead.",
             ParamNotes = new[]
             {
-                ("appId", "Which app to activate: ucorrection, faupre, hillclimb, or siphog."),
+                ("appId", "Which app to activate: align, ucorrection or faupre. (hillclimb / autow are deprecated — do not use.)"),
             },
         },
 
         ["app.stop"] = new()
         {
             Summary = "Stop a utility app's routine — like pressing its Stop button (Disconnect for SiPhOG). Leaves the current screen as-is.",
-            Usage = "siphog → disconnect; hillclimb → cancel the climb; ucorrection / faupre → abort the in-flight run. No-op if the app isn't running.",
+            Usage = "align / ucorrection / faupre → abort the in-flight run. No-op if the app isn't running.",
             ParamNotes = new[]
             {
-                ("appId", "Which app to stop: ucorrection, faupre, hillclimb, or siphog."),
+                ("appId", "Which app to stop: align, ucorrection or faupre. (hillclimb / autow are deprecated — do not use.)"),
             },
         },
 

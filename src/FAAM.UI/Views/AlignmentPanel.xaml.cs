@@ -53,10 +53,10 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     private EngineHost? _host;
     private readonly Ellipse[] _dots;
 
-    // Post-FAU XY signal finder (Stage 1 X line → Stage 2 grid). On a hit it hands off to the
-    // Run-page climb panel (the raster climb, which took the hill climber's slot). Wired by
-    // UtilityAppHost via EnableGridSearch once the SiPhOG client + climb panel exist; left
-    // null (skipped) otherwise.
+    // Post-FAU XY signal finder (Stage 1 X line → Stage 2 grid). Wired by UtilityAppHost via
+    // EnableGridSearch once the SiPhOG client exists; left null (skipped) otherwise. The old
+    // hand-off to the raster climb (_hill) is only taken when a climb panel is supplied — the
+    // Run page no longer supplies one (Raster Climb is DEPRECATED — do not use).
     private FauGridSearchEngine? _gridEngine;
     private IHillClimbFeedback? _gridFeedback;
     private RasterClimbPanel? _hill;
@@ -167,10 +167,11 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     /// <summary>
     /// Enables the post-FAU grid search: after the FAU pre-align phase succeeds, the panel runs the
     /// Layer 2 <see cref="FauGridSearchEngine"/> over hex-right XY (live SiPhOG SAG-V feedback) and,
-    /// if a stage finds signal, hands off to <paramref name="hill"/> (mirrors the hill-climb → Auto-W
-    /// one-shot). Call after <see cref="Attach"/>.
+    /// if a stage finds signal, hands off to <paramref name="hill"/> when one is given (the
+    /// DEPRECATED raster climb — the Run page passes none, so the chain stops at the found signal).
+    /// Call after <see cref="Attach"/>.
     /// </summary>
-    public void EnableGridSearch(SiphogClient siphog, RasterClimbPanel hill)
+    public void EnableGridSearch(SiphogClient siphog, RasterClimbPanel? hill = null)
     {
         if (_host == null) return;
         _hill = hill;
@@ -512,6 +513,8 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         // in Finish), mirroring the climb → Auto-W one-shot. Only fires when a grid stage
         // actually found signal. Still gated by the Find First Light HillClimbEnabled setting —
         // the same operator switch, now governing the raster climb that replaced it.
+        if (handoffClimb && _hill == null)
+            Log(LogLevel.Info, "Grid search found signal — stopping here (run a Scanning script preset to climb).");
         if (handoffClimb && _hill != null)
         {
             if (_host.Settings.Current.FindFirstLight.HillClimbEnabled)

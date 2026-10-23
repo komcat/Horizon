@@ -17,6 +17,8 @@ public sealed class TowerLightConfig
     public string Buzzer { get; set; } = "Tower_Buzzer";
     /// <summary>Beeps sounded when a safety stop trips (0 = silent).</summary>
     public int SafetyBeeps { get; set; } = 3;
+    /// <summary>Seconds the buzzer sounds (steady) when the machine is declared Down (0 = silent).</summary>
+    public double DownBuzzerSeconds { get; set; } = 3;
 }
 
 /// <summary>
@@ -26,7 +28,7 @@ public sealed class TowerLightConfig
 /// <item><term>Running</term><description>green steady</description></item>
 /// <item><term>Standby</term><description>green blinking — ready, waiting for the next unit</description></item>
 /// <item><term>Idle (≥ 30 min)</term><description>yellow steady</description></item>
-/// <item><term>Down (declared)</term><description>red steady</description></item>
+/// <item><term>Down (declared)</term><description>red steady; the buzzer sounds for <see cref="TowerLightConfig.DownBuzzerSeconds"/> (3 s) on the declaration, then stops</description></item>
 /// <item><term>Waiting on the operator</term><description>yellow blinking — a prompt / serial entry / alert / jog popup is up</description></item>
 /// <item><term>Safety stop</term><description>red blinking + a few beeps, until Acknowledge</description></item>
 /// <item><term>FAAM closed</term><description>all off</description></item>
@@ -57,6 +59,8 @@ public sealed class TowerLight
     private int _tick;
     private bool _wasTripped;
     private int _beepTicks;
+    private bool? _wasDown;           // null until the first tick — a Down carried over from a restart doesn't buzz
+    private int _downBuzzTicks;
 
     /// <param name="operatorWaiting">True while a blocking operator prompt is up (polled every tick, any thread).</param>
     public TowerLight(IHorizonEngine engine, OeeTracker oee, LogHub log, Func<bool> operatorWaiting)
@@ -128,10 +132,18 @@ public sealed class TowerLight
         _wasTripped = tripped;
         if (_beepTicks > 0) _beepTicks--;
 
-        if (tripped) return new Lamps(false, false, blinkOn, _beepTicks > 0 && blinkOn);
-
         var state = _oee.Status.State;
-        if (state == OeeState.Down) return new Lamps(false, false, true, false);
+        bool down = state == OeeState.Down;
+        if (down && _wasDown == false)
+            _downBuzzTicks = (int)Math.Ceiling(Math.Clamp(_cfg.DownBuzzerSeconds, 0, 30) * 1000 / Tick.TotalMilliseconds);
+        else if (!down) _downBuzzTicks = 0;           // declared UP again — stop at once
+        _wasDown = down;
+        bool downBuzz = _downBuzzTicks > 0;
+        if (downBuzz) _downBuzzTicks--;
+
+        if (tripped) return new Lamps(false, false, blinkOn, (_beepTicks > 0 && blinkOn) || downBuzz);
+
+        if (down) return new Lamps(false, false, true, downBuzz);
         if (_operatorWaiting()) return new Lamps(false, blinkOn, false, false);   // someone needs to come over
 
         return state switch

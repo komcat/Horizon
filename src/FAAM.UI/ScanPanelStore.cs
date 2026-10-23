@@ -54,8 +54,8 @@ public sealed class ScanPanelSettings
 }
 
 /// <summary>
-/// The Run-page Scanning panel's customisation — two hex-right position buttons (Save1 /
-/// Save2: a click moves the hexapod to the saved pose) and four script buttons (Scan1..Scan4,
+/// The Run-page Scanning panel's customisation — two hex-right position slots (Save1 / Save2
+/// store the current pose, Move1 / Move2 move the hexapod there) and four script buttons (Scan1..Scan4,
 /// 2×2: a click runs the assigned script preset or <c>.moon</c> script). Captions, saved poses and script
 /// assignments are edited by right-click on the Run page or on Machine › Settings, and stored
 /// machine-global in <c>faam_scan_panel.json</c>. Script names resolve in the active product.
@@ -110,8 +110,10 @@ public static class ScanPanelStore
         for (var i = 0; i < PositionSlotCount; i++)
         {
             var p = s.Positions[i] ??= new ScanPositionSlot();
-            if (string.IsNullOrWhiteSpace(p.Label)) p.Label = $"Save{i + 1}";
-            p.Label = p.Label.Trim();
+            // The label names the Move button (Save{n} is the fixed caption above it); the old
+            // default "Save{n}" is migrated to "Move{n}".
+            p.Label = (p.Label ?? "").Trim();
+            if (p.Label.Length == 0 || p.Label == $"Save{i + 1}") p.Label = $"Move{i + 1}";
             if (p.Position != null && !p.Position.IsValid()) p.Position = null;
         }
 

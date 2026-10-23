@@ -7,9 +7,10 @@ using Horizon.Workflow;
 namespace FAAM.UI.Views;
 
 /// <summary>
-/// The Run-page alignment utilities — U correction, FAU pre-align, Hill Climber and the
-/// SiPhOG connection panel — laid out directly and always ready to use (U correction +
-/// FAU on the top row, Hill Climber + SiPhOG below). The old "phone" springboard (tiles +
+/// The Run-page alignment utilities — the combined U correction / FAU pre-align panel, the
+/// SiPhOG connection panel and the Scanning panel — laid out directly and always ready to use.
+/// The Raster Climb and Auto W panels are DEPRECATED (do not use) and no longer shown; their
+/// app ids report as deprecated. The old "phone" springboard (tiles +
 /// Back navigation) was dropped per operator feedback, and FAAM does not use the Hexapod
 /// Scan app.
 ///
@@ -40,9 +41,9 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
     public void SetCapturePromptSurface(ICapturePromptSurface surface) => _align?.SetCapturePromptSurface(surface);
 
     /// <summary>
-    /// Builds and attaches the four panels into the fixed grid. The SiPhOG panel owns the
+    /// Builds and attaches the panels into the fixed grid. The SiPhOG panel owns the
     /// shared client (exposed via <see cref="SiphogClient"/> for the chart) and feeds the
-    /// Hill Climber. SiPhOG is left disconnected on load — the operator connects it from
+    /// grid search. SiPhOG is left disconnected on load — the operator connects it from
     /// its panel, or a Phase 2 command block does.
     /// </summary>
     public void Attach(EngineHost host)
@@ -54,29 +55,14 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
 
         _siphogPanel = new SiphogPanel();          // self-attached (owns its client)
 
-        // The Z+/raster climb replaced the hill climber in this slot. Compact: readout plus
-        // Start / Stop only — it runs on its defaults here, and the Engineer Testing Ground
-        // copy is where those get tuned.
-        var climb = new RasterClimbPanel();
-        climb.SetCompact();
-        climb.Attach(host);
-        climb.AttachSiphog(_siphogPanel.Client);
-
-        var autoW = new AutoWPanel();
-        autoW.Attach(host, _siphogPanel.Client);
-
-        // After the climb reaches its target it auto-runs the Auto W maximizer once
-        // (re-armed on each Start press).
-        climb.SetAutoWPanel(autoW);
-
-        // After FAU pre-align, the alignment panel runs the XY grid signal search and, on a hit,
-        // hands off to the climb (which then chains Auto-W). Completes the corrections chain.
-        align.EnableGridSearch(_siphogPanel.Client, climb);
+        // The Raster Climb + Auto W panels are DEPRECATED (do not use) and no longer built here —
+        // the Scanning panel's script presets (FAU_PowerClimb) replace them. After FAU pre-align
+        // the alignment panel still runs the XY grid signal search; with no climb to hand off to,
+        // it stops at the found signal.
+        align.EnableGridSearch(_siphogPanel.Client);
 
         AlignHost.Content = align;
         SiphogHost.Content = _siphogPanel;
-        HillHost.Content = climb;
-        AutoWHost.Content = autoW;
 
         // Saved hex-right poses + assignable .moon scripts (faam_scan_panel.json).
         var scan = new ScanningPanel();
@@ -89,25 +75,30 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
         _apps.Add(new AlignmentApp(align));
         _apps.Add(new UCorrectionApp(align));
         _apps.Add(new FauPreAlignApp(align));
-        _apps.Add(new RasterClimbApp(climb));
-        _apps.Add(new AutoWApp(autoW));
     }
+
+    // App ids of the removed (DEPRECATED) Raster Climb / Auto W panels — an app.* step naming one
+    // fails with this explanation instead of a bare "unknown app".
+    private static readonly HashSet<string> DeprecatedIds = new(StringComparer.OrdinalIgnoreCase) { "hillclimb", "autow" };
+
+    private static Result Unknown(string op, string appId)
+        => Result.Fail(ErrorCode.InvalidParameter, DeprecatedIds.Contains(appId)
+            ? $"{op}: '{appId}' (Raster Climb / Auto W) is deprecated and removed from the Run page — do not use; run a Scanning script preset (e.g. FAU_PowerClimb) instead."
+            : $"{op}: unknown app '{appId}'.");
 
     // --- IUtilityAppHost (Layer 2 → Layer 3 command seam, driven by app.* steps) ---
     // Every panel is always visible, so open/home are no-ops; start/stop resolve a panel
     // by id. StepDispatcher may call these off the UI thread, so each marshals onto it.
 
     public Result Open(string appId) => OnUi(() =>
-        Find(appId) == null
-            ? Result.Fail(ErrorCode.InvalidParameter, $"app.open: unknown app '{appId}'.")
-            : Result.Ok());
+        Find(appId) == null ? Unknown("app.open", appId) : Result.Ok());
 
     public Result Home() => Result.Ok();
 
     public Task<Result> StartAsync(string appId, CancellationToken ct) => Task.FromResult(OnUi(() =>
     {
         var app = Find(appId);
-        if (app == null) return Result.Fail(ErrorCode.InvalidParameter, $"app.start: unknown app '{appId}'.");
+        if (app == null) return Unknown("app.start", appId);
         _ = app.StartAsync(ct);        // begin routine — fire (does not await completion)
         return Result.Ok();
     }));
@@ -115,7 +106,7 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
     public Task<Result> StopAsync(string appId) => Task.FromResult(OnUi(() =>
     {
         var app = Find(appId);
-        if (app == null) return Result.Fail(ErrorCode.InvalidParameter, $"app.stop: unknown app '{appId}'.");
+        if (app == null) return Unknown("app.stop", appId);
         _ = app.StopAsync();
         return Result.Ok();
     }));

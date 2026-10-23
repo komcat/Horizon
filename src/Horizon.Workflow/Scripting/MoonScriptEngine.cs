@@ -54,6 +54,7 @@ public sealed class MoonScriptEngine
     private readonly Action<ScriptProgress>? _progress;
     private readonly Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? _siphogSnapshot;
     private readonly Func<double, CancellationToken, Task<Result>>? _siphogSetCurrent;
+    private readonly PositionScriptHost? _positions;
 
     public MoonScriptEngine(
         IHorizonEngine engine,
@@ -65,8 +66,10 @@ public sealed class MoonScriptEngine
         PartAlignmentScriptHost? partAlignment = null,
         Action<ScriptProgress>? progress = null,
         Func<SiphogSnapshotRequest, CancellationToken, Task<Result<SiphogSnapshotSet>>>? siphogSnapshot = null,
-        Func<double, CancellationToken, Task<Result>>? siphogSetCurrent = null)
+        Func<double, CancellationToken, Task<Result>>? siphogSetCurrent = null,
+        PositionScriptHost? positions = null)
     {
+        _positions = positions;
         _partAlignment = partAlignment;
         _progress = progress;
         _siphogSnapshot = siphogSnapshot;
@@ -171,7 +174,7 @@ public sealed class MoonScriptEngine
         if (argsError != null) return ScriptRunResult.Failed(argsError, null, output);
         script.Globals["args"] = DynValue.NewTable(argsTable);
 
-        var api = new MachineApi(script, _engine, _mover, _signalReader, _visionRunner, _imageDisplay, _prompt, Log, ct, _partAlignment, _progress, _siphogSnapshot, _siphogSetCurrent);
+        var api = new MachineApi(script, _engine, _mover, _signalReader, _visionRunner, _imageDisplay, _prompt, Log, ct, _partAlignment, _progress, _siphogSnapshot, _siphogSetCurrent, _positions);
         api.Install();
 
         DynValue function;

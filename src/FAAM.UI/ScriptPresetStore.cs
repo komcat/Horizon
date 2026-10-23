@@ -17,6 +17,25 @@ public sealed class ScriptPreset
     public string Script { get; set; } = "";
     /// <summary>Lua table literal (outer braces optional); blank = the script's own defaults.</summary>
     public string Args { get; set; } = "";
+
+    /// <summary>
+    /// Run with no early-exit threshold: <see cref="EffectiveArgs"/> adds <c>exit = false</c>
+    /// (scripts that support it, e.g. FAU_PowerClimb, then climb every set). Shown as an orange
+    /// button on the Run page.
+    /// </summary>
+    public bool NoExitThreshold { get; set; }
+
+    /// <summary>The argument text actually passed to the script: <see cref="Args"/>, plus
+    /// <c>exit = false</c> when <see cref="NoExitThreshold"/> is set.</summary>
+    public string EffectiveArgs()
+    {
+        if (!NoExitThreshold) return Args;
+        var inner = (Args ?? "").Trim();
+        if (inner.StartsWith('{') && inner.EndsWith('}')) inner = inner[1..^1];
+        inner = inner.Trim().TrimEnd(',', ';').TrimEnd();
+        // The newline before the added key keeps a trailing '--' comment from swallowing it.
+        return inner.Length == 0 ? "{ exit = false }" : $"{{ {inner}\n, exit = false }}";
+    }
 }
 
 /// <summary>The whole <c>faam_script_presets.json</c> file.</summary>
@@ -75,7 +94,11 @@ public static class ScriptPresetStore
         {
             var name = (p?.Name ?? "").Trim();
             if (p == null || name.Length == 0 || !seen.Add(name)) continue;
-            list.Add(new ScriptPreset { Name = name, Script = (p.Script ?? "").Trim(), Args = (p.Args ?? "").Trim() });
+            list.Add(new ScriptPreset
+            {
+                Name = name, Script = (p.Script ?? "").Trim(), Args = (p.Args ?? "").Trim(),
+                NoExitThreshold = p.NoExitThreshold,
+            });
         }
         return list;
     }

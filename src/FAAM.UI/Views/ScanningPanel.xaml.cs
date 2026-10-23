@@ -8,9 +8,10 @@ namespace FAAM.UI.Views;
 
 /// <summary>
 /// Run-page Scanning panel (under Raster Climb + Auto W, above the log). Two hex-right
-/// position buttons — a click moves the hexapod to the saved six-axis pose, right-click
-/// saves the current pose / renames / clears — and four script buttons (2×2) that run an assigned
-/// script preset (<see cref="ScriptPresetStore"/>: a script + its arguments) or a bare
+/// position slots — a small Save button (top row) stores the current six-axis pose, a Move
+/// button (second row) moves the hexapod there (right-click: rename / clear) — and four
+/// script buttons (2×2) that run an assigned script preset (<see cref="ScriptPresetStore"/>:
+/// a script + its arguments; orange when the preset has no exit threshold) or a bare
 /// <c>.moon</c> script from the active product (right-click picks the preset or script /
 /// renames / clears). The customisation lives in <see cref="ScanPanelStore"/>
 /// (<c>faam_scan_panel.json</c>) and is also shown and edited on Machine › Settings.
@@ -25,6 +26,7 @@ public partial class ScanningPanel : UserControl
     private CancellationTokenSource? _cts;
     private bool _moving;
 
+    private readonly Button[] _saveButtons;
     private readonly Button[] _posButtons;
     private readonly TextBlock[] _posCaptions;
     private readonly TextBlock[] _posDetails;
@@ -35,14 +37,26 @@ public partial class ScanningPanel : UserControl
     public ScanningPanel()
     {
         InitializeComponent();
+        _saveButtons = new[] { Save0Button, Save1Button };
         _posButtons = new[] { Pos0Button, Pos1Button };
         _posCaptions = new[] { Pos0Caption, Pos1Caption };
         _posDetails = new[] { Pos0Detail, Pos1Detail };
         _scriptButtons = new[] { Script0Button, Script1Button, Script2Button, Script3Button };
         _scriptCaptions = new[] { Script0Caption, Script1Caption, Script2Caption, Script3Caption };
         _scriptDetails = new[] { Script0Detail, Script1Detail, Script2Detail, Script3Detail };
-        Unloaded += (_, _) => ScanPanelStore.Changed -= OnStoreChanged;
-        Loaded += (_, _) => { ScanPanelStore.Changed -= OnStoreChanged; ScanPanelStore.Changed += OnStoreChanged; };
+        // Presets matter too: a preset's "no exit threshold" sets its button colour.
+        Unloaded += (_, _) =>
+        {
+            ScanPanelStore.Changed -= OnStoreChanged;
+            ScriptPresetStore.Changed -= OnStoreChanged;
+        };
+        Loaded += (_, _) =>
+        {
+            ScanPanelStore.Changed -= OnStoreChanged;
+            ScanPanelStore.Changed += OnStoreChanged;
+            ScriptPresetStore.Changed -= OnStoreChanged;
+            ScriptPresetStore.Changed += OnStoreChanged;
+        };
         Render();
     }
 
@@ -71,22 +85,53 @@ public partial class ScanningPanel : UserControl
             _posCaptions[i].Text = p.Label;
             _posDetails[i].Text = p.Position == null ? "not saved" : $"Z {p.Position.Z:0.###}  W {p.Position.W:0.###}";
             _posButtons[i].ToolTip = p.Position == null
-                ? $"No {ScanPanelStore.Device} position saved — right-click › Save current position"
+                ? $"No {ScanPanelStore.Device} position saved — press Save{i + 1} first"
                 : $"Move {ScanPanelStore.Device} to:\n{p.Position}";
+            _saveButtons[i].ToolTip = p.Position == null
+                ? $"Save the current {ScanPanelStore.Device} pose for {p.Label}"
+                : $"Save the current {ScanPanelStore.Device} pose for {p.Label} (asks before overwriting)\nNow: {p.Position}";
         }
 
+        var presets = ScriptPresetStore.Load();
         for (var i = 0; i < ScanPanelStore.ScriptSlotCount; i++)
         {
             var s = _settings.Scripts[i];
             _scriptCaptions[i].Text = s.Label;
             _scriptDetails[i].Text = !string.IsNullOrEmpty(s.Preset) ? s.Preset
                 : string.IsNullOrEmpty(s.Script) ? "no script" : s.Script;
+
+            // Orange = a preset with no exit threshold; default (blue) otherwise.
+            var preset = string.IsNullOrEmpty(s.Preset) ? null
+                : presets.FirstOrDefault(p => string.Equals(p.Name, s.Preset, StringComparison.OrdinalIgnoreCase));
+            if (preset?.NoExitThreshold == true)
+            {
+                _scriptButtons[i].Background = NoExitBackground;
+                _scriptButtons[i].Foreground = NoExitForeground;
+            }
+            else
+            {
+                _scriptButtons[i].ClearValue(BackgroundProperty);
+                _scriptButtons[i].ClearValue(ForegroundProperty);
+            }
+
             _scriptButtons[i].ToolTip = !string.IsNullOrEmpty(s.Preset)
                 ? $"Run preset '{s.Preset}' (Machine › Settings › Script presets)"
+                  + (preset?.NoExitThreshold == true ? "\nNo exit threshold — climbs every set" : "")
                 : string.IsNullOrEmpty(s.Script)
                     ? "No script assigned — right-click › Select preset / Select script"
                     : $"Run script '{s.Script}' (active product)";
         }
+    }
+
+    // Script button colour for a preset with no exit threshold (pika orange, dark text).
+    private static readonly Brush NoExitBackground = Frozen(Color.FromRgb(0xF5, 0xA5, 0x24));
+    private static readonly Brush NoExitForeground = Frozen(Color.FromRgb(0x1E, 0x1E, 0x1E));
+
+    private static Brush Frozen(Color c)
+    {
+        var b = new SolidColorBrush(c);
+        b.Freeze();
+        return b;
     }
 
     private void OnActivityChanged()
@@ -100,6 +145,7 @@ public partial class ScanningPanel : UserControl
     {
         bool idle = _host != null && _cts == null && !OthersBusy();
         foreach (var b in _posButtons) b.IsEnabled = idle;
+        foreach (var b in _saveButtons) b.IsEnabled = idle;   // no saving a pose mid-move
         foreach (var b in _scriptButtons) b.IsEnabled = idle;
         StopButton.IsEnabled = _cts != null;
     }
@@ -117,7 +163,7 @@ public partial class ScanningPanel : UserControl
 
         if (slot.Position == null)
         {
-            SetStatus($"{slot.Label}: no position saved — right-click › Save current position.", warn: true);
+            SetStatus($"{slot.Label}: no position saved — press Save{i + 1} first.", warn: true);
             return;
         }
         if (!CanStart(device)) return;
@@ -170,7 +216,6 @@ public partial class ScanningPanel : UserControl
         var slot = _settings.Positions[i];
 
         var menu = new ContextMenu();
-        menu.Items.Add(Item($"Save current {ScanPanelStore.Device} position here", () => _ = SaveCurrentPositionAsync(i)));
         menu.Items.Add(Item("Rename…", () => Rename(slot.Label, "position button", name => slot.Label = name)));
         var clear = Item("Clear saved position", () =>
         {
@@ -180,6 +225,13 @@ public partial class ScanningPanel : UserControl
         clear.IsEnabled = slot.Position != null;
         menu.Items.Add(clear);
         Open(menu, b);
+    }
+
+    /// <summary>Save1 / Save2: stores the current hex-right pose in that slot (asks before overwriting).</summary>
+    private void OnSaveClick(object sender, RoutedEventArgs e)
+    {
+        if (_host == null || _cts != null || !TryIndex(sender, ScanPanelStore.PositionSlotCount, out var i)) return;
+        _ = SaveCurrentPositionAsync(i);
     }
 
     private async Task SaveCurrentPositionAsync(int i)
@@ -235,7 +287,8 @@ public partial class ScanningPanel : UserControl
                 SetStatus($"{slot.Label}: preset '{slot.Preset}' not found (or has no script) — Machine › Settings › Script presets.", warn: true);
                 return;
             }
-            (script, args, what) = (preset.Script, preset.Args, $"{preset.Name} ({preset.Script})");
+            (script, args, what) = (preset.Script, preset.EffectiveArgs(),
+                $"{preset.Name} ({preset.Script}{(preset.NoExitThreshold ? ", no exit threshold" : "")})");
         }
         if (string.IsNullOrEmpty(script))
         {

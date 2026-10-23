@@ -325,7 +325,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
             if (name.Length == 0) return "a script preset has no name";
             if (!seen.Add(name)) return $"script preset '{name}' is listed twice";
             if (string.IsNullOrWhiteSpace(r.Script)) return $"script preset '{name}' has no script";
-            var argsError = Horizon.Workflow.Scripting.MoonScriptEngine.ValidateArgs(r.Args);
+            var argsError = Horizon.Workflow.Scripting.MoonScriptEngine.ValidateArgs(r.ToPreset().EffectiveArgs());
             if (argsError != null) return $"script preset '{name}' arguments: {argsError}";
         }
         return null;
@@ -746,14 +746,19 @@ public sealed class ScriptPresetRow : ObservableObject
     private string _name;
     private string _script;
     private string _args;
+    private bool _noExitThreshold;
 
     public ScriptPresetRow(ScriptPreset preset, Action<ScriptPresetRow> remove)
     {
         _name = preset.Name;
         _script = preset.Script;
         _args = preset.Args;
+        _noExitThreshold = preset.NoExitThreshold;
         RemoveCommand = new RelayCommand(() => remove(this));
     }
+
+    /// <summary>Run with no early-exit threshold (adds <c>exit = false</c>; orange Run-page button).</summary>
+    public bool NoExitThreshold { get => _noExitThreshold; set => SetField(ref _noExitThreshold, value); }
 
     /// <summary>Preset name — what the Run-page buttons show and pick.</summary>
     public string Name { get => _name; set => SetField(ref _name, value ?? ""); }
@@ -766,5 +771,5 @@ public sealed class ScriptPresetRow : ObservableObject
 
     public RelayCommand RemoveCommand { get; }
 
-    public ScriptPreset ToPreset() => new() { Name = _name, Script = _script, Args = _args };
+    public ScriptPreset ToPreset() => new() { Name = _name, Script = _script, Args = _args, NoExitThreshold = _noExitThreshold };
 }

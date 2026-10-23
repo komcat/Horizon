@@ -80,7 +80,7 @@ The IOTower stack follows the same state, so the floor reads the machine from ac
 | Running | steady | | | |
 | Standby (< 30 min, waiting for the next unit) | blink 0.5 s | | | |
 | Idle (>= 30 min) | | steady | | |
-| Down (declared) | | | steady | |
+| Down (declared) | | | steady | steady 3 s on the declaration, then off |
 | Waiting on the operator (askUser confirm, serial entry, alert acknowledge, jog popup, Run-page capture prompt) | | blink 0.5 s | | |
 | Safety stop (E-Stop / watchdog, until Acknowledge) | | | blink | 3 beeps on the trip |
 | FAAM closed | off | off | off | off |
@@ -94,5 +94,6 @@ A 250 ms background pump writes only changed pins (each write bounded to 1 s; a 
 is logged and retried after 5 s). A manual toggle on Machine › IO holds until the next state
 change. Device + pin names live in `%APPDATA%\Horizon\config\faam_tower_light.json` (written with
 defaults on first run: `IOTower` / `Tower_Green` / `Tower_Yellow` / `Tower_Red` / `Tower_Buzzer`,
-`safetyBeeps: 3`, `enabled: true`). `EngineHost` starts it with the OEE session and switches all
+`safetyBeeps: 3`, `downBuzzerSeconds: 3`, `enabled: true`; a Down carried over from before a restart
+does not buzz, and declaring UP silences it at once). `EngineHost` starts it with the OEE session and switches all
 lamps off at shutdown, before the IO devices disconnect.

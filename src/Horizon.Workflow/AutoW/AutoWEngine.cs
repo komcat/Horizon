@@ -4,6 +4,8 @@ using Horizon.Workflow.HillClimb;
 namespace Horizon.Workflow.AutoW;
 
 /// <summary>
+/// <b>DEPRECATED — do not use or build on this.</b> Its Run-page panel was removed; superseded by the FAU_PowerClimb .moon script (Scanning panel presets).
+///
 /// "Auto W maximizer" — a 1-D line search over the hexapod <b>W</b> (rotation) axis that
 /// maximises the SiPhOG Sagnac signal. Rotating W laterally de-aligns the FAU, so a raw
 /// reading right after a W move under-reports that angle. The engine therefore scores each

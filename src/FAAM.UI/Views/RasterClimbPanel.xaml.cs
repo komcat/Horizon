@@ -12,6 +12,8 @@ using Horizon.Workflow.RasterClimb;
 namespace FAAM.UI.Views;
 
 /// <summary>
+/// <b>DEPRECATED — do not use or build on this.</b> Removed from the Run page; superseded by the Scanning panel's script presets (FAU_PowerClimb). Only the Engineer Testing Ground still hosts it.
+///
 /// Engineer &gt; Testing Ground panel driving the Layer 2 <see cref="RasterClimbEngine"/>
 /// — step Z+, raster the whole XY plane, move to that plane's maximum, repeat until the
 /// signal reaches a fraction (70% by default) of the SiPhOG <c>TARGET SAG PWR</c>.

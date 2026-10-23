@@ -19,8 +19,18 @@
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
             <Setter Property="Opacity" Value="0.85" />
         </Style>
+        <Style x:Key="ScSaveButton" TargetType="Button">
+            <Setter Property="Height" Value="26" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
         <Style x:Key="ScPosButton" TargetType="Button">
-            <Setter Property="Height" Value="44" />
+            <Setter Property="Height" Value="36" />
             <Setter Property="Background" Value="{StaticResource Bg}" />
             <Setter Property="Foreground" Value="{StaticResource Text}" />
             <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
@@ -51,22 +61,30 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!-- hex-right saved poses: click = move there; right-click = save here / rename / clear. -->
+                <!-- hex-right saved poses: top row = save the current pose into the slot, second row =
+                     move there (right-click a Move button = rename / clear). -->
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="hex-right positions  (right-click to save / rename)" Style="{StaticResource ScLabel}" />
+                    <TextBlock Text="hex-right positions  (Save stores the current pose; right-click Move to rename / clear)"
+                               Style="{StaticResource ScLabel}" TextTrimming="CharacterEllipsis" />
                     <UniformGrid Columns="2">
-                        <Button x:Name="Pos0Button" Tag="0" Style="{StaticResource ScPosButton}" Margin="0,0,3,0"
+                        <Button x:Name="Save0Button" Tag="0" Style="{StaticResource ScSaveButton}" Margin="0,0,3,3"
+                                Content="Save1" Click="OnSaveClick" />
+                        <Button x:Name="Save1Button" Tag="1" Style="{StaticResource ScSaveButton}" Margin="3,0,0,3"
+                                Content="Save2" Click="OnSaveClick" />
+                    </UniformGrid>
+                    <UniformGrid Columns="2">
+                        <Button x:Name="Pos0Button" Tag="0" Style="{StaticResource ScPosButton}" Margin="0,3,3,0"
                                 Click="OnPositionClick" MouseRightButtonUp="OnPositionRightClick">
                             <StackPanel>
-                                <TextBlock x:Name="Pos0Caption" Style="{StaticResource ScCaption}" />
-                                <TextBlock x:Name="Pos0Detail" Style="{StaticResource ScDetail}" />
+                                <TextBlock x:Name="Pos0Caption" Style="{StaticResource ScCaption}" FontSize="12" />
+                                <TextBlock x:Name="Pos0Detail" Style="{StaticResource ScDetail}" FontSize="10" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="Pos1Button" Tag="1" Style="{StaticResource ScPosButton}" Margin="3,0,0,0"
+                        <Button x:Name="Pos1Button" Tag="1" Style="{StaticResource ScPosButton}" Margin="3,3,0,0"
                                 Click="OnPositionClick" MouseRightButtonUp="OnPositionRightClick">
                             <StackPanel>
-                                <TextBlock x:Name="Pos1Caption" Style="{StaticResource ScCaption}" />
-                                <TextBlock x:Name="Pos1Detail" Style="{StaticResource ScDetail}" />
+                                <TextBlock x:Name="Pos1Caption" Style="{StaticResource ScCaption}" FontSize="12" />
+                                <TextBlock x:Name="Pos1Detail" Style="{StaticResource ScDetail}" FontSize="10" />
                             </StackPanel>
                         </Button>
                     </UniformGrid>

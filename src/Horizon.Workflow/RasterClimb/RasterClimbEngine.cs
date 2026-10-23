@@ -4,6 +4,8 @@ using Horizon.Workflow.HillClimb;
 namespace Horizon.Workflow.RasterClimb;
 
 /// <summary>
+/// <b>DEPRECATED — do not use or build on this.</b> Its Run-page panel was removed; superseded by the FAU_PowerClimb .moon script (Scanning panel presets).
+///
 /// Z-stepped XY raster peak-hold search. Layer 2: drives a motion device through
 /// <see cref="IHorizonEngine"/>'s motion facet and samples an injected
 /// <see cref="IHillClimbFeedback"/>, at the same level as
