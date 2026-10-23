@@ -16,6 +16,14 @@ public sealed class OperatorPrompt : IOperatorPrompt
     /// <summary>The <paramref name="host"/> backs the manual-jog popup (<c>flow.jogPopup</c>).</summary>
     public OperatorPrompt(EngineHost host) => _host = host;
 
+    /// <summary>Marks the operator as awaited (tower light blinks yellow) until a non-modal prompt's task ends.</summary>
+    private void HoldAttentionUntil(Task prompt)
+    {
+        var attention = _host.Attention.Begin();
+        _ = prompt.ContinueWith(_ => attention.Dispose(), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
     public Task<bool> ConfirmAsync(string title, string message, CancellationToken ct)
     {
         var dispatcher = Application.Current?.Dispatcher;
@@ -26,8 +34,9 @@ public sealed class OperatorPrompt : IOperatorPrompt
         return dispatcher.InvokeAsync(() => Show(title, message, ct)).Task;
     }
 
-    private static bool Show(string title, string message, CancellationToken ct)
+    private bool Show(string title, string message, CancellationToken ct)
     {
+        using var attention = _host.Attention.Begin();   // tower light: waiting on the operator
         var window = new OperatorPromptWindow(title, message)
         {
             Owner = Application.Current.MainWindow,
@@ -55,8 +64,9 @@ public sealed class OperatorPrompt : IOperatorPrompt
         return dispatcher.InvokeAsync(() => ShowInput(title, message, defaultValue, ct)).Task;
     }
 
-    private static string? ShowInput(string title, string message, string? defaultValue, CancellationToken ct)
+    private string? ShowInput(string title, string message, string? defaultValue, CancellationToken ct)
     {
+        using var attention = _host.Attention.Begin();   // tower light: waiting on the operator
         var window = new SerialEntryWindow(title, message, defaultValue)
         {
             Owner = Application.Current.MainWindow,
@@ -129,9 +139,10 @@ public sealed class OperatorPrompt : IOperatorPrompt
         return dispatcher.InvokeAsync(() => ShowAlert(title, message, ct)).Task.Unwrap();
     }
 
-    private static Task ShowAlert(string title, string message, CancellationToken ct)
+    private Task ShowAlert(string title, string message, CancellationToken ct)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        HoldAttentionUntil(tcs.Task);
         var window = new AlertWindow(title, message)
         {
             Owner = Application.Current.MainWindow,
@@ -223,6 +234,7 @@ public sealed class OperatorPrompt : IOperatorPrompt
     private Task<bool> ShowJogPopup(JogPopupRequest request, CancellationToken ct)
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        HoldAttentionUntil(tcs.Task);
         var window = new JogPopupWindow(request, _host)
         {
             Owner = Application.Current.MainWindow,

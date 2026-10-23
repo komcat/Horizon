@@ -11,9 +11,9 @@ public enum PikaMood
     Awake,
     /// <summary>A step / program is executing: hops and zaps continuously.</summary>
     Working,
-    /// <summary>Idle (nothing executed for the idle threshold) or offline: eyes shut, Zzz.</summary>
+    /// <summary>Idle (nothing executed for the idle threshold) or offline: faded fur, eyes shut, Zzz.</summary>
     Sleeping,
-    /// <summary>Station declared down: eyes shut on a red tile with a red "!".</summary>
+    /// <summary>Station declared down: red fur, eyes shut, a white "!".</summary>
     Down,
 }
 
@@ -66,8 +66,14 @@ public sealed class PikaAvatar : FrameworkElement
     private const int EyeTopRow = 6;           // a blink / sleep closes this row of the eyes
     private const int LoopTicks = 50;          // 50 × 120 ms ≈ 6 s idle loop
 
+    // Fur follows the machine state: thunder-yellow when up, a faded sleepy yellow when idle,
+    // alarm red when down — so the header reads at a glance.
     private static readonly Brush Fur = Frozen(0xF5, 0xC5, 0x18);
     private static readonly Brush InnerEar = Frozen(0xB8, 0x86, 0x0B);
+    private static readonly Brush FurSleepy = Frozen(0xC9, 0xBC, 0x8A);
+    private static readonly Brush InnerEarSleepy = Frozen(0x8A, 0x7E, 0x5A);
+    private static readonly Brush FurDown = Frozen(0xE5, 0x39, 0x35);
+    private static readonly Brush InnerEarDown = Frozen(0x8E, 0x1B, 0x1B);
     private static readonly Brush Eye = Frozen(0x1E, 0x1E, 0x1E);
     private static readonly Brush Nose = Frozen(0x5A, 0x3A, 0x1A);
     private static readonly Brush Cheek = Frozen(0xE8, 0x58, 0x4A);
@@ -75,9 +81,8 @@ public sealed class PikaAvatar : FrameworkElement
     private static readonly Brush BoltYellow = Frozen(0xFF, 0xE4, 0x5C);
     private static readonly Brush BoltFlash = Frozen(0xFF, 0xFF, 0xFF);
     private static readonly Brush SleepZ = Frozen(0x90, 0xCA, 0xF9);
-    private static readonly Brush BangRed = Frozen(0xFF, 0x40, 0x40);
+    private static readonly Brush BangWhite = Frozen(0xFF, 0xFF, 0xFF);
     private static readonly Brush Tile = Frozen(0x1E, 0x1E, 0x1E);
-    private static readonly Brush TileDown = Frozen(0x4A, 0x10, 0x10);
 
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(120) };
     private int _tick;
@@ -133,8 +138,13 @@ public sealed class PikaAvatar : FrameworkElement
         bool eyesShut = (_state & 1) != 0, hop = (_state & 2) != 0, zap = (_state & 4) != 0, flash = (_state & 8) != 0;
         int zPhase = (_state >> 4) & 0x3;
 
-        dc.DrawRoundedRectangle(mood == PikaMood.Down ? TileDown : Tile, null,
-            new Rect(0, 0, ActualWidth, ActualHeight), 4, 4);
+        dc.DrawRoundedRectangle(Tile, null, new Rect(0, 0, ActualWidth, ActualHeight), 4, 4);
+        var (fur, ear) = mood switch
+        {
+            PikaMood.Down => (FurDown, InnerEarDown),
+            PikaMood.Sleeping => (FurSleepy, InnerEarSleepy),
+            _ => (Fur, InnerEar),
+        };
 
         double cell = Math.Floor(Math.Min(ActualWidth / (Cols + 2), ActualHeight / (Rows + 1)));
         if (cell < 1) return;
@@ -150,8 +160,8 @@ public sealed class PikaAvatar : FrameworkElement
                 if (eyesShut && r == EyeTopRow && ch == 'o') ch = '#';
                 var brush = ch switch
                 {
-                    '#' => Fur,
-                    'd' => InnerEar,
+                    '#' => fur,
+                    'd' => ear,
                     'o' => Eye,
                     'n' => Nose,
                     'p' => zap ? CheekZap : Cheek,
@@ -173,7 +183,7 @@ public sealed class PikaAvatar : FrameworkElement
                 Glyph(dc, z, SideCol + (zPhase & 1), 8 - 2 * zPhase, SleepZ, ox, oy, cell);
                 break;
             case PikaMood.Down:
-                Glyph(dc, Bang, SideCol + 2, 3, BangRed, ox, oy, cell);
+                Glyph(dc, Bang, SideCol + 2, 3, BangWhite, ox, oy, cell);
                 break;
         }
     }

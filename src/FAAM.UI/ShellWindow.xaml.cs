@@ -5,7 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 using System.Windows.Threading;
 using FAAM.UI.Process;
 using FAAM.UI.ViewModels;
@@ -116,13 +115,13 @@ public partial class ShellWindow : Window
         WorkFolderText.Text = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
         WorkFolderText.ToolTip = WorkFolderText.Text;
         UpdateClock();
-        _clock.Tick += (_, _) => { UpdateClock(); UpdateMascot(); };
+        _clock.Tick += (_, _) => { UpdateClock(); UpdateStatusChrome(); };
         _clock.Start();
         Closed += (_, _) => _clock.Stop();
 
         // OEE: the station is online from here until the shutdown sequence ends the session.
         _host.StartOeeSession();
-        UpdateMascot();
+        UpdateStatusChrome();
 
         UpdateIdentity();
         OnActiveSerialChanged(_host.Process.ActiveSerial);
@@ -145,17 +144,39 @@ public partial class ShellWindow : Window
     }
 
     /// <summary>
-    /// The header pika follows the OEE state: working (hop + zap) while anything executes —
-    /// a Run-page step reports instantly via <see cref="_runProgress"/> — awake in standby,
-    /// asleep when idle (nothing executed for the idle threshold), red "!" when down.
+    /// Paints the machine state onto the header so it reads from across the room: the info
+    /// bar takes the state colour (green running, light green standby, amber idle, red down)
+    /// with a state label, and the pika follows — working (hop + zap) while anything executes
+    /// (a Run-page step reports instantly via <see cref="_runProgress"/>), awake in standby,
+    /// faded + asleep when idle, red with a "!" when down. Runs every second and on run progress.
     /// </summary>
-    private void UpdateMascot()
+    private void UpdateStatusChrome()
     {
-        var state = _host.Process.Oee.Status.State;
-        Mascot.Mood = state == OeeState.Down ? PikaMood.Down
-                    : _runProgress.Running || state == OeeState.Running ? PikaMood.Working
-                    : state is OeeState.Idle or OeeState.Offline ? PikaMood.Sleeping
-                    : PikaMood.Awake;
+        var status = _host.Process.Oee.Status;
+        var state = _runProgress.Running && status.State is OeeState.Standby or OeeState.Idle
+            ? OeeState.Running   // a Run-page step just started; the OEE bracket lands a moment later
+            : status.State;
+
+        InfoBar.Background = OeeColors.For(state);
+        System.Windows.Documents.TextElement.SetForeground(InfoBar, OeeColors.TextOn(state));
+        MachineStateText.Text = state switch
+        {
+            OeeState.Running => "UP · RUNNING",
+            OeeState.Standby => "UP · STANDBY",
+            _ => OeeColors.Label(state),
+        };
+        var since = OeeColors.Duration(DateTime.UtcNow - status.SinceUtc);
+        MachineSinceText.Text = status.OpenDowntime is { } d
+            ? $"by {d.DownBy} · {since}"
+            : $"since {status.SinceUtc.ToLocalTime():HH:mm} · {since}";
+
+        Mascot.Mood = state switch
+        {
+            OeeState.Down => PikaMood.Down,
+            OeeState.Running => PikaMood.Working,
+            OeeState.Idle or OeeState.Offline => PikaMood.Sleeping,
+            _ => PikaMood.Awake,
+        };
         Mascot.ToolTip = $"Pika — station {OeeColors.Label(state).ToLowerInvariant()}";
     }
 
@@ -311,7 +332,7 @@ public partial class ShellWindow : Window
     private void OnRunProgress(RunProgressSnapshot snap)
     {
         _runProgress = snap;
-        UpdateMascot();   // the pika works while a step runs, on any page
+        UpdateStatusChrome();   // the pika works while a step runs, on any page
         if (ReferenceEquals(PageHost.Content, _run))
             ApplyHeaderProgress(snap);
     }
@@ -327,14 +348,12 @@ public partial class ShellWindow : Window
             HeaderProgress.Visibility = Visibility.Visible;
             HeaderProgress.IsIndeterminate = !snap.HasProgress;
             HeaderProgress.Value = snap.Percent;
-            Header1Text.Foreground = Brushes.Black;
             Header1Text.Text = snap.HasProgress ? $"RUNNING…   {snap.Short}" : "RUNNING…";
         }
         else if (HeaderProgress.Visibility == Visibility.Visible)
         {
             HeaderProgress.Visibility = Visibility.Collapsed;
             HeaderProgress.IsIndeterminate = false;
-            Header1Text.SetResourceReference(TextBlock.ForegroundProperty, "Accent");
             if (ReferenceEquals(PageHost.Content, _run)) Header1Text.Text = "RUN";
         }
     }

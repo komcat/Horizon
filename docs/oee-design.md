@@ -49,8 +49,50 @@ Derived totals: **Production** = Running + Standby; **Up** = Production + Idle (
 - **OEE page** (`Views/OeeView`, Operator level): live state badge, day picker, 24 h timeline
   (`OeeTimelineBar`), KPI tiles, time breakdown, downtime log, last-7-days table.
 - **DOWN / UP toggle** (`Views/DowntimeBar`, on the Engineer page and the OEE page, Technician
-  level — `AccessPolicy.Downtime`): each edge asks for the engineer / technician's name
-  (`StationStateWindow`, required) plus an optional reason / note; the signed-in operator is
-  logged alongside.
-- The header **pika** follows the state: hops + zaps while running, blinks in standby, sleeps
-  (Zzz) when idle, red "!" when down.
+  level — `AccessPolicy.Downtime`), via `StationStateWindow`:
+  - **DOWN** asks for the engineer / technician's **name**, a **category** (editable preset list:
+    Mechanical, Electrical, Pneumatic, Motion / stage, Optics / vision, Software / controls,
+    Material / parts, Calibration, Preventive maintenance, Utilities, Other) and the **reason**
+    (what is wrong, as seen now). Name + reason required.
+  - **UP** shows what was recorded at down time and asks for the **name**, the real **root cause**
+    and the **troubleshooting / action taken** — all required.
+  - The signed-in operator is logged alongside.
+- **Maintenance history** (`MaintenanceHistoryWindow`, OEE page › Downtime log › "Maintenance
+  history…"): every down → up entry over a date range (7 / 30 days / 1 year quick picks), free-text
+  search over category / reason / root cause / action / names, summary (count, total, MTTR,
+  longest, time by category) and CSV export. Backed by `OeeTracker.GetMaintenanceHistory` →
+  `OeeStore.SearchDowntimes`. The `downtime` table gained `category`, `root_cause`,
+  `action_taken` (added in place to an existing `oee.db`); `up_note` is kept for older rows.
+- The shell **header info bar** takes the state colour (green running, light green standby,
+  amber idle, red down) with an "UP · RUNNING" / "UP · STANDBY" / "IDLE" / "DOWN" label and since-
+  time (down: who declared it). The **pika** follows: hops + zaps while running, blinks in
+  standby, faded fur + Zzz when idle, red fur + white "!" when down.
+- Down **persists across restarts**: the open `downtime` row is never closed by crash recovery,
+  so FAAM reopens DOWN (red tower, red header) and the closed-app time counts as Down until
+  someone signs it back UP.
+
+## Tower light (`FAAM.UI/TowerLight.cs`)
+
+The IOTower stack follows the same state, so the floor reads the machine from across the room:
+
+| Station state | Green | Yellow | Red | Buzzer |
+|---|---|---|---|---|
+| Running | steady | | | |
+| Standby (< 30 min, waiting for the next unit) | blink 0.5 s | | | |
+| Idle (>= 30 min) | | steady | | |
+| Down (declared) | | | steady | |
+| Waiting on the operator (askUser confirm, serial entry, alert acknowledge, jog popup, Run-page capture prompt) | | blink 0.5 s | | |
+| Safety stop (E-Stop / watchdog, until Acknowledge) | | | blink | 3 beeps on the trip |
+| FAAM closed | off | off | off | off |
+
+Priority: safety stop > down > waiting on the operator > running / standby / idle — so a program
+blocked on a prompt shows yellow blinking, not green. Prompts are counted by `OperatorAttention`
+(`EngineHost.Attention`, held by `OperatorPrompt` while a blocking dialog is up) plus
+`CapturePromptHub.IsShown`; timed waits (`flow.waitPopup`) and the motion STOP window don't count.
+
+A 250 ms background pump writes only changed pins (each write bounded to 1 s; a failing write
+is logged and retried after 5 s). A manual toggle on Machine › IO holds until the next state
+change. Device + pin names live in `%APPDATA%\Horizon\config\faam_tower_light.json` (written with
+defaults on first run: `IOTower` / `Tower_Green` / `Tower_Yellow` / `Tower_Red` / `Tower_Buzzer`,
+`safetyBeeps: 3`, `enabled: true`). `EngineHost` starts it with the OEE session and switches all
+lamps off at shutdown, before the IO devices disconnect.

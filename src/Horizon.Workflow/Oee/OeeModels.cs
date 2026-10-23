@@ -27,12 +27,21 @@ public sealed record OeeSegment(DateTime Start, DateTime End, OeeState State)
     public TimeSpan Duration => End - Start;
 }
 
-/// <summary>One down → up bracket, with who declared each edge.</summary>
+/// <summary>
+/// One down → up bracket — the maintenance log entry. Down records who declared it, a
+/// category and the reason as seen at the time; Up records who cleared it, the real root
+/// cause and the troubleshooting action taken. <see cref="UpNote"/> is the free note written
+/// by builds before root cause / action existed (read-only, legacy rows).
+/// </summary>
 public sealed record OeeDowntime(
     string Id, DateTime Start, DateTime? End, string DownBy, string? UpBy,
-    string? Reason, string? UpNote, string? Station)
+    string? Category, string? Reason, string? RootCause, string? ActionTaken,
+    string? UpNote, string? Station)
 {
     public bool IsOpen => End == null;
+
+    /// <summary>Down duration so far (open) or in total (closed).</summary>
+    public TimeSpan Duration(DateTime nowUtc) => (End ?? nowUtc) - Start;
 }
 
 /// <summary>A finished DUT (unit) — the quality side of OEE.</summary>

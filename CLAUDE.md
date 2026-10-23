@@ -283,6 +283,8 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   `faam_run_durations.json` (per product/program top-level block timings from earlier runs —
   weights the Run-page progress bar by time and estimates blocks that report no progress;
   a `.moon` script reports its own via `machine.progress(pct, msg)`),
+  `faam_tower_light.json` (IO device + Green/Yellow/Red/Buzzer pins for the tower light, which
+  follows the OEE state — `TowerLight.cs`, see `docs/oee-design.md`),
   `faam_hidden_programs.json` (per product, programs hidden from the Engineer page's
   searchable program list — view preference only),
   `faam_position_map.json` (Machine › Motion position map — per product + device, node spots on
@@ -299,8 +301,9 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   promoting everyone to Admin, so a new build never locks the station out.
 - **OEE page** (Home › OEE, `Views/OeeView`): live state, 24 h timeline, uptime / availability /
   utilization / quality / OEE, downtime log, 7-day table. The **DOWN / UP toggle**
-  (`Views/DowntimeBar`, Engineer page + OEE page, Technician level) asks for the engineer /
-  technician's name. `EngineHost` starts/ends the online session and counts `ActivityGate`
+  (`Views/DowntimeBar`, Engineer page + OEE page, Technician level) asks for name + category +
+  reason on DOWN, and name + root cause + action taken on UP — one maintenance-log entry in
+  `oee.db`; `MaintenanceHistoryWindow` (OEE page) searches / summarises / exports them. `EngineHost` starts/ends the online session and counts `ActivityGate`
   busy (Run-page steps, alignments) as running. The shell header (title · working folder +
   AppData button · clock · `PikaAvatar`) pika follows the OEE state.
 - **Version history** (Home › Version tile → `VersionHistoryWindow`): `build/version-info.ps1`

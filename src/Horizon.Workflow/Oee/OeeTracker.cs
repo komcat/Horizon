@@ -177,34 +177,49 @@ public sealed class OeeTracker
 
     // --- down / up ---
 
-    /// <summary>Declares the station down, signed by <paramref name="by"/> (engineer / technician name).</summary>
-    public Result GoDown(string by, string? reason)
+    /// <summary>
+    /// Declares the station down — opens a maintenance-log entry signed by <paramref name="by"/>
+    /// (engineer / technician name) with a <paramref name="category"/> and the
+    /// <paramref name="reason"/> as seen now. Name and reason are required.
+    /// </summary>
+    public Result GoDown(string by, string? category, string reason)
     {
         if (string.IsNullOrWhiteSpace(by))
             return Result.Fail(ErrorCode.InvalidParameter, "A name is required to put the station down.");
+        if (string.IsNullOrWhiteSpace(reason))
+            return Result.Fail(ErrorCode.InvalidParameter, "A reason is required to put the station down.");
         OeeDowntime d;
         lock (_lock)
         {
             if (_down != null)
                 return Result.Fail(ErrorCode.OperationFailed, $"Already down since {_down.Start.ToLocalTime():g} (by {_down.DownBy}).");
-            d = _down = new OeeDowntime(NewId(), DateTime.UtcNow, null, by.Trim(),
-                null, string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(), null, _station);
+            d = _down = new OeeDowntime(NewId(), DateTime.UtcNow, null, by.Trim(), null,
+                string.IsNullOrWhiteSpace(category) ? null : category.Trim(), reason.Trim(),
+                null, null, null, _station);
         }
         Enqueue(s => s.OpenDowntime(d));
-        _log?.Invoke(LogLevel.Warning, $"OEE: station DOWN — by {d.DownBy}" + (d.Reason != null ? $": {d.Reason}" : "."));
+        _log?.Invoke(LogLevel.Warning,
+            $"OEE: station DOWN — by {d.DownBy}" + (d.Category != null ? $" [{d.Category}]" : "") + $": {d.Reason}");
         Changed?.Invoke();
         return Result.Ok();
     }
 
-    /// <summary>Brings the station back up, signed by <paramref name="by"/>.</summary>
-    public Result GoUp(string by, string? note)
+    /// <summary>
+    /// Brings the station back up — closes the open maintenance-log entry, signed by
+    /// <paramref name="by"/>, with the real <paramref name="rootCause"/> and the
+    /// troubleshooting <paramref name="actionTaken"/>. All three are required.
+    /// </summary>
+    public Result GoUp(string by, string rootCause, string actionTaken)
     {
         if (string.IsNullOrWhiteSpace(by))
             return Result.Fail(ErrorCode.InvalidParameter, "A name is required to bring the station up.");
+        if (string.IsNullOrWhiteSpace(rootCause) || string.IsNullOrWhiteSpace(actionTaken))
+            return Result.Fail(ErrorCode.InvalidParameter, "Root cause and action taken are required to bring the station up.");
         OeeDowntime d;
         var now = DateTime.UtcNow;
         var upBy = by.Trim();
-        var upNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        var cause = rootCause.Trim();
+        var action = actionTaken.Trim();
         lock (_lock)
         {
             if (_down == null) return Result.Fail(ErrorCode.OperationFailed, "The station is not down.");
@@ -212,11 +227,20 @@ public sealed class OeeTracker
             _down = null;
             _gapStart = now;
         }
-        Enqueue(s => s.CloseDowntime(d.Id, now, upBy, upNote));
-        _log?.Invoke(LogLevel.Info, $"OEE: station UP — by {upBy} (down {Format(now - d.Start)}, by {d.DownBy}).");
+        Enqueue(s => s.CloseDowntime(d.Id, now, upBy, cause, action));
+        _log?.Invoke(LogLevel.Info,
+            $"OEE: station UP — by {upBy} (down {Format(now - d.Start)}, by {d.DownBy}). Root cause: {cause}. Action: {action}.");
         Changed?.Invoke();
         return Result.Ok();
     }
+
+    /// <summary>
+    /// The maintenance history — downtimes overlapping [<paramref name="fromUtc"/>,
+    /// <paramref name="toUtc"/>), newest first, filtered by free <paramref name="search"/> text
+    /// over category / reason / root cause / action / names. Synchronous SQLite — call off the UI thread.
+    /// </summary>
+    public IReadOnlyList<OeeDowntime> GetMaintenanceHistory(DateTime fromUtc, DateTime toUtc, string? search)
+        => _store.SearchDowntimes(fromUtc, toUtc, search);
 
     // --- units (quality) ---
 

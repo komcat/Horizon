@@ -21,6 +21,9 @@ public sealed class CapturePromptHub : ICapturePromptSurface
     private string _affirm = "Yes";
     private string _negative = "No";
 
+    /// <summary>True while a prompt is up — the operator is being asked something (tower light blinks yellow).</summary>
+    public bool IsShown => _shown;
+
     /// <summary>Raised when the operator presses the affirmative button on any member surface.</summary>
     public event Action? Affirmed;
 

@@ -145,16 +145,22 @@
                 </Border>
                 <Border Grid.Column="1" Style="{StaticResource Card}">
                     <StackPanel>
-                        <TextBlock Text="Downtime log" Style="{StaticResource CardTitle}" />
+                        <DockPanel Margin="0,0,0,8">
+                            <Button DockPanel.Dock="Right" Content="Maintenance history…" Height="24" Padding="10,0"
+                                    Click="OnMaintenanceHistory"
+                                    ToolTip="Search every down / up entry — reason, root cause, action taken — over any date range, with CSV export" />
+                            <TextBlock Text="Downtime log" Style="{StaticResource CardTitle}" Margin="0" VerticalAlignment="Center" />
+                        </DockPanel>
                         <DataGrid x:Name="DowntimeGrid" Style="{StaticResource Grid}" MaxHeight="220">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Down" Binding="{Binding Start}" Width="90" />
-                                <DataGridTextColumn Header="Up" Binding="{Binding End}" Width="90" />
-                                <DataGridTextColumn Header="Duration" Binding="{Binding Duration}" Width="75" />
-                                <DataGridTextColumn Header="Down by" Binding="{Binding DownBy}" Width="100" />
+                                <DataGridTextColumn Header="Down" Binding="{Binding Start}" Width="80" />
+                                <DataGridTextColumn Header="Up" Binding="{Binding End}" Width="80" />
+                                <DataGridTextColumn Header="Duration" Binding="{Binding Duration}" Width="70" />
+                                <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="90" />
                                 <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" Width="*" />
-                                <DataGridTextColumn Header="Up by" Binding="{Binding UpBy}" Width="100" />
-                                <DataGridTextColumn Header="Note" Binding="{Binding Note}" Width="*" />
+                                <DataGridTextColumn Header="Root cause" Binding="{Binding RootCause}" Width="*" />
+                                <DataGridTextColumn Header="Action taken" Binding="{Binding ActionTaken}" Width="*" />
+                                <DataGridTextColumn Header="Down / up by" Binding="{Binding People}" Width="110" />
                             </DataGrid.Columns>
                         </DataGrid>
                         <TextBlock x:Name="NoDowntimeText" Text="No downtime on this day." Foreground="{StaticResource Subtle}"

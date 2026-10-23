@@ -9,7 +9,8 @@ namespace Horizon.Workflow.Oee;
 /// <item><c>session</c> — a head was online (<c>started</c> → <c>ended</c>; <c>last_seen</c> is a
 /// heartbeat so a crash still leaves a usable end).</item>
 /// <item><c>run</c> — something was executing (program / deck / recipe / script / Run-page step).</item>
-/// <item><c>downtime</c> — an engineer / technician declared the station down, and who brought it back up.</item>
+/// <item><c>downtime</c> — the maintenance log: who declared the station down (category + reason),
+/// who brought it back up, the real root cause and the troubleshooting action taken.</item>
 /// <item><c>unit</c> — a finished DUT with its verdict (quality).</item>
 /// </list>
 /// Like <see cref="ProgramHistoryDb"/>, a store that cannot be opened degrades to a no-op
@@ -63,13 +64,13 @@ public sealed class OeeStore
         => Exec("UPDATE run SET ended = $t WHERE id = $id", ("$id", id), ("$t", Ms(at)));
 
     public void OpenDowntime(OeeDowntime d)
-        => Exec("INSERT INTO downtime(id, started, ended, down_by, up_by, reason, up_note, station) " +
-                "VALUES($id, $t, NULL, $by, NULL, $r, NULL, $st)",
-            ("$id", d.Id), ("$t", Ms(d.Start)), ("$by", d.DownBy), ("$r", d.Reason), ("$st", d.Station));
+        => Exec("INSERT INTO downtime(id, started, ended, down_by, up_by, category, reason, station) " +
+                "VALUES($id, $t, NULL, $by, NULL, $cat, $r, $st)",
+            ("$id", d.Id), ("$t", Ms(d.Start)), ("$by", d.DownBy), ("$cat", d.Category), ("$r", d.Reason), ("$st", d.Station));
 
-    public void CloseDowntime(string id, DateTime at, string upBy, string? note)
-        => Exec("UPDATE downtime SET ended = $t, up_by = $by, up_note = $n WHERE id = $id",
-            ("$id", id), ("$t", Ms(at)), ("$by", upBy), ("$n", note));
+    public void CloseDowntime(string id, DateTime at, string upBy, string rootCause, string actionTaken)
+        => Exec("UPDATE downtime SET ended = $t, up_by = $by, root_cause = $rc, action_taken = $a WHERE id = $id",
+            ("$id", id), ("$t", Ms(at)), ("$by", upBy), ("$rc", rootCause), ("$a", actionTaken));
 
     public void AddUnit(OeeUnit u)
         => Exec("INSERT INTO unit(at, serial, product, verdict) VALUES($t, $s, $p, $v)",
@@ -113,6 +114,25 @@ public sealed class OeeStore
     public IReadOnlyList<OeeDowntime> Downtimes(DateTime from, DateTime to)
         => QueryDowntimes("WHERE started < $to AND (ended IS NULL OR ended > $from) ORDER BY started",
             new (string, object?)[] { ("$from", Ms(from)), ("$to", Ms(to)) });
+
+    /// <summary>
+    /// The maintenance history — downtimes overlapping [from, to), newest first, optionally
+    /// filtered by <paramref name="text"/> (case-insensitive substring of category, reason,
+    /// root cause, action taken, either name or the legacy note).
+    /// </summary>
+    public IReadOnlyList<OeeDowntime> SearchDowntimes(DateTime from, DateTime to, string? text)
+    {
+        var where = "WHERE started < $to AND (ended IS NULL OR ended > $from)";
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            // '!' escapes the LIKE wildcards so a typed % or _ matches literally.
+            var columns = new[] { "category", "reason", "root_cause", "action_taken", "down_by", "up_by", "up_note" };
+            where += " AND (" + string.Join(" OR ", columns.Select(c => c + " LIKE $q ESCAPE '!'")) + ")";
+        }
+        var pattern = "%" + (text ?? "").Trim().Replace("!", "!!").Replace("%", "!%").Replace("_", "!_") + "%";
+        return QueryDowntimes(where + " ORDER BY started DESC",
+            new (string, object?)[] { ("$from", Ms(from)), ("$to", Ms(to)), ("$q", pattern) });
+    }
 
     public IReadOnlyList<OeeUnit> Units(DateTime from, DateTime to)
     {
@@ -159,13 +179,14 @@ public sealed class OeeStore
         if (!Available) return list;
         using var conn = Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, started, ended, down_by, up_by, reason, up_note, station FROM downtime " + where;
+        cmd.CommandText = "SELECT id, started, ended, down_by, up_by, category, reason, root_cause, action_taken, " +
+                          "up_note, station FROM downtime " + where;
         foreach (var (k, v) in args) cmd.Parameters.AddWithValue(k, v ?? DBNull.Value);
         using var r = cmd.ExecuteReader();
         while (r.Read())
             list.Add(new OeeDowntime(
                 r.GetString(0), FromMs(r.GetInt64(1)), r.IsDBNull(2) ? null : FromMs(r.GetInt64(2)),
-                r.GetString(3), Str(r, 4), Str(r, 5), Str(r, 6), Str(r, 7)));
+                r.GetString(3), Str(r, 4), Str(r, 5), Str(r, 6), Str(r, 7), Str(r, 8), Str(r, 9), Str(r, 10)));
         return list;
     }
 
@@ -201,12 +222,32 @@ public sealed class OeeStore
             CREATE INDEX IF NOT EXISTS ix_run_started ON run(started);
             CREATE TABLE IF NOT EXISTS downtime (
                 id TEXT PRIMARY KEY, started INTEGER NOT NULL, ended INTEGER NULL,
-                down_by TEXT NOT NULL, up_by TEXT NULL, reason TEXT NULL, up_note TEXT NULL, station TEXT NULL);
+                down_by TEXT NOT NULL, up_by TEXT NULL, reason TEXT NULL, up_note TEXT NULL, station TEXT NULL,
+                category TEXT NULL, root_cause TEXT NULL, action_taken TEXT NULL);
             CREATE TABLE IF NOT EXISTS unit (
                 at INTEGER NOT NULL, serial TEXT NOT NULL, product TEXT NULL, verdict TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS ix_unit_at ON unit(at);
             """;
         cmd.ExecuteNonQuery();
+
+        // Maintenance-log columns added after the first release of the table.
+        EnsureColumn(conn, "downtime", "category");
+        EnsureColumn(conn, "downtime", "root_cause");
+        EnsureColumn(conn, "downtime", "action_taken");
+    }
+
+    /// <summary>Adds a nullable TEXT column to an existing table when it is missing (idempotent).</summary>
+    private static void EnsureColumn(SqliteConnection conn, string table, string column)
+    {
+        using var check = conn.CreateCommand();
+        check.CommandText = "SELECT COUNT(*) FROM pragma_table_info($t) WHERE name = $c";
+        check.Parameters.AddWithValue("$t", table);
+        check.Parameters.AddWithValue("$c", column);
+        if (Convert.ToInt64(check.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture) > 0) return;
+
+        using var alter = conn.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} TEXT NULL";
+        alter.ExecuteNonQuery();
     }
 
     private static string? Str(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetString(i);

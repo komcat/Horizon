@@ -8,8 +8,9 @@ namespace FAAM.UI.Views;
 
 /// <summary>
 /// The station's live OEE state with the DOWN / UP toggle — on the Engineer page and the
-/// OEE page. Declaring either edge asks for the engineer / technician's name
-/// (<see cref="StationStateWindow"/>), which signs the downtime record in Layer 2
+/// OEE page. Declaring DOWN asks for the engineer / technician's name, a category and the
+/// reason; bringing it UP shows that and asks for the root cause and the action taken
+/// (<see cref="StationStateWindow"/>) — one maintenance-log entry in Layer 2
 /// (<see cref="OeeTracker.GoDown"/> / <see cref="OeeTracker.GoUp"/>). The toggle needs
 /// <see cref="AccessPolicy.Downtime"/>; the state is visible to anyone who sees the page.
 /// </summary>
@@ -46,6 +47,7 @@ public partial class DowntimeBar : UserControl
         if (st.OpenDowntime is { } d)
         {
             DetailText.Text = $"since {d.Start.ToLocalTime():ddd HH:mm} ({OeeColors.Duration(since)}) · by {d.DownBy}"
+                            + (d.Category != null ? $" · {d.Category}" : "")
                             + (d.Reason != null ? $" · {d.Reason}" : "");
             ToggleButton.Content = "Bring UP…";
             ToggleButton.SetResourceReference(BackgroundProperty, "Ok");
@@ -74,16 +76,12 @@ public partial class DowntimeBar : UserControl
         var down = oee.Status.OpenDowntime;
         var goingDown = down == null;
 
-        var message = goingDown
-            ? "Down time stops counting as up time until someone brings the station back UP. " +
-              "Enter your name to confirm."
-            : $"Down since {down!.Start.ToLocalTime():ddd HH:mm} ({OeeColors.Duration(DateTime.UtcNow - down.Start)}), " +
-              $"declared by {down.DownBy}. Enter your name to confirm the station is back UP.";
-
-        var dlg = new StationStateWindow(goingDown, message) { Owner = Window.GetWindow(this) };
+        var dlg = new StationStateWindow(down) { Owner = Window.GetWindow(this) };
         if (dlg.ShowDialog() != true) return;
 
-        var result = goingDown ? oee.GoDown(dlg.PersonName, dlg.Note) : oee.GoUp(dlg.PersonName, dlg.Note);
+        var result = goingDown
+            ? oee.GoDown(dlg.PersonName, dlg.Category, dlg.Reason)
+            : oee.GoUp(dlg.PersonName, dlg.RootCause, dlg.ActionTaken);
         var signedIn = _host.Session.Operator?.Id ?? "-";
         _host.Log.Add(new LogEntry(result.IsSuccess ? LogLevel.Info : LogLevel.Warning, DateTimeOffset.Now, "OEE",
             result.IsSuccess

@@ -21,6 +21,10 @@ internal static class OeeColors
         _ => OfflineBrush,
     };
 
+    /// <summary>Readable text colour on top of <see cref="For"/> — white on the dark greens / red, black on the light ones.</summary>
+    public static Brush TextOn(OeeState state)
+        => state is OeeState.Running or OeeState.Down ? Brushes.White : Brushes.Black;
+
     public static string Label(OeeState state) => state switch
     {
         OeeState.Running => "RUNNING",

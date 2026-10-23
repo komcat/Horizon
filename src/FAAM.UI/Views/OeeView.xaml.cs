@@ -152,7 +152,8 @@ public partial class OeeView : UserControl
             d.Start.ToLocalTime().ToString("ddd HH:mm"),
             d.End?.ToLocalTime().ToString("ddd HH:mm") ?? "(still down)",
             OeeColors.Duration((d.End ?? DateTime.UtcNow) - d.Start),
-            d.DownBy, d.Reason ?? "", d.UpBy ?? "", d.UpNote ?? "")).ToList();
+            d.Category ?? "", d.Reason ?? "", d.RootCause ?? "", d.ActionTaken ?? d.UpNote ?? "",
+            d.UpBy is { } up ? $"{d.DownBy} / {up}" : d.DownBy)).ToList();
         NoDowntimeText.Visibility = r.Downtimes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         DowntimeGrid.Visibility = r.Downtimes.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
 
@@ -177,6 +178,12 @@ public partial class OeeView : UserControl
             OeeColors.For(s), OeeColors.Label(s), Hm(t),
             r.Elapsed > TimeSpan.Zero ? Pct(t / r.Elapsed) : "—",
             r.Total > TimeSpan.Zero ? Pct(t / r.Total) : "—");
+    }
+
+    private void OnMaintenanceHistory(object sender, RoutedEventArgs e)
+    {
+        if (_host == null) return;
+        new MaintenanceHistoryWindow(_host) { Owner = Window.GetWindow(this) }.Show();
     }
 
     private void UpdateLive()
@@ -211,7 +218,8 @@ public partial class OeeView : UserControl
 
     public sealed record BreakdownRow(Brush Swatch, string State, string Time, string OfElapsed, string OfDay);
 
-    public sealed record DowntimeRow(string Start, string End, string Duration, string DownBy, string Reason, string UpBy, string Note);
+    public sealed record DowntimeRow(string Start, string End, string Duration, string Category, string Reason,
+                                     string RootCause, string ActionTaken, string People);
 
     public sealed record DayRow(string Day, string Running, string Standby, string Idle, string Down, string Offline,
                                  string Uptime, string Utilization, string Units, string Quality, string Oee);

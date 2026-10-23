@@ -63,6 +63,9 @@ public sealed class EngineHost : IAsyncDisposable
     /// </summary>
     public CapturePromptHub CapturePrompts { get; } = new();
 
+    /// <summary>Open blocking operator prompts — the tower light blinks yellow while any is up.</summary>
+    public OperatorAttention Attention { get; } = new();
+
     /// <summary>
     /// Raised when the safety watchdog trips (E-Stop / watched input). Layer 3 run
     /// surfaces (the Run-page process panel, alignment panels) subscribe to cancel
@@ -86,6 +89,9 @@ public sealed class EngineHost : IAsyncDisposable
     // while they execute — that counts as "running" alongside Layer 2's own program runs.
     private readonly object _oeeLock = new();
     private IDisposable? _oeeActivity;
+
+    /// <summary>The station tower light — follows the OEE state (see <see cref="TowerLight"/>).</summary>
+    public TowerLight Tower { get; }
 
     private bool _smuWired;
     private bool _measurementWired;
@@ -118,6 +124,7 @@ public sealed class EngineHost : IAsyncDisposable
         // FAAM installs the Sagnac signal probe on the Run page, where the SiPhOG client lives.
         _dutActivityMirror = new DutActivityMirror(Activities, Process, Log);
         Activity.Changed += OnActivityChangedForOee;
+        Tower = new TowerLight(Engine, Process.Oee, Log, () => Attention.Waiting || CapturePrompts.IsShown);
 
         // FAAM is a single-purpose head, but Layer 2 scopes named positions to a
         // product — so ensure ours exists and is active, and fold any legacy
@@ -362,6 +369,7 @@ public sealed class EngineHost : IAsyncDisposable
     public async Task ShutdownAsync(IProgress<string>? progress = null)
     {
         Activity.Changed -= OnActivityChangedForOee;
+        await Tower.StopAsync().ConfigureAwait(false);               // lamps off while IO is still connected
         await Process.Oee.EndSessionAsync().ConfigureAwait(false);   // station offline (OEE)
         Engine.LogEmitted -= Log.Add;
         Process.LogEmitted -= Log.Add;
@@ -377,8 +385,12 @@ public sealed class EngineHost : IAsyncDisposable
         await Engine.ShutdownAsync(progress).ConfigureAwait(false);
     }
 
-    /// <summary>Marks the station online for OEE — called once the shell is up.</summary>
-    public void StartOeeSession() => Process.Oee.StartSession("FAAM.UI", Session.StationId);
+    /// <summary>Marks the station online for OEE and starts the tower light — called once the shell is up.</summary>
+    public void StartOeeSession()
+    {
+        Process.Oee.StartSession("FAAM.UI", Session.StationId);
+        Tower.Start();
+    }
 
     private void OnActivityChangedForOee()
     {
