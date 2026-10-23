@@ -82,6 +82,11 @@ public sealed class EngineHost : IAsyncDisposable
     /// <summary>Mirrors published operator activities into the open interactive DUT run.</summary>
     private readonly DutActivityMirror _dutActivityMirror;
 
+    // OEE: the Run-page steps and the manual alignment / scan panels hold the activity gate
+    // while they execute — that counts as "running" alongside Layer 2's own program runs.
+    private readonly object _oeeLock = new();
+    private IDisposable? _oeeActivity;
+
     private bool _smuWired;
     private bool _measurementWired;
     private bool _cameraWired;
@@ -112,6 +117,7 @@ public sealed class EngineHost : IAsyncDisposable
         // Mirror operator actions (jogs + correction-sequence sections) into the open DUT run.
         // FAAM installs the Sagnac signal probe on the Run page, where the SiPhOG client lives.
         _dutActivityMirror = new DutActivityMirror(Activities, Process, Log);
+        Activity.Changed += OnActivityChangedForOee;
 
         // FAAM is a single-purpose head, but Layer 2 scopes named positions to a
         // product — so ensure ours exists and is active, and fold any legacy
@@ -355,6 +361,8 @@ public sealed class EngineHost : IAsyncDisposable
     /// </summary>
     public async Task ShutdownAsync(IProgress<string>? progress = null)
     {
+        Activity.Changed -= OnActivityChangedForOee;
+        await Process.Oee.EndSessionAsync().ConfigureAwait(false);   // station offline (OEE)
         Engine.LogEmitted -= Log.Add;
         Process.LogEmitted -= Log.Add;
         _dutActivityMirror.Dispose();
@@ -367,6 +375,26 @@ public sealed class EngineHost : IAsyncDisposable
         if (_safetyWired)
             Engine.Safety.SafetyTripped -= OnSafetyTripped;
         await Engine.ShutdownAsync(progress).ConfigureAwait(false);
+    }
+
+    /// <summary>Marks the station online for OEE — called once the shell is up.</summary>
+    public void StartOeeSession() => Process.Oee.StartSession("FAAM.UI", Session.StationId);
+
+    private void OnActivityChangedForOee()
+    {
+        lock (_oeeLock)
+        {
+            var busy = Activity.ProcessBusy || Activity.AlignmentBusy;
+            if (busy && _oeeActivity == null)
+            {
+                _oeeActivity = Process.Oee.BeginProduction("activity", Activity.ProcessBusy ? "run-page" : "alignment");
+            }
+            else if (!busy && _oeeActivity != null)
+            {
+                _oeeActivity.Dispose();
+                _oeeActivity = null;
+            }
+        }
     }
 
     public async ValueTask DisposeAsync() => await ShutdownAsync().ConfigureAwait(false);

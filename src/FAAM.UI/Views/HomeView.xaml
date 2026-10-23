@@ -59,6 +59,9 @@
                 <Button x:Name="DutDataTile" Content="DUT Data"
                         Style="{StaticResource Tile}" Click="OnDutDataClick"
                         ToolTip="Per-serial DUT data: UV signal snapshots and labelled SiPhOG snapshots, with charts and CSV export" />
+                <Button x:Name="OeeTile" Content="OEE"
+                        Style="{StaticResource Tile}" Click="OnOeeClick"
+                        ToolTip="Station uptime, utilization and downtime per 24 h day — running / standby / idle / down / offline" />
                 <Button x:Name="VersionTile" Style="{StaticResource Tile}" Click="OnVersionClick"
                         ToolTip="This build's version and git id, and the release history">
                     <StackPanel HorizontalAlignment="Center">

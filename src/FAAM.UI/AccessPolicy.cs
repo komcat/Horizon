@@ -42,6 +42,15 @@ public static class AccessPolicy
     /// </summary>
     public const AccessLevel DutData = AccessLevel.Operator;
 
+    /// <summary>Home › OEE — the station's uptime / utilization / downtime record. Read-only.</summary>
+    public const AccessLevel Oee = AccessLevel.Operator;
+
+    /// <summary>
+    /// Declaring the station DOWN / bringing it back UP (Engineer page and OEE page). The
+    /// engineer / technician also types their name to sign the downtime record.
+    /// </summary>
+    public const AccessLevel Downtime = AccessLevel.Technician;
+
     /// <summary>Home › Version — this build's version / git id and the release list. Read-only.</summary>
     public const AccessLevel VersionHistory = AccessLevel.Operator;
 

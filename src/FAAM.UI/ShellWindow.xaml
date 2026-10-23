@@ -27,30 +27,59 @@
             </StackPanel>
         </Button>
 
-        <!-- Top: identity chip + engine status + Header1 (page title). The chip sits
-             on the left and the page title on the right (swapped from the original). -->
+        <!-- Top: identity chip + page-specific panel (engine status / DUT) + info bar.
+             The page panel sizes to its content; the info bar takes the rest. -->
         <Grid Grid.Row="0" Grid.Column="1" Margin="0,2,2,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
+            <!-- Info bar: page title │ working folder + open AppData │ date/time │ pika mascot. -->
             <Border Grid.Column="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
                     BorderThickness="1" CornerRadius="3" Margin="6,0,0,0">
                 <Grid>
-                    <!-- Big run-progress bar behind the title — shown on the Run page while a
+                    <!-- Big run-progress bar behind the bar — shown on the Run page while a
                          step executes (title then reads "RUNNING…  ≈42% · 2:10 left"). -->
                     <ProgressBar x:Name="HeaderProgress" Minimum="0" Maximum="100" Visibility="Collapsed"
                                  BorderThickness="0" Background="Transparent" Foreground="#66BB6A" />
-                    <TextBlock x:Name="Header1Text" Text="HOME" Foreground="{StaticResource Accent}"
-                               FontSize="18" FontWeight="SemiBold"
-                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <DockPanel Margin="14,0,4,0" LastChildFill="True">
+                        <TextBlock x:Name="Header1Text" DockPanel.Dock="Left" Text="HOME"
+                                   Foreground="{StaticResource Accent}" FontSize="22" FontWeight="Bold"
+                                   VerticalAlignment="Center" />
+                        <Border DockPanel.Dock="Left" Width="1" Margin="14,8" Background="{StaticResource Edge}" />
+
+                        <v:PikaAvatar x:Name="Mascot" DockPanel.Dock="Right" Width="64" Height="44"
+                                      VerticalAlignment="Center" Margin="10,0,0,0"
+                                      ToolTip="Pika — FAAM active alignment" />
+                        <Border DockPanel.Dock="Right" Width="1" Margin="10,8,0,8" Background="{StaticResource Edge}" />
+                        <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="10,0,0,0">
+                            <TextBlock x:Name="ClockTime" FontFamily="Consolas" FontSize="16" FontWeight="Bold"
+                                       Foreground="{StaticResource Text}" HorizontalAlignment="Right" />
+                            <TextBlock x:Name="ClockDate" FontSize="11"
+                                       Foreground="{StaticResource Subtle}" HorizontalAlignment="Right" />
+                        </StackPanel>
+                        <Border DockPanel.Dock="Right" Width="1" Margin="10,8,0,8" Background="{StaticResource Edge}" />
+
+                        <!-- Fill: where this FAAM.UI executable runs from (trims when space is short). -->
+                        <DockPanel VerticalAlignment="Center">
+                            <Button DockPanel.Dock="Right" Content="AppData" FontSize="11" Height="22"
+                                    Padding="6,0" Margin="8,0,0,0" VerticalAlignment="Center"
+                                    ToolTip="Open %APPDATA%\Horizon (config, products, logs)"
+                                    Click="OnOpenAppData" />
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Working folder" FontSize="10" Foreground="{StaticResource Subtle}" />
+                                <TextBlock x:Name="WorkFolderText" FontSize="12" Foreground="{StaticResource Text}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </DockPanel>
+                    </DockPanel>
                 </Grid>
             </Border>
             <!-- Engine status + Reconnect — bound to the Machine page VM in code,
                  shown only on the Machine page (its sampler drives these). -->
             <Border x:Name="EngineHeader" Grid.Column="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
-                    BorderThickness="1" CornerRadius="3" Margin="6,0,0,0" Visibility="Collapsed">
+                    BorderThickness="1" CornerRadius="3" Margin="6,0,0,0" MaxWidth="560" Visibility="Collapsed">
                 <Grid Margin="12,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -62,7 +91,8 @@
                         <Run Text="{Binding EngineState, Mode=OneWay}" Foreground="{StaticResource Text}" FontWeight="SemiBold" />
                     </TextBlock>
                     <TextBlock Grid.Column="1" Text="{Binding DeviceSummary, Mode=OneWay}"
-                               Foreground="{StaticResource Subtle}" FontSize="13"
+                               Foreground="{StaticResource Subtle}" FontSize="13" Margin="12,0"
+                               TextTrimming="CharacterEllipsis"
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                     <Button Grid.Column="2" Content="Reconnect" Width="100" Height="26"
                             VerticalAlignment="Center" Command="{Binding ReconnectCommand}" />

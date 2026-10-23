@@ -145,6 +145,12 @@ defines its own program/recipe/position formats.
   UID / key / device / operator. The FAAM **Repository** page is the browse/checkout UI
   (Commit lives on each editor's toolbar). Decks version the same way (keyed by deck
   UID). See `docs/program-history-sqlite-design.md` + `docs/version-repository-design.md`.
+- `Oee/` — **station OEE**: `OeeTracker` (`IProcessService.Oee`) records online sessions,
+  executions (programs / decks / recipes / scripts bracketed in `ProcessService`; re-entrant
+  `BeginProduction` tokens), engineer-declared downtime (`GoDown`/`GoUp`, name-signed, persists
+  across restarts) and finished DUT verdicts into machine-global `%APPDATA%\Horizon\oee.db`;
+  `OeeCalculator` classifies each 24 h day into Running / Standby (< 30 min gap) / Idle
+  (>= 30 min gap, whole gap) / Down / Offline. See `docs/oee-design.md`.
 - Operator identity / login lives in Layer 3; Layer 2 only *receives* an
   `OperatorContext`. `users.json` (operator directory) + `AppSettings.StationId` are
   machine-global (`Horizon.Common`). See `docs/product-and-traceability-design.md`.
@@ -291,6 +297,12 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   `users.json` carries employee records (id = employee number, `level`) plus
   `levelPasswords`; a file written before levels existed is upgraded on load by
   promoting everyone to Admin, so a new build never locks the station out.
+- **OEE page** (Home › OEE, `Views/OeeView`): live state, 24 h timeline, uptime / availability /
+  utilization / quality / OEE, downtime log, 7-day table. The **DOWN / UP toggle**
+  (`Views/DowntimeBar`, Engineer page + OEE page, Technician level) asks for the engineer /
+  technician's name. `EngineHost` starts/ends the online session and counts `ActivityGate`
+  busy (Run-page steps, alignments) as running. The shell header (title · working folder +
+  AppData button · clock · `PikaAvatar`) pika follows the OEE state.
 - **Version history** (Home › Version tile → `VersionHistoryWindow`): `build/version-info.ps1`
   runs before each FAAM.UI build (target `FaamVersionInfo` in `FAAM.UI.csproj`) and embeds
   `version_info.json` — `<Version>`, git id / branch / `describe`, dirty flag, and the `v*`
@@ -421,4 +433,5 @@ write code that won't trip them:
 - Device registration (hex-right gripper ↔ gantry camera; `tool.cameraToTool` / `tool.toolToCamera` blocks + live overlay): `docs/device-registration-design.md`.
 - Run-page utility-app launcher (phone-style springboard + L2→L3 app facet): `docs/utility-app-launcher-design.md`.
 - Engineer command help (palette help panel + `OpCatalogHelp` authoring): `docs/engineer-command-help.md`.
+- Station OEE (uptime / downtime / utilization, DOWN-UP toggle, OEE page): `docs/oee-design.md`.
 - Mission-critical coding standard (Power of 10): `docs/coding-standards-power-of-10.md`.

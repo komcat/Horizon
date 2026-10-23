@@ -4,6 +4,7 @@ using Horizon.Workflow.Calibration;
 using Horizon.Workflow.Dispensing;
 using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.HillClimb;
+using Horizon.Workflow.Oee;
 using Horizon.Workflow.Recipe;
 using Horizon.Workflow.Registration;
 using Horizon.Workflow.Scripting;
@@ -723,6 +724,14 @@ public interface IProcessService
     /// thread-safe — Layer 3 polls it to lock manual controls during a run.
     /// </summary>
     bool IsRunning { get; }
+
+    /// <summary>
+    /// Station utilisation (OEE) — online sessions, executions, engineer-declared downtime
+    /// and finished units in the machine-global <c>oee.db</c>. Programs / decks / recipes /
+    /// scripts are bracketed here automatically; a head starts / ends the online session
+    /// and may bracket its own executions. See <c>docs/oee-design.md</c>.
+    /// </summary>
+    OeeTracker Oee { get; }
 
     /// <summary>Raised when the running program's paused state changes (true = paused).</summary>
     event Action<bool>? PausedChanged;

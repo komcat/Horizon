@@ -43,6 +43,9 @@ public partial class HomeView : UserControl
     /// <summary>Raised when the operator clicks DUT Data (per-serial UV signal snapshots).</summary>
     public event Action? DutDataRequested;
 
+    /// <summary>Raised when the OEE tile is clicked.</summary>
+    public event Action? OeeRequested;
+
 
     public HomeView()
     {
@@ -82,6 +85,7 @@ public partial class HomeView : UserControl
         Gate(CalibrationTile, AccessPolicy.Calibration);
         Gate(RepositoryTile, AccessPolicy.Repository);
         Gate(DutDataTile, AccessPolicy.DutData);
+        Gate(OeeTile, AccessPolicy.Oee);
         Gate(VersionTile, AccessPolicy.VersionHistory);
         NoTilesText.Visibility = TileGrid.Children.OfType<Button>().Any(b => b.Visibility == Visibility.Visible)
             ? Visibility.Collapsed : Visibility.Visible;
@@ -266,6 +270,8 @@ public partial class HomeView : UserControl
     private void OnRepositoryClick(object sender, RoutedEventArgs e) => RepositoryRequested?.Invoke();
 
     private void OnDutDataClick(object sender, RoutedEventArgs e) => DutDataRequested?.Invoke();
+
+    private void OnOeeClick(object sender, RoutedEventArgs e) => OeeRequested?.Invoke();
 
     /// <summary>Opens the brief version / release history window (no page switch).</summary>
     private void OnVersionClick(object sender, RoutedEventArgs e)

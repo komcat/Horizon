@@ -1,13 +1,17 @@
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using FAAM.UI.Process;
 using FAAM.UI.ViewModels;
 using FAAM.UI.ViewModels.Sections;
 using FAAM.UI.Views;
+using Horizon.Workflow.Oee;
 using Horizon.Common;
 using Horizon.Engine;
 using Horizon.Workflow;
@@ -37,9 +41,11 @@ public partial class ShellWindow : Window
     private readonly CameraNeedleCalibrationView _cameraNeedle;
     private readonly RepositoryView _repository;
     private readonly DutDataView _dutData;
+    private readonly OeeView _oee;
 
     /// <summary>Camera pop-out windows this shell owns (auto-opened + restored).</summary>
     private readonly List<DisplayWindow> _cameraWindows = new();
+    private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool _exiting;
 
     public ShellWindow(EngineHost host)
@@ -58,6 +64,8 @@ public partial class ShellWindow : Window
         _repository.Attach(host);
         _dutData = new DutDataView();
         _dutData.Attach(host);
+        _oee = new OeeView();
+        _oee.Attach(host);
         InitializeComponent();
 
         RestoreMainWindowPlacement();
@@ -88,6 +96,7 @@ public partial class ShellWindow : Window
         _home.CalibrationRequested += ShowCalibration;
         _home.RepositoryRequested += ShowRepository;
         _home.DutDataRequested += ShowDutData;
+        _home.OeeRequested += ShowOee;
         _calibration.CameraNeedleRequested += ShowCameraNeedle;
         _cameraNeedle.BackRequested += ShowCalibration;
 
@@ -103,6 +112,18 @@ public partial class ShellWindow : Window
         _host.Engine.Safety.SafetyCleared += OnSafetyCleared;
         RefreshSafetyOverlay();
 
+        // Info bar: where this executable runs from + a 1 s wall clock.
+        WorkFolderText.Text = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+        WorkFolderText.ToolTip = WorkFolderText.Text;
+        UpdateClock();
+        _clock.Tick += (_, _) => { UpdateClock(); UpdateMascot(); };
+        _clock.Start();
+        Closed += (_, _) => _clock.Stop();
+
+        // OEE: the station is online from here until the shutdown sequence ends the session.
+        _host.StartOeeSession();
+        UpdateMascot();
+
         UpdateIdentity();
         OnActiveSerialChanged(_host.Process.ActiveSerial);
         RefreshDutButtons();
@@ -114,6 +135,37 @@ public partial class ShellWindow : Window
         // Pop up the live main_camera window as soon as the app is up (the engine
         // is already connected by the time the shell is shown), if enabled.
         Loaded += OnShellLoaded;
+    }
+
+    private void UpdateClock()
+    {
+        var now = DateTime.Now;
+        ClockTime.Text = now.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        ClockDate.Text = now.ToString("ddd yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// The header pika follows the OEE state: working (hop + zap) while anything executes —
+    /// a Run-page step reports instantly via <see cref="_runProgress"/> — awake in standby,
+    /// asleep when idle (nothing executed for the idle threshold), red "!" when down.
+    /// </summary>
+    private void UpdateMascot()
+    {
+        var state = _host.Process.Oee.Status.State;
+        Mascot.Mood = state == OeeState.Down ? PikaMood.Down
+                    : _runProgress.Running || state == OeeState.Running ? PikaMood.Working
+                    : state is OeeState.Idle or OeeState.Offline ? PikaMood.Sleeping
+                    : PikaMood.Awake;
+        Mascot.ToolTip = $"Pika — station {OeeColors.Label(state).ToLowerInvariant()}";
+    }
+
+    /// <summary>Opens %APPDATA%\Horizon (config, products, logs, history.db) in Explorer.</summary>
+    private void OnOpenAppData(object sender, RoutedEventArgs e)
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Horizon");
+        var error = FolderOpener.Open(dir);
+        if (error is not null)
+            Log(LogLevel.Warning, $"Cannot open {dir}: {error}");
     }
 
     private void OnShellLoaded(object? sender, RoutedEventArgs e)
@@ -199,6 +251,8 @@ public partial class ShellWindow : Window
             _repository.Deactivate();
         else if (ReferenceEquals(PageHost.Content, _dutData))
             _dutData.Deactivate();
+        else if (ReferenceEquals(PageHost.Content, _oee))
+            _oee.Deactivate();
     }
 
     /// <summary>
@@ -257,6 +311,7 @@ public partial class ShellWindow : Window
     private void OnRunProgress(RunProgressSnapshot snap)
     {
         _runProgress = snap;
+        UpdateMascot();   // the pika works while a step runs, on any page
         if (ReferenceEquals(PageHost.Content, _run))
             ApplyHeaderProgress(snap);
     }
@@ -273,7 +328,6 @@ public partial class ShellWindow : Window
             HeaderProgress.IsIndeterminate = !snap.HasProgress;
             HeaderProgress.Value = snap.Percent;
             Header1Text.Foreground = Brushes.Black;
-            Header1Text.FontWeight = FontWeights.Bold;
             Header1Text.Text = snap.HasProgress ? $"RUNNING…   {snap.Short}" : "RUNNING…";
         }
         else if (HeaderProgress.Visibility == Visibility.Visible)
@@ -281,7 +335,6 @@ public partial class ShellWindow : Window
             HeaderProgress.Visibility = Visibility.Collapsed;
             HeaderProgress.IsIndeterminate = false;
             Header1Text.SetResourceReference(TextBlock.ForegroundProperty, "Accent");
-            Header1Text.FontWeight = FontWeights.SemiBold;
             if (ReferenceEquals(PageHost.Content, _run)) Header1Text.Text = "RUN";
         }
     }
@@ -349,6 +402,17 @@ public partial class ShellWindow : Window
         DutHeader.Visibility = Visibility.Collapsed;
         _dutData.Activate();
         PageHost.Content = _dutData;
+    }
+
+    private void ShowOee()
+    {
+        if (!Allow(AccessPolicy.Oee, "OEE")) return;
+        LeaveCurrent();
+        Header1Text.Text = "OEE";
+        EngineHeader.Visibility = Visibility.Collapsed;
+        DutHeader.Visibility = Visibility.Collapsed;
+        _oee.Activate();
+        PageHost.Content = _oee;
     }
 
     private void ShowCameraNeedle()

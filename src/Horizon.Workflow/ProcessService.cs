@@ -4,6 +4,7 @@ using Horizon.Workflow.Calibration;
 using Horizon.Workflow.Dispensing;
 using Horizon.Workflow.FauPreAlign;
 using Horizon.Workflow.HillClimb;
+using Horizon.Workflow.Oee;
 using Horizon.Workflow.Recipe;
 using Horizon.Workflow.Registration;
 using Horizon.Workflow.Scripting;
@@ -47,11 +48,13 @@ public sealed class ProcessService : IProcessService
     private ISiphogSheetSink? _siphogSheetSink;   // Layer 3 SiPhOG -> Google Sheet writer, driven by siphog.updateSheet steps
     private IImageDisplaySink? _imageDisplaySink;   // Layer 3 still-image panel, driven by machine.ui.showImage
     private readonly SignalRegistry _signals;   // built-in engine signals + any product source a head registers
+    private readonly OeeTracker _oee;   // machine-global station utilisation (oee.db)
 
     public ProcessService(IHorizonEngine engine)
     {
         _engine = engine;
         _signals = new SignalRegistry(new EngineSignalSource(engine));
+        _oee = new OeeTracker(log: Log);
 
         // Load stores for a product that was already active from a prior run.
         var dir = _products.ActiveProductDir;
@@ -130,6 +133,8 @@ public sealed class ProcessService : IProcessService
     public bool IsPaused => _pause?.IsPaused ?? false;
 
     public bool IsRunning => Volatile.Read(ref _pause) != null;
+
+    public OeeTracker Oee => _oee;
 
     public void Pause() => _pause?.Pause();
     public void Resume() => _pause?.Resume();
@@ -933,6 +938,7 @@ public sealed class ProcessService : IProcessService
         var pause = new PauseController();
         pause.PausedChanged += OnPausedChanged;
         _pause = pause;
+        using var production = _oee.BeginProduction("program", program.Name);
 
         var ctx = new WorkflowContext();
 
@@ -1297,6 +1303,7 @@ public sealed class ProcessService : IProcessService
             var (record, run) = _interactiveDut.Value;
             run.EndedUtc = DateTime.UtcNow;
             run.Verdict = verdict;
+            _oee.RecordUnit(record.Serial, ActiveProduct, verdict);
             // The run was added to record.Runs and persisted at Start (BeginDutRun); here we
             // just finalise it in place — do NOT add it again.
             _interactiveDut = null;
@@ -1401,6 +1408,7 @@ public sealed class ProcessService : IProcessService
         run.EndedUtc = DateTime.UtcNow;
         run.Verdict = verdict;
         record.Runs.Add(run);
+        _oee.RecordUnit(record.Serial, ActiveProduct, verdict);
 
         if (_dut == null)
         {
@@ -2014,6 +2022,7 @@ public sealed class ProcessService : IProcessService
         var registry = new RecipeMethodRegistry(_engine, MoveToNamedPositionCoreAsync, OperatorPrompt, Log);
         var interpreter = new RecipeInterpreter(registry, pause, Log);
 
+        using var production = _oee.BeginProduction("recipe", name);
         Log(LogLevel.Info, $"Recipe started: {name}");
         try
         {
@@ -2090,6 +2099,7 @@ public sealed class ProcessService : IProcessService
             onOutput?.Invoke(line);
         }
 
+        using var production = _oee.BeginProduction("script", null);
         Log(LogLevel.Info, "Script started.");
         var result = await script.RunAsync(source, Sink, ct).ConfigureAwait(false);
 
@@ -2329,6 +2339,7 @@ public sealed class ProcessService : IProcessService
         var pause = new PauseController();
         pause.PausedChanged += OnPausedChanged;
         _pause = pause;
+        using var production = _oee.BeginProduction("deck", deck.Name);
 
         // One context for the whole deck — also carries the DUT run, so every
         // program in the deck records into the same per-unit run.

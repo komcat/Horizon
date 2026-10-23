@@ -36,6 +36,7 @@ public partial class EngineerPageView : UserControl
         FindFirstLightHost.Content = _findFirstLight;
         DispenseHost.Content = _dispense;
         TestingHost.Content = _testing;
+        Downtime.Attach(host);
     }
 
     /// <summary>

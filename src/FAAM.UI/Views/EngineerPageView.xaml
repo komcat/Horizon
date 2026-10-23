@@ -1,24 +1,29 @@
 <UserControl x:Class="FAAM.UI.Views.EngineerPageView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <TabControl x:Name="Tabs"
-                Background="{StaticResource Bg}"
-                BorderBrush="{StaticResource Edge}"
-                SelectionChanged="OnTabChanged">
-        <TabItem Header="Program">
-            <ContentControl x:Name="ProgramHost" />
-        </TabItem>
-        <TabItem Header="Process Deck">
-            <ContentControl x:Name="DeckHost" />
-        </TabItem>
-        <TabItem Header="Find First Light">
-            <ContentControl x:Name="FindFirstLightHost" />
-        </TabItem>
-        <TabItem Header="Dispensing">
-            <ContentControl x:Name="DispenseHost" />
-        </TabItem>
-        <TabItem Header="Testing Ground">
-            <ContentControl x:Name="TestingHost" />
-        </TabItem>
-    </TabControl>
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:FAAM.UI.Views">
+    <DockPanel>
+        <!-- Station state for OEE + the DOWN / UP toggle (signed with the engineer / technician's name). -->
+        <v:DowntimeBar x:Name="Downtime" DockPanel.Dock="Top" Margin="0,0,0,8" />
+        <TabControl x:Name="Tabs"
+                    Background="{StaticResource Bg}"
+                    BorderBrush="{StaticResource Edge}"
+                    SelectionChanged="OnTabChanged">
+            <TabItem Header="Program">
+                <ContentControl x:Name="ProgramHost" />
+            </TabItem>
+            <TabItem Header="Process Deck">
+                <ContentControl x:Name="DeckHost" />
+            </TabItem>
+            <TabItem Header="Find First Light">
+                <ContentControl x:Name="FindFirstLightHost" />
+            </TabItem>
+            <TabItem Header="Dispensing">
+                <ContentControl x:Name="DispenseHost" />
+            </TabItem>
+            <TabItem Header="Testing Ground">
+                <ContentControl x:Name="TestingHost" />
+            </TabItem>
+        </TabControl>
+    </DockPanel>
 </UserControl>
