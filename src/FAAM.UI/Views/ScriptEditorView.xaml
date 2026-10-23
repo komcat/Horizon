@@ -34,6 +34,19 @@
 
                 <Border Width="1" Background="{StaticResource Edge}" Margin="12,2" />
 
+                <!-- View-only folding: never changes the script text. -->
+                <Button Content="Fold selection" Width="96" Height="28"
+                        Style="{StaticResource Bevel3D}" Click="OnFoldSelection"
+                        ToolTip="Collapse the selected lines (view only)" />
+                <Button Content="Collapse all" Width="84" Height="28" Margin="6,0,0,0"
+                        Style="{StaticResource Bevel3D}" Click="OnCollapseAll"
+                        ToolTip="Collapse every block, group and comment header" />
+                <Button Content="Expand all" Width="84" Height="28" Margin="6,0,0,0"
+                        Style="{StaticResource Bevel3D}" Click="OnExpandAll"
+                        ToolTip="Expand everything and remove selection folds" />
+
+                <Border Width="1" Background="{StaticResource Edge}" Margin="12,2" />
+
                 <Button x:Name="RunButton" Content="► Run" Width="76" Height="28"
                         Style="{StaticResource Bevel3D}" Click="OnRun" />
                 <Button x:Name="StopButton" Content="■ Stop" Width="76" Height="28" Margin="6,0,0,0"
@@ -66,7 +79,19 @@
                                            Background="{StaticResource Panel}" Foreground="{StaticResource Text}"
                                            Padding="4"
                                            HorizontalScrollBarVisibility="Auto"
-                                           VerticalScrollBarVisibility="Auto" />
+                                           VerticalScrollBarVisibility="Auto">
+                        <avalonedit:TextEditor.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Cut" Command="ApplicationCommands.Cut" />
+                                <MenuItem Header="Copy" Command="ApplicationCommands.Copy" />
+                                <MenuItem Header="Paste" Command="ApplicationCommands.Paste" />
+                                <Separator />
+                                <MenuItem Header="Fold selection" Click="OnFoldSelection" />
+                                <MenuItem Header="Collapse all" Click="OnCollapseAll" />
+                                <MenuItem Header="Expand all" Click="OnExpandAll" />
+                            </ContextMenu>
+                        </avalonedit:TextEditor.ContextMenu>
+                    </avalonedit:TextEditor>
                 </Border>
 
                 <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch"

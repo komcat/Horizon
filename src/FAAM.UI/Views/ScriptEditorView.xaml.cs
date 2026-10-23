@@ -7,11 +7,13 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 using System.Xml;
 using Horizon.Workflow.Scripting;
 using ICSharpCode.AvalonEdit.CodeCompletion;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Editing;
+using ICSharpCode.AvalonEdit.Folding;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 
@@ -31,7 +33,8 @@ public partial class ScriptEditorView : UserControl
         "--   machine.motion.moveTo(\"gantry-main\", \"Load\")\n" +
         "--   machine.io.setNamed(\"IOBottom\", \"Vacuum\", true)\n" +
         "--   local v = machine.signal.read(\"smu.PIC.ch1.current\")\n" +
-        "--   if machine.ask(\"Continue?\", \"Proceed with attach?\") then ... end\n\n" +
+        "--   if machine.ask(\"Continue?\", \"Proceed with attach?\") then ... end\n" +
+        "-- Fold a named section in the editor: --#group Name ... --#endgroup\n\n" +
         "machine.log(\"hello from lua\")\n";
 
     /// <summary>Canned snippets offered by the Examples dropdown.</summary>
@@ -96,6 +99,11 @@ public partial class ScriptEditorView : UserControl
     private CancellationTokenSource? _cts;
     private CompletionWindow? _completion;
 
+    // View-only folding: Lua blocks / groups / comment runs (LuaFolding) + folds made from a selection.
+    private readonly FoldingManager _folding;
+    private readonly DispatcherTimer _foldTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
+    private readonly List<(TextAnchor Start, TextAnchor End)> _selectionFolds = new();
+
     public ScriptEditorView(EngineHost host)
     {
         _host = host;
@@ -104,7 +112,11 @@ public partial class ScriptEditorView : UserControl
         using (var reader = XmlReader.Create(new StringReader(LuaSyntax.Xshd)))
             Editor.SyntaxHighlighting = HighlightingLoader.Load(reader, HighlightingManager.Instance);
 
-        Editor.Text = Template;
+        _folding = FoldingManager.Install(Editor.TextArea);
+        _foldTimer.Tick += (_, _) => { _foldTimer.Stop(); UpdateFoldings(); };
+        Editor.Document.TextChanged += (_, _) => { _foldTimer.Stop(); _foldTimer.Start(); };
+
+        SetEditorText(Template);
         Editor.TextArea.TextEntered += OnTextEntered;
 
         ExamplesCombo.ItemsSource = Examples.Select(x => x.Name).ToList();
@@ -206,7 +218,7 @@ public partial class ScriptEditorView : UserControl
         var source = _host.Process.LoadScript(name);
         if (source == null) { SetStatus($"Script '{name}' not found.", warn: true); return; }
 
-        Editor.Text = source;
+        SetEditorText(source);
         NameBox.Text = name;
         SetStatus($"Loaded '{name}'.");
     }
@@ -231,10 +243,76 @@ public partial class ScriptEditorView : UserControl
         var match = Examples.FirstOrDefault(x => x.Name == name);
         if (match.Source == null) return;
 
-        Editor.Text = match.Source;
+        SetEditorText(match.Source);
         NameBox.Text = string.Empty;
         SetStatus("Loaded example: " + name);
         ExamplesCombo.SelectedIndex = -1;   // reset so the same example can be re-picked
+    }
+
+    // --- folding (view only) ---
+
+    private void SetEditorText(string source)
+    {
+        _selectionFolds.Clear();
+        Editor.Text = source;
+        _foldTimer.Stop();
+        UpdateFoldings();
+    }
+
+    private void UpdateFoldings()
+    {
+        var folds = LuaFolding.Create(Editor.Document);
+        _selectionFolds.RemoveAll(f => f.Start.IsDeleted || f.End.IsDeleted || f.End.Offset <= f.Start.Offset);
+        foreach (var (start, end) in _selectionFolds)
+        {
+            if (!folds.Any(f => f.StartOffset == start.Offset && f.EndOffset == end.Offset))
+                folds.Add(new NewFolding(start.Offset, end.Offset) { Name = "..." });
+        }
+        folds.Sort((a, b) => a.StartOffset.CompareTo(b.StartOffset));
+        _folding.UpdateFoldings(folds, -1);
+    }
+
+    // Folds the selected lines, keeping the first one visible as the header.
+    private void OnFoldSelection(object sender, RoutedEventArgs e)
+    {
+        var doc = Editor.Document;
+        var sel = Editor.TextArea.Selection;
+        if (sel.IsEmpty) { SetStatus("Select the lines to collapse.", warn: true); return; }
+
+        var seg = sel.SurroundingSegment;
+        var first = doc.GetLineByOffset(seg.Offset);
+        var last = doc.GetLineByOffset(seg.EndOffset);
+        if (last.LineNumber > first.LineNumber && seg.EndOffset == last.Offset)
+            last = last.PreviousLine;   // a selection ending at column 0 doesn't include that line
+        if (last.LineNumber <= first.LineNumber) { SetStatus("Select at least two lines to collapse.", warn: true); return; }
+
+        int start = first.EndOffset, end = last.EndOffset;
+        var a = doc.CreateAnchor(start);
+        var b = doc.CreateAnchor(end);
+        a.MovementType = b.MovementType = AnchorMovementType.AfterInsertion;
+        _selectionFolds.Add((a, b));
+
+        _foldTimer.Stop();
+        UpdateFoldings();
+        foreach (var f in _folding.GetFoldingsAt(start).Where(f => f.EndOffset == end))
+            f.IsFolded = true;
+        Editor.TextArea.ClearSelection();
+    }
+
+    private void OnCollapseAll(object sender, RoutedEventArgs e)
+    {
+        _foldTimer.Stop();
+        UpdateFoldings();
+        foreach (var f in _folding.AllFoldings) f.IsFolded = true;
+    }
+
+    // Expands everything and drops the selection folds.
+    private void OnExpandAll(object sender, RoutedEventArgs e)
+    {
+        foreach (var f in _folding.AllFoldings) f.IsFolded = false;
+        _selectionFolds.Clear();
+        _foldTimer.Stop();
+        UpdateFoldings();
     }
 
     // --- run / stop ---
