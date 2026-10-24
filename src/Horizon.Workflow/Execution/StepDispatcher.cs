@@ -1040,6 +1040,24 @@ internal sealed class StepDispatcher
                     : await host.StopAsync(Str(step, "appId", ctx)).ConfigureAwait(false);
             }
 
+            // --- U correction → FAU pre-align (the Run-page "Start correction"), awaited to
+            //     completion. The operator confirms each gantry point on the Run page (Capture,
+            //     MoveClick in between); a cancel or failed phase fails the step. ---
+            case "align.correction":
+            {
+                bool runU = !Has(step, "runU") || Bool(step, "runU", ctx);
+                bool runFau = !Has(step, "runFau") || Bool(step, "runFau", ctx);
+                if (!runU && !runFau)
+                    return Result.Fail(ErrorCode.InvalidParameter, "align.correction: enable U correction and/or FAU pre-align.");
+
+                var host = _utilityAppHost();
+                if (host == null) return AppHostMissing("align.correction");
+
+                string appId = runU && runFau ? "align" : runU ? "ucorrection" : "faupre";
+                _log(LogLevel.Info, $"Alignment correction (U={runU}, FAU={runFau}) — waiting for the operator on the Run page.");
+                return await host.RunAsync(appId, ct).ConfigureAwait(false);
+            }
+
             // --- SiPhOG -> Google Sheet (V11 UPDATE_SAG). Writes the bench row's current
             //     SAG-PWR readings into the chosen stage column. The bench is the run's DUT
             //     serial (the sheet's column-A key); the measured values come from the SiPhOG

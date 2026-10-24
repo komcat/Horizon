@@ -111,6 +111,28 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
         return Result.Ok();
     }));
 
+    /// <summary>
+    /// Runs an alignment id to completion (the <c>align.correction</c> step): <c>align</c> = U → FAU,
+    /// <c>ucorrection</c> / <c>faupre</c> = that phase only. Marshalled onto the UI thread without
+    /// blocking it, so the operator can Capture / MoveClick while the program awaits.
+    /// </summary>
+    public Task<Result> RunAsync(string appId, CancellationToken ct)
+    {
+        (bool U, bool Fau)? phases = appId.ToLowerInvariant() switch
+        {
+            "align" => (true, true),
+            "ucorrection" => (true, false),
+            "faupre" => (false, true),
+            _ => null,
+        };
+        if (phases is not { } p) return Task.FromResult(Unknown("align.correction", appId));
+
+        return Dispatcher.InvokeAsync(() => _align == null
+                ? Task.FromResult(Result.Fail(ErrorCode.NotSupported, "Alignment panel not attached."))
+                : _align.RunFromProgramAsync(p.U, p.Fau, ct))
+            .Task.Unwrap();
+    }
+
     private IUtilityApp? Find(string id)
         => _apps.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.OrdinalIgnoreCase));
 

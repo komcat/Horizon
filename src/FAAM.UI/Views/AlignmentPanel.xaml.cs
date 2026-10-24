@@ -103,6 +103,17 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     /// <summary>Begins the FAU pre-align phase only (legacy <c>faupre</c> app id).</summary>
     public void RequestStartFau() => _ = RunSequenceAsync(runU: false, runFau: true);
 
+    /// <summary>
+    /// Runs the requested phases from a program / deck (<c>align.correction</c> block via
+    /// <see cref="IUtilityAppHost.RunAsync"/>) and completes only when the chain ends. The
+    /// calling program already holds the Process gate, so that is not treated as "busy"; a
+    /// program Stop (<paramref name="ct"/>) aborts the run, and a panel Stop fails the step.
+    /// Must be called on the UI thread. The operator still answers each point with Capture
+    /// (inline or on the camera feed) and may MoveClick the live view in between.
+    /// </summary>
+    public Task<Result> RunFromProgramAsync(bool runU, bool runFau, CancellationToken ct)
+        => RunSequenceCoreAsync(runU, runFau, fromProgram: true, ct);
+
     /// <summary>Cancels an in-flight run (utility-app <c>app.stop</c>); no-op when idle.</summary>
     public void RequestStop()
     {
@@ -378,19 +389,29 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         await RunSequenceAsync(runU: true, runFau: true);
     }
 
+    /// <summary>Panel / app-id entry point — the outcome is shown on the status line, not returned.</summary>
+    private Task RunSequenceAsync(bool runU, bool runFau)
+        => RunSequenceCoreAsync(runU, runFau, fromProgram: false, CancellationToken.None);
+
+    private static Result Cancelled() => Result.Fail(ErrorCode.ProcessCancelled, "Alignment cancelled.");
+
     /// <summary>
     /// Runs the requested phases in order (U then FAU). The chain stops if a phase is
     /// cancelled or errors; a "declined" U (angle below threshold) still proceeds to FAU.
+    /// Returns the chain's outcome (used by the program block; the panel only shows it).
     /// </summary>
-    private async Task RunSequenceAsync(bool runU, bool runFau)
+    private async Task<Result> RunSequenceCoreAsync(bool runU, bool runFau, bool fromProgram, CancellationToken external)
     {
-        if (_host == null || _running) return;
+        if (_host == null) return Result.Fail(ErrorCode.OperationFailed, "Alignment panel not attached.");
+        if (_running) return Result.Fail(ErrorCode.OperationFailed, "An alignment run is already in progress.");
 
-        if (_host.Activity.ProcessBusy || _host.Activity.AlignmentBusy)
+        // A program calling us holds the Process gate itself — only another alignment blocks it.
+        bool busy = fromProgram ? _host.Activity.AlignmentBusy : _host.Activity.ProcessBusy || _host.Activity.AlignmentBusy;
+        if (busy)
         {
             SetStatus(Phase.None, "Busy — wait for the current run");
             Log(LogLevel.Warning, "Alignment blocked: a process step or alignment is running.");
-            return;
+            return Result.Fail(ErrorCode.OperationFailed, "Alignment blocked: another alignment / scan is running.");
         }
 
         // Every reference point a phase will navigate must be taught first.
@@ -401,19 +422,21 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         {
             SetStatus(Phase.None, $"Save these first: {string.Join(", ", missing)}");
             Log(LogLevel.Warning, $"Alignment: cannot start — untaught points: {string.Join(", ", missing)}.");
-            return;
+            return Result.Fail(ErrorCode.InvalidParameter, $"Untaught reference points: {string.Join(", ", missing)}.");
         }
 
         _running = true;
         RaiseRunState();
         RefreshStartEnabled();   // morph Start → Stop immediately
         _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.Sequence, "started",
-            $"Start correction (U={runU}, FAU={runFau})"));
-        var cts = new CancellationTokenSource();
+            $"Start correction (U={runU}, FAU={runFau}{(fromProgram ? ", program" : "")})"));
+        // A program Stop cancels the linked token; the panel's own Stop cancels it directly.
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(external);
         _cts = cts;
         _activity = _host.Activity.Begin(ActivityKind.Alignment, "Alignment (U → FAU)");
 
         bool handoffClimb = false;
+        var result = Result.Ok();
         try
         {
             // Optional automatic vision U-correction: measure the PIC/FAU facet angles and rotate hex U
@@ -421,7 +444,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
             if (runU && _host.Settings.Current.FindFirstLight.AutoVisionUCorrection)
             {
                 var outcome = await TryVisionUCorrectionAsync(cts.Token);
-                if (cts.IsCancellationRequested) return;
+                if (cts.IsCancellationRequested) return Cancelled();
                 if (outcome == VisionUOutcome.Applied) runU = false;   // vision handled U — skip manual capture
                 // Fallback → leave runU true so the manual capture flow below runs.
             }
@@ -452,8 +475,13 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
                         }
                         : null));
 
-                if (cts.IsCancellationRequested) return;
-                if (!rU.IsSuccess) { runFau = false; Log(LogLevel.Warning, "Alignment: U correction failed — skipping FAU pre-align."); }
+                if (cts.IsCancellationRequested) return Cancelled();
+                if (!rU.IsSuccess)
+                {
+                    runFau = false;
+                    result = Result.Fail(rU.Error, $"U correction failed: {rU.Message}");
+                    Log(LogLevel.Warning, "Alignment: U correction failed — skipping FAU pre-align.");
+                }
             }
 
             if (runFau && !cts.IsCancellationRequested)
@@ -482,6 +510,9 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
                         }
                         : null));
 
+                if (cts.IsCancellationRequested) return Cancelled();
+                if (!rF.IsSuccess) result = Result.Fail(rF.Error, $"FAU pre-align failed: {rF.Message}");
+
                 // End of corrections: find the Sagnac signal in XY (Stage 1 X line → Stage 2 grid).
                 if (rF.IsSuccess && !cts.IsCancellationRequested && _gridEnabled)
                 {
@@ -497,11 +528,13 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         catch (OperationCanceledException)
         {
             SetStatus(_phase, "Cancelled.");
+            return Cancelled();
         }
         catch (System.Exception ex)
         {
             SetStatus(_phase, $"Error: {ex.Message}");
             Log(LogLevel.Error, $"Alignment run error: {ex.Message}");
+            return Result.Fail(ErrorCode.OperationFailed, $"Alignment run error: {ex.Message}");
         }
         finally
         {
@@ -527,6 +560,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
                 Log(LogLevel.Info, "Grid search found signal — climb disabled in settings, stopping here.");
             }
         }
+        return result;
     }
 
     /// <summary>

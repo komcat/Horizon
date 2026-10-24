@@ -73,6 +73,19 @@ public static class OpCatalogHelp
             },
         },
 
+        // ===== Align =====
+
+        ["align.correction"] = new()
+        {
+            Summary = "Run the Run-page \"Start correction\" (U correction → FAU pre-align) and wait until it finishes.",
+            Usage = "Same routine as the button on the U CORR → FAU PRE-ALIGN panel: optional vision U, then the gantry-main reference points (UCorr_P1/P2/F1/F2, FauPre_Out1/Out2/Fiber1/Fiber2 — all must be taught). At each point the operator refines the location by clicking the live view (MoveClick) and presses Capture (on the panel or the camera feed); the correction is then applied automatically, followed by the grid search if Find First Light is on.\n\nUnlike \"Open & Run App\", the sequence WAITS here. A Cancel on the prompt, the panel's Stop, or a failed phase fails the step; a program Stop aborts the correction. FAAM.UI only.",
+            ParamNotes = new[]
+            {
+                ("runU", "Run the U-correction phase (angle on hex U)."),
+                ("runFau", "Run the FAU pre-align phase (hex Y/Z move). If U fails, FAU is skipped and the step fails."),
+            },
+        },
+
         // ===== Motion =====
 
         ["motion.moveToPosition"] = new()

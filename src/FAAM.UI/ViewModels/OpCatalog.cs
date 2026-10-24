@@ -428,6 +428,14 @@ public static class OpCatalog
             }),
         // Aborts a climb started in a parallel lane (Start blocks its own lane). No-op when idle.
         new("hillclimb.stop", "Stop Hill Climb", "Align", DeviceKind.None, System.Array.Empty<ParamSpec>()),
+        // The Run-page "Start correction" (U correction → FAU pre-align), awaited to completion.
+        // The operator confirms each gantry-main point on the Run page (Capture; MoveClick between).
+        new("align.correction", "U → FAU Correction", "Align", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("runU", "Run U correction", ParamKind.Bool, "true"),
+                new ParamSpec("runFau", "Run FAU pre-align", ParamKind.Bool, "true"),
+            }),
 
         // ---- App (Run-page utility springboard) ----
         // Drive the Run-page utility apps from a sequence. 'appId' is one of:
