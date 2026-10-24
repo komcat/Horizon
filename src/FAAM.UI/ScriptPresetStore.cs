@@ -47,7 +47,7 @@ public sealed class ScriptPresetSettings
 /// <summary>
 /// Machine-global script presets in <c>faam_script_presets.json</c>, edited on Machine › Settings
 /// and picked by the Run-page Scanning script buttons. Script names resolve in the active
-/// product. Before the file exists the FAU climb presets are offered as defaults (written on
+/// product. Before the file exists the FAU climb + grid scan + W optimize presets are offered as defaults (written on
 /// the first Settings save).
 /// </summary>
 public static class ScriptPresetStore
@@ -111,5 +111,7 @@ public static class ScriptPresetStore
                 Args = "{ sets = {{2,0.5},{1,0.5},{0.5,0.25}} }" },
         new() { Name = "FAU XY only", Script = "FAU_PowerClimb",
                 Args = "{ z = false, sets = {{0,0.5},{0,0.25}} }" },
+        new() { Name = "FAU grid scan", Script = "FAU_GridScan", Args = "" },
+        new() { Name = "FAU W optimize", Script = "FAU_WOptimize", Args = "" },
     };
 }

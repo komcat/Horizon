@@ -414,7 +414,7 @@ public static class OpCatalogHelp
             ParamNotes = new[]
             {
                 ("script", "Which .moon script to run — the drop-down lists this product's saved scripts."),
-                ("args", "Optional arguments, a Lua table the script reads as 'args' — e.g. { preset = \"fine\" } or { z = false, sets = {{0,0.5},{0,0.25}} }. The outer braces may be left off. Blank = the script's own defaults. Stored on the block, so the program's version history records them."),
+                ("args", "Optional arguments, a Lua table the script reads as 'args' — e.g. { preset = \"fine\" } or { z = false, sets = {{0,0.5},{0,0.25}} }. The outer braces may be left off. Blank = the script's own defaults. Stored on the block, so the program's version history records them.\n\nFAU_PowerClimb examples (every key optional; an unknown key fails the script before anything moves):\n  coarse, climb every set:  { sets = {{10,1},{5,1},{2,0.5}}, exit = false }\n  fine:  { sets = {{1,0.5},{0.5,0.25}} }\n  fixed exit level:  { targets = {{aboveUa = 0, sagV = 1.8}} }\n  exit by photo current (highest aboveUa first):  { targets = {{aboveUa = 800, sagV = 2.0}, {aboveUa = 500, sagV = 1.5}} }\n  X/Y only:  { z = false, sets = {{0,0.5},{0,0.25}} }\nAll keys: docs/fau-power-climb-arguments.md"),
             },
         },
 
