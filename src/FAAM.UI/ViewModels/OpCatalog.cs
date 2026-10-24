@@ -12,14 +12,16 @@ public enum DeviceKind { None, Motion, Io, Pneumatic, Camera, Lighting, PowerSup
 /// options are filled by the block (positions from the chosen device, the axis
 /// list, or Set/Clear); the rest are a text box / number box / check box.
 /// </summary>
-public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName, SignalName, Operator, MotionDeviceName, DispenseRoutineName, ScriptName, LightName, LightColor }
+public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName, SignalName, Operator, MotionDeviceName, DispenseRoutineName, ScriptName, LightName, LightColor, Choice }
 
 /// <summary>
 /// One parameter of an op — its persisted key, a display label, the editor widget, and a default value.
 /// <paramref name="PositionDevice"/> pins a <see cref="ParamKind.PositionName"/> picker to a fixed motion
 /// device (for device-less ops, e.g. the align.* blocks whose points live on gantry-main); null = the block's device.
+/// <paramref name="Choices"/> is the fixed drop-down list of a <see cref="ParamKind.Choice"/> param.
 /// </summary>
-public sealed record ParamSpec(string Key, string Label, ParamKind Kind, string Default = "", string? PositionDevice = null);
+public sealed record ParamSpec(string Key, string Label, ParamKind Kind, string Default = "", string? PositionDevice = null,
+    string[]? Choices = null);
 
 /// <summary>
 /// A command the operator can drop into a sequence — maps to a Layer 2
@@ -446,6 +448,42 @@ public static class OpCatalog
         // Accuracy place FAU alone (the FAU pre-align): Out1/Out2 vs Fiber1/Fiber2 → hex Y/Z move
         // to the gap/angle target, then the waveguide-angle Y+ follow-up.
         new("align.placeFau", "Accuracy Place FAU", "Align", DeviceKind.None, PlaceFauParams()),
+
+        // FAU alignment blocks — typed front-ends for the product's FAU_GridScan / FAU_PowerClimb /
+        // FAU_WOptimize scripts (Layer 2 FauScriptBlocks maps each field to a script argument; blank =
+        // the script default). 'moreArgs' passes any other script key (Lua table text, wins last).
+        new("fau.gridScan", "FAU Grid Scan", "Align", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("axes", "Axes (line, sweep)", ParamKind.Choice, "X,Y", Choices: new[] { "X,Y", "Y,X" }),
+                new ParamSpec("lineRangeUm", "Line range ± (µm)", ParamKind.Number, "50"),
+                new ParamSpec("lineStepUm", "Line step (µm)", ParamKind.Number, "10"),
+                new ParamSpec("sweep", "Sweep the 2nd axis at every line step", ParamKind.Bool, "true"),
+                new ParamSpec("sweepRangeUm", "Sweep range ± (µm)", ParamKind.Number, "50"),
+                new ParamSpec("sweepStepUm", "Sweep step (µm)", ParamKind.Number, "5"),
+                new ParamSpec("climb", "Climb at the first signal", ParamKind.Bool, "true"),
+                new ParamSpec("noiseK", "Signal = noise floor + K × noise (K)", ParamKind.Number, "6"),
+                new ParamSpec("minDeltaV", "… but at least (V) over the floor", ParamKind.Number, "0.005"),
+                new ParamSpec("moreArgs", "More arguments (Lua, optional)", ParamKind.Text),
+            }),
+        new("fau.powerClimb", "FAU Power Climb", "Align", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("mode", "Mode", ParamKind.Choice, "coarse", Choices: new[] { "coarse", "fine", "peak XY" }),
+                new ParamSpec("exit", "Exit early at the SAG target", ParamKind.Bool, "true"),
+                new ParamSpec("exitV", "Exit threshold SAG (V, blank = photo-current table)", ParamKind.Number),
+                new ParamSpec("moreArgs", "More arguments (Lua, optional)", ParamKind.Text),
+            }),
+        new("fau.wOptimize", "FAU W Optimize", "Align", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("wStep", "W step (deg)", ParamKind.Number, "0.15"),
+                new ParamSpec("wLimitDeg", "Max W change (deg)", ParamKind.Number, "1.5"),
+                new ParamSpec("maxWSteps", "Max W steps", ParamKind.Number, "10"),
+                new ParamSpec("xySets", "XY centring steps (µm, coarse to fine)", ParamKind.Text, "1, 0.5"),
+                new ParamSpec("minGainPct", "Min gain to count as a rise (%)", ParamKind.Number, "0.5"),
+                new ParamSpec("moreArgs", "More arguments (Lua, optional)", ParamKind.Text),
+            }),
 
         // ---- App (Run-page utility springboard) ----
         // Drive the Run-page utility apps from a sequence. 'appId' is one of:

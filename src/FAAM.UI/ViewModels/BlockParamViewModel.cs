@@ -36,6 +36,11 @@ public sealed class BlockParamViewModel : ObservableObject
         if (spec.Kind == ParamKind.LightColor)
             foreach (var c in Horizon.Engine.LightColors.Names)
                 Options.Add(c);
+
+        // Fixed choice list from the catalog (e.g. FAU Power Climb's mode).
+        if (spec.Kind == ParamKind.Choice)
+            foreach (var c in spec.Choices ?? Array.Empty<string>())
+                Options.Add(c);
     }
 
     public string Key => _spec.Key;
@@ -49,7 +54,31 @@ public sealed class BlockParamViewModel : ObservableObject
     public string StringValue
     {
         get => _stringValue;
-        set { if (SetField(ref _stringValue, value)) OnPropertyChanged(nameof(BoolValue)); }
+        set
+        {
+            if (!SetField(ref _stringValue, value)) return;
+            OnPropertyChanged(nameof(BoolValue));
+            GoCommand?.RaiseCanExecuteChanged();
+            TeachCommand?.RaiseCanExecuteChanged();
+        }
+    }
+
+    /// <summary>Go: move <see cref="PositionDevice"/> to the chosen position. Set by the owning block for pinned position pickers; null otherwise.</summary>
+    public AsyncRelayCommand? GoCommand { get; private set; }
+
+    /// <summary>Teach here: save <see cref="PositionDevice"/>'s current pose under the chosen name. Null unless pinned.</summary>
+    public AsyncRelayCommand? TeachCommand { get; private set; }
+
+    /// <summary>True when the Go / Teach here buttons are shown beside the picker.</summary>
+    public bool HasPositionActions => GoCommand != null;
+
+    /// <summary>Wires the Go / Teach here handlers (both need a position name).</summary>
+    public void SetPositionActions(Func<Task> go, Func<Task> teach)
+    {
+        bool HasName() => !string.IsNullOrWhiteSpace(_stringValue);
+        GoCommand = new AsyncRelayCommand(go, HasName);
+        TeachCommand = new AsyncRelayCommand(teach, HasName);
+        OnPropertyChanged(nameof(HasPositionActions));
     }
 
     /// <summary>

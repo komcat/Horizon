@@ -30,7 +30,9 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
     private double _gridStepUm = 5;
     private int _maxGridNodes = 4096;
 
-    private double _detectDeltaV = 0.02;
+    private double _detectDeltaV = 0.005;
+    private double _noiseK = 6;
+    private bool _stopOnSignal = true;
     private double _dropFraction = 0.3;
     private int _dropConfirmCount = 2;
 
@@ -75,6 +77,8 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
 
     // --- Detection (shared by both stages) ---
     public double DetectDeltaV { get => _detectDeltaV; set => SetField(ref _detectDeltaV, value); }
+    public double NoiseK { get => _noiseK; set => SetField(ref _noiseK, value); }
+    public bool StopOnSignal { get => _stopOnSignal; set => SetField(ref _stopOnSignal, value); }
     public double DropFraction { get => _dropFraction; set => SetField(ref _dropFraction, value); }
     public int DropConfirmCount { get => _dropConfirmCount; set => SetField(ref _dropConfirmCount, value); }
 
@@ -110,6 +114,8 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
         GridStepUm = s.GridStepUm;
         MaxGridNodes = s.MaxGridNodes;
         DetectDeltaV = s.DetectDeltaV;
+        NoiseK = s.NoiseK;
+        StopOnSignal = s.StopOnSignal;
         DropFraction = s.DropFraction;
         DropConfirmCount = s.DropConfirmCount;
         HillClimbEnabled = s.HillClimbEnabled;
@@ -136,6 +142,8 @@ public sealed class FindFirstLightSettingsViewModel : ObservableObject
         GridStepUm = _gridStepUm,
         MaxGridNodes = _maxGridNodes,
         DetectDeltaV = _detectDeltaV,
+        NoiseK = _noiseK,
+        StopOnSignal = _stopOnSignal,
         DropFraction = _dropFraction,
         DropConfirmCount = _dropConfirmCount,
         HillClimbEnabled = _hillClimbEnabled,

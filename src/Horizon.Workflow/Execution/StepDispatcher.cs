@@ -903,6 +903,18 @@ internal sealed class StepDispatcher
             case "script.run":
                 return await _runScript(Str(step, "script", ctx), Str(step, "args", ctx), ct);
 
+            // --- FAU alignment blocks: typed front-ends for the product's FAU_PowerClimb /
+            //     FAU_GridScan / FAU_WOptimize scripts (the block fields become the script's args). ---
+            case "fau.powerclimb":
+            case "fau.gridscan":
+            case "fau.woptimize":
+            {
+                var call = FauScriptBlocks.Compose(step.Op, key => Has(step, key) ? Str(step, key, ctx).Trim() : null);
+                if (!call.IsSuccess) return Result.Fail(call.Error, $"{step.Op}: {call.Message}");
+                _log(LogLevel.Info, $"{step.Op} → {call.Value.Script} {call.Value.Args.Replace('\n', ' ')}");
+                return await _runScript(call.Value.Script, call.Value.Args, ct);
+            }
+
             case "flow.wait":
             {
                 var ms = (int)Num(step, "ms", ctx);

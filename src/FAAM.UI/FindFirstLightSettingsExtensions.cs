@@ -27,6 +27,8 @@ public static class FindFirstLightSettingsExtensions
         c.GridStepUm = s.GridStepUm;
         c.MaxGridNodes = s.MaxGridNodes;
         c.DetectDeltaV = s.DetectDeltaV;
+        c.NoiseK = s.NoiseK;
+        c.StopOnSignal = s.StopOnSignal;
         c.DropFraction = s.DropFraction;
         c.DropConfirmCount = s.DropConfirmCount;
         return c;

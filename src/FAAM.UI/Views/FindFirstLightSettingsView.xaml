@@ -116,7 +116,7 @@
 
                 <TextBlock Grid.Row="2" Grid.Column="0" Text="Exit above (V)" Style="{StaticResource FieldLabel}" />
                 <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding ExitAboveV}" />
-                <TextBlock Grid.Row="2" Grid.Column="2" Text="stop the search where SAG PWR exceeds this (absolute); 0 = off" Style="{StaticResource Hint}" />
+                <TextBlock Grid.Row="2" Grid.Column="2" Text="extra absolute stop level (V); 0 = off — the noise-floor rule below is the normal stop" Style="{StaticResource Hint}" />
             </Grid>
 
             <!-- ===== Stage 2: Y+ line-scan fallback ===== -->
@@ -153,6 +153,10 @@
 
             <!-- ===== Detection (shared) ===== -->
             <TextBlock Text="Detection (shared by both stages)" Style="{StaticResource SectionHeader}" />
+            <TextBlock Text="Signal = a significant rise over the unit's own noise floor (the median of the readings — the dark level, which differs per unit and may be negative): reading &gt; floor + max(Noise K × baseline std, Detect Δ)."
+                       Foreground="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,0,0,8" />
+            <CheckBox Content="Stop at the first significant point (re-measured before it counts)" Foreground="{StaticResource Text}" Margin="0,0,0,8"
+                      IsChecked="{Binding StopOnSignal}" />
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -163,19 +167,24 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Detect Δ (V)" Style="{StaticResource FieldLabel}" />
-                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding DetectDeltaV}" />
-                <TextBlock Grid.Row="0" Grid.Column="2" Text="rise over baseline that counts as &quot;signal seen&quot;" Style="{StaticResource Hint}" />
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Noise K" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding NoiseK}" />
+                <TextBlock Grid.Row="0" Grid.Column="2" Text="significant rise = K × the baseline noise (std)" Style="{StaticResource Hint}" />
 
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Drop fraction" Style="{StaticResource FieldLabel}" />
-                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding DropFraction}" />
-                <TextBlock Grid.Row="1" Grid.Column="2" Text="Stage-1 past-crest early-exit drop (0..1)" Style="{StaticResource Hint}" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Detect Δ min (V)" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding DetectDeltaV}" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="… but at least this much over the floor" Style="{StaticResource Hint}" />
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="Drop confirm" Style="{StaticResource FieldLabel}" />
-                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DropConfirmCount}" />
-                <TextBlock Grid.Row="2" Grid.Column="2" Text="consecutive past-crest reads to confirm early exit" Style="{StaticResource Hint}" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Drop fraction" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DropFraction}" />
+                <TextBlock Grid.Row="2" Grid.Column="2" Text="Stage-1 past-crest early-exit drop (0..1), when not stopping at the first signal" Style="{StaticResource Hint}" />
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Drop confirm" Style="{StaticResource FieldLabel}" />
+                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding DropConfirmCount}" />
+                <TextBlock Grid.Row="3" Grid.Column="2" Text="consecutive past-crest reads to confirm early exit" Style="{StaticResource Hint}" />
             </Grid>
 
             <!-- ===== Hand-off chain ===== -->

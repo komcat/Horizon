@@ -208,8 +208,18 @@ public sealed record FindFirstLightSettings
 
     // --- Detection (shared by both stages) ---
 
-    /// <summary>Absolute rise over baseline (V) that counts as "signal seen".</summary>
-    public double DetectDeltaV { get; init; } = 0.02;
+    /// <summary>
+    /// Minimum rise (V) over the noise floor that counts as signal. The floor is the running median
+    /// of the readings (dark level, per unit); the rise needed is max(<see cref="NoiseK"/> × baseline
+    /// std, this).
+    /// </summary>
+    public double DetectDeltaV { get; init; } = 0.005;
+
+    /// <summary>Significant rise = this × the baseline noise (std), but at least <see cref="DetectDeltaV"/>.</summary>
+    public double NoiseK { get; init; } = 6;
+
+    /// <summary>Stop the search at the first significant (re-measured) point instead of finishing the line.</summary>
+    public bool StopOnSignal { get; init; } = true;
 
     /// <summary>Stage-1 early-exit drop, as a fraction of the peak's height above baseline (0..1).</summary>
     public double DropFraction { get; init; } = 0.3;

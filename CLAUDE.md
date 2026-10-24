@@ -114,6 +114,15 @@ defines its own program/recipe/position formats.
     the FAU pre-align) — each carries its points / gap / angle / waveguide angle / Max U /
     Max FAU move as `AlignmentRunOverrides` through `IUtilityAppHost.RunAsync` (blank = panel
     default). FAU pre-align refuses a total move over `MaxCorrectionMm` (default 0.5 mm).
+    Their point pickers are pinned to gantry-main (`ParamSpec.PositionDevice`) and carry
+    **Go** / **Teach here** buttons in the Engineer param panel (refused while anything runs).
+  - **FAU blocks** `fau.gridScan` / `fau.powerClimb` / `fau.wOptimize` are typed front-ends for the
+    product's `FAU_GridScan` / `FAU_PowerClimb` / `FAU_WOptimize` `.moon` scripts
+    (`Execution/FauScriptBlocks.cs` maps each field to a script arg; `moreArgs` passes any other key).
+    **Signal detection is noise-floor relative, never a fixed voltage** (dark level differs per unit,
+    e.g. −0.031 / +0.002 V): floor = running median of the readings, signal = floor +
+    max(K × baseline σ, min Δ), re-measured before it counts — in both `FAU_GridScan` and the
+    built-in Find First Light `FauGridSearchEngine` (`NoiseK`, `StopOnSignal`, `DetectDeltaV` = min Δ).
 - **Power supply (`psu.*`)** — the same op set on all three surfaces: program blocks
   (`StepDispatcher`), `.moon` (`machine.psu.*`) and `.hrcp` (`psu.<dev>.*`), incl.
   `psu.disconnect` (outputs forced OFF first). **`psu.powerUp`** is a verified power-up —

@@ -70,11 +70,23 @@ public sealed class GridSearchConfig
     // ---- Signal detection ----
 
     /// <summary>
-    /// Absolute rise over the baseline (V) that counts as "signal seen": <c>v &gt; vBase + this</c>.
-    /// Absolute (not relative) so a near-zero or negative baseline (e.g. −0.031 V) is handled
-    /// cleanly — a percentage threshold blows up around zero.
+    /// Minimum rise (V) over the noise floor that counts as signal. The floor is the running median
+    /// of every reading (the unit's own dark level — e.g. −0.031, −0.024 or +0.002 V; the baseline
+    /// alone until 3 readings), and a reading is significant when
+    /// <c>v &gt; floor + max(NoiseK × baseline σ, DetectDeltaV)</c>. Absolute (not a percentage) so a
+    /// near-zero or negative floor is handled cleanly.
     /// </summary>
-    public double DetectDeltaV { get; set; } = 0.02;
+    public double DetectDeltaV { get; set; } = 0.005;
+
+    /// <summary>Significant rise = this × the baseline noise (σ), but at least <see cref="DetectDeltaV"/>.</summary>
+    public double NoiseK { get; set; } = 6;
+
+    /// <summary>
+    /// Stop at the first significant point (after re-measuring it) and park there, instead of finishing
+    /// the line and judging the crest. If the start pose already sees light, the floor drops once the
+    /// sweep reaches the dark and the start pose itself becomes that point.
+    /// </summary>
+    public bool StopOnSignal { get; set; } = true;
 
     /// <summary>
     /// Early-exit drop, as a fraction of the peak's height above baseline. Once signal is seen,
@@ -130,6 +142,8 @@ public sealed class GridSearchConfig
         GridYAxisIndex = GridYAxisIndex,
         MaxGridNodes = MaxGridNodes,
         DetectDeltaV = DetectDeltaV,
+        NoiseK = NoiseK,
+        StopOnSignal = StopOnSignal,
         DropFraction = DropFraction,
         DropConfirmCount = DropConfirmCount,
         SystemVelocity_mmPerS = SystemVelocity_mmPerS,
@@ -162,6 +176,7 @@ public sealed class GridSearchConfig
         if (GridStepUm <= 0) throw new ArgumentException("GridStepUm must be positive.");
         if (MaxGridNodes < 1) throw new ArgumentException("MaxGridNodes must be at least 1.");
         if (DetectDeltaV <= 0) throw new ArgumentException("DetectDeltaV must be positive.");
+        if (!double.IsFinite(NoiseK) || NoiseK < 0) throw new ArgumentException("NoiseK must be ≥ 0.");
         if (DropFraction is <= 0 or >= 1) throw new ArgumentException("DropFraction must be in (0, 1).");
         if (DropConfirmCount < 1) throw new ArgumentException("DropConfirmCount must be at least 1.");
         if (SystemVelocity_mmPerS <= 0) throw new ArgumentException("SystemVelocity_mmPerS must be positive.");

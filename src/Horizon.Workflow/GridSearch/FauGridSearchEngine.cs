@@ -10,9 +10,11 @@ namespace Horizon.Workflow.GridSearch;
 /// the Hill Climber and Auto-W use). Two stages:
 ///
 /// <para><b>Stage 1 — X line search.</b> Record a baseline at centre, jump +<c>LineJumpUm</c> in X,
-/// then sweep back in −X by <c>LineStepUm</c> for <c>LineSteps</c> steps. A reading that clears
-/// <c>vBase + DetectDeltaV</c> means "signal seen"; once seen, the sweep ends early when it has
-/// clearly walked off the crest (drop &gt; <c>DropFraction · (peak − vBase)</c> for
+/// then sweep back in −X by <c>LineStepUm</c> for <c>LineSteps</c> steps. "Signal" is a significant
+/// rise over the unit's own noise floor — the running median of the readings (dark level, any sign)
+/// plus <c>max(NoiseK · baseline σ, DetectDeltaV)</c>. With <c>StopOnSignal</c> the search re-measures
+/// the first significant point and stops there; otherwise the sweep ends early when it has clearly
+/// walked off the crest (drop &gt; <c>DropFraction · (peak − floor)</c> for
 /// <c>DropConfirmCount</c> readings). On signal, the stage parks at the line peak. With
 /// <c>LineYSweepEnabled</c>, every −X step is followed by a Y sweep ±<c>LineYRangeUm</c> at
 /// <c>LineYStepUm</c> pitch (the crest test then uses the best reading of that X column). Any
@@ -53,9 +55,17 @@ public sealed class FauGridSearchEngine
     private double[] _posCentre = Array.Empty<double>();
     private double _peakV;
     private double[]? _posPeak;
+    private int _peakIndex;
     private int _pointsMeasured;
     private int _measIndex;
     private bool _exitHit;
+    private bool _signalStop;
+
+    // Noise floor: every reading (baseline first) and the same values ascending — the floor is their
+    // median (the unit's dark level, whatever its sign), the baseline alone until 3 readings.
+    private readonly List<(double V, double[] Pos)> _points = new();
+    private readonly List<double> _sorted = new();
+    private double _delta;   // significant rise over the floor: max(NoiseK × σ, DetectDeltaV)
 
     public event EventHandler<GridSearchStateChangedEventArgs>? StateChanged;
     public event EventHandler<GridSearchBaselineRecordedEventArgs>? BaselineRecorded;
@@ -112,9 +122,13 @@ public sealed class FauGridSearchEngine
         var result = new GridSearchResult { StartedAt = DateTime.Now };
         _peakV = double.NegativeInfinity;
         _posPeak = null;
+        _peakIndex = 0;
         _pointsMeasured = 0;
         _measIndex = 0;
         _exitHit = false;
+        _signalStop = false;
+        _points.Clear();
+        _sorted.Clear();
 
         try
         {
@@ -138,15 +152,18 @@ public sealed class FauGridSearchEngine
             // ---- Baseline at centre ----
             SetState(GridSearchState.RecordingBaseline);
             await RecordBaselineAsync(ct).ConfigureAwait(false);
-            _detectLevel = _vBase + _config.DetectDeltaV;
+            _delta = Math.Max(_config.NoiseK * _baselineSigma, _config.DetectDeltaV);
+            _detectLevel = _vBase + _delta;   // the level while the floor is still the baseline
             _posCentre = await ReadPositionAsync(ct).ConfigureAwait(false);
-            UpdatePeak(_vBase, _posCentre);   // seed the peak at the centre baseline
+            AddReading(_vBase, _posCentre);   // seed the floor + peak at the centre baseline
             result.VBaseline = _vBase;
             result.BaselineSigma = _baselineSigma;
             result.DetectLevel = _detectLevel;
             BaselineRecorded?.Invoke(this, new GridSearchBaselineRecordedEventArgs(_vBase, _baselineSigma, _detectLevel));
             _log(LogLevel.Info,
-                $"Grid search baseline: V={_vBase:F6}, σ={_baselineSigma:F6}, detect ≥ {_detectLevel:F6} V ({_feedback.Description}).");
+                $"Grid search baseline: V={_vBase:F6}, σ={_baselineSigma:F6}; signal = noise floor (median of readings) + " +
+                $"{_delta:F6} V (max of {_config.NoiseK:0.##}σ, {_config.DetectDeltaV:0.####} V); " +
+                $"{(_config.StopOnSignal ? "stop at the first confirmed signal" : "finish the line")} ({_feedback.Description}).");
 
             // ---- Stage 1: X line (skipped when disabled) ----
             bool signalSeen = false;
@@ -171,7 +188,9 @@ public sealed class FauGridSearchEngine
                 FillResult(result, GridSearchStopReason.SignalFoundLine, signalFound: true);
                 result.Message = _exitHit
                     ? $"Stage 1: {_peakV:F6} V > exit {_config.ExitAboveV:0.###} V — stopped there ({result.PointsMeasured} pts). Hand off to hill climb."
-                    : $"Stage 1: signal found — peak {_peakV:F6} V at line ({result.PointsMeasured} pts). Hand off to hill climb.";
+                    : _signalStop
+                        ? $"Stage 1: signal {_peakV:F6} V over floor {Floor():F6} V — stopped there ({result.PointsMeasured} pts). Hand off to hill climb."
+                        : $"Stage 1: signal found — peak {_peakV:F6} V at line ({result.PointsMeasured} pts). Hand off to hill climb.";
             }
             else
             {
@@ -284,9 +303,9 @@ public sealed class FauGridSearchEngine
         {
             string label = RowLabel(rowLabel, $"+{_config.LineJumpUm:0.#} µm");
             double v = await MeasureHereAsync(ct).ConfigureAwait(false);
-            if (v > _detectLevel) signalSeen = true;
+            if (Significant(v)) signalSeen = true;
             RaiseMeasured(phase, label, v, signalSeen);
-            if (CheckExit(v, label)) return true;
+            if (CheckExit(v, label) || await SignalStopAsync(ct).ConfigureAwait(false)) return true;
         }
 
         // Downward sweep: apex − k·step, in absolute coordinates from the row centre.
@@ -299,9 +318,9 @@ public sealed class FauGridSearchEngine
             double[] stepPos = WithAxis(rowCentre, axis, centreAxis + jumpMm - (k * stepMm));
             await MoveToPeakOrThrowAsync(stepPos, "line step", ct).ConfigureAwait(false);
             double v = await MeasureHereAsync(ct).ConfigureAwait(false);
-            if (v > _detectLevel) signalSeen = true;
+            if (Significant(v)) signalSeen = true;
             RaiseMeasured(phase, xLabel, v, signalSeen);
-            if (CheckExit(v, xLabel)) return true;
+            if (CheckExit(v, xLabel) || await SignalStopAsync(ct).ConfigureAwait(false)) return true;
 
             // Y sweep at this X: −range … +range (centre already measured above). The next X step's
             // absolute move returns Y to the row centre.
@@ -316,16 +335,16 @@ public sealed class FauGridSearchEngine
                 await MoveToPeakOrThrowAsync(
                     WithAxis(stepPos, yAxis, stepPos[yAxis] + (yUm / 1000.0)), "Y sweep step", ct).ConfigureAwait(false);
                 double vy = await MeasureHereAsync(ct).ConfigureAwait(false);
-                if (vy > _detectLevel) signalSeen = true;
+                if (Significant(vy)) signalSeen = true;
                 RaiseMeasured(phase, yLabel, vy, signalSeen);
-                if (CheckExit(vy, yLabel)) return true;
+                if (CheckExit(vy, yLabel) || await SignalStopAsync(ct).ConfigureAwait(false)) return true;
                 columnBest = Math.Max(columnBest, vy);
             }
 
-            // Past-crest guardrail: drop measured against the peak's height above baseline, which is
-            // ≥ DetectDeltaV > 0 once signalSeen — well-defined for any baseline sign. With a Y sweep
-            // the column's best reading stands for this X step.
-            if (signalSeen && (_peakV - columnBest) > _config.DropFraction * (_peakV - _vBase))
+            // Past-crest guardrail: drop measured against the peak's height above the noise floor,
+            // which is > 0 once signalSeen — well-defined for any floor sign. With a Y sweep the
+            // column's best reading stands for this X step.
+            if (signalSeen && (_peakV - columnBest) > _config.DropFraction * (_peakV - Floor()))
             {
                 dipCount++;
                 if (dipCount >= _config.DropConfirmCount)
@@ -348,8 +367,84 @@ public sealed class FauGridSearchEngine
         await SettleAsync(ct).ConfigureAwait(false);
         double v = await SampleAsync(ct).ConfigureAwait(false);
         double[] pos = await ReadPositionAsync(ct).ConfigureAwait(false);
-        UpdatePeak(v, pos);
+        AddReading(v, pos);
         return v;
+    }
+
+    /// <summary>
+    /// With <see cref="GridSearchConfig.StopOnSignal"/>: when the best point so far is significant
+    /// over the current floor, go back to it and re-measure. Confirmed → true (the search stops; the
+    /// caller parks there). Not confirmed → that point keeps its re-read value and the search goes on,
+    /// so a one-frame glitch can't end it.
+    /// </summary>
+    private async Task<bool> SignalStopAsync(CancellationToken ct)
+    {
+        if (!_config.StopOnSignal || _posPeak == null || !Significant(_peakV)) return false;
+
+        double was = _peakV;
+        await MoveToPeakOrThrowAsync(_posPeak, "confirm signal", ct).ConfigureAwait(false);
+        await SettleAsync(ct).ConfigureAwait(false);
+        double again = await SampleAsync(ct).ConfigureAwait(false);
+        double floor = Floor();
+        if (again > floor + _delta)
+        {
+            _signalStop = true;
+            _log(LogLevel.Info,
+                $"Grid search: signal {was:F6} V confirmed (re-read {again:F6} V > floor {floor:F6} + {_delta:F6} V) — stopping search.");
+            return true;
+        }
+
+        _log(LogLevel.Info,
+            $"Grid search: {was:F6} V not confirmed (re-read {again:F6} V, floor {floor:F6} + {_delta:F6} V) — continuing.");
+        ReplacePeakReading(again);
+        return false;
+    }
+
+    /// <summary>Noise floor: median of every reading so far; the baseline until there are 3.</summary>
+    private double Floor()
+    {
+        int n = _sorted.Count;
+        if (n < 3) return _vBase;
+        return n % 2 == 1 ? _sorted[n / 2] : (_sorted[(n / 2) - 1] + _sorted[n / 2]) / 2;
+    }
+
+    /// <summary>True when <paramref name="v"/> is a significant rise over the noise floor.</summary>
+    private bool Significant(double v) => v > Floor() + _delta;
+
+    /// <summary>Records a reading (floor + peak). The position is copied.</summary>
+    private void AddReading(double v, double[] pos)
+    {
+        _points.Add((v, (double[])pos.Clone()));
+        InsertSorted(v);
+        if (_posPeak == null || v > _peakV) SetPeak(_points.Count - 1);
+    }
+
+    /// <summary>Replaces the peak point's reading with a re-read and re-picks the peak.</summary>
+    private void ReplacePeakReading(double v)
+    {
+        var (old, pos) = _points[_peakIndex];
+        int at = _sorted.BinarySearch(old);
+        if (at >= 0) _sorted.RemoveAt(at);
+        InsertSorted(v);
+        _points[_peakIndex] = (v, pos);
+
+        int best = 0;
+        for (int i = 1; i < _points.Count; i++)
+            if (_points[i].V > _points[best].V) best = i;
+        SetPeak(best);
+    }
+
+    private void SetPeak(int index)
+    {
+        _peakIndex = index;
+        _peakV = _points[index].V;
+        _posPeak = _points[index].Pos;
+    }
+
+    private void InsertSorted(double v)
+    {
+        int at = _sorted.BinarySearch(v);
+        _sorted.Insert(at < 0 ? ~at : at, v);
     }
 
     /// <summary>
@@ -440,16 +535,6 @@ public sealed class FauGridSearchEngine
             if (i < n - 1) await Task.Delay(_config.SampleDelayMs, ct).ConfigureAwait(false);
         }
         return sum / n;
-    }
-
-    /// <summary>Updates the global peak (raw max — no relative threshold; absolute detect handles noise).</summary>
-    private void UpdatePeak(double v, double[] pos)
-    {
-        if (_posPeak == null || v > _peakV)
-        {
-            _peakV = v;
-            _posPeak = (double[])pos.Clone();
-        }
     }
 
     /// <summary>

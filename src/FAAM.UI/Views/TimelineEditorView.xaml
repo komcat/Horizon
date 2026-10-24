@@ -117,8 +117,24 @@
         <DataTemplate x:Key="ComboParam">
             <StackPanel Margin="0,0,0,8">
                 <TextBlock Text="{Binding Label}" Foreground="{StaticResource Subtle}" Margin="0,0,0,2" />
-                <ComboBox ItemsSource="{Binding Options}" IsEditable="True" DropDownOpened="OnParamDropDownOpened"
-                          Text="{Binding StringValue, UpdateSourceTrigger=PropertyChanged}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox ItemsSource="{Binding Options}" IsEditable="True" DropDownOpened="OnParamDropDownOpened"
+                              Text="{Binding StringValue, UpdateSourceTrigger=PropertyChanged}" />
+                    <!-- Pinned position pickers only (align.* points on gantry-main). -->
+                    <Button Grid.Column="1" Content="Go" Margin="4,0,0,0" Padding="8,0" MinWidth="36"
+                            Command="{Binding GoCommand}"
+                            Visibility="{Binding HasPositionActions, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Move the device to this position" />
+                    <Button Grid.Column="2" Content="Teach here" Margin="4,0,0,0" Padding="8,0"
+                            Command="{Binding TeachCommand}"
+                            Visibility="{Binding HasPositionActions, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Save the device's current position under this name (asks first)" />
+                </Grid>
             </StackPanel>
         </DataTemplate>
         <vm:ParamTemplateSelector x:Key="ParamSelector"

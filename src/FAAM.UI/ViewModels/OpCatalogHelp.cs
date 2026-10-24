@@ -123,6 +123,53 @@ public static class OpCatalogHelp
             ParamNotes = PlaceFauNotes,
         },
 
+        ["fau.gridScan"] = new()
+        {
+            Summary = "Find first light: scan hex-right over a line + sweep grid and climb onto the signal as soon as it shows (runs FAU_GridScan).",
+            Usage = "Start after Accuracy Place FAU, with the SiPhOG streaming. The line axis steps from +range to −range; at each step the 2nd axis is swept ±sweep range. Z never moves.\n\nSignal is judged against this unit's own noise floor, not a fixed voltage: the floor is the median of the readings so far (the dark level, which may be negative), and a reading counts when it is more than max(K × the start noise, min) above it. The point is measured again before it counts. If the FAU already sees light at the start, the floor drops as soon as the scan reaches the dark and the climb starts from the start point.\n\nAt the end the FAU is parked on the best point — follow with FAU Power Climb. Runs the product's FAU_GridScan script; its log lines (one per point, '^ signal' marks) go to the log.",
+            ParamNotes = new[]
+            {
+                ("axes", "X,Y = line along X, sweep along Y (default). Y,X swaps them."),
+                ("lineRangeUm", "The line runs from +this to −this (µm) about the start."),
+                ("lineStepUm", "Line step (µm)."),
+                ("sweep", "Sweep the 2nd axis at every line step. Off = a single line."),
+                ("sweepRangeUm", "The sweep covers −this … +this (µm) at each line step."),
+                ("sweepStepUm", "Sweep pitch (µm)."),
+                ("climb", "Stop the grid at the first confirmed signal and climb onto its peak (1 µm steps). Off = finish the grid and park on the best point."),
+                ("noiseK", "Signal = floor + K × the start noise (std of the T0 frames). Higher = fewer false starts, less sensitive."),
+                ("minDeltaV", "Minimum rise over the floor (V), for a unit whose start noise is tiny."),
+                ("moreArgs", "Any other FAU_GridScan key, e.g. { samples = 5, yRows = 12 }. Wins over the fields."),
+            },
+        },
+
+        ["fau.powerClimb"] = new()
+        {
+            Summary = "Climb SAG PWR coarse-to-fine on hex-right (Z+ with Y re-centring, then Y and X) and finish on the best point (runs FAU_PowerClimb).",
+            Usage = "Start where the FAU already couples some light (e.g. after FAU Grid Scan). Each mode is a set of {Z, XY} steps: coarse 10→0.5 µm Z, fine 2→0.5 µm Z, peak XY = X/Y only (no Z). Z never advances more than 40 µm toward the PIC.\n\nExit: the climb stops early once SAG beats the target. Blank threshold = the target from the photo-current table (300/500/800 µA → 1.1/1.5/2.0 V); a number = that SAG level whatever the photo current. Untick Exit to climb every step set.",
+            ParamNotes = new[]
+            {
+                ("mode", "coarse, fine or peak XY."),
+                ("exit", "Stop early once SAG beats the target. Off = climb every step set."),
+                ("exitV", "Fixed exit level (V). Blank = the photo-current table."),
+                ("moreArgs", "Any other FAU_PowerClimb key, e.g. { zBudgetUm = 30 } or { sets = {{1,0.5},{0.5,0.25}} }. Wins over the fields."),
+            },
+        },
+
+        ["fau.wOptimize"] = new()
+        {
+            Summary = "Optimise FAU roll (hex-right W), re-centring X/Y after every W step, and park on the best pose (runs FAU_WOptimize).",
+            Usage = "Start with the FAU coupled (after FAU Power Climb). Probes W+ and W− from the start, then keeps stepping the better direction while SAG rises. X/Y are re-centred after each W move, so a step is judged on the centred reading. Z never moves.",
+            ParamNotes = new[]
+            {
+                ("wStep", "W step (deg)."),
+                ("wLimitDeg", "Never move W more than this from the start (deg)."),
+                ("maxWSteps", "Max W steps in the winning direction."),
+                ("xySets", "X/Y centring steps after each W move (µm), coarse to fine, e.g. 1, 0.5."),
+                ("minGainPct", "A step must beat the best by this % (or 3× the start noise) to count as a rise."),
+                ("moreArgs", "Any other FAU_WOptimize key, e.g. { centreStart = false }. Wins over the fields."),
+            },
+        },
+
         // ===== Motion =====
 
         ["motion.moveToPosition"] = new()

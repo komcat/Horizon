@@ -54,6 +54,9 @@ public sealed class ProcessBlockViewModel : ObservableObject
         {
             var param = bp;
             bp.OptionsProvider = () => PositionNamesFor(param);
+            // Pinned pickers (the align.* points on gantry-main) get Go / Teach here beside them.
+            if (bp.PositionDevice != null)
+                bp.SetPositionActions(() => GoToPositionAsync(param), () => TeachHereAsync(param));
         }
 
         // The Move block's recall preview tracks the chosen position name.
@@ -158,6 +161,11 @@ public sealed class ProcessBlockViewModel : ObservableObject
                 "pneumatic.retract" => "retract",
                 "align.ucorrection" => $"U ≤ {Or(P("maxUDeg"), "2")}°",
                 "align.placefau" => $"gap {Or(P("gapUm"), "panel")} µm @ {Or(P("angleDeg"), "panel")}°",
+                "fau.gridscan" => $"{Or(P("axes"), "X,Y")} ±{Or(P("lineRangeUm"), "50")}/{Or(P("lineStepUm"), "10")} µm",
+                "fau.powerclimb" => Truthy(Or(P("exit"), "true"))
+                    ? $"{Or(P("mode"), "coarse")}{(string.IsNullOrWhiteSpace(P("exitV")) ? "" : $" > {P("exitV")} V")}"
+                    : $"{Or(P("mode"), "coarse")} · no exit",
+                "fau.woptimize" => $"W ±{Or(P("wStep"), "0.15")}° ≤ {Or(P("wLimitDeg"), "1.5")}°",
                 _ => Display,
             };
         }
@@ -242,6 +250,86 @@ public sealed class ProcessBlockViewModel : ObservableObject
     /// <summary>The position-name parameter on the block's own device, if this op has one (Move to Position).</summary>
     private BlockParamViewModel? PositionParam =>
         Params.FirstOrDefault(p => p.Kind == ParamKind.PositionName && p.PositionDevice == null);
+
+    /// <summary>
+    /// Go: moves the picker's pinned device to the named position (refused while a program,
+    /// Run-page step or alignment is running). Holds the alignment gate for the move so the
+    /// Run-page process/alignment Start buttons stay blocked until it ends.
+    /// </summary>
+    private async Task GoToPositionAsync(BlockParamViewModel p)
+    {
+        var device = p.PositionDevice;
+        var name = p.StringValue.Trim();
+        if (device == null || name.Length == 0 || !CanDriveManually("Go")) return;
+
+        if (_host.Process.GetPosition(device, name) == null)
+        {
+            Warn("Go", $"'{name}' is not taught on {device} yet — jog there and press Teach here first.");
+            return;
+        }
+
+        using var gate = _host.Activity.Begin(ActivityKind.Alignment, $"Engineer: go to {name}");
+        var r = await _host.Process.MoveToNamedPositionAsync(device, name);
+        if (r.IsSuccess) Log(LogLevel.Info, $"Go: {device} moved to '{name}'.");
+        else Warn("Go", $"Move {device} to '{name}' failed — {r.Message}");
+    }
+
+    /// <summary>
+    /// Teach here: after a confirm showing the current pose (and the old one, when overwriting),
+    /// saves the pinned device's current position under the chosen name. Keeps the position's
+    /// stored velocity. Refused while anything is running — a run may be using these points.
+    /// </summary>
+    private async Task TeachHereAsync(BlockParamViewModel p)
+    {
+        var device = p.PositionDevice;
+        var name = p.StringValue.Trim();
+        if (device == null || name.Length == 0 || !CanDriveManually("Teach here")) return;
+
+        var now = await _host.Engine.Motion.GetPositionAsync(device);
+        if (!now.IsSuccess)
+        {
+            Warn("Teach here", $"Can't read {device}'s position — {now.Message}");
+            return;
+        }
+
+        var existing = _host.Process.GetPosition(device, name);
+        string Pose(MotionPosition m) => $"X={m.X:F4}  Y={m.Y:F4}  Z={m.Z:F4}";
+        var prompt = existing == null
+            ? $"Create '{name}' on {device} at the current position?\n\n{Pose(now.Value)}"
+            : $"Overwrite '{name}' on {device} with the current position?\n\nNow: {Pose(now.Value)}\nWas: {Pose(existing.Coordinates)}";
+        if (MessageBox.Show(prompt, "Teach here", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        var r = await _host.Process.TeachPositionAsync(device, name, existing?.Velocity ?? 0);
+        if (!r.IsSuccess)
+        {
+            Warn("Teach here", $"Teach '{name}' on {device} failed — {r.Message}");
+            return;
+        }
+        Log(LogLevel.Info, $"Teach here: '{name}' on {device} = {Pose(now.Value)}.");
+        p.RefreshOptions();   // a newly created name shows up in the drop-down
+    }
+
+    /// <summary>False (with a message) while a program, a Run-page step or an alignment is running.</summary>
+    private bool CanDriveManually(string action)
+    {
+        string? why = _host.Process.IsRunning ? "a program / deck is running"
+            : _host.Activity.ProcessBusy ? "a Run-page process step is running"
+            : _host.Activity.AlignmentBusy ? "an alignment or another move is running"
+            : null;
+        if (why == null) return true;
+        Warn(action, $"Not now — {why}.");
+        return false;
+    }
+
+    private void Warn(string title, string message)
+    {
+        Log(LogLevel.Warning, $"{title}: {message}");
+        MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    private void Log(LogLevel level, string message)
+        => _host.Log.Add(new LogEntry(level, DateTimeOffset.Now, "Engineer", message));
 
     /// <summary>Taught positions for a picker — its fixed device if pinned, else the block's device.</summary>
     private IEnumerable<string> PositionNamesFor(BlockParamViewModel p)
