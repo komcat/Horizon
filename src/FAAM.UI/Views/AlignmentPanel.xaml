@@ -54,11 +54,11 @@
     <Border x:Name="RootBorder" Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}" BorderThickness="2"
             CornerRadius="4" Width="280" VerticalAlignment="Top">
         <StackPanel Margin="10">
-            <TextBlock Text="U CORR → FAU PRE-ALIGN" Foreground="{StaticResource Accent}" FontSize="14" FontWeight="Bold"
+            <TextBlock Text="U CORR → ACCURACY PLACE FAU" Foreground="{StaticResource Accent}" FontSize="14" FontWeight="Bold"
                        HorizontalAlignment="Center" Margin="0,2,0,8" />
 
             <!-- One collapsible reference-point group holding BOTH the U-correction points
-                 (P1/P2/F1/F2) and the FAU pre-align points (Out1/Out2/Fiber1/Fiber2), plus
+                 (P1/P2/F1/F2) and the accuracy-place-FAU points (Out1/Out2/Fiber1/Fiber2), plus
                  the FAU target offset. Collapsed by default to keep the widget compact. -->
             <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
                     CornerRadius="3" Padding="8" Margin="0,0,0,8">
@@ -99,7 +99,7 @@
                                     ToolTip="Camera exposure (µs) per U-correction point (0 = leave unchanged)." />
                             <Button Content="⚙ FAU exp" FontSize="10.5" Padding="6,1" Margin="0,0,10,0" Cursor="Hand"
                                     Click="OnEditExposuresFau"
-                                    ToolTip="Camera exposure (µs) per FAU pre-align point (0 = leave unchanged)." />
+                                    ToolTip="Camera exposure (µs) per accuracy-place-FAU point (0 = leave unchanged)." />
                             <CheckBox x:Name="LockBox" Content="Lock" Foreground="{StaticResource Subtle}" FontSize="11"
                                       VerticalAlignment="Center" Checked="OnLockChanged" Unchecked="OnLockChanged"
                                       ToolTip="Lock the Move/Save buttons to prevent accidental clicks" />
@@ -123,8 +123,8 @@
 
                         <Border Height="1" Background="{StaticResource Edge}" Margin="0,10,0,8" />
 
-                        <!-- FAU pre-align reference points. -->
-                        <TextBlock Text="FAU pre-align · Move to" Style="{StaticResource SubHeader}" Margin="0,0,0,4" />
+                        <!-- Accuracy place FAU reference points. -->
+                        <TextBlock Text="Accuracy place FAU · Move to" Style="{StaticResource SubHeader}" Margin="0,0,0,4" />
                         <UniformGrid Columns="2" Rows="2">
                             <Button x:Name="MoveOut1" Style="{StaticResource PointButton}" Content="Out1" Tag="Out1" Margin="0,0,2,4" Click="OnMoveFauPoint" />
                             <Button x:Name="MoveFiber1" Style="{StaticResource PointButton}" Content="Fiber1" Tag="Fiber1" Margin="2,0,0,4" Click="OnMoveFauPoint" />
@@ -142,7 +142,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- Chained run: U correction → (apply U) → FAU pre-align, automatically. -->
+            <!-- Chained run: U correction → (apply U) → accuracy place FAU, automatically. -->
             <Button x:Name="StartButton" Content="Start correction" Height="38" Margin="0,0,0,6"
                     Background="{StaticResource Accent}" Foreground="White" BorderThickness="0"
                     FontSize="14" FontWeight="Bold" Cursor="Hand" Click="OnStart" />

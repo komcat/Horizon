@@ -1498,7 +1498,7 @@ public sealed class ProcessService : IProcessService
             prompt,
             Log);
 
-        Log(LogLevel.Info, $"FAU pre-align started: gantry '{options.GantryDevice}', hexapod '{options.HexapodDevice}'.");
+        Log(LogLevel.Info, $"Accuracy place FAU started: gantry '{options.GantryDevice}', hexapod '{options.HexapodDevice}'.");
         return await routine.RunAsync(options, ct).ConfigureAwait(false);
     }
 

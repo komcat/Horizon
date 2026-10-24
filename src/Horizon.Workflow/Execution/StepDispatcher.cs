@@ -1048,14 +1048,36 @@ internal sealed class StepDispatcher
                 bool runU = !Has(step, "runU") || Bool(step, "runU", ctx);
                 bool runFau = !Has(step, "runFau") || Bool(step, "runFau", ctx);
                 if (!runU && !runFau)
-                    return Result.Fail(ErrorCode.InvalidParameter, "align.correction: enable U correction and/or FAU pre-align.");
+                    return Result.Fail(ErrorCode.InvalidParameter, "align.correction: enable U correction and/or accuracy place FAU.");
 
                 var host = _utilityAppHost();
                 if (host == null) return AppHostMissing("align.correction");
 
+                var ov = ReadAlignmentOverrides(step, ctx);
+                if (!ov.IsSuccess) return Result.Fail(ov.Error, $"align.correction: {ov.Message}");
+
                 string appId = runU && runFau ? "align" : runU ? "ucorrection" : "faupre";
                 _log(LogLevel.Info, $"Alignment correction (U={runU}, FAU={runFau}) — waiting for the operator on the Run page.");
-                return await host.RunAsync(appId, ct).ConfigureAwait(false);
+                return await host.RunAsync(appId, ov.Value, ct).ConfigureAwait(false);
+            }
+
+            // --- The two halves of align.correction as standalone blocks: U correction alone
+            //     (hex U) and Accuracy place FAU alone (the FAU pre-align hex Y/Z move). Same
+            //     Run-page routine, same per-point operator Capture, awaited to completion. ---
+            case "align.ucorrection":
+            case "align.placefau":
+            {
+                bool isU = step.Op.Equals("align.uCorrection", StringComparison.OrdinalIgnoreCase);
+                string op = isU ? "align.uCorrection" : "align.placeFau";
+
+                var host = _utilityAppHost();
+                if (host == null) return AppHostMissing(op);
+
+                var ov = ReadAlignmentOverrides(step, ctx);
+                if (!ov.IsSuccess) return Result.Fail(ov.Error, $"{op}: {ov.Message}");
+
+                _log(LogLevel.Info, $"{(isU ? "U correction" : "Accuracy place FAU")} — waiting for the operator on the Run page.");
+                return await host.RunAsync(isU ? "ucorrection" : "faupre", ov.Value, ct).ConfigureAwait(false);
             }
 
             // --- SiPhOG -> Google Sheet (V11 UPDATE_SAG). Writes the bench row's current
@@ -1383,6 +1405,57 @@ internal sealed class StepDispatcher
     /// <summary>True if the step supplies a non-empty value for <paramref name="key"/>.</summary>
     private static bool Has(WorkflowStep step, string key)
         => step.Parameters.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v);
+
+    /// <summary>
+    /// Reads the align.* block params into <see cref="AlignmentRunOverrides"/>. A blank param stays
+    /// null (head default); a non-numeric number or an out-of-range value fails the step up front.
+    /// </summary>
+    private static Result<AlignmentRunOverrides> ReadAlignmentOverrides(WorkflowStep step, WorkflowContext ctx)
+    {
+        var bad = new List<string>();
+
+        string? S(string key)
+        {
+            if (!Has(step, key)) return null;
+            var v = Str(step, key, ctx).Trim();
+            return v.Length == 0 ? null : v;
+        }
+
+        double? N(string key)
+        {
+            var v = S(key);
+            if (v == null) return null;
+            if (double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) && double.IsFinite(d))
+                return d;
+            bad.Add($"{key}='{v}'");
+            return null;
+        }
+
+        var o = new AlignmentRunOverrides
+        {
+            UPicPoint1 = S("uP1"),
+            UPicPoint2 = S("uP2"),
+            UFauPoint1 = S("uF1"),
+            UFauPoint2 = S("uF2"),
+            MaxUDeg = N("maxUDeg"),
+            PlaceOut1 = S("out1"),
+            PlaceOut2 = S("out2"),
+            PlaceFiber1 = S("fiber1"),
+            PlaceFiber2 = S("fiber2"),
+            TargetDistanceUm = N("gapUm"),
+            TargetAngleDeg = N("angleDeg"),
+            WaveguideAngleDeg = N("waveguideDeg"),
+            MaxPlaceCorrectionMm = N("maxCorrectionMm"),
+        };
+
+        if (bad.Count > 0)
+            return Result<AlignmentRunOverrides>.Fail(ErrorCode.InvalidParameter, $"not a number: {string.Join(", ", bad)}.");
+
+        var valid = o.Validate();
+        return valid.IsSuccess
+            ? Result<AlignmentRunOverrides>.Ok(o)
+            : Result<AlignmentRunOverrides>.Fail(valid.Error, valid.Message);
+    }
 
     /// <summary>Power-supply channel (1-based) — defaults to channel 1 when omitted.</summary>
     private static int PsuChannel(WorkflowStep step, WorkflowContext ctx)

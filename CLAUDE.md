@@ -109,7 +109,11 @@ defines its own program/recipe/position formats.
     `hillclimb.setAnchor/clearAnchor/start/stop` steps in `StepDispatcher`.
   - `UCorrection/`, `FauPreAlign/` — `UCorrectionRoutine` / `FauPreAlignRoutine`
     with their angle/vector calculators; each is its own non-modal
-    `IOperatorPrompt` on the Run page (inline Capture/Apply).
+    `IOperatorPrompt` on the Run page (inline Capture/Apply). Program blocks:
+    `align.correction` (both), `align.uCorrection`, `align.placeFau` ("Accuracy Place FAU" =
+    the FAU pre-align) — each carries its points / gap / angle / waveguide angle / Max U /
+    Max FAU move as `AlignmentRunOverrides` through `IUtilityAppHost.RunAsync` (blank = panel
+    default). FAU pre-align refuses a total move over `MaxCorrectionMm` (default 0.5 mm).
 - **Power supply (`psu.*`)** — the same op set on all three surfaces: program blocks
   (`StepDispatcher`), `.moon` (`machine.psu.*`) and `.hrcp` (`psu.<dev>.*`), incl.
   `psu.disconnect` (outputs forced OFF first). **`psu.powerUp`** is a verified power-up —

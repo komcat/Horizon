@@ -113,10 +113,12 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
 
     /// <summary>
     /// Runs an alignment id to completion (the <c>align.correction</c> step): <c>align</c> = U → FAU,
-    /// <c>ucorrection</c> / <c>faupre</c> = that phase only. Marshalled onto the UI thread without
-    /// blocking it, so the operator can Capture / MoveClick while the program awaits.
+    /// <c>ucorrection</c> / <c>faupre</c> = that phase only (the <c>align.uCorrection</c> /
+    /// <c>align.placeFau</c> blocks). <paramref name="settings"/> carries the block's points /
+    /// target / guards. Marshalled onto the UI thread without blocking it, so the operator can
+    /// Capture / MoveClick while the program awaits.
     /// </summary>
-    public Task<Result> RunAsync(string appId, CancellationToken ct)
+    public Task<Result> RunAsync(string appId, AlignmentRunOverrides? settings, CancellationToken ct)
     {
         (bool U, bool Fau)? phases = appId.ToLowerInvariant() switch
         {
@@ -129,7 +131,7 @@ public partial class UtilityAppHost : UserControl, IUtilityAppHost
 
         return Dispatcher.InvokeAsync(() => _align == null
                 ? Task.FromResult(Result.Fail(ErrorCode.NotSupported, "Alignment panel not attached."))
-                : _align.RunFromProgramAsync(p.U, p.Fau, ct))
+                : _align.RunFromProgramAsync(p.U, p.Fau, settings, ct))
             .Task.Unwrap();
     }
 

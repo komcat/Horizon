@@ -33,10 +33,12 @@ public interface IUtilityAppHost
     Task<Result> StopAsync(string appId);
 
     /// <summary>
-    /// Runs the app's routine and completes only when it ends — the <c>align.correction</c>
-    /// step. Unlike <see cref="StartAsync"/> the result is the routine's outcome (a cancel or
-    /// failed phase fails the step), and <paramref name="ct"/> (the program's Stop) aborts it.
-    /// The head drives any operator interaction (e.g. per-point Capture) non-modally.
+    /// Runs the app's routine and completes only when it ends — the <c>align.correction</c> /
+    /// <c>align.uCorrection</c> / <c>align.placeFau</c> steps. Unlike <see cref="StartAsync"/> the
+    /// result is the routine's outcome (a cancel or failed phase fails the step), and
+    /// <paramref name="ct"/> (the program's Stop) aborts it. <paramref name="settings"/> carries
+    /// the block's points / target / guards (null members keep the head's defaults). The head
+    /// drives any operator interaction (e.g. per-point Capture) non-modally.
     /// </summary>
-    Task<Result> RunAsync(string appId, CancellationToken ct);
+    Task<Result> RunAsync(string appId, AlignmentRunOverrides? settings, CancellationToken ct);
 }

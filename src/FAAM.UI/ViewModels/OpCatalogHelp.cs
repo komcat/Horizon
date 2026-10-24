@@ -30,6 +30,29 @@ public static class OpCatalogHelp
     public static OpHelp? For(string opKey)
         => opKey != null && ByKey.TryGetValue(opKey, out var h) ? h : null;
 
+    // Shared by align.correction and the two single-phase blocks. Declared before ByKey —
+    // static fields initialize in order, so ByKey would otherwise see null here.
+    private static readonly (string Key, string Note)[] UCorrectionNotes =
+    {
+        ("uP1", "First point on the PIC line (gantry-main position). Default UCorr_P1."),
+        ("uP2", "Second point on the PIC line. Default UCorr_P2."),
+        ("uF1", "First point on the FAU line. Default UCorr_F1."),
+        ("uF2", "Second point on the FAU line. Default UCorr_F2."),
+        ("maxUDeg", "Largest U rotation (°) that will be applied; above it the step fails without moving. Also caps Vision U, which then falls back to manual capture."),
+    };
+
+    private static readonly (string Key, string Note)[] PlaceFauNotes =
+    {
+        ("out1", "First PIC output point (gantry-main position). Default FauPre_Out1."),
+        ("out2", "Second PIC output point. Default FauPre_Out2."),
+        ("fiber1", "First FAU fiber point. Default FauPre_Fiber1."),
+        ("fiber2", "Second FAU fiber point. Default FauPre_Fiber2."),
+        ("gapUm", "Target distance from the PIC output to the FAU fiber (µm). Blank = the target set on the Run-page panel."),
+        ("angleDeg", "Direction of that target offset (°). Blank = the Run-page panel setting."),
+        ("waveguideDeg", "Waveguide tilt (°). After the move, hex Y goes up by gap × tan(angle). 0 = no extra move."),
+        ("maxCorrectionMm", "Longest total FAU move (mm), including the waveguide follow-up. Above it the step fails without moving."),
+    };
+
     private static readonly Dictionary<string, OpHelp> ByKey = new(StringComparer.OrdinalIgnoreCase)
     {
         // ===== App — the Run-page utility springboard =====
@@ -40,7 +63,7 @@ public static class OpCatalogHelp
         ["app.open"] = new()
         {
             Summary = "Bring a utility app's screen to the front of the Run-page springboard. Navigation only — it does NOT start the app's routine.",
-            Usage = "Use it to show the operator the right app at the right moment (e.g. open FAU Pre-align just before a manual step). Returns immediately. To also start the routine, use \"Open & Run App\". Only works on a head that has the Run-page springboard (FAAM.UI); elsewhere the step fails with a clear message.",
+            Usage = "Use it to show the operator the right app at the right moment (e.g. open Accuracy Place FAU just before a manual step). Returns immediately. To also start the routine, use \"Open & Run App\". Only works on a head that has the Run-page springboard (FAAM.UI); elsewhere the step fails with a clear message.",
             ParamNotes = new[]
             {
                 ("appId", "Which app to show: align, ucorrection or faupre. (hillclimb / autow are deprecated — do not use.)"),
@@ -77,13 +100,27 @@ public static class OpCatalogHelp
 
         ["align.correction"] = new()
         {
-            Summary = "Run the Run-page \"Start correction\" (U correction → FAU pre-align) and wait until it finishes.",
-            Usage = "Same routine as the button on the U CORR → FAU PRE-ALIGN panel: optional vision U, then the gantry-main reference points (UCorr_P1/P2/F1/F2, FauPre_Out1/Out2/Fiber1/Fiber2 — all must be taught). At each point the operator refines the location by clicking the live view (MoveClick) and presses Capture (on the panel or the camera feed); the correction is then applied automatically, followed by the grid search if Find First Light is on.\n\nUnlike \"Open & Run App\", the sequence WAITS here. A Cancel on the prompt, the panel's Stop, or a failed phase fails the step; a program Stop aborts the correction. FAAM.UI only.",
+            Summary = "Run the Run-page \"Start correction\" (U correction → accuracy place FAU) and wait until it finishes.",
+            Usage = "Same routine as the button on the U CORR → ACCURACY PLACE FAU panel: optional vision U, then the gantry-main reference points (all must be taught). At each point the operator refines the location by clicking the live view (MoveClick) and presses Capture (on the panel or the camera feed); the correction is then applied automatically, followed by the grid search if Find First Light is on.\n\nThe points, gap, angle and limits are the same as on the U Correction and Accuracy Place FAU blocks — use those to run one half on its own.\n\nUnlike \"Open & Run App\", the sequence WAITS here. A Cancel on the prompt, the panel's Stop, or a failed phase fails the step; a program Stop aborts the correction. FAAM.UI only.",
             ParamNotes = new[]
             {
                 ("runU", "Run the U-correction phase (angle on hex U)."),
-                ("runFau", "Run the FAU pre-align phase (hex Y/Z move). If U fails, FAU is skipped and the step fails."),
-            },
+                ("runFau", "Run the accuracy place FAU phase (hex Y/Z move). If U fails, FAU is skipped and the step fails."),
+            }.Concat(UCorrectionNotes).Concat(PlaceFauNotes).ToArray(),
+        },
+
+        ["align.uCorrection"] = new()
+        {
+            Summary = "U correction on its own: measure the PIC line vs the FAU line and rotate hex U by the difference.",
+            Usage = "The gantry visits the four points in order (PIC 1 → PIC 2 → FAU 1 → FAU 2). At each, the operator centers the crosshair (MoveClick) and presses Capture on the Run page. The angle between the PIC line and the FAU line is then applied as a slow relative U move on hex-right. If Vision U is on (Find First Light), it is tried first and the manual capture is the fallback.\n\nThe step waits until it finishes. Untaught or repeated points, a U larger than the limit, a Cancel or a program Stop fail the step. FAAM.UI only.",
+            ParamNotes = UCorrectionNotes,
+        },
+
+        ["align.placeFau"] = new()
+        {
+            Summary = "Accuracy place FAU (formerly FAU pre-align) on its own: move the FAU to the set gap and angle from the PIC output.",
+            Usage = "The gantry visits Output 1 → Output 2 → Fiber 1 → Fiber 2. At each, the operator centers the crosshair (MoveClick) and presses Capture on the Run page. The routine measures where the fiber is relative to the output, works out the move to the target (gap at the target angle), and applies it on hex-right Y/Z at slow speed. It then raises hex Y by gap × tan(waveguide angle) so the FAU follows the tilted waveguide.\n\nIf the total move would be longer than 'Max FAU move', nothing moves and the step fails — re-check the captured points. Untaught or repeated points, a Cancel or a program Stop also fail the step. FAAM.UI only.",
+            ParamNotes = PlaceFauNotes,
         },
 
         // ===== Motion =====

@@ -110,9 +110,11 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     /// program Stop (<paramref name="ct"/>) aborts the run, and a panel Stop fails the step.
     /// Must be called on the UI thread. The operator still answers each point with Capture
     /// (inline or on the camera feed) and may MoveClick the live view in between.
+    /// <paramref name="overrides"/> = the block's points / gap / angle / guards (null members
+    /// fall back to the panel's fixed point names and its target setting).
     /// </summary>
-    public Task<Result> RunFromProgramAsync(bool runU, bool runFau, CancellationToken ct)
-        => RunSequenceCoreAsync(runU, runFau, fromProgram: true, ct);
+    public Task<Result> RunFromProgramAsync(bool runU, bool runFau, AlignmentRunOverrides? overrides, CancellationToken ct)
+        => RunSequenceCoreAsync(runU, runFau, fromProgram: true, overrides, ct);
 
     /// <summary>Cancels an in-flight run (utility-app <c>app.stop</c>); no-op when idle.</summary>
     public void RequestStop()
@@ -229,12 +231,26 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     private static string UName(string point) => $"UCorr_{point}";
     private static string FauName(string point) => $"FauPre_{point}";
 
+    /// <summary>The four U points in capture order (P1, P2, F1, F2) — a block's names, else the fixed UCorr_* ones.</summary>
+    private static string[] UPoints(AlignmentRunOverrides? o) => new[]
+    {
+        o?.UPicPoint1 ?? UName("P1"), o?.UPicPoint2 ?? UName("P2"),
+        o?.UFauPoint1 ?? UName("F1"), o?.UFauPoint2 ?? UName("F2"),
+    };
+
+    /// <summary>The four FAU points in capture order (Out1, Out2, Fiber1, Fiber2) — a block's names, else the fixed FauPre_* ones.</summary>
+    private static string[] FauPoints(AlignmentRunOverrides? o) => new[]
+    {
+        o?.PlaceOut1 ?? FauName("Out1"), o?.PlaceOut2 ?? FauName("Out2"),
+        o?.PlaceFiber1 ?? FauName("Fiber1"), o?.PlaceFiber2 ?? FauName("Fiber2"),
+    };
+
     // --- Reference points: teach (Save) + recall (Move), via Layer 2 ---
 
     private void OnMoveU(object sender, RoutedEventArgs e) => _ = MoveToAsync(sender, UName, "U correction");
     private void OnSaveU(object sender, RoutedEventArgs e) => _ = SaveAsync(sender, UName, "U correction");
-    private void OnMoveFauPoint(object sender, RoutedEventArgs e) => _ = MoveToAsync(sender, FauName, "FAU pre-align");
-    private void OnSaveFauPoint(object sender, RoutedEventArgs e) => _ = SaveAsync(sender, FauName, "FAU pre-align");
+    private void OnMoveFauPoint(object sender, RoutedEventArgs e) => _ = MoveToAsync(sender, FauName, "Accuracy place FAU");
+    private void OnSaveFauPoint(object sender, RoutedEventArgs e) => _ = SaveAsync(sender, FauName, "Accuracy place FAU");
 
     private async Task SaveAsync(object sender, Func<string, string> nameOf, string tag)
     {
@@ -297,7 +313,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     private bool TryPromptDouble(string label, double current, out double value)
     {
         value = current;
-        var win = new SerialEntryWindow("FAU pre-align", label, current.ToString(CultureInfo.InvariantCulture))
+        var win = new SerialEntryWindow("Accuracy place FAU", label, current.ToString(CultureInfo.InvariantCulture))
         {
             Owner = Window.GetWindow(this),
         };
@@ -314,7 +330,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         => OpenExposureEditor("U correction — exposure per point", UOrder, UName);
 
     private void OnEditExposuresFau(object sender, RoutedEventArgs e)
-        => OpenExposureEditor("FAU pre-align — exposure per point", FauOrder, FauName);
+        => OpenExposureEditor("Accuracy place FAU — exposure per point", FauOrder, FauName);
 
     private void OpenExposureEditor(string title, string[] order, Func<string, string> nameOf)
     {
@@ -391,7 +407,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
 
     /// <summary>Panel / app-id entry point — the outcome is shown on the status line, not returned.</summary>
     private Task RunSequenceAsync(bool runU, bool runFau)
-        => RunSequenceCoreAsync(runU, runFau, fromProgram: false, CancellationToken.None);
+        => RunSequenceCoreAsync(runU, runFau, fromProgram: false, overrides: null, CancellationToken.None);
 
     private static Result Cancelled() => Result.Fail(ErrorCode.ProcessCancelled, "Alignment cancelled.");
 
@@ -400,7 +416,8 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     /// cancelled or errors; a "declined" U (angle below threshold) still proceeds to FAU.
     /// Returns the chain's outcome (used by the program block; the panel only shows it).
     /// </summary>
-    private async Task<Result> RunSequenceCoreAsync(bool runU, bool runFau, bool fromProgram, CancellationToken external)
+    private async Task<Result> RunSequenceCoreAsync(
+        bool runU, bool runFau, bool fromProgram, AlignmentRunOverrides? overrides, CancellationToken external)
     {
         if (_host == null) return Result.Fail(ErrorCode.OperationFailed, "Alignment panel not attached.");
         if (_running) return Result.Fail(ErrorCode.OperationFailed, "An alignment run is already in progress.");
@@ -414,10 +431,23 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
             return Result.Fail(ErrorCode.OperationFailed, "Alignment blocked: another alignment / scan is running.");
         }
 
+        // Each phase needs four distinct points — a repeated name collapses a line to zero length.
+        var uPoints = UPoints(overrides);
+        var fauPoints = FauPoints(overrides);
+        string? dup = runU && uPoints.Distinct(StringComparer.OrdinalIgnoreCase).Count() < uPoints.Length ? "U correction"
+                    : runFau && fauPoints.Distinct(StringComparer.OrdinalIgnoreCase).Count() < fauPoints.Length ? "Accuracy place FAU"
+                    : null;
+        if (dup != null)
+        {
+            SetStatus(Phase.None, $"{dup}: the four points must be different positions");
+            Log(LogLevel.Warning, $"Alignment: cannot start — {dup} uses the same position twice.");
+            return Result.Fail(ErrorCode.InvalidParameter, $"{dup}: the four reference points must be different positions.");
+        }
+
         // Every reference point a phase will navigate must be taught first.
         var missing = new List<string>();
-        if (runU) missing.AddRange(UOrder.Where(p => _host.Process.GetPosition(GantryDevice, UName(p)) == null).Select(p => $"U:{p}"));
-        if (runFau) missing.AddRange(FauOrder.Where(p => _host.Process.GetPosition(GantryDevice, FauName(p)) == null).Select(p => $"FAU:{p}"));
+        if (runU) missing.AddRange(uPoints.Where(n => _host.Process.GetPosition(GantryDevice, n) == null).Select(n => $"U:{n}"));
+        if (runFau) missing.AddRange(fauPoints.Where(n => _host.Process.GetPosition(GantryDevice, n) == null).Select(n => $"FAU:{n}"));
         if (missing.Count > 0)
         {
             SetStatus(Phase.None, $"Save these first: {string.Join(", ", missing)}");
@@ -443,7 +473,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
             // by the delta. On success skip the manual capture; on any failure fall back to it.
             if (runU && _host.Settings.Current.FindFirstLight.AutoVisionUCorrection)
             {
-                var outcome = await TryVisionUCorrectionAsync(cts.Token);
+                var outcome = await TryVisionUCorrectionAsync(overrides?.MaxUDeg, cts.Token);
                 if (cts.IsCancellationRequested) return Cancelled();
                 if (outcome == VisionUOutcome.Applied) runU = false;   // vision handled U — skip manual capture
                 // Fallback → leave runU true so the manual capture flow below runs.
@@ -453,7 +483,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
             {
                 BeginPhase(Phase.U, "Apply U");
                 _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.UCorrection, "started"));
-                var rU = await _host.Process.RunUCorrectionAsync(BuildUOptions(), this, cts.Token);
+                var rU = await _host.Process.RunUCorrectionAsync(BuildUOptions(overrides), this, cts.Token);
                 SetStatus(Phase.U, rU.IsSuccess
                     ? (rU.Value.Applied
                         ? $"Applied U = {rU.Value.CorrectionDegrees:F4}° (angle {rU.Value.AngleDegrees:F4}°)"
@@ -480,7 +510,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
                 {
                     runFau = false;
                     result = Result.Fail(rU.Error, $"U correction failed: {rU.Message}");
-                    Log(LogLevel.Warning, "Alignment: U correction failed — skipping FAU pre-align.");
+                    Log(LogLevel.Warning, "Alignment: U correction failed — skipping accuracy place FAU.");
                 }
             }
 
@@ -488,7 +518,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
             {
                 BeginPhase(Phase.Fau, "Move FAU");
                 _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.FauPreAlign, "started"));
-                var rF = await _host.Process.RunFauPreAlignAsync(BuildFauOptions(), this, cts.Token);
+                var rF = await _host.Process.RunFauPreAlignAsync(BuildFauOptions(overrides), this, cts.Token);
                 SetStatus(Phase.Fau, rF.IsSuccess
                     ? (rF.Value.Applied
                         ? $"Applied hex Y={rF.Value.HexYmm:F4}, Z={rF.Value.HexZmm:F4} mm"
@@ -511,7 +541,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
                         : null));
 
                 if (cts.IsCancellationRequested) return Cancelled();
-                if (!rF.IsSuccess) result = Result.Fail(rF.Error, $"FAU pre-align failed: {rF.Message}");
+                if (!rF.IsSuccess) result = Result.Fail(rF.Error, $"Accuracy place FAU failed: {rF.Message}");
 
                 // End of corrections: find the Sagnac signal in XY (Stage 1 X line → Stage 2 grid).
                 if (rF.IsSuccess && !cts.IsCancellationRequested && _gridEnabled)
@@ -630,10 +660,10 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
     /// <c>edgeFAU</c> for the FAU facet angle, and applies the difference on hex U. Policy (from the Engineer
     /// "Find First Light" tab): ≤ ConfirmDeg applies silently; between ConfirmDeg and MaxDeg asks
     /// the operator to confirm; above MaxDeg — or if any facet isn't detected — falls back to the
-    /// manual capture correction. Returns whether U was applied, we should fall back, or the run
-    /// was cancelled.
+    /// manual capture correction. A block's <paramref name="maxUDeg"/> lowers that MaxDeg limit too.
+    /// Returns whether U was applied, we should fall back, or the run was cancelled.
     /// </summary>
-    private async Task<VisionUOutcome> TryVisionUCorrectionAsync(CancellationToken ct)
+    private async Task<VisionUOutcome> TryVisionUCorrectionAsync(double? maxUDeg, CancellationToken ct)
     {
         if (_host == null) return VisionUOutcome.Fallback;
 
@@ -666,10 +696,11 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
             $"Vision U: PIC {v.PicAngleDeg:F3}° [{PicFacetProfile} @ {PicFacetPosition}], " +
             $"FAU {v.FauAngleDeg:F3}° [{FauFacetProfile} @ {FauFacetPosition}] → Δ {v.DeltaDeg:F3}°.");
 
-        if (mag > ffl.AutoVisionUMaxDeg)
+        double limit = maxUDeg is { } m ? Math.Min(ffl.AutoVisionUMaxDeg, m) : ffl.AutoVisionUMaxDeg;
+        if (!double.IsFinite(mag) || mag > limit)
         {
-            SetStatus(Phase.U, $"Vision U Δ {v.DeltaDeg:F3}° > {ffl.AutoVisionUMaxDeg:0.###}° — manual capture");
-            Log(LogLevel.Warning, $"Vision U-correction Δ {v.DeltaDeg:F3}° exceeds fallback limit {ffl.AutoVisionUMaxDeg:0.###}°; using manual capture.");
+            SetStatus(Phase.U, $"Vision U Δ {v.DeltaDeg:F3}° > {limit:0.###}° — manual capture");
+            Log(LogLevel.Warning, $"Vision U-correction Δ {v.DeltaDeg:F3}° exceeds fallback limit {limit:0.###}°; using manual capture.");
             return VisionUOutcome.Fallback;
         }
 
@@ -710,33 +741,42 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         PicFacetPosition, PicFacetProfile,
         FauFacetPosition, FauFacetProfile);
 
-    private UCorrectionOptions BuildUOptions()
+    /// <summary>U options from the panel defaults, with a block's points / Max U layered on top.</summary>
+    private UCorrectionOptions BuildUOptions(AlignmentRunOverrides? o)
     {
-        double e1 = PointExposureUs(UName("P1")), e2 = PointExposureUs(UName("P2"));
-        double e3 = PointExposureUs(UName("F1")), e4 = PointExposureUs(UName("F2"));
+        var n = UPoints(o);
+        double e1 = PointExposureUs(n[0]), e2 = PointExposureUs(n[1]);
+        double e3 = PointExposureUs(n[2]), e4 = PointExposureUs(n[3]);
         string? camera = (e1 > 0 || e2 > 0 || e3 > 0 || e4 > 0) ? MainCamera() : null;
 
-        return new UCorrectionOptions(
+        var opts = new UCorrectionOptions(
             GantryDevice, HexDevice,
-            UName("P1"), UName("P2"), UName("F1"), UName("F2"),
+            n[0], n[1], n[2], n[3],
             Camera: camera,
             P1ExposureUs: e1 > 0 ? e1 : null, P2ExposureUs: e2 > 0 ? e2 : null,
             F1ExposureUs: e3 > 0 ? e3 : null, F2ExposureUs: e4 > 0 ? e4 : null);
+        return o?.MaxUDeg is { } maxU ? opts with { MaxUvwDeg = maxU } : opts;
     }
 
-    private FauPreAlignOptions BuildFauOptions()
+    /// <summary>FAU options from the panel defaults, with a block's points / gap / angle / waveguide / guard layered on top.</summary>
+    private FauPreAlignOptions BuildFauOptions(AlignmentRunOverrides? o)
     {
-        double e1 = PointExposureUs(FauName("Out1")), e2 = PointExposureUs(FauName("Out2"));
-        double e3 = PointExposureUs(FauName("Fiber1")), e4 = PointExposureUs(FauName("Fiber2"));
+        var n = FauPoints(o);
+        double e1 = PointExposureUs(n[0]), e2 = PointExposureUs(n[1]);
+        double e3 = PointExposureUs(n[2]), e4 = PointExposureUs(n[3]);
         string? camera = (e1 > 0 || e2 > 0 || e3 > 0 || e4 > 0) ? MainCamera() : null;
 
-        return new FauPreAlignOptions(
+        var opts = new FauPreAlignOptions(
             GantryDevice, HexDevice,
-            FauName("Out1"), FauName("Out2"), FauName("Fiber1"), FauName("Fiber2"),
-            TargetDistanceUm: _targetUm, TargetAngleDeg: _targetAngleDeg,
+            n[0], n[1], n[2], n[3],
+            TargetDistanceUm: o?.TargetDistanceUm ?? _targetUm,
+            TargetAngleDeg: o?.TargetAngleDeg ?? _targetAngleDeg,
             Camera: camera,
             Out1ExposureUs: e1 > 0 ? e1 : null, Out2ExposureUs: e2 > 0 ? e2 : null,
             Fiber1ExposureUs: e3 > 0 ? e3 : null, Fiber2ExposureUs: e4 > 0 ? e4 : null);
+        if (o?.WaveguideAngleDeg is { } wg) opts = opts with { WaveguideAngleDeg = wg };
+        if (o?.MaxPlaceCorrectionMm is { } maxMm) opts = opts with { MaxCorrectionMm = maxMm };
+        return opts;
     }
 
     /// <summary>Resets per-phase indicators and the morphing Apply-button label at the start of a phase.</summary>
@@ -874,7 +914,7 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
         PhaseText.Text = phase switch
         {
             Phase.U => "U correction",
-            Phase.Fau => "FAU pre-align",
+            Phase.Fau => "Accuracy place FAU",
             Phase.Grid => "Grid search",
             _ => "Idle",
         };

@@ -96,7 +96,7 @@ public sealed class FauPreAlignApp : ObservableObject, IUtilityApp
     }
 
     public string Id => "faupre";
-    public string Title => "FAU Pre-align";
+    public string Title => "Accuracy Place FAU";
     public string Glyph => "FAU";
     public UIElement Content => _panel;
     public AppRunState State => _panel.IsRunning ? AppRunState.Running : AppRunState.Idle;

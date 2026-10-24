@@ -14,8 +14,12 @@ public enum DeviceKind { None, Motion, Io, Pneumatic, Camera, Lighting, PowerSup
 /// </summary>
 public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName, SignalName, Operator, MotionDeviceName, DispenseRoutineName, ScriptName, LightName, LightColor }
 
-/// <summary>One parameter of an op — its persisted key, a display label, the editor widget, and a default value.</summary>
-public sealed record ParamSpec(string Key, string Label, ParamKind Kind, string Default = "");
+/// <summary>
+/// One parameter of an op — its persisted key, a display label, the editor widget, and a default value.
+/// <paramref name="PositionDevice"/> pins a <see cref="ParamKind.PositionName"/> picker to a fixed motion
+/// device (for device-less ops, e.g. the align.* blocks whose points live on gantry-main); null = the block's device.
+/// </summary>
+public sealed record ParamSpec(string Key, string Label, ParamKind Kind, string Default = "", string? PositionDevice = null);
 
 /// <summary>
 /// A command the operator can drop into a sequence — maps to a Layer 2
@@ -428,14 +432,20 @@ public static class OpCatalog
             }),
         // Aborts a climb started in a parallel lane (Start blocks its own lane). No-op when idle.
         new("hillclimb.stop", "Stop Hill Climb", "Align", DeviceKind.None, System.Array.Empty<ParamSpec>()),
-        // The Run-page "Start correction" (U correction → FAU pre-align), awaited to completion.
+        // The Run-page "Start correction" (U correction → accuracy place FAU), awaited to completion.
         // The operator confirms each gantry-main point on the Run page (Capture; MoveClick between).
+        // The points / gap / angle / guards below are shared with the two single-phase blocks.
         new("align.correction", "U → FAU Correction", "Align", DeviceKind.None,
             new[]
             {
                 new ParamSpec("runU", "Run U correction", ParamKind.Bool, "true"),
-                new ParamSpec("runFau", "Run FAU pre-align", ParamKind.Bool, "true"),
-            }),
+                new ParamSpec("runFau", "Run accuracy place FAU", ParamKind.Bool, "true"),
+            }.Concat(UCorrectionParams()).Concat(PlaceFauParams()).ToArray()),
+        // U correction alone: PIC line (P1→P2) vs FAU line (F1→F2) → relative hex U.
+        new("align.uCorrection", "U Correction", "Align", DeviceKind.None, UCorrectionParams()),
+        // Accuracy place FAU alone (the FAU pre-align): Out1/Out2 vs Fiber1/Fiber2 → hex Y/Z move
+        // to the gap/angle target, then the waveguide-angle Y+ follow-up.
+        new("align.placeFau", "Accuracy Place FAU", "Align", DeviceKind.None, PlaceFauParams()),
 
         // ---- App (Run-page utility springboard) ----
         // Drive the Run-page utility apps from a sequence. 'appId' is one of:
@@ -553,4 +563,31 @@ public static class OpCatalog
         All.Select(s => s.Category).Distinct().ToList();
 
     public static IReadOnlyList<string> Categories => CategoryList;
+
+    // Methods (not fields) so they're safe to call from the All initializer above.
+    // The align.* reference points live on gantry-main — the pickers list its positions.
+    private const string AlignGantry = "gantry-main";
+
+    /// <summary>U-correction params: the four gantry points (defaults = the panel's UCorr_* names) + the U guard.</summary>
+    private static ParamSpec[] UCorrectionParams() => new[]
+    {
+        new ParamSpec("uP1", "U · PIC point 1", ParamKind.PositionName, "UCorr_P1", AlignGantry),
+        new ParamSpec("uP2", "U · PIC point 2", ParamKind.PositionName, "UCorr_P2", AlignGantry),
+        new ParamSpec("uF1", "U · FAU point 1", ParamKind.PositionName, "UCorr_F1", AlignGantry),
+        new ParamSpec("uF2", "U · FAU point 2", ParamKind.PositionName, "UCorr_F2", AlignGantry),
+        new ParamSpec("maxUDeg", "Max U correction (°)", ParamKind.Number, "2"),
+    };
+
+    /// <summary>Accuracy-place-FAU params: the four gantry points, the gap/angle target, waveguide angle and the move guard.</summary>
+    private static ParamSpec[] PlaceFauParams() => new[]
+    {
+        new ParamSpec("out1", "FAU · Output point 1", ParamKind.PositionName, "FauPre_Out1", AlignGantry),
+        new ParamSpec("out2", "FAU · Output point 2", ParamKind.PositionName, "FauPre_Out2", AlignGantry),
+        new ParamSpec("fiber1", "FAU · Fiber point 1", ParamKind.PositionName, "FauPre_Fiber1", AlignGantry),
+        new ParamSpec("fiber2", "FAU · Fiber point 2", ParamKind.PositionName, "FauPre_Fiber2", AlignGantry),
+        new ParamSpec("gapUm", "PIC↔FAU gap (µm, blank = Run-page setting)", ParamKind.Number),
+        new ParamSpec("angleDeg", "Target angle (°, blank = Run-page setting)", ParamKind.Number),
+        new ParamSpec("waveguideDeg", "Waveguide angle (°, 0 = no Y follow-up)", ParamKind.Number, "7"),
+        new ParamSpec("maxCorrectionMm", "Max FAU move (mm)", ParamKind.Number, "0.5"),
+    };
 }

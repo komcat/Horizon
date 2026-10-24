@@ -33,7 +33,13 @@ public sealed record FauPreAlignOptions(
     double? Fiber1ExposureUs = null,
     double? Fiber2ExposureUs = null,
     // Write the operator-refined captures back over the four named positions, so they become the next run's targets.
-    bool PersistRefinedPoints = true);
+    bool PersistRefinedPoints = true,
+    // Waveguide tilt (deg): after the correction the hex nudges Y+ by TargetDistance·tan(angle) so
+    // the FAU follows the up-tilted waveguide. 0 = no follow-up move.
+    double WaveguideAngleDeg = 7.0,
+    // Hard guard (mm): refuse a total FAU move (correction + waveguide follow-up) longer than this —
+    // a bigger value signals a bad capture set.
+    double MaxCorrectionMm = 0.5);
 
 /// <summary>Outcome of a FAU pre-align run.</summary>
 /// <param name="CorrectionXmm">Gantry-XY correction X (mm).</param>
@@ -90,7 +96,13 @@ public sealed class FauPreAlignRoutine
     public async Task<Result<FauPreAlignResult>> RunAsync(FauPreAlignOptions o, CancellationToken ct = default)
     {
         if (_prompt == null)
-            return Fail("FAU pre-align needs an operator prompt to refine each point — none registered.");
+            return Fail("Accuracy place FAU needs an operator prompt to refine each point — none registered.");
+        if (!double.IsFinite(o.MaxCorrectionMm) || o.MaxCorrectionMm <= 0)
+            return Fail($"Max correction must be > 0 mm (got {o.MaxCorrectionMm}).");
+        if (double.IsNaN(o.WaveguideAngleDeg) || Math.Abs(o.WaveguideAngleDeg) >= 45)
+            return Fail($"Waveguide angle must be within ±45° (got {o.WaveguideAngleDeg}).");
+        if (!double.IsFinite(o.TargetDistanceUm) || o.TargetDistanceUm <= 0 || !double.IsFinite(o.TargetAngleDeg))
+            return Fail($"Invalid target {o.TargetDistanceUm} µm @ {o.TargetAngleDeg}°.");
 
         var points = new[]
         {
@@ -114,7 +126,7 @@ public sealed class FauPreAlignRoutine
             var distOk = await CheckMoveDistanceAsync(o, name, ct).ConfigureAwait(false);
             if (!distOk.IsSuccess) return Fail(distOk.Message);
 
-            _log(LogLevel.Info, $"FAU pre-align → moving to {label} ('{name}').");
+            _log(LogLevel.Info, $"Accuracy place FAU → moving to {label} ('{name}').");
             var overrides = string.IsNullOrWhiteSpace(o.Camera)
                 ? new MoveOverrides()
                 : new MoveOverrides(Camera: o.Camera, ExposureUs: exposure);
@@ -122,7 +134,7 @@ public sealed class FauPreAlignRoutine
             if (!move.IsSuccess) return Fail($"Move to {label}: {move.Message}");
 
             bool go = await _prompt.ConfirmAsync(
-                "FAU pre-align",
+                "Accuracy place FAU",
                 $"Center the crosshair on {label}, then confirm. Cancel to abort.",
                 ct).ConfigureAwait(false);
             if (!go) return Fail($"Operator aborted at {label}.");
@@ -146,6 +158,16 @@ public sealed class FauPreAlignRoutine
             $"Correction (gantry XY) = ({corrX:F4}, {corrY:F4}) mm → hex Y={hexY:F4}, Z={hexZ:F4} mm " +
             $"(target {o.TargetDistanceUm:0} µm @ {o.TargetAngleDeg:0.##}°)");
 
+        // Waveguide-angle follow-up: over the TargetDistanceUm standoff the beam climbs by
+        // standoff·tan(angle); the hex right nudges Y+ by that after the correction.
+        double yCompMm = (o.TargetDistanceUm * 0.001) * Math.Tan(o.WaveguideAngleDeg * Math.PI / 180.0);
+
+        // FAU move guard — the total travel (correction + follow-up) beyond MaxCorrectionMm means a
+        // bad capture set; refuse before anything moves (the stage stays where it is).
+        double totalMm = Math.Sqrt((hexY + yCompMm) * (hexY + yCompMm) + hexZ * hexZ);
+        if (!double.IsFinite(totalMm) || totalMm > o.MaxCorrectionMm)
+            return Fail($"FAU move {totalMm:F4} mm exceeds the {o.MaxCorrectionMm:0.###} mm guard — re-check the captured points.");
+
         bool apply = await _prompt.ConfirmAsync(
             "Apply FAU correction",
             $"Correction (gantry XY) = ({corrX:F4}, {corrY:F4}) mm.\n" +
@@ -153,7 +175,7 @@ public sealed class FauPreAlignRoutine
             ct).ConfigureAwait(false);
         if (!apply)
         {
-            _log(LogLevel.Warning, "FAU pre-align apply declined by operator.");
+            _log(LogLevel.Warning, "Accuracy place FAU apply declined by operator.");
             return Ok(new FauPreAlignResult(corrX, corrY, hexY, hexZ, Applied: false));
         }
 
@@ -172,15 +194,14 @@ public sealed class FauPreAlignRoutine
 
         _log(LogLevel.Info, $"Applied hex move Y={hexY:F4}, Z={hexZ:F4} mm.");
 
-        // TEMP quick-fix (bench testing): waveguide-angle Y compensation. Over the
-        // TargetDistanceUm standoff the beam climbs by standoff·tan(7°); nudge the hex
-        // right Y+ by that amount so the FAU follows the up-tilted waveguide. Separate
-        // relative move so it's trivial to remove once the master-vector path carries it.
-        const double WaveguideAngleDeg = 7.0;
-        double yCompMm = (o.TargetDistanceUm * 0.001) * Math.Tan(WaveguideAngleDeg * Math.PI / 180.0);
-        var comp = await _engine.Motion.MoveRelativeAsync(o.HexapodDevice, "Y", yCompMm, ct).ConfigureAwait(false);
-        if (!comp.IsSuccess) return Fail($"Apply waveguide-angle Y comp: {comp.Message}");
-        _log(LogLevel.Info, $"Applied waveguide-angle Y+ comp = {yCompMm:F4} mm ({o.TargetDistanceUm:0} µm · tan {WaveguideAngleDeg:0.##}°).");
+        // Waveguide-angle Y follow-up (computed + guarded above). A separate relative move so it
+        // stays visible in the log and can be zeroed per block (WaveguideAngleDeg = 0).
+        if (yCompMm != 0)
+        {
+            var comp = await _engine.Motion.MoveRelativeAsync(o.HexapodDevice, "Y", yCompMm, ct).ConfigureAwait(false);
+            if (!comp.IsSuccess) return Fail($"Apply waveguide-angle Y comp: {comp.Message}");
+            _log(LogLevel.Info, $"Applied waveguide-angle Y+ comp = {yCompMm:F4} mm ({o.TargetDistanceUm:0} µm · tan {o.WaveguideAngleDeg:0.##}°).");
+        }
 
         return Ok(new FauPreAlignResult(corrX, corrY, hexY, hexZ, Applied: true));
     }
@@ -246,7 +267,7 @@ public sealed class FauPreAlignRoutine
 
     private Result<FauPreAlignResult> Fail(string message)
     {
-        _log(LogLevel.Error, $"FAU pre-align: {message}");
+        _log(LogLevel.Error, $"Accuracy place FAU: {message}");
         return Result<FauPreAlignResult>.Fail(ErrorCode.OperationFailed, message);
     }
 }

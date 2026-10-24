@@ -42,6 +42,9 @@ public sealed class BlockParamViewModel : ObservableObject
     public string Label => _spec.Label;
     public ParamKind Kind => _spec.Kind;
 
+    /// <summary>Fixed motion device a position picker lists from (null = the block's device).</summary>
+    public string? PositionDevice => _spec.PositionDevice;
+
     /// <summary>The persisted value — bound by the text / number / combo templates.</summary>
     public string StringValue
     {

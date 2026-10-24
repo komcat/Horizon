@@ -51,9 +51,10 @@ public sealed class ProcessBlockViewModel : ObservableObject
         // Position lists are re-read from the product each time the drop-down opens, so a
         // position taught / deleted elsewhere (Machine page, a slowApproach run) shows up.
         foreach (var bp in Params.Where(p => p.Kind == ParamKind.PositionName))
-            bp.OptionsProvider = () => string.IsNullOrEmpty(_selectedDevice)
-                ? Array.Empty<string>()
-                : _host.Process.GetPositionNames(_selectedDevice);
+        {
+            var param = bp;
+            bp.OptionsProvider = () => PositionNamesFor(param);
+        }
 
         // The Move block's recall preview tracks the chosen position name.
         if (PositionParam is { } posParam)
@@ -155,6 +156,8 @@ public sealed class ProcessBlockViewModel : ObservableObject
                 "flow.log" => Or(P("message"), "(message)"),
                 "pneumatic.extend" => "extend",
                 "pneumatic.retract" => "retract",
+                "align.ucorrection" => $"U ≤ {Or(P("maxUDeg"), "2")}°",
+                "align.placefau" => $"gap {Or(P("gapUm"), "panel")} µm @ {Or(P("angleDeg"), "panel")}°",
                 _ => Display,
             };
         }
@@ -236,9 +239,16 @@ public sealed class ProcessBlockViewModel : ObservableObject
 
     public RelayCommand EditPositionCommand { get; }
 
-    /// <summary>The position-name parameter, if this op has one (Move to Position).</summary>
+    /// <summary>The position-name parameter on the block's own device, if this op has one (Move to Position).</summary>
     private BlockParamViewModel? PositionParam =>
-        Params.FirstOrDefault(p => p.Kind == ParamKind.PositionName);
+        Params.FirstOrDefault(p => p.Kind == ParamKind.PositionName && p.PositionDevice == null);
+
+    /// <summary>Taught positions for a picker — its fixed device if pinned, else the block's device.</summary>
+    private IEnumerable<string> PositionNamesFor(BlockParamViewModel p)
+    {
+        var device = p.PositionDevice ?? _selectedDevice;
+        return string.IsNullOrEmpty(device) ? Array.Empty<string>() : _host.Process.GetPositionNames(device);
+    }
 
     /// <summary>
     /// Refreshes the option lists of device-dependent combo params for the current
@@ -253,9 +263,7 @@ public sealed class ProcessBlockViewModel : ObservableObject
             switch (p.Kind)
             {
                 case ParamKind.PositionName:
-                    p.SetOptions(string.IsNullOrEmpty(device)
-                        ? Array.Empty<string>()
-                        : _host.Process.GetPositionNames(device));
+                    p.SetOptions(PositionNamesFor(p));
                     break;
                 case ParamKind.OutputPin:
                     var pins = string.IsNullOrEmpty(device)
@@ -309,6 +317,9 @@ public sealed class ProcessBlockViewModel : ObservableObject
                     break;
                 case ParamKind.ScriptName:
                     p.SetOptions(_host.Process.ListScripts());
+                    break;
+                case ParamKind.PositionName when p.PositionDevice != null:
+                    p.SetOptions(PositionNamesFor(p));   // pinned device — the block's device never changes it
                     break;
             }
     }

@@ -30,10 +30,10 @@
         <StackPanel>
             <TextBlock Text="Find First Light — post-FAU grid search" Foreground="{StaticResource Text}"
                        FontSize="15" FontWeight="SemiBold" Margin="0,0,0,4" />
-            <TextBlock Text="After FAU pre-align, search hex-right XY for the SiPhOG signal, then hand off to hill climb."
+            <TextBlock Text="After accuracy place FAU, search hex-right XY for the SiPhOG signal, then hand off to hill climb."
                        Foreground="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,0,0,8" />
 
-            <CheckBox Content="Enable Find First Light (run the search after FAU pre-align)"
+            <CheckBox Content="Enable Find First Light (run the search after accuracy place FAU)"
                       Foreground="{StaticResource Text}" FontWeight="SemiBold" Margin="0,4,0,0"
                       IsChecked="{Binding Enabled}" />
 
