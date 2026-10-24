@@ -54,6 +54,7 @@ public partial class ShellWindow : Window
         _machine = new MachinePageView { DataContext = _machineVm };
         _run = new RunView(host);
         _run.ProgressChanged += OnRunProgress;
+        _run.EditProgramRequested += OnEditProgramRequested;
         _engineer = new EngineerPageView(host);
         _visionAlignment = new VisionAlignmentView(host);
         _scriptEditor = new ScriptEditorView(host);
@@ -363,6 +364,14 @@ public partial class ShellWindow : Window
         DutHeader.Visibility = Visibility.Collapsed;
         _engineer.Activate();
         PageHost.Content = _engineer;
+    }
+
+    /// <summary>Run-page step "Edit" — go to the Engineer page (access-gated) and open that program.</summary>
+    private void OnEditProgramRequested(string program)
+    {
+        ShowEngineer();
+        if (ReferenceEquals(PageHost.Content, _engineer))
+            _engineer.OpenProgram(program);
     }
 
     private void ShowVisionAlignment()

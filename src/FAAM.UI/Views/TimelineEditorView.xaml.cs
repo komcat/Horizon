@@ -40,6 +40,23 @@ public partial class TimelineEditorView : UserControl
 
     public void Deactivate() => _vm.Deactivate();
 
+    /// <summary>
+    /// Opens a program by name (Run-page step "Edit"). Already open and clean → left as-is;
+    /// unsaved edits → asks before discarding them.
+    /// </summary>
+    public void OpenProgram(string name)
+    {
+        bool same = string.Equals(_vm.ProgramName, name, StringComparison.OrdinalIgnoreCase);
+        if (same && !_vm.IsDirty) return;
+        if (_vm.IsDirty && MessageBox.Show(Window.GetWindow(this)!,
+                same
+                    ? $"'{name}' has unsaved changes in the editor. Discard them and reload the saved program?"
+                    : $"Discard unsaved changes to '{_vm.ProgramName}' and open '{name}'?",
+                "Open program", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+        _vm.LoadProgramByName(name);
+    }
+
     // --- palette drag: double-click adds to the selected cell, or drag onto a cell ---
 
     private Point _paletteDragStart;

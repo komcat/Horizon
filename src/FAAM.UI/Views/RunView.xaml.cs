@@ -155,6 +155,13 @@ public partial class RunView : UserControl
         remove => StepsPanel.ProgressChanged -= value;
     }
 
+    /// <summary>A step's "Edit" was chosen — carries its program name; the shell opens it on the Engineer page.</summary>
+    public event Action<string>? EditProgramRequested
+    {
+        add => StepsPanel.EditProgramRequested += value;
+        remove => StepsPanel.EditProgramRequested -= value;
+    }
+
     public void StartProcessTimer() => StepsPanel.StartProcessTimer();
 
     /// <summary>Stops the process timer — called by the shell header when a DUT run ends.</summary>

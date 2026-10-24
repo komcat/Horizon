@@ -183,6 +183,8 @@
                                     Tag="{Binding}" Click="OnStepClick">
                                 <Button.ContextMenu>
                                     <ContextMenu>
+                                        <MenuItem Header="Edit" Click="OnEditProgram"
+                                                  ToolTip="Open this step's program in the Engineer page" />
                                         <MenuItem Header="Inspect Motion" Click="OnInspectMotion" />
                                     </ContextMenu>
                                 </Button.ContextMenu>

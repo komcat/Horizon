@@ -45,6 +45,13 @@ public partial class EngineerPageView : UserControl
         ActivateSelected();
     }
 
+    /// <summary>Switches to the Program tab and opens <paramref name="name"/> in the timeline editor.</summary>
+    public void OpenProgram(string name)
+    {
+        Tabs.SelectedIndex = 0;   // OnTabChanged activates the Program tab
+        _program.OpenProgram(name);
+    }
+
     /// <summary>Called when the shell leaves the Engineer page — stops both tabs.</summary>
     public void Deactivate()
     {

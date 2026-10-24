@@ -833,6 +833,27 @@ public partial class ProcessStepsPanel : UserControl, IMotionInspectHost
 
 
     /// <summary>
+    /// Raised when a step's "Edit" context-menu item is chosen, with that step's program
+    /// name. The shell switches to the Engineer page and opens it in the timeline editor.
+    /// </summary>
+    public event Action<string>? EditProgramRequested;
+
+    private void OnEditProgram(object sender, RoutedEventArgs e)
+    {
+        var step = StepOf(sender);
+        if (step == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(step.Program))
+        {
+            Log(LogLevel.Warning, $"Edit: step '{step.Label}' has no program — nothing to edit.");
+            return;
+        }
+
+        EditProgramRequested?.Invoke(step.Program);
+    }
+
+    /// <summary>
     /// Raised when a step's "Inspect Motion" context-menu item is chosen. Carries the
     /// inspector session for <b>that step's program</b>; the host view (RunView) binds
     /// it as a grid plus step-cursor controls over the camera column.
