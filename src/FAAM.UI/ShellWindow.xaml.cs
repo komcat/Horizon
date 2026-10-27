@@ -46,6 +46,7 @@ public partial class ShellWindow : Window
     private readonly List<DisplayWindow> _cameraWindows = new();
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool _exiting;
+    private bool _exitConfirmed;   // exit already confirmed elsewhere (software update) — skip the prompt
 
     public ShellWindow(EngineHost host)
     {
@@ -93,6 +94,7 @@ public partial class ShellWindow : Window
         _home.RepositoryRequested += ShowRepository;
         _home.DutDataRequested += ShowDutData;
         _home.OeeRequested += ShowOee;
+        _home.UpdateExitRequested += ExitForUpdate;
         _calibration.CameraNeedleRequested += ShowCameraNeedle;
         _cameraNeedle.BackRequested += ShowCalibration;
 
@@ -743,6 +745,17 @@ public partial class ShellWindow : Window
         UpdateIdentity();
     }
 
+    /// <summary>
+    /// A software update is downloaded and the operator already confirmed it (Home › Version):
+    /// run the normal disconnect-and-exit without asking again. <see cref="ShutdownWindow"/>
+    /// starts the updater once the hardware is down.
+    /// </summary>
+    private void ExitForUpdate()
+    {
+        _exitConfirmed = true;
+        Close();
+    }
+
     private void OnClosing(object? sender, CancelEventArgs e)
     {
         if (_exiting)
@@ -751,14 +764,17 @@ public partial class ShellWindow : Window
         // Cancel this close; we drive the exit ourselves once confirmed.
         e.Cancel = true;
 
-        var answer = MessageBox.Show(
-            this,
-            "Disconnect all hardware and exit FAAM?",
-            "Exit FAAM",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-        if (answer != MessageBoxResult.Yes)
-            return;   // stay open
+        if (!_exitConfirmed)
+        {
+            var answer = MessageBox.Show(
+                this,
+                "Disconnect all hardware and exit FAAM?",
+                "Exit FAAM",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes)
+                return;   // stay open
+        }
 
         // Capture window sizes/positions + open camera windows while everything is
         // still on screen, before teardown closes them.

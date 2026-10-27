@@ -54,6 +54,12 @@ public static class AccessPolicy
     /// <summary>Home › Version — this build's version / git id and the release list. Read-only.</summary>
     public const AccessLevel VersionHistory = AccessLevel.Operator;
 
+    /// <summary>
+    /// Home › Version › Update — installs a newer FAAM release from the internet. It replaces
+    /// the software the station runs, so it sits with the other machine-changing screens.
+    /// </summary>
+    public const AccessLevel SoftwareUpdate = AccessLevel.Engineer;
+
     /// <summary>Write and run <c>.moon</c> scripts against live hardware.</summary>
     public const AccessLevel Script = AccessLevel.Engineer;
 

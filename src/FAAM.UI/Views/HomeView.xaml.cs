@@ -47,12 +47,18 @@ public partial class HomeView : UserControl
     public event Action? OeeRequested;
 
 
+    /// <summary>
+    /// Raised when the Version window closed with a software update downloaded and
+    /// confirmed — the shell runs its disconnect-and-exit, after which the update installs.
+    /// </summary>
+    public event Action? UpdateExitRequested;
+
+
     public HomeView()
     {
         InitializeComponent();
-        var v = AppVersionInfo.Current;
-        VersionTileText.Text = $"v{v.Version}" + (string.IsNullOrEmpty(v.ShortCommit) ? "" : $" · {v.ShortCommit}")
-                               + (v.Dirty ? " *" : "");
+        ShowUpdateHint();
+        AppUpdater.AvailableChanged += ShowUpdateHint;
     }
 
     /// <summary>Supplies the engine host and populates the product bar.</summary>
@@ -63,6 +69,7 @@ public partial class HomeView : UserControl
         _host.Session.Changed += ApplyAccess;
         RefreshProducts();
         ApplyAccess();
+        _ = CheckForUpdateQuietlyAsync();
     }
 
     /// <summary>
@@ -273,7 +280,52 @@ public partial class HomeView : UserControl
 
     private void OnOeeClick(object sender, RoutedEventArgs e) => OeeRequested?.Invoke();
 
-    /// <summary>Opens the brief version / release history window (no page switch).</summary>
+    /// <summary>
+    /// Opens the version / release history window (no page switch). When it closes with a
+    /// software update downloaded and confirmed, asks the shell to disconnect and exit so
+    /// the update installs.
+    /// </summary>
     private void OnVersionClick(object sender, RoutedEventArgs e)
-        => new VersionHistoryWindow { Owner = Window.GetWindow(this) }.ShowDialog();
+    {
+        var win = new VersionHistoryWindow(_host) { Owner = Window.GetWindow(this) };
+        win.ShowDialog();
+        if (win.UpdateReady)
+            UpdateExitRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// One quiet background check after start-up; a newer release adds a hint to the
+    /// Version tile. Failure (offline, not a Velopack install) leaves the tile as it is.
+    /// </summary>
+    private async Task CheckForUpdateQuietlyAsync()
+    {
+        if (!AppUpdater.IsInstalled) return;
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(10));   // let start-up settle first
+            await AppUpdater.CheckAsync();
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Debug, $"Software update check failed: {ex.Message}");
+        }
+    }
+
+    private void ShowUpdateHint()
+    {
+        if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(ShowUpdateHint); return; }
+        var v = AppVersionInfo.Current;
+        var baseText = $"v{v.Version}" + (string.IsNullOrEmpty(v.ShortCommit) ? "" : $" · {v.ShortCommit}")
+                       + (v.Dirty ? " *" : "");
+        if (AppUpdater.Available is { } u)
+        {
+            VersionTileText.Text = $"{baseText}\nv{u.TargetFullRelease.Version} available";
+            VersionTileText.Foreground = (System.Windows.Media.Brush)FindResource("Accent");
+        }
+        else
+        {
+            VersionTileText.Text = baseText;
+            VersionTileText.Foreground = (System.Windows.Media.Brush)FindResource("Subtle");
+        }
+    }
 }

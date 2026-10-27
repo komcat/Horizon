@@ -67,6 +67,7 @@
                     <StackPanel HorizontalAlignment="Center">
                         <TextBlock Text="Version" HorizontalAlignment="Center" />
                         <TextBlock x:Name="VersionTileText" FontSize="13" Margin="0,6,0,0" HorizontalAlignment="Center"
+                                   TextAlignment="Center"
                                    Foreground="{StaticResource Subtle}" FontFamily="Consolas" />
                     </StackPanel>
                 </Button>

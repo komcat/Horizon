@@ -17,11 +17,16 @@
     1. sanity-check the working tree, the gh CLI and its auth
     2. resolve the release assets in artifacts\deploy
     3. check the tag version agrees with <Version> in FAAM.UI.csproj
-    4. create an annotated tag and push it to origin
-    5. gh release create, with docs/release-notes-v<n>.md as the body, and
+    4. pack the FAAM.UI software update with Velopack (vpk) into artifacts\velopack,
+       as a delta against the previous release's package when there is one
+    5. create an annotated tag and push it to origin
+    6. gh release create, with docs/release-notes-v<n>.md as the body, and
        upload the assets
+    7. vpk upload github --merge: add the update packages to that same release,
+       where installed stations find them (Home > Version > Update)
 
   Requires the GitHub CLI, authenticated once with:  gh auth login
+  and the .NET 10 SDK for 'dotnet tool exec' (runs vpk without installing it).
 
 .EXAMPLE
   # See exactly what would happen, change nothing:
@@ -49,6 +54,11 @@ param(
 
     # Publish without the separate .moon scripts bundle even if one is present.
     [switch]$NoScripts,
+
+    # Skip the Velopack update packages (Setup.exe, Portable.zip, full/delta .nupkg,
+    # releases.win.json) that let installed FAAM.UI stations update themselves from
+    # this release. See docs/software-update-design.md.
+    [switch]$NoUpdatePackage,
 
     # Do not tag or create anything: add/replace the assets on the EXISTING
     # release for this tag and refresh its body from the notes file. Use this to
@@ -189,6 +199,63 @@ if (-not $asmVersion.StartsWith($Version)) {
     Fail "Version mismatch: tag '$tag' vs <Version>$asmVersion</Version> in FAAM.UI.csproj. Reconcile them first."
 }
 
+# --- Velopack software update ------------------------------------------------
+# Installed stations check this repo's releases for releases.win.json and download the
+# full / delta .nupkg it lists (FAAM.UI AppUpdater). The vpk CLI version must match the
+# Velopack NuGet package FAAM.UI.csproj references.
+$VpkVersion = '1.2.161'
+$repoUrl    = 'https://github.com/komcat/Horizon'
+$vpkDir     = Join-Path $repo 'artifacts\velopack'
+$faamDir    = Join-Path $deployDir 'FAAM.UI'
+$makeUpdate = -not $NoUpdatePackage -and -not $UploadOnly
+
+# Runs the pinned vpk without installing it; returns its exit code. Output goes to the
+# host so it is not mixed into the return value.
+function Invoke-Vpk([string[]]$VpkArgs) {
+    & dotnet tool exec "vpk@$VpkVersion" --yes '--' @VpkArgs | Out-Host
+    return $LASTEXITCODE
+}
+
+if ($makeUpdate -and -not (Test-Path -LiteralPath (Join-Path $faamDir 'FAAM.UI.exe'))) {
+    Fail "No published FAAM.UI folder at $faamDir to pack the update from.`n  Build it first: pwsh deploy/publish.ps1 -Zip  (or pass -NoUpdatePackage)"
+}
+
+# Packs artifacts\deploy\FAAM.UI into artifacts\velopack. Runs before anything is tagged,
+# so a packing failure leaves no half-made release behind.
+function New-UpdatePackage {
+    if (Test-Path -LiteralPath $vpkDir) { Remove-Item -LiteralPath $vpkDir -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $vpkDir | Out-Null
+    $token = (& $ghExe auth token).Trim()
+
+    # The previous release's full package lets vpk build a small delta. The first
+    # Velopack release has none - it then ships the full package only.
+    Write-Host "==> Fetching the previous update package (for the delta)" -ForegroundColor Cyan
+    if ((Invoke-Vpk @('download', 'github', '--repoUrl', $repoUrl, '--token', $token, '--pre', '--outputDir', $vpkDir)) -ne 0) {
+        Write-Host "  (no previous update package - this release carries the full package only)" -ForegroundColor Yellow
+    }
+
+    Write-Host "==> Packing the FAAM.UI update (Velopack $asmVersion)" -ForegroundColor Cyan
+    $packArgs = @('pack',
+        '--packId', 'FAAM.UI', '--packVersion', $asmVersion, '--packDir', $faamDir,
+        '--mainExe', 'FAAM.UI.exe', '--packTitle', 'FAAM.UI', '--packAuthors', 'Fabrinet',
+        '--icon', (Join-Path $repo 'assets\appicon.ico'), '--releaseNotes', $NotesFile,
+        '--outputDir', $vpkDir)
+    if ((Invoke-Vpk $packArgs) -ne 0) { Fail "vpk pack failed" }
+}
+
+# Adds the packed update to the release gh just created (same tag).
+function Publish-UpdatePackage {
+    Write-Host "==> Uploading the FAAM.UI update packages to $tag" -ForegroundColor Cyan
+    $token = (& $ghExe auth token).Trim()
+    $upArgs = @('upload', 'github', '--outputDir', $vpkDir, '--repoUrl', $repoUrl, '--token', $token,
+                '--merge', '--tag', $tag, '--releaseName', "FAAM.UI $tag")
+    if (-not $Draft)   { $upArgs += '--publish' }
+    if ($PreRelease)   { $upArgs += '--pre' }
+    if ((Invoke-Vpk $upArgs) -ne 0) {
+        Fail "vpk upload failed - the release exists without its update packages. Re-run the upload:`n  dotnet tool exec vpk@$VpkVersion --yes -- upload github --outputDir `"$vpkDir`" --repoUrl $repoUrl --token <gh auth token> --merge --tag $tag"
+    }
+}
+
 Push-Location $repo
 try {
     if ($UploadOnly) {
@@ -263,6 +330,7 @@ try {
         Write-Host "               $line"
     }
     Write-Host "  notes      : $NotesFile"
+    Write-Host "  update     : $(if ($makeUpdate) { "Velopack FAAM.UI $asmVersion from $faamDir (Setup.exe, Portable.zip, full + delta .nupkg)" } else { 'skipped (-NoUpdatePackage)' })"
     Write-Host "  draft      : $([bool]$Draft)   prerelease: $([bool]$PreRelease)"
     Write-Host ""
 
@@ -270,6 +338,8 @@ try {
         Write-Host "DryRun - nothing was tagged, pushed or created." -ForegroundColor Yellow
         return
     }
+
+    if ($makeUpdate) { New-UpdatePackage }
 
     if ($unpushed -gt 0) {
         Write-Host "==> Pushing $branch to origin ($unpushed commit(s))" -ForegroundColor Cyan
@@ -302,6 +372,8 @@ try {
 
     & $ghExe @ghArgs
     if ($LASTEXITCODE -ne 0) { Fail "gh release create failed" }
+
+    if ($makeUpdate) { Publish-UpdatePackage }
 
     Write-Host "`nRelease $tag published." -ForegroundColor Green
     & $ghExe release view $tag --web

@@ -128,6 +128,11 @@ attach an app a release shipped without.
 The version comes from `<Version>` in `src\FAAM.UI\FAAM.UI.csproj`; `release.ps1`
 refuses to tag if the two disagree. Release body = `docs/release-notes-v<n>.md`.
 
+The release also carries the **Velopack update packages** (`FAAM.UI-win-Setup.exe`,
+`-Portable.zip`, full/delta `.nupkg`, `releases.win.json`) that installed stations
+update from via Home › Version › Update — see `docs/software-update-design.md`. A
+station installed from that Setup.exe / Portable.zip needs no more hand-copying.
+
 ## 3. Data / config — `%APPDATA%\Horizon\` (bundled with the deploy)
 
 This tree is **runtime user data, not part of the build** — it lives outside the

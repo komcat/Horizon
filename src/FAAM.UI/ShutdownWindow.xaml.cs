@@ -42,6 +42,10 @@ public partial class ShutdownWindow : Window
         // Brief pause so the operator sees the final state before the window goes.
         await Task.Delay(600);
 
+        // Hardware is down: hand a downloaded software update to Velopack's updater now —
+        // it waits for this process to end (≤ 60 s), installs, and relaunches FAAM.
+        AppUpdater.ApplyPendingAtExit();
+
         // Last-resort exit: if something keeps the dispatcher alive past this point
         // (a stray window, a modal error box, a handler that throws during close),
         // end the process anyway so the operator is never left staring at a

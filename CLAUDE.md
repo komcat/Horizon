@@ -337,6 +337,13 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   `version_info.json` — `<Version>`, git id / branch / `describe`, dirty flag, and the `v*`
   release tags from `deploy/release.ps1` — read by `AppVersionInfo`. Rewritten only on change;
   never fails the build (no git → assembly version only).
+- **Software update** (Velopack 1.2.161, from the public `komcat/Horizon` GitHub Releases): the
+  Version window's **Update…** (Engineer, refused while anything runs, one confirm) downloads,
+  then the normal exit disconnects hardware and `ShutdownWindow` hands off to Velopack's updater,
+  which swaps the install's `current\` folder and relaunches. `Program.Main` runs the Velopack hook
+  (auto-apply off); `AppUpdater` wraps it; `release.ps1` packs/uploads with a pinned `vpk` — keep
+  its version equal to the NuGet package. Nothing may write into the install folder. Update only —
+  no rollback. See `docs/software-update-design.md`.
 - **Theme rule (both heads)**: use the Windows `SystemColors` palette via the
   `App.xaml` brushes (`Bg/Panel/Text/Subtle/Edge/Accent`), not hardcoded dark hex.
 
@@ -465,4 +472,5 @@ write code that won't trip them:
 - Run-page utility-app launcher (phone-style springboard + L2→L3 app facet): `docs/utility-app-launcher-design.md`.
 - Engineer command help (palette help panel + `OpCatalogHelp` authoring): `docs/engineer-command-help.md`.
 - Station OEE (uptime / downtime / utilization, DOWN-UP toggle, OEE page): `docs/oee-design.md`.
+- FAAM.UI internet software update (Velopack, GitHub Releases): `docs/software-update-design.md`.
 - Mission-critical coding standard (Power of 10): `docs/coding-standards-power-of-10.md`.
