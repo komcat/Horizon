@@ -15,9 +15,9 @@
     <ApplicationIcon>..\..\assets\appicon.ico</ApplicationIcon>
     <!-- Release identity. Bump together with the git tag (see deploy/release.ps1,
          which refuses to tag a version that doesn't match this). -->
-    <Version>0.5.0</Version>
-    <AssemblyVersion>0.5.0.0</AssemblyVersion>
-    <FileVersion>0.5.0.0</FileVersion>
+    <Version>0.6.0</Version>
+    <AssemblyVersion>0.6.0.0</AssemblyVersion>
+    <FileVersion>0.6.0.0</FileVersion>
     <Product>FAAM.UI</Product>
     <Company>Fabrinet</Company>
     <Description>FAU-attach operator application for the Horizon engine stack.</Description>
