@@ -238,6 +238,7 @@ function New-UpdatePackage {
     $packArgs = @('pack',
         '--packId', 'FAAM.UI', '--packVersion', $asmVersion, '--packDir', $faamDir,
         '--mainExe', 'FAAM.UI.exe', '--packTitle', 'FAAM.UI', '--packAuthors', 'Fabrinet',
+        '--runtime', 'win-x64',
         '--icon', (Join-Path $repo 'assets\appicon.ico'), '--releaseNotes', $NotesFile,
         '--outputDir', $vpkDir)
     if ((Invoke-Vpk $packArgs) -ne 0) { Fail "vpk pack failed" }
