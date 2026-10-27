@@ -411,9 +411,11 @@ nonexistent IO pin). Authoring-side only — not part of the runtime stack.
 - NuGet: AvalonDock 4.72.1 (legacy App only), SkiaSharp.Views.WPF 3.116.1,
   Spectre.Console 0.49.1 (console hosts), `Microsoft.Data.Sqlite` 8.0.10 (Layer 2
   program-history store; full package bundles the native engine for the executables),
-  MVTec HALCON 24.05 — `MVTec.HalconDotNet` managed wrapper in library projects,
-  `MVTec.HalconDotNet-Windows` native-bundling package in executable projects.
-  HALCON 24.05 is x64-only.
+  MVTec HALCON 25.11 (`25110.0.0`) — `MVTec.HalconDotNet` managed wrapper in library projects,
+  `MVTec.HalconDotNet-Windows` in executable projects. Neither package ships the native
+  `halcon.dll`; it is loaded from the installed HALCON on `PATH`, which **must be the same
+  version** — a mismatched native engine misroutes operators (e.g. `gen_rectangle1` runs as
+  `gen_circle_sector`, HALCON error #1202). HALCON is x64-only.
 
 ### Mission-critical coding standard (enforced at build)
 

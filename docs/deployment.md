@@ -28,7 +28,7 @@ the target. Install only what this rig actually uses.
 
 | Concern | Install on target | This rig uses it? |
 |---|---|---|
-| **Vision** | HALCON 24.05 **runtime + license file** (x64) | Yes — vision facet. App runs without it (degrades), but vision ops need the license. |
+| **Vision** | HALCON 25.11 **runtime + license file** (x64) — must match the 25.11 managed wrapper | Yes — vision facet. App runs without it (degrades), but vision ops need the license. |
 | **Motion (PI)** | PI Software Suite (GCS2) — provides the driver stack for `PI_GCS2_DLL_x64.dll` | Yes — `hex-right` hexapod |
 | **Motion (ACS)** | ACS SPiiPlus Runtime Kit (x64) | Yes — `gantry-main` gantry |
 | **Camera (Basler)** | Basler Pylon 8 — **drivers only**; the pylon *runtime DLLs* now ship in the publish output (§2) | Yes — `main_camera` (SdkType 0 = Pylon) |

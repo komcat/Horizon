@@ -93,8 +93,9 @@ pages to FAAM. Teach data is already file-persisted, so the bridge is cheap.
 - **One process owns the SDKs** — don't run FAAM.UI and Horizon.UI together.
 - **NuGet restore** after any package change (e.g. SkiaSharp) — a plain build can use
   a stale `obj`; restart VS or restore the solution.
-- **HALCON** — app runs without it (graceful); bundle is 24.05 but the dev box loads a
-  system 25.05. Verify before relying on Vision; app does not need HALCON installed.
+- **HALCON** — app runs without it (graceful). The wrapper is 25.11 and the native
+  `halcon.dll` comes from the installed HALCON on `PATH`; the two must be the same version
+  or operators misroute (HALCON #1202 naming an operator the code never calls).
 - **Shutdown rule** — any UI poller/timer touching an engine facet MUST be stopped in
   `ShellWindow.OnClosing` before teardown (facet accessors throw post-shutdown). Now
   stops: `_run.Deactivate()`, `_machineVm.Dispose()`, `JogPanelControl.Stop()`.

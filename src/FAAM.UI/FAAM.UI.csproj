@@ -27,7 +27,7 @@
        MVTec.HalconDotNet (Vision facet), so the executable head must carry the
        native-bundling package or the HALCON DLLs won't be in the output. -->
   <ItemGroup>
-    <PackageReference Include="MVTec.HalconDotNet-Windows" Version="24050.0.0" />
+    <PackageReference Include="MVTec.HalconDotNet-Windows" Version="25110.0.0" />
     <!-- Required by the ported SMU / Measurement chart views (SKElement). -->
     <PackageReference Include="SkiaSharp.Views.WPF" Version="3.116.1" />
     <!-- File logging: persist the UI log + engine/adapter Serilog diagnostics to

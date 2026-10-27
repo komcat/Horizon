@@ -17,7 +17,7 @@
 
   <!-- HALCON native bundle — Horizon.Engine references MVTec.HalconDotNet (Vision facet). -->
   <ItemGroup>
-    <PackageReference Include="MVTec.HalconDotNet-Windows" Version="24050.0.0" />
+    <PackageReference Include="MVTec.HalconDotNet-Windows" Version="25110.0.0" />
     <!-- SkiaSharp WPF surface for live telemetry charts. -->
     <PackageReference Include="SkiaSharp.Views.WPF" Version="3.116.1" />
     <!-- Code editor for the .moon script page (syntax highlight + completion). -->

@@ -80,7 +80,7 @@ pwsh deploy/snapshot-appdata.ps1 -Output C:\Horizon-deploy
 
 | Concern | Install |
 |---|---|
-| Vision  | HALCON 24.05 runtime + license file (x64) |
+| Vision  | HALCON 25.11 runtime + license file (x64) — must match the 25.11 managed wrapper |
 | Motion  | PI Software Suite (GCS2), ACS SPiiPlus Runtime Kit |
 | Camera  | Basler Pylon 8 (and/or IDS Peak / uEye) |
 | IO / Instruments | Fastech Ezi-MOTION, NI-VISA, Thorlabs Kinesis as wired |
