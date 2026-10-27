@@ -19,6 +19,7 @@ public partial class StartupWindow : Window
     {
         _host = host;
         InitializeComponent();
+        VersionText.Text = AppVersionInfo.Current.Label;
         Loaded += async (_, _) => await RunConnectAsync();
     }
 
@@ -75,6 +76,7 @@ public partial class StartupWindow : Window
     private void ShowConnecting()
     {
         StatusText.Text = "Connecting hardware…";
+        Mascot.Mood = Views.PikaMood.Working;
         Progress.Visibility = Visibility.Visible;
         Progress.IsIndeterminate = true;
         ErrorText.Visibility = Visibility.Collapsed;
@@ -84,6 +86,7 @@ public partial class StartupWindow : Window
     private void ShowError(Exception ex)
     {
         StatusText.Text = "Startup failed.";
+        Mascot.Mood = Views.PikaMood.Down;
         Progress.IsIndeterminate = false;
         Progress.Visibility = Visibility.Collapsed;
         ErrorText.Text = ex.Message;

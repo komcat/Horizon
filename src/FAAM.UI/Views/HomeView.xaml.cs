@@ -314,9 +314,7 @@ public partial class HomeView : UserControl
     private void ShowUpdateHint()
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(ShowUpdateHint); return; }
-        var v = AppVersionInfo.Current;
-        var baseText = $"v{v.Version}" + (string.IsNullOrEmpty(v.ShortCommit) ? "" : $" · {v.ShortCommit}")
-                       + (v.Dirty ? " *" : "");
+        var baseText = AppVersionInfo.Current.Label;
         if (AppUpdater.Available is { } u)
         {
             VersionTileText.Text = $"{baseText}\nv{u.TargetFullRelease.Version} available";

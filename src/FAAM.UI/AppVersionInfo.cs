@@ -34,6 +34,10 @@ public sealed class AppVersionInfo
     /// <summary>True when the history came from git at build time.</summary>
     public bool FromGit { get; private init; }
 
+    /// <summary>Short identity for display: <c>v0.6.1 · abc1234</c>, with <c> *</c> for a dirty tree.</summary>
+    public string Label => $"v{Version}" + (string.IsNullOrEmpty(ShortCommit) ? "" : $" · {ShortCommit}")
+                         + (Dirty ? " *" : "");
+
     private static AppVersionInfo? _current;
 
     /// <summary>The running build's info (read once).</summary>
