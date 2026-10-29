@@ -1043,6 +1043,7 @@ public sealed class ProcessService : IProcessService
         if (ctx.Dut != null && !ctx.DutIsFallback)
             return Result.Fail(ErrorCode.OperationFailed, "A DUT serial is already set for this run.");
 
+        SupersedeOperatorSession(serial);            // a new serial entry ends a still-open session
         var begun = BeginDut(serial, source, ctx);   // creates the run, sets ctx.Dut
         if (begun == null)
             return Result.Fail(ErrorCode.OperationFailed, "Could not open the DUT record.");
@@ -1356,6 +1357,7 @@ public sealed class ProcessService : IProcessService
     {
         if (!string.IsNullOrWhiteSpace(serial))
         {
+            SupersedeOperatorSession(serial);
             _runDut = BeginDut(serial, source, ctx);
             if (_runDut != null) BeginSiphogRun(_runDut.Value.Record.Serial);   // up-front serial = a new pass
             return _runDut?.Record.Serial;
@@ -1370,6 +1372,26 @@ public sealed class ProcessService : IProcessService
         _runDut = BeginDut(ActiveSerial, source, ctx);
         if (_runDut != null) ctx.DutIsFallback = true;
         return _runDut?.Record.Serial;
+    }
+
+    /// <summary>
+    /// A serial entered for a program run (<c>dut.promptSerial</c> or an up-front serial) means
+    /// the operator has moved on to that unit, so an operator DUT session still open from the
+    /// Run page's Start DUT is stale: end it as <see cref="DutVerdict.Aborted"/>. Left open, it
+    /// would out-rank the newer serial as the fallback DUT for every later program — the header
+    /// shows the new serial while snapshots and <c>dut.*</c> entries land in the old unit. Also
+    /// ended for the same serial: the program run reloads the record, so two open copies would
+    /// overwrite each other's runs on save.
+    /// </summary>
+    private void SupersedeOperatorSession(string serial)
+    {
+        var open = _interactiveDut;
+        if (open == null) return;
+        Log(LogLevel.Warning,
+            $"DUT {open.Value.Record.Serial}: open session ended (Aborted) — serial {serial.Trim()} entered for a new run.");
+        EndDutRun(DutVerdict.Aborted);
+        SetActiveSerial(null);   // always raise ActiveSerialChanged (even for the same serial) so the
+                                 // front-end re-reads HasActiveDutRun; the caller sets the new serial next
     }
 
     private (DutRecord Record, DutRun Run)? BeginDut(string? serial, string source, WorkflowContext ctx)

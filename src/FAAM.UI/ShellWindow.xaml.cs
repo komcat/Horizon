@@ -591,9 +591,9 @@ public partial class ShellWindow : Window
         var has = !string.IsNullOrWhiteSpace(serial);
         SerialRun.Text = serial ?? string.Empty;
         SerialChip.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
-        // The clear-x rides with the chip, but only while no run owns the serial.
-        ClearSerialButton.Visibility = has && !_host.Process.HasActiveDutRun
-            ? Visibility.Visible : Visibility.Collapsed;
+        // Layer 2 may have ended the open DUT session (a program run entered a new serial),
+        // so re-read it: Start/Pass/Fail and the clear-x all follow HasActiveDutRun.
+        RefreshDutButtons();
     }
 
     /// <summary>Clears the sticky DUT serial from the header (the tiny ✕ next to "DUT:").</summary>
