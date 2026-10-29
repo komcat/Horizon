@@ -68,6 +68,42 @@ public sealed class ACSMotionController : IMotionController
         catch { return false; }
     }
 
+    /// <summary>
+    /// One coordinated vector move for the whole pose: ToPointM with ACSC_AMF_WAIT plans
+    /// every axis but holds the motion, then GoM releases them together — all axes start
+    /// at once and travel a straight line at the leading (first) axis's VEL/ACC. The
+    /// per-axis default would start each axis a round-trip apart on its own profile (a
+    /// dog-leg path, and a half-sent pose if one ToPoint fails). The controller refuses
+    /// this while any listed axis is still moving (error 3065). The SPiiPlus axis array
+    /// must be ACSC_NONE-terminated (see <see cref="StopAll"/>); the point array is not.
+    /// </summary>
+    public bool MoveToPositions(IReadOnlyList<string> axes, IReadOnlyList<double> positions, bool blocking)
+    {
+        if (!_connected || axes.Count == 0 || axes.Count != positions.Count) return false;
+        var acsAxes = new Axis[axes.Count + 1];
+        for (int i = 0; i < axes.Count; i++)
+        {
+            if (!_axisMap.TryGetValue(axes[i], out var acsAxis)) return false;
+            acsAxes[i] = acsAxis;
+        }
+        acsAxes[axes.Count] = Axis.ACSC_NONE;
+        try
+        {
+            _api.ToPointM(MotionFlags.ACSC_AMF_WAIT, acsAxes, positions.ToArray());
+            _api.GoM(acsAxes);
+            if (blocking)
+                for (int i = 0; i < axes.Count; i++)
+                    WaitForMotionComplete(acsAxes[i]);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "[Motion] ACS '{Device}' coordinated move ({Axes}) threw",
+                DeviceName, string.Join(" ", axes));
+            return false;
+        }
+    }
+
     public bool MoveRelative(string axis, double distance, bool blocking)
     {
         if (!_connected || !_axisMap.TryGetValue(axis, out var acsAxis)) return false;
