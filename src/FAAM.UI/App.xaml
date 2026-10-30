@@ -55,6 +55,14 @@
             <DataTemplate DataType="{x:Type vms:DeviceRegistrationSectionViewModel}">
                 <vsec:DeviceRegistrationSectionView />
             </DataTemplate>
+
+            <!-- FAAM's Machine › Settings panels (IStationHead.CreateSettingsPanels). -->
+            <DataTemplate DataType="{x:Type vms:StartCorrectionSettingsViewModel}">
+                <vsec:StartCorrectionSettingsView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vms:ScanPanelSettingsViewModel}">
+                <vsec:ScanPanelSettingsView />
+            </DataTemplate>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

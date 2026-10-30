@@ -32,14 +32,14 @@ public partial class ShellWindow : Window
     private readonly HomeView _home = new();
     private readonly MachinePageViewModel _machineVm;
     private readonly MachinePageView _machine;
-    private readonly RunView _run;
+    private readonly IRunPage _run;          // the head's production page
     private readonly EngineerPageView _engineer;
     private readonly VisionAlignmentView _visionAlignment;
     private readonly ScriptEditorView _scriptEditor;
     private readonly CalibrationView _calibration;
     private readonly CameraNeedleCalibrationView _cameraNeedle;
     private readonly RepositoryView _repository;
-    private readonly DutDataView _dutData;
+    private readonly IStationPage _dutData;  // the head's DUT data page
     private readonly OeeView _oee;
 
     /// <summary>Camera pop-out windows this shell owns (auto-opened + restored).</summary>
@@ -53,7 +53,7 @@ public partial class ShellWindow : Window
         _host = host;
         _machineVm = new MachinePageViewModel(host);
         _machine = new MachinePageView { DataContext = _machineVm };
-        _run = new RunView(host);
+        _run = host.Head.CreateRunPage(host);
         _run.ProgressChanged += OnRunProgress;
         _run.EditProgramRequested += OnEditProgramRequested;
         _engineer = new EngineerPageView(host);
@@ -63,8 +63,7 @@ public partial class ShellWindow : Window
         _cameraNeedle = new CameraNeedleCalibrationView(host);
         _repository = new RepositoryView();
         _repository.Attach(host);
-        _dutData = new DutDataView();
-        _dutData.Attach(host);
+        _dutData = host.Head.CreateDutDataPage(host);
         _oee = new OeeView();
         _oee.Attach(host);
         InitializeComponent();
@@ -641,7 +640,7 @@ public partial class ShellWindow : Window
         }
 
         var serial = SerialBox.Text?.Trim() ?? string.Empty;
-        var r = _host.Process.BeginDutRun(serial, "FAU attach");
+        var r = _host.Process.BeginDutRun(serial, _host.Head.DutProcessName);
         if (!r.IsSuccess) { Log(LogLevel.Warning, $"Start DUT failed: {r.Message}"); return; }
 
         _run.StartProcessTimer();

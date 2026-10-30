@@ -100,8 +100,15 @@ public sealed class EngineHost : IAsyncDisposable
     // auto-exposure on (so it fires on first connect AND on Reconnect, once each).
     private readonly ConcurrentDictionary<string, bool> _cameraConnected = new(StringComparer.OrdinalIgnoreCase);
 
-    public EngineHost()
+    /// <summary>The head this station runs as — its own pages and process identity (<see cref="IStationHead"/>).</summary>
+    public IStationHead Head { get; }
+
+    public EngineHost(IStationHead head)
     {
+        Head = head;
+        // The head's own Engineer blocks + help, before any editor is built.
+        ViewModels.OpCatalog.Register(head.Ops);
+        ViewModels.OpCatalogHelp.Register(head.OpHelp);
         Engine = new HorizonEngine();
         Process = new ProcessService(Engine);
         Log = new LogHub();

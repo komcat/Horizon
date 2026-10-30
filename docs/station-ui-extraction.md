@@ -46,7 +46,7 @@ behaves identically after every slice. Layer rule: the library references
 | # | Slice | Status |
 |---|---|---|
 | 1 | Library project + theme + MVVM + telemetry + leaf units | **done** (below) |
-| 2 | Cut the back-edges from generic code into FAU-specific code, still inside FAAM.UI (seams below) | next |
+| 2 | Cut the back-edges from generic code into FAU-specific code, still inside FAAM.UI (seams below) | in progress — 3 of 6 seams cut |
 | 3 | Move the generic core (the 128-unit cycle minus FAU-specific units) in one step | |
 | 4 | DLAM.UI head on the library (`docs/dlam-ui.md` §7 phase 3) | |
 
@@ -67,11 +67,14 @@ purpose: `AppVersionInfo` (reads the head's own embedded `version_info.json`),
 
 ### Slice 2 — seams to cut first
 
+The head is an `IStationHead` (FAAM.UI for now; moves with `EngineHost` in slice 3), passed to
+`new EngineHost(new FaamHead())` and read as `host.Head`.
+
 | Back-edge (generic → FAU-specific) | Seam |
 |---|---|
-| `ShellWindow` constructs `RunView`, `DutDataView`, … | a page registry: the head contributes its pages (key, title, access level, factory); Home tiles and navigation read it (`AccessPolicy` keeps the minimum per key) |
-| `OpCatalog` / `OpCatalogHelp` hold the `fau.*`, `align.*`, `siphog.*`, `hillclimb.*` blocks | catalog contributions: the library catalog has the generic blocks, a head adds its own (FAAM: FAU / SiPhOG; DLAM: `scan.xcan`, `scan.xcanTwoLens`, `scan.climb`, …) |
-| `SettingsSectionViewModel` / View edit FAAM settings (scan-panel slots, script presets, find-first-light) | settings contributions: generic settings in the library, head sections appended |
+| `ShellWindow` constructs `RunView`, `DutDataView`, … | **done** — the head builds its Run page (`IRunPage`: Activate / Deactivate, progress + edit-program events, process timer) and DUT Data page (`IStationPage`), both interfaces in the library; the DUT process name (`"FAU attach"`) is `IStationHead.DutProcessName`. Every other page is shared, so no general registry yet. |
+| `OpCatalog` / `OpCatalogHelp` hold the `fau.*`, `align.*`, `siphog.*`, `hillclimb.*` blocks | **done** — `OpCatalog.Register` / `OpCatalogHelp.Register`; FAAM's 12 blocks + help are `FaamOps` / `FaamOpHelp` (`IStationHead.Ops` / `OpHelp`, registered by `EngineHost`). Palette categories keep a fixed order (`CategoryOrder`); verified identical to before (70 blocks, same order per category, 39 help entries). DLAM adds `scan.xcan`, `scan.xcanTwoLens`, `scan.climb`, … the same way. |
+| `SettingsSectionViewModel` / View edit FAAM settings (scan-panel slots, script presets, find-first-light) | **done** — `IHeadSettingsPanel` (library: Load / Validate / Save / SavedFiles), listed after the page's own groups and saved with its Save button (head panels first); FAAM: `StartCorrectionSettingsViewModel` + `ScanPanelSettingsViewModel` with DataTemplates in `App.xaml`. Visible change: "Start correction" now sits next to "Run page scanning" instead of after "Startup". |
 | `EngineHost` wires the SiPhOG client / signal source / hill-climb feedback | a head hook on the host (`OnBuilt`, `OnConnected`) that registers product signal sources and providers |
 | `UtilityAppHost` + `Apps/*` adapters | the launcher stays generic; each head registers its apps |
 | ~44 hard-coded `"hex-right"` (jog, registration, gripped object, scan panels) | a per-head station profile (`StationApp`): tool hexapod(s), camera device, default PSU |

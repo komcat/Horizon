@@ -22,7 +22,7 @@ namespace FAAM.UI.Views;
 /// <see cref="IProcessService.GetDutRecord"/>, on a background thread — the product has
 /// hundreds of record files — with progress in the status text and a cancel on leaving.
 /// </summary>
-public partial class DutDataView : UserControl
+public partial class DutDataView : UserControl, IStationPage
 {
     private const int ProgressEvery = 25;
 

@@ -29,7 +29,7 @@ public partial class App : Application
 
         ConfigureLogging();
 
-        _host = new EngineHost();
+        _host = new EngineHost(new FaamHead());
         // Persist every UI log line (engine + workflow events) to the same file as
         // the lower-level Serilog diagnostics (e.g. the swallowed ACS Kill exception).
         _host.Log.Appended += ForwardToSerilog;

@@ -34,7 +34,6 @@ public sealed class SettingsSectionViewModel : ObservableObject
     private bool _showMainCameraOnStartup = true;
     private bool _showToolOverlay;
     private bool _autoLoginOperator = true;
-    private bool _autoVisionUCorrection;
     private string _status = "—";
 
     private string _machineNumber = "";
@@ -51,6 +50,8 @@ public sealed class SettingsSectionViewModel : ObservableObject
     {
         _store = host.Settings;
         _host = host;
+        foreach (var panel in host.Head.CreateSettingsPanels(host))
+            HeadPanels.Add(panel);
         LoadFromStore();
         SaveCommand = new RelayCommand(Save);
         ReloadCommand = new RelayCommand(Reload);
@@ -60,10 +61,6 @@ public sealed class SettingsSectionViewModel : ObservableObject
         ResetPivotsCommand = new RelayCommand(ResetPivots);
         AddScriptPresetCommand = new RelayCommand(AddScriptPreset);
         RefreshUsers();
-        // The Engineer › Find First Light tab also edits this flag — pick up its saves so our Save doesn't revert it.
-        _store.Changed += s => AutoVisionUCorrection = s.FindFirstLight.AutoVisionUCorrection;
-        // The Run-page Scanning panel edits its buttons by right-click — show those saves here.
-        ScanPanelStore.Changed += LoadScanPanel;
     }
 
     /// <summary>Label shown in the Machine-page section rail.</summary>
@@ -130,16 +127,8 @@ public sealed class SettingsSectionViewModel : ObservableObject
         set => SetField(ref _autoLoginOperator, value);
     }
 
-    /// <summary>
-    /// Start correction: move gantry-main to the vision facets (visionFacet / visionFAUFacet) and
-    /// measure U by vision first. Off skips straight to the manual UCorr_P1/P2/F1/F2 capture.
-    /// Same flag as the Find First Light tab's "Auto-run vision U-correction".
-    /// </summary>
-    public bool AutoVisionUCorrection
-    {
-        get => _autoVisionUCorrection;
-        set => SetField(ref _autoVisionUCorrection, value);
-    }
+    /// <summary>The head's own settings groups (<see cref="IHeadSettingsPanel"/>), shown after this page's groups and saved with it.</summary>
+    public ObservableCollection<IHeadSettingsPanel> HeadPanels { get; } = new();
 
     public string Status { get => _status; private set => SetField(ref _status, value); }
 
@@ -245,52 +234,10 @@ public sealed class SettingsSectionViewModel : ObservableObject
         HexapodPivotDefaults.SaveAll(all);
     }
 
-    // --- Run-page Scanning panel: hex-right saved poses + .moon script buttons ---
-
-    /// <summary>The position buttons (caption + saved six-axis pose), saved with the Save button.</summary>
-    public ObservableCollection<ScanPositionRow> ScanPositions { get; } = new();
-
-    /// <summary>The script buttons (caption + script name), saved with the Save button.</summary>
-    public ObservableCollection<ScanScriptRow> ScanScripts { get; } = new();
-
-    /// <summary>Scripts in the active product, for the script pickers.</summary>
-    public ObservableCollection<string> ScriptNames { get; } = new();
-
-    /// <summary>The hexapod the position buttons move.</summary>
-    public string ScanDevice => ScanPanelStore.Device;
-
-    private void LoadScanPanel()
-    {
-        var saved = ScanPanelStore.Load();
-        ScanPositions.Clear();
-        foreach (var p in saved.Positions)
-            ScanPositions.Add(new ScanPositionRow(p));
-        ScanScripts.Clear();
-        foreach (var sc in saved.Scripts)
-            ScanScripts.Add(new ScanScriptRow(sc.Label, sc.Script, sc.Preset));
-
-        ScriptNames.Clear();
-        foreach (var name in _host.Process.ListScripts())
-            ScriptNames.Add(name);
-    }
-
-    /// <summary>Writes the Scanning rows (validated by <see cref="Save"/>). Throws on I/O failure.</summary>
-    private void SaveScanPanel()
-    {
-        ScanPanelStore.Save(new ScanPanelSettings
-        {
-            Positions = ScanPositions.Select(r => r.ToSlot()).ToList(),
-            Scripts = ScanScripts.Select(r => new ScanScriptSlot { Label = r.Label, Script = r.Script, Preset = r.Preset }).ToList(),
-        });
-    }
-
     // --- Script presets: a script + its arguments under a name (faam_script_presets.json) ---
 
     /// <summary>The presets being edited, saved with the Save button.</summary>
     public ObservableCollection<ScriptPresetRow> ScriptPresets { get; } = new();
-
-    /// <summary>Preset names for the Scanning script-button pickers (refreshed on load / save).</summary>
-    public ObservableCollection<string> PresetNames { get; } = new();
 
     public RelayCommand AddScriptPresetCommand { get; }
 
@@ -299,14 +246,6 @@ public sealed class SettingsSectionViewModel : ObservableObject
         ScriptPresets.Clear();
         foreach (var p in ScriptPresetStore.Load())
             ScriptPresets.Add(new ScriptPresetRow(p, RemoveScriptPreset));
-        RefreshPresetNames();
-    }
-
-    private void RefreshPresetNames()
-    {
-        PresetNames.Clear();
-        foreach (var row in ScriptPresets.Where(r => !string.IsNullOrWhiteSpace(r.Name)))
-            PresetNames.Add(row.Name.Trim());
     }
 
     private void AddScriptPreset()
@@ -334,7 +273,6 @@ public sealed class SettingsSectionViewModel : ObservableObject
     private void SaveScriptPresets()
     {
         ScriptPresetStore.Save(ScriptPresets.Select(r => r.ToPreset()));
-        RefreshPresetNames();
     }
 
     // --- Machine identity: stamped onto every DUT run (see Session / OperatorContext) ---
@@ -472,7 +410,6 @@ public sealed class SettingsSectionViewModel : ObservableObject
         ShowMainCameraOnStartup = s.ShowMainCameraOnStartup;
         ShowToolOverlay = s.ShowToolOverlay;
         AutoLoginOperator = s.AutoLoginOperator;
-        AutoVisionUCorrection = s.FindFirstLight.AutoVisionUCorrection;
         MachineNumber = s.StationId;
         MachineCredential = s.MachineCredential;
 
@@ -487,7 +424,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
         LoadPsuSetpoints();
         LoadPivotSettings();
         LoadScriptPresets();
-        LoadScanPanel();
+        foreach (var panel in HeadPanels) panel.Load();
     }
 
     private void Save()
@@ -507,16 +444,22 @@ public sealed class SettingsSectionViewModel : ObservableObject
             Status = $"Not saved — {pivotError.Device} pivot: R, S and T must be numbers.";
             return;
         }
-        var scanError = ScanPositions.FirstOrDefault(r => r.IsSaved && !r.ToAxes().IsValid());
-        if (scanError != null)
-        {
-            Status = $"Not saved — Scanning {scanError.Label}: X..W must be numbers.";
-            return;
-        }
-        var presetError = ValidateScriptPresets();
+        var presetError = ValidateScriptPresets() ?? HeadPanels.Select(p => p.Validate()).FirstOrDefault(e => e != null);
         if (presetError != null)
         {
             Status = $"Not saved — {presetError}.";
+            return;
+        }
+
+        // Head panels first: one may update app_settings.json itself (its own fields), and the
+        // update below must start from the store as the panel left it — not overwrite it.
+        try
+        {
+            foreach (var panel in HeadPanels) panel.Save();
+        }
+        catch (Exception ex)
+        {
+            Status = $"Save failed: {ex.Message}";
             return;
         }
 
@@ -537,7 +480,6 @@ public sealed class SettingsSectionViewModel : ObservableObject
             ShowMainCameraOnStartup = _showMainCameraOnStartup,
             ShowToolOverlay = _showToolOverlay,
             AutoLoginOperator = _autoLoginOperator,
-            FindFirstLight = current.FindFirstLight with { AutoVisionUCorrection = _autoVisionUCorrection },
             StationId = (_machineNumber ?? "").Trim(),
             MachineCredential = (_machineCredential ?? "").Trim(),
         });
@@ -550,8 +492,10 @@ public sealed class SettingsSectionViewModel : ObservableObject
             SavePsuSetpoints();
             SavePivotSettings();
             SaveScriptPresets();
-            SaveScanPanel();
-            Status = "Saved to app_settings.json + faam_psu_defaults.json + faam_hexapod_pivot.json + faam_script_presets.json + faam_scan_panel.json";
+            var files = new[] { "app_settings.json", "faam_psu_defaults.json", "faam_hexapod_pivot.json", "faam_script_presets.json" }
+                .Concat(HeadPanels.Select(p => p.SavedFiles)).Distinct();
+            Status = "Saved to " + string.Join(" + ", files);
+            foreach (var panel in HeadPanels) panel.Load();   // e.g. the preset pickers pick up the presets just saved
         }
         catch (Exception ex)
         {
@@ -677,66 +621,6 @@ public sealed class PsuSetpointRow : ObservableObject
 
     /// <summary>Current limit (A).</summary>
     public double Amps { get => _amps; set => SetField(ref _amps, value); }
-}
-
-/// <summary>One editable Settings row: a Run-page Scanning position button — caption + saved hex-right pose.</summary>
-public sealed class ScanPositionRow : ObservableObject
-{
-    private string _label;
-    private bool _isSaved;
-    private double _x, _y, _z, _u, _v, _w;
-
-    public ScanPositionRow(ScanPositionSlot slot)
-    {
-        _label = slot.Label;
-        _isSaved = slot.Position != null;
-        var p = slot.Position ?? new ScanAxes();
-        (_x, _y, _z, _u, _v, _w) = (p.X, p.Y, p.Z, p.U, p.V, p.W);
-    }
-
-    /// <summary>Button caption.</summary>
-    public string Label { get => _label; set => SetField(ref _label, value); }
-
-    /// <summary>False = no pose saved (the button refuses to move).</summary>
-    public bool IsSaved { get => _isSaved; set => SetField(ref _isSaved, value); }
-
-    public double X { get => _x; set => SetField(ref _x, value); }
-    public double Y { get => _y; set => SetField(ref _y, value); }
-    public double Z { get => _z; set => SetField(ref _z, value); }
-    public double U { get => _u; set => SetField(ref _u, value); }
-    public double V { get => _v; set => SetField(ref _v, value); }
-    public double W { get => _w; set => SetField(ref _w, value); }
-
-    public ScanAxes ToAxes() => new() { X = _x, Y = _y, Z = _z, U = _u, V = _v, W = _w };
-
-    public ScanPositionSlot ToSlot() => new() { Label = _label, Position = _isSaved ? ToAxes() : null };
-}
-
-/// <summary>
-/// One editable Settings row: a Run-page Scanning script button — caption + script preset name,
-/// or a bare <c>.moon</c> script name (used only when no preset is set).
-/// </summary>
-public sealed class ScanScriptRow : ObservableObject
-{
-    private string _label;
-    private string _script;
-    private string _preset;
-
-    public ScanScriptRow(string label, string script, string preset)
-    {
-        _label = label;
-        _script = script;
-        _preset = preset;
-    }
-
-    /// <summary>Button caption.</summary>
-    public string Label { get => _label; set => SetField(ref _label, value); }
-
-    /// <summary>Script name in the active product (blank = none) — run with no arguments when no preset is set.</summary>
-    public string Script { get => _script; set => SetField(ref _script, value ?? ""); }
-
-    /// <summary>Script preset name (blank = none); wins over <see cref="Script"/>.</summary>
-    public string Preset { get => _preset; set => SetField(ref _preset, value ?? ""); }
 }
 
 /// <summary>One editable Settings row: a script preset — name, <c>.moon</c> script and argument text.</summary>

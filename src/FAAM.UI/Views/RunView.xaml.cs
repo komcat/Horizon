@@ -23,7 +23,7 @@ namespace FAAM.UI.Views;
 /// just point their Source at the relevant bitmap, so promoting is a Source swap
 /// with no pipeline disruption.
 /// </summary>
-public partial class RunView : UserControl
+public partial class RunView : UserControl, IRunPage
 {
     private const double ThumbWidth = 150;
     private const double ThumbHeight = 104;
