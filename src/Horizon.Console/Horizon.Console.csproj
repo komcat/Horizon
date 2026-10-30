@@ -17,6 +17,11 @@
     <PackageReference Include="MVTec.HalconDotNet-Windows" Version="25110.0.0" />
   </ItemGroup>
 
+  <!-- DLAM's XCAN script, run by Scripting › Run XCAN (pick a hexapod). -->
+  <ItemGroup>
+    <None Include="..\..\tools\dlam\scripts\XCAN.moon" Link="scripts\XCAN.moon" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Horizon.Engine\Horizon.Engine.csproj" />
     <ProjectReference Include="..\Horizon.Workflow\Horizon.Workflow.csproj" />

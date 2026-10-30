@@ -1,0 +1,107 @@
+{
+  "Name": "XCAN_Test_Left",
+  "Steps": [
+    {
+      "Id": "xtl-01",
+      "Name": "Confirm setup",
+      "Op": "flow.askUser",
+      "Parameters": {
+        "title": "XCAN test - hex-left",
+        "message": "FireDog is closed, the left lens sits on hex-left near first light and the beam is on? Keithley ch1 will be biased at 1 V and hex-left will move up to 200 um each way per axis (X, Y, Z)."
+      }
+    },
+    {
+      "Id": "xtl-02",
+      "Name": "Bias ch1 1 V",
+      "Op": "smu.setSourceVoltage",
+      "Device": "Keithley_2602B",
+      "Parameters": { "volts": "1" }
+    },
+    {
+      "Id": "xtl-03",
+      "Name": "Keithley outputs ON",
+      "Op": "smu.outputOn",
+      "Device": "Keithley_2602B",
+      "Parameters": {}
+    },
+    {
+      "Id": "xtl-04",
+      "Name": "Settle bias",
+      "Op": "flow.wait",
+      "Parameters": { "ms": "300" }
+    },
+    {
+      "Id": "xtl-05",
+      "Name": "Read ch1 before",
+      "Op": "smu.readCurrent",
+      "Device": "Keithley_2602B",
+      "Parameters": { "channel": "1", "captureAs": "cur_before_ch1" }
+    },
+    {
+      "Id": "xtl-06",
+      "Name": "Read ch2 before (2-channel check)",
+      "Op": "smu.readCurrent",
+      "Device": "Keithley_2602B",
+      "Parameters": { "channel": "2", "captureAs": "cur_before_ch2" }
+    },
+    {
+      "Id": "xtl-07",
+      "Name": "Start pose",
+      "Op": "motion.readPosition",
+      "Device": "hex-left",
+      "Parameters": { "prefix": "start", "saveUvw": "true" }
+    },
+    {
+      "Id": "xtl-08",
+      "Name": "XCAN hex-left (FireDog coarse preset)",
+      "Op": "scan.xcan",
+      "Device": "hex-left",
+      "Parameters": {
+        "signal": "smu.Keithley_2602B.ch1.current",
+        "axes": "XYZ",
+        "stepsUm": "10,5,2,1",
+        "settleMinMs": "50",
+        "trace": "true",
+        "captureAs": "xcan"
+      }
+    },
+    {
+      "Id": "xtl-09",
+      "Name": "End pose",
+      "Op": "motion.readPosition",
+      "Device": "hex-left",
+      "Parameters": { "prefix": "end", "saveUvw": "true" }
+    },
+    {
+      "Id": "xtl-10",
+      "Name": "Read ch1 after",
+      "Op": "smu.readCurrent",
+      "Device": "Keithley_2602B",
+      "Parameters": { "channel": "1", "captureAs": "cur_after_ch1" }
+    },
+    {
+      "Id": "xtl-11",
+      "Name": "Record XCAN result",
+      "Op": "dut.recordGroup",
+      "Parameters": { "group": "xcan", "prefix": "xcan_" }
+    },
+    {
+      "Id": "xtl-12",
+      "Name": "Record currents",
+      "Op": "dut.recordGroup",
+      "Parameters": { "group": "currents", "prefix": "cur_" }
+    },
+    {
+      "Id": "xtl-13",
+      "Name": "Record start pose",
+      "Op": "dut.recordGroup",
+      "Parameters": { "group": "pose_start", "prefix": "start_" }
+    },
+    {
+      "Id": "xtl-14",
+      "Name": "Record end pose",
+      "Op": "dut.recordGroup",
+      "Parameters": { "group": "pose_end", "prefix": "end_" }
+    }
+  ]
+}

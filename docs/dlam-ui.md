@@ -160,6 +160,17 @@ direction-memory / sample-reuse trims.
 | `skipOpposite`, `dirMemory`, `reuseSample`, `trace` | on, on, on, off | |
 | `captureAs` | `xcan` | → `_baseline _best _peak _delta _gain _exitHit _passes` |
 
+**Script form — `tools/dlam/scripts/XCAN.moon`.** The same algorithm on the `machine.*` API,
+for running from any script surface: `args` `device` (default `hex-left`), feedback
+`smu` / `channel` (default `Keithley_2602B` ch1 through `machine.smu.readCurrent`, a fresh
+measurement per read) or a catalog `signal`, levels in µA (`exitUa`, `zoneLowUa`,
+`zoneHighUa`, `minSignalUa`), `bias` (default 1 V on the primary channel + outputs ON;
+`false` = leave the SMU alone), plus the pass params above. `machine.onAbort` returns the
+hexapod to the global peak. `Horizon.Console` › Scripting › **Run XCAN (pick a hexapod)** lists
+the PI hexapods and runs it with `device` set (the script ships next to the exe). Checked
+offline against a simulated Gaussian peak: lands on the peak in 86 samples (10/5/2/1 µm),
+stops and stays at an exit target, and the adaptive ladder skips the coarse rungs.
+
 ### 5.2 `scan.xcanTwoLens` — `Xcan/XcanTwoLens`
 
 Port of `xcan_two_lens.lua`: up to four adaptive XCAN passes in a fixed order — **left
@@ -234,7 +245,7 @@ read is a live query, so FireDog's frozen-stream check has no equivalent); resul
 
 | # | Phase | Notes |
 |---|---|---|
-| 1 | ~~Config importer~~ (done); bring-up of every device | Validates Layer 1 on the DLAM rig (Keithley 2602B two-channel + IO-watch LED checks, §2). |
+| 1 | ~~Config importer~~ (done); bring-up of every device | Validates Layer 1 on the DLAM rig (Keithley 2602B two-channel + IO-watch LED checks, §2). First scan runs: `tools/dlam/programs/XCAN_Test_Left.hwf` (one XCAN pass, FireDog's coarse preset) and `XCAN_Test_TwoLens.hwf` (production settings, 6800 µA) — install into a product's `processes\` and run from `Horizon.Workflow.Console` › Process programs. |
 | 2 | Extract `Horizon.Station.UI` | FAAM.UI keeps working unchanged; de-hardcode FAAM's `hex-right` (≈ 44 references) into per-head settings. |
 | 3 | DLAM.UI head | Own Velopack app id + release channel; Run page: two lens panels, XCAN band (presets → `scan.xcan` / `scan.xcanTwoLens`), climb, needle / dispense, Keithley ch1 / ch2 readouts. `OpCatalog` entries + help for every §5 block. |
 | 4 | Product data conversion; re-teach registrations, needle, vision | §3. |

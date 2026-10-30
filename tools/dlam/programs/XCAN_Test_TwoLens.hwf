@@ -1,0 +1,116 @@
+{
+  "Name": "XCAN_Test_TwoLens",
+  "Steps": [
+    {
+      "Id": "xt2-01",
+      "Name": "Confirm setup",
+      "Op": "flow.askUser",
+      "Parameters": {
+        "title": "XCAN two-lens test",
+        "message": "FireDog is closed, both lenses sit near first light and the beam is on? Keithley ch1 will be biased at 1 V; up to four passes (left coarse, left coarse, left fine, right coarse) stop at 6800 uA. Each pass moves its hexapod up to 200 um each way per axis."
+      }
+    },
+    {
+      "Id": "xt2-02",
+      "Name": "Bias ch1 1 V",
+      "Op": "smu.setSourceVoltage",
+      "Device": "Keithley_2602B",
+      "Parameters": { "volts": "1" }
+    },
+    {
+      "Id": "xt2-03",
+      "Name": "Keithley outputs ON",
+      "Op": "smu.outputOn",
+      "Device": "Keithley_2602B",
+      "Parameters": {}
+    },
+    {
+      "Id": "xt2-04",
+      "Name": "Settle bias",
+      "Op": "flow.wait",
+      "Parameters": { "ms": "300" }
+    },
+    {
+      "Id": "xt2-05",
+      "Name": "Read ch1 before",
+      "Op": "smu.readCurrent",
+      "Device": "Keithley_2602B",
+      "Parameters": { "channel": "1", "captureAs": "cur_before_ch1" }
+    },
+    {
+      "Id": "xt2-06",
+      "Name": "Left start pose",
+      "Op": "motion.readPosition",
+      "Device": "hex-left",
+      "Parameters": { "prefix": "left_start", "saveUvw": "true" }
+    },
+    {
+      "Id": "xt2-07",
+      "Name": "Right start pose",
+      "Op": "motion.readPosition",
+      "Device": "hex-right",
+      "Parameters": { "prefix": "right_start", "saveUvw": "true" }
+    },
+    {
+      "Id": "xt2-08",
+      "Name": "XCAN two-lens (FireDog production settings)",
+      "Op": "scan.xcanTwoLens",
+      "Parameters": {
+        "left": "hex-left",
+        "right": "hex-right",
+        "signal": "smu.Keithley_2602B.ch1.current",
+        "target": "6800",
+        "zoneLow": "200",
+        "axes": "XYZ",
+        "settleMinMs": "50",
+        "trace": "true",
+        "captureAs": "xtl"
+      }
+    },
+    {
+      "Id": "xt2-09",
+      "Name": "Left end pose",
+      "Op": "motion.readPosition",
+      "Device": "hex-left",
+      "Parameters": { "prefix": "left_end", "saveUvw": "true" }
+    },
+    {
+      "Id": "xt2-10",
+      "Name": "Right end pose",
+      "Op": "motion.readPosition",
+      "Device": "hex-right",
+      "Parameters": { "prefix": "right_end", "saveUvw": "true" }
+    },
+    {
+      "Id": "xt2-11",
+      "Name": "Read ch1 after",
+      "Op": "smu.readCurrent",
+      "Device": "Keithley_2602B",
+      "Parameters": { "channel": "1", "captureAs": "cur_after_ch1" }
+    },
+    {
+      "Id": "xt2-12",
+      "Name": "Record result",
+      "Op": "dut.recordGroup",
+      "Parameters": { "group": "xcan_two_lens", "prefix": "xtl_" }
+    },
+    {
+      "Id": "xt2-13",
+      "Name": "Record currents",
+      "Op": "dut.recordGroup",
+      "Parameters": { "group": "currents", "prefix": "cur_" }
+    },
+    {
+      "Id": "xt2-14",
+      "Name": "Record left poses",
+      "Op": "dut.recordGroup",
+      "Parameters": { "group": "pose_left", "prefix": "left_" }
+    },
+    {
+      "Id": "xt2-15",
+      "Name": "Record right poses",
+      "Op": "dut.recordGroup",
+      "Parameters": { "group": "pose_right", "prefix": "right_" }
+    }
+  ]
+}
