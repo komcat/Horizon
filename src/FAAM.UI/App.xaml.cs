@@ -21,6 +21,9 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Title of the shared station-UI dialogs (Horizon.Station.UI).
+        StationApp.Title = "FAAM";
+
         // A faulted UI-thread dispatch should never silently kill the app.
         DispatcherUnhandledException += OnDispatcherUnhandledException;
 

@@ -1,8 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Threading;
 using Horizon.Engine;
-using FAAM.UI.Mvvm;
-using FAAM.UI.Telemetry;
 using FAAM.UI.ViewModels.Sections;
 
 namespace FAAM.UI.ViewModels;

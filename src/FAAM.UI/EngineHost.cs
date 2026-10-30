@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using FAAM.UI.Process;
-using FAAM.UI.Telemetry;
 using FAAM.UI.Views;
 using Horizon.Common;
 using Horizon.Engine;

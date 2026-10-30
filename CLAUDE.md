@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run
 
-- **Solution**: `Horizon.sln` — 24 projects, all `net8.0`/`net8.0-windows`, x64 only. All projects live under `src/`.
+- **Solution**: `Horizon.sln` — 25 projects, all `net8.0`/`net8.0-windows`, x64 only. All projects live under `src/`.
 - **Claude compiles** — after making code changes, build the solution as **x64 Release**
   (`dotnet build Horizon.sln -c Release -p:Platform=x64`) and fix any errors before reporting
   done. The user still compiles CMake themselves.
@@ -227,6 +227,14 @@ A second Layer 3 head purpose-built for the FAU-attach process — mirrors
 Horizon.UI's `EngineHost`/`ShellWindow`/`Telemetry`/`Mvvm` shape with its own
 fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.md`.
 
+**`Horizon.Station.UI`** (WPF class library) — the shared station UI FAAM.UI and the planned
+DLAM.UI are built from, being extracted from FAAM.UI slice by slice
+(`docs/station-ui-extraction.md`). Slice 1 moved the theme (`Themes/StationTheme.xaml`, merged
+by `App.xaml`), `Mvvm/`, `Telemetry/`, `Session`, the small dialogs and other leaf types;
+namespaces `Horizon.Station.UI.*`, XAML prefix `st:` (`urn:horizon-station-ui`), in scope in
+FAAM.UI through csproj `<Using>`s. Per-head identity: `StationApp` (`Title`). New shared code
+goes in the library; FAU-specific code (SiPhOG, Run page + its panels, `fau.*`) stays in FAAM.UI.
+
 - **Startup flow**: `StartupWindow` (connect hardware) → **`LoginWindow`** (level +
   employee number + that level's shared password; `Session` pushes an
   `OperatorContext` — employee, level, machine number, machine credential — to Layer 2
@@ -354,7 +362,8 @@ fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.m
   its version equal to the NuGet package. Nothing may write into the install folder. Update only —
   no rollback. See `docs/software-update-design.md`.
 - **Theme rule (both heads)**: use the Windows `SystemColors` palette via the
-  `App.xaml` brushes (`Bg/Panel/Text/Subtle/Edge/Accent`), not hardcoded dark hex.
+  theme brushes (`Bg/Panel/Text/Subtle/Edge/Accent` — Horizon.UI's `App.xaml`, FAAM.UI's via
+  `Horizon.Station.UI/Themes/StationTheme.xaml`), not hardcoded dark hex.
 
 ### Legacy stack — Horizon.App / Horizon.Core / Horizon.Process
 

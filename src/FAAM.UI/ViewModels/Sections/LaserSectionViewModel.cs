@@ -1,5 +1,4 @@
 using Horizon.Common;
-using FAAM.UI.Mvvm;
 
 namespace FAAM.UI.ViewModels.Sections;
 

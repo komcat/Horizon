@@ -50,6 +50,22 @@
     <ProjectReference Include="..\Horizon.Engine\Horizon.Engine.csproj" />
     <ProjectReference Include="..\Horizon.Workflow\Horizon.Workflow.csproj" />
     <ProjectReference Include="..\Horizon.Common\Horizon.Common.csproj" />
+    <!-- The shared station UI this head is built from (docs/station-ui-extraction.md). -->
+    <ProjectReference Include="..\Horizon.Station.UI\Horizon.Station.UI.csproj" />
+  </ItemGroup>
+
+  <!-- Station-UI namespaces in scope everywhere: the types that moved out of FAAM.UI keep
+       resolving where FAAM code used them by their old (enclosing-namespace) names. -->
+  <ItemGroup>
+    <Using Include="Horizon.Station.UI" />
+    <Using Include="Horizon.Station.UI.Mvvm" />
+    <Using Include="Horizon.Station.UI.Telemetry" />
+    <Using Include="Horizon.Station.UI.Process" />
+    <Using Include="Horizon.Station.UI.ViewModels" />
+    <Using Include="Horizon.Station.UI.ViewModels.Sections" />
+    <Using Include="Horizon.Station.UI.ViewModels.Timeline" />
+    <Using Include="Horizon.Station.UI.Views" />
+    <Using Include="Horizon.Station.UI.Views.Sections" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="assets\" />

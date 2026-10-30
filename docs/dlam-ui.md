@@ -246,7 +246,7 @@ read is a live query, so FireDog's frozen-stream check has no equivalent); resul
 | # | Phase | Notes |
 |---|---|---|
 | 1 | ~~Config importer~~ (done); bring-up of every device | Validates Layer 1 on the DLAM rig (Keithley 2602B two-channel + IO-watch LED checks, §2). First scan runs: `tools/dlam/programs/XCAN_Test_Left.hwf` (one XCAN pass, FireDog's coarse preset) and `XCAN_Test_TwoLens.hwf` (production settings, 6800 µA) — install into a product's `processes\` and run from `Horizon.Workflow.Console` › Process programs. |
-| 2 | Extract `Horizon.Station.UI` | FAAM.UI keeps working unchanged; de-hardcode FAAM's `hex-right` (≈ 44 references) into per-head settings. |
+| 2 | Extract `Horizon.Station.UI` | In progress — plan and slice status in `docs/station-ui-extraction.md` (slice 1 done: library, theme, MVVM, telemetry, leaf units). FAAM.UI keeps working unchanged; de-hardcode FAAM's `hex-right` (≈ 44 references) into per-head settings. |
 | 3 | DLAM.UI head | Own Velopack app id + release channel; Run page: two lens panels, XCAN band (presets → `scan.xcan` / `scan.xcanTwoLens`), climb, needle / dispense, Keithley ch1 / ch2 readouts. `OpCatalog` entries + help for every §5 block. |
 | 4 | Product data conversion; re-teach registrations, needle, vision | §3. |
 | 5 | Re-author "PROD Tall AUTO V2" in the Engineer editor; run side by side with FireDog | |

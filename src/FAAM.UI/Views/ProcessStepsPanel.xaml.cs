@@ -1194,7 +1194,7 @@ public enum StepStatus
 /// <see cref="Status"/> is mutable and observable so the button colour tracks the
 /// run live.
 /// </summary>
-public sealed class ProcessStep : Mvvm.ObservableObject
+public sealed class ProcessStep : ObservableObject
 {
     public ProcessStep(int index, string label, string device, string? position = null, string? program = null, int deckIndex = -1)
     {

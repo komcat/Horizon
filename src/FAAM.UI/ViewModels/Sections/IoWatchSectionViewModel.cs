@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Threading;
 using Horizon.Engine;
-using FAAM.UI.Mvvm;
 
 namespace FAAM.UI.ViewModels.Sections;
 

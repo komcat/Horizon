@@ -5,7 +5,6 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Horizon.Common;
 using Horizon.Engine;
-using FAAM.UI.Mvvm;
 
 namespace FAAM.UI.ViewModels.Sections;
 

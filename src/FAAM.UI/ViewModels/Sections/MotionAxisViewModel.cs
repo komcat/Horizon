@@ -1,5 +1,4 @@
 using System.Windows;
-using FAAM.UI.Mvvm;
 
 namespace FAAM.UI.ViewModels.Sections;
 

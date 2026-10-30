@@ -1,5 +1,3 @@
-using FAAM.UI.Mvvm;
-using FAAM.UI.Telemetry;
 
 namespace FAAM.UI.ViewModels.Sections;
 

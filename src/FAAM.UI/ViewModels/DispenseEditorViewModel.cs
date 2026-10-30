@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using FAAM.UI.Mvvm;
 using Horizon.Workflow.Dispensing;
 
 namespace FAAM.UI.ViewModels;

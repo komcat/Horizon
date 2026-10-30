@@ -1,0 +1,26 @@
+<Window x:Class="Horizon.Station.UI.CountdownWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:Horizon.Station.UI"
+        Title="{x:Static ui:StationApp.Title}"
+        Width="360" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        WindowStyle="None"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="{StaticResource Bg}">
+    <Border BorderBrush="{StaticResource Edge}" BorderThickness="1">
+        <StackPanel Margin="24,18">
+            <TextBlock x:Name="PromptTitle" Foreground="{StaticResource Accent}" FontSize="15" FontWeight="SemiBold"
+                       TextWrapping="Wrap" Margin="0,0,0,8" />
+            <TextBlock x:Name="PromptMessage" Foreground="{StaticResource Text}" FontSize="13"
+                       TextWrapping="Wrap" Margin="0,0,0,12" />
+            <TextBlock x:Name="RemainingText" Foreground="{StaticResource Text}" FontSize="34" FontWeight="Light"
+                       HorizontalAlignment="Center" Margin="0,0,0,10" />
+            <ProgressBar x:Name="Progress" Height="6" Minimum="0" Maximum="1" Margin="0,0,0,16" />
+            <Button x:Name="CancelButton" Content="Cancel" Width="100" Height="30"
+                    HorizontalAlignment="Center" Click="OnCancel" />
+        </StackPanel>
+    </Border>
+</Window>

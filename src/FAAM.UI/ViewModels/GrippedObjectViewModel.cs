@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Windows;
-using FAAM.UI.Mvvm;
 using FAAM.UI.ViewModels.Sections;
 using Horizon.Engine;
 using Horizon.Workflow.Registration;

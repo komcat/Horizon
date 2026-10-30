@@ -1,6 +1,7 @@
 <UserControl x:Class="FAAM.UI.Views.Sections.DeviceRegistrationSectionView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:st="urn:horizon-station-ui"
              xmlns:v="clr-namespace:FAAM.UI.Views">
     <UserControl.Resources>
         <SolidColorBrush x:Key="PickOn" Color="#FFA000" />
@@ -118,7 +119,7 @@
                 </Border>
 
                 <!-- Standard marker placement: yellow crosshair + Confirm / Cancel (topmost). -->
-                <v:MarkerPlacer x:Name="Placer" />
+                <st:MarkerPlacer x:Name="Placer" />
             </Grid>
         </Border>
 

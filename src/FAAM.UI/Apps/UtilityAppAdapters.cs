@@ -1,5 +1,4 @@
 using System.Windows;
-using FAAM.UI.Mvvm;
 using FAAM.UI.Views;
 
 namespace FAAM.UI.Apps;

@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows.Threading;
-using FAAM.UI.Mvvm;
 using Horizon.Engine;
 using Horizon.Workflow;
 

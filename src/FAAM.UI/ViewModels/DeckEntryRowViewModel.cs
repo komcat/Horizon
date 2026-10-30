@@ -1,6 +1,5 @@
 using System;
 using System.Collections.ObjectModel;
-using FAAM.UI.Mvvm;
 
 namespace FAAM.UI.ViewModels;
 

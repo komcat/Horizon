@@ -1,4 +1,3 @@
-using FAAM.UI.Mvvm;
 using Horizon.Common;
 
 namespace FAAM.UI.ViewModels;
