@@ -410,6 +410,9 @@ files for the newer hardware. Camera config: `%APPDATA%\Horizon\camera-config.js
 `Horizon.ConfigTool` is preset-driven console tooling for authoring these files
 with cross-reference validation (e.g. a pneumatic slide referencing a
 nonexistent IO pin). Authoring-side only — not part of the runtime stack.
+**Import from FireDog** (`FireDogImport.cs`; also `--import-firedog [<root>] [<dir>] [--overwrite]`)
+translates a FireDog machine root's `hardware.json` etc. into these files for DLAM — skips
+existing files unless told to overwrite (with a `_backup-<stamp>` copy). See `docs/dlam-ui.md` §2.
 
 ## Conventions
 

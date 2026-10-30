@@ -13,6 +13,7 @@ using Horizon.Pneumatic;
 using Horizon.Pneumatic.Models;
 using Horizon.Safety.Models;
 using System.Diagnostics;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Spectre.Console;
 
@@ -42,6 +43,7 @@ internal sealed class ConfigToolApp
     private const string ViewAllDomains = "View all";
     private const string ExportBundle = "Export config bundle";
     private const string ImportBundle = "Import config bundle";
+    private const string ImportFireDog = "Import from FireDog";
     private const string Validate = "Validate all";
     private const string OpenFolder = "Open config folder";
     private const string ChangeDir = "Change config directory";
@@ -73,7 +75,7 @@ internal sealed class ConfigToolApp
                     .Title("Select a domain:")
                     .AddChoices(Motion, IO, IoWatch, Pneumatic, Laser, Measurement, Camera, Safety, Interlocks,
                                 Lighting, Tec, Smu, PowerSupply, TcpClients, ViewAllDomains,
-                                ExportBundle, ImportBundle, Validate, OpenFolder, ChangeDir, Exit));
+                                ExportBundle, ImportBundle, ImportFireDog, Validate, OpenFolder, ChangeDir, Exit));
 
             switch (choice)
             {
@@ -95,6 +97,7 @@ internal sealed class ConfigToolApp
                 case ViewAllDomains: ViewAll(); break;
                 case ExportBundle: ExportBundleFlow(); break;
                 case ImportBundle: ImportBundleFlow(); break;
+                case ImportFireDog: ImportFireDogFlow(); break;
                 case Validate:    ValidateAll(); break;
                 case OpenFolder:  OpenConfigFolder(); break;
                 case ChangeDir:   _configDir = AnsiConsole.Prompt(
@@ -310,6 +313,78 @@ internal sealed class ConfigToolApp
         AnsiConsole.MarkupLine("\n[aqua]Validating imported config…[/]");
         RenderIssues(new ConfigValidator(_configDir).Validate());
     }
+
+    /// <summary>
+    /// Translates a FireDog machine root into Horizon config files (<see cref="FireDogImport"/>):
+    /// preview, then write the files that do not exist yet — overwriting is a second, explicit
+    /// choice and backs the old files up first — then validate.
+    /// </summary>
+    private void ImportFireDogFlow()
+    {
+        var root = AnsiConsole.Prompt(
+            new TextPrompt<string>("FireDog machine root:").DefaultValue(FireDogImport.DefaultRoot));
+
+        FireDogImportPlan plan;
+        try { plan = FireDogImport.Build(root); }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]Cannot import: {ex.Message}[/]");
+            return;
+        }
+
+        RenderFireDogPlan(plan, _configDir);
+        int existing = plan.Files.Count(f => File.Exists(Path.Combine(_configDir, f.FileName)));
+        var skip = $"Write the {plan.Files.Count - existing} new file(s), skip the {existing} existing";
+        var overwrite = $"Write all {plan.Files.Count} — back up and overwrite the {existing} existing";
+        var choices = new List<string> { skip };
+        if (existing > 0) choices.Add(overwrite);
+        choices.Add(Cancel);
+        var choice = AnsiConsole.Prompt(new SelectionPrompt<string>().Title("Import?").AddChoices(choices));
+        if (choice == Cancel)
+        {
+            FireDogImport.Discard(plan);
+            return;
+        }
+
+        FireDogImportResult result;
+        try
+        {
+            result = FireDogImport.Apply(plan, _configDir,
+                choice == overwrite ? ImportOverwrite.BackupAndOverwrite : ImportOverwrite.SkipExisting);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]Import failed: {ex.Message}[/]");
+            return;
+        }
+        RenderFireDogResult(result);
+        AnsiConsole.MarkupLine("\n[aqua]Validating config…[/]");
+        RenderIssues(new ConfigValidator(_configDir).Validate());
+    }
+
+    /// <summary>The import preview: one row per Horizon file, then the notes.</summary>
+    internal static void RenderFireDogPlan(FireDogImportPlan plan, string targetDir)
+    {
+        AnsiConsole.MarkupLineInterpolated($"\nFireDog config: [aqua]{plan.SourceDir}[/]  →  [aqua]{targetDir}[/]");
+        var table = NewTable("FireDog import preview", "Domain", "File", "Entries", "Action");
+        foreach (var f in plan.Files)
+            table.AddRow(Markup.Escape(f.Domain), Markup.Escape(f.FileName), f.Entries.ToString(),
+                File.Exists(Path.Combine(targetDir, f.FileName)) ? "[yellow]exists[/]" : "[green]new[/]");
+        AnsiConsole.Write(table);
+        foreach (var n in plan.Notes)
+            AnsiConsole.MarkupLineInterpolated($"[grey]• {n}[/]");
+    }
+
+    internal static void RenderFireDogResult(FireDogImportResult result)
+    {
+        AnsiConsole.MarkupLineInterpolated($"[green]Wrote[/] {result.Written.Count} file(s): {string.Join(", ", result.Written)}");
+        if (result.Skipped.Count > 0)
+            AnsiConsole.MarkupLineInterpolated($"[yellow]Skipped (already exist)[/]: {string.Join(", ", result.Skipped)}");
+        if (result.BackupDir != null)
+            AnsiConsole.MarkupLineInterpolated($"Previous files backed up to [aqua]{result.BackupDir}[/]");
+    }
+
+    internal static void RenderValidation(string configDir) => RenderIssues(new ConfigValidator(configDir).Validate());
 
     /// <summary>Best-effort entry count for the import preview (array length, or the first array property).</summary>
     private static string EntryCount(JsonNode? node) => node switch
