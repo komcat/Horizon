@@ -337,21 +337,21 @@ public static class OpCatalog
         new("tool.cameraToTool", "Camera to Tool", "Tool", DeviceKind.None,
             new[]
             {
-                new ParamSpec("tool", "Tool device", ParamKind.MotionDeviceName, "hex-right"),
+                new ParamSpec("tool", "Tool device", ParamKind.MotionDeviceName, StationApp.ToolDevice),
                 new ParamSpec("maxDistance", "Max move (mm, 0 = registration bound)", ParamKind.Number, "10"),
                 new ParamSpec("includeZ", "Include Z (to focus height)", ParamKind.Bool, "true"),
             }),
         new("tool.toolToCamera", "Tool to Camera", "Tool", DeviceKind.None,
             new[]
             {
-                new ParamSpec("tool", "Tool device", ParamKind.MotionDeviceName, "hex-right"),
+                new ParamSpec("tool", "Tool device", ParamKind.MotionDeviceName, StationApp.ToolDevice),
                 new ParamSpec("maxDistance", "Max move (mm, 0 = registration bound)", ParamKind.Number, "10"),
                 new ParamSpec("includeZ", "Include Z (to focus plane)", ParamKind.Bool, "true"),
                 new ParamSpec("zOffset", "Z offset (mm, blank = registration's; − = higher)", ParamKind.Text),
             }),
         // Sends the tool device back to the pose captured in its registration (all axes).
         new("tool.toPose", "Tool to Pose", "Tool", DeviceKind.None,
-            new[] { new ParamSpec("tool", "Tool device", ParamKind.MotionDeviceName, "hex-right") }),
+            new[] { new ParamSpec("tool", "Tool device", ParamKind.MotionDeviceName, StationApp.ToolDevice) }),
         // Moves the tool so the named gripped object (taught on the Gripped FAU page, per product)
         // sits under the camera centre; Z brings its focus plane to the camera Z + zOffset.
         // ---- Part alignment (fiducials E1/E2 + local objects, taught on Vision Alignment) ----

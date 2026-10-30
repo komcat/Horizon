@@ -2,21 +2,20 @@ using System.IO;
 using System.Reflection;
 using System.Text.Json;
 
-namespace FAAM.UI;
+namespace Horizon.Station.UI;
 
 /// <summary>One release — a <c>v*</c> git tag created by <c>deploy/release.ps1</c>.</summary>
 public sealed record AppRelease(string Tag, string Commit, DateTimeOffset? Date, string Title);
 
 /// <summary>
-/// FAAM.UI's build identity and release history, read from the <c>version_info.json</c>
-/// resource that <c>build/version-info.ps1</c> embeds at build time (stations have no git).
+/// The running head's build identity and release history, read from the
+/// <c>&lt;entry assembly&gt;.version_info.json</c> resource that the head's build embeds
+/// (FAAM.UI: <c>build/version-info.ps1</c>, as <c>FAAM.UI.version_info.json</c>) — stations have no git.
 /// When the resource is missing (built without git) it falls back to the assembly version,
 /// with <see cref="FromGit"/> false.
 /// </summary>
 public sealed class AppVersionInfo
 {
-    private const string ResourceName = "FAAM.UI.version_info.json";
-
     public string Version { get; private init; } = "";
     public string Describe { get; private init; } = "";
     public string Commit { get; private init; } = "";
@@ -45,7 +44,8 @@ public sealed class AppVersionInfo
 
     private static AppVersionInfo Load()
     {
-        var asm = typeof(AppVersionInfo).Assembly;
+        // The head executable carries the resource (and its version), not this library.
+        var asm = Assembly.GetEntryAssembly() ?? typeof(AppVersionInfo).Assembly;
         var assemblyVersion = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
                               ?? asm.GetName().Version?.ToString() ?? "";
         // .NET appends "+<full sha>" to the informational version — keep just the release part.
@@ -60,7 +60,7 @@ public sealed class AppVersionInfo
 
         try
         {
-            using var stream = asm.GetManifestResourceStream(ResourceName);
+            using var stream = asm.GetManifestResourceStream($"{asm.GetName().Name}.version_info.json");
             if (stream != null)
             {
                 using var doc = JsonDocument.Parse(stream);

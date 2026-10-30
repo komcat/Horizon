@@ -1,35 +1,23 @@
 namespace FAAM.UI;
 
 /// <summary>
-/// The kind of operator action an <see cref="OperatorActivity"/> records. Kept
-/// deliberately coarse — one value per "section" the DUT log wants to reason about
-/// (manual jog, the correction sequence, and each alignment routine within it).
+/// The kind of operator action an <see cref="OperatorActivity"/> records — one value per "section"
+/// the DUT log wants to reason about. Its <see cref="Name"/> is the DUT-record key prefix
+/// (<c>"{Category}:{Action}"</c>, e.g. <c>"Jog:X+"</c>). The generic sections are here; a head
+/// adds its own routines (FAAM: <see cref="FaamActivity"/>) — a category is just a name.
 /// </summary>
-public enum ActivityCategory
+public readonly record struct ActivityCategory(string Name)
 {
     /// <summary>A manual jog — button click or keyboard jog key.</summary>
-    Jog,
+    public static readonly ActivityCategory Jog = new("Jog");
 
-    /// <summary>The "Start correction" chain as a whole (its overall start / end).</summary>
-    Sequence,
+    /// <summary>A multi-routine chain as a whole (its overall start / end) — e.g. FAAM's "Start correction".</summary>
+    public static readonly ActivityCategory Sequence = new("Sequence");
 
-    /// <summary>U-correction routine section.</summary>
-    UCorrection,
+    /// <summary>Anything not covered by a named section.</summary>
+    public static readonly ActivityCategory Other = new("Other");
 
-    /// <summary>FAU pre-align routine section.</summary>
-    FauPreAlign,
-
-    /// <summary>Post-FAU grid search section.</summary>
-    GridSearch,
-
-    /// <summary>Hill-climb active-alignment section.</summary>
-    HillClimb,
-
-    /// <summary>Auto-W maximizer section.</summary>
-    AutoW,
-
-    /// <summary>Anything not covered above.</summary>
-    Other,
+    public override string ToString() => Name;
 }
 
 /// <summary>

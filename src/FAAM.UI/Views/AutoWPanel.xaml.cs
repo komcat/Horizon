@@ -132,7 +132,7 @@ public partial class AutoWPanel : UserControl
 
         Log(LogLevel.Info,
             $"Auto W starting: W step={config.WStep_deg:0.###}°, max ±{config.MaxWExcursion_deg:0.###}°, velocity={config.SystemVelocity_mmPerS:0.##} mm/s.");
-        _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.AutoW, "started",
+        _host.Activities.Publish(OperatorActivity.Section(FaamActivity.AutoW, "started",
             $"W step={config.WStep_deg:0.###}°, max ±{config.MaxWExcursion_deg:0.###}°"));
         try
         {
@@ -197,7 +197,7 @@ public partial class AutoWPanel : UserControl
         WPeakText.Text = r.WPeakOffsetDeg.ToString("+0.000;-0.000;0.000", CultureInfo.InvariantCulture);
         Log(LogLevel.Info,
             $"Auto W {r.StopReason}: T {r.T0:F6} → {r.TPeakGlobal:F6}, W offset {r.WPeakOffsetDeg:+0.###;-0.###}°, {r.MeasurementsTaken} measurements.");
-        _host?.Activities.Publish(OperatorActivity.Section(ActivityCategory.AutoW, "completed",
+        _host?.Activities.Publish(OperatorActivity.Section(FaamActivity.AutoW, "completed",
             $"T {r.T0:F6} → {r.TPeakGlobal:F6}, W offset {r.WPeakOffsetDeg:+0.###;-0.###}° ({r.StopReason})",
             new Dictionary<string, object?>
             {

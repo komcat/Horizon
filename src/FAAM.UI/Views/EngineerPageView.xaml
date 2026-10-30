@@ -15,15 +15,10 @@
             <TabItem Header="Process Deck">
                 <ContentControl x:Name="DeckHost" />
             </TabItem>
-            <TabItem Header="Find First Light">
-                <ContentControl x:Name="FindFirstLightHost" />
-            </TabItem>
             <TabItem Header="Dispensing">
                 <ContentControl x:Name="DispenseHost" />
             </TabItem>
-            <TabItem Header="Testing Ground">
-                <ContentControl x:Name="TestingHost" />
-            </TabItem>
+            <!-- The head's own tabs (IStationHead.CreateEngineerTabs) are appended here in code. -->
         </TabControl>
     </DockPanel>
 </UserControl>

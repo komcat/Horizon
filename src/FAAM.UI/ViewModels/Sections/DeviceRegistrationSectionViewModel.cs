@@ -84,7 +84,7 @@ public sealed class DeviceRegistrationSectionViewModel : ObservableObject, IDisp
 
         var s = host.Settings.Current;
         _cameraDevice = Pick(MotionDevices, s.MoveClickDevice, "gantry-main");
-        _toolDevice = Pick(MotionDevices, "hex-right", null);
+        _toolDevice = Pick(MotionDevices, StationApp.ToolDevice, null);
 
         CaptureToolPoseCommand = new AsyncRelayCommand(CaptureToolPoseAsync, () => !_busy && _toolDevice != null);
         MoveToPoseCommand = new AsyncRelayCommand(MoveToPoseAsync, () => !_busy && _toolDevice != null && _toolPose != null);

@@ -75,12 +75,6 @@ public sealed class EngineHost : IAsyncDisposable
     /// </summary>
     public event Action<SafetyTrip>? SafetyAbort;
 
-    /// <summary>The single product FAAM operates under (Layer 2 positions are product-scoped).</summary>
-    public const string ProductName = "FAAM";
-
-    /// <summary>Motion device whose legacy teach points migrate into the product.</summary>
-    private const string TeachDevice = "gantry-main";
-
     /// <summary>Mirrors published operator activities into the open interactive DUT run.</summary>
     private readonly DutActivityMirror _dutActivityMirror;
 
@@ -139,29 +133,17 @@ public sealed class EngineHost : IAsyncDisposable
     }
 
     /// <summary>
-    /// Guarantees the FAAM product exists and is the active one, then performs a
-    /// one-time, idempotent import of legacy <c>faam_teach_points.json</c> points
-    /// that are not already present in the product.
+    /// Guarantees the head's default product exists and is the active one, then lets the head
+    /// run its one-time product setup (<see cref="IStationHead.OnProductReady"/>).
     /// </summary>
     private void EnsureProductLoaded()
     {
-        if (!Process.Products.Contains(ProductName, StringComparer.OrdinalIgnoreCase))
-            Process.CreateProduct(ProductName);
-        if (!string.Equals(Process.ActiveProduct, ProductName, StringComparison.OrdinalIgnoreCase))
-            Process.LoadProduct(ProductName);
-
-        var legacy = new TeachPointStore().All;
-        var imported = 0;
-        foreach (var (name, pose) in legacy)
-        {
-            if (Process.GetPosition(TeachDevice, name) != null)
-                continue;   // already migrated / edited — never clobber
-            Process.SetPosition(TeachDevice, name, pose, velocity: 0);
-            imported++;
-        }
-        if (imported > 0)
-            Log.Add(new LogEntry(LogLevel.Info, DateTimeOffset.Now, "FAAM",
-                $"Migrated {imported} legacy teach point(s) into product '{ProductName}'."));
+        var product = Head.DefaultProductName;
+        if (!Process.Products.Contains(product, StringComparer.OrdinalIgnoreCase))
+            Process.CreateProduct(product);
+        if (!string.Equals(Process.ActiveProduct, product, StringComparison.OrdinalIgnoreCase))
+            Process.LoadProduct(product);
+        Head.OnProductReady(this);
     }
 
     /// <summary>

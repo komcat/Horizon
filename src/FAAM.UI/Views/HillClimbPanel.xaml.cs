@@ -209,7 +209,7 @@ public partial class HillClimbPanel : UserControl
             + $"(trimmed −{AutoSledTrimStepMa:0.#} mA/{AutoSledTrimSettleMs / 1000.0:0.#} s while target SAG > {AutoSledTrimEnterV:0.###} V, until < {AutoSledTrimExitV:0.###} V), then continue"
             + (target > 0 ? $" toward target V={target:0.######} (exit at ≥90% = {target * 0.9:0.######})." : "."));
         _lastClimbResult = null;
-        _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.HillClimb, "started",
+        _host.Activities.Publish(OperatorActivity.Section(FaamActivity.HillClimb, "started",
             $"distance={distance:0.0} µm" + (target > 0 ? $", target V={target:0.######}" : "")));
         bool climbedOk = false;
         try
@@ -254,7 +254,7 @@ public partial class HillClimbPanel : UserControl
         }
 
         var climbRes = _lastClimbResult;
-        _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.HillClimb,
+        _host.Activities.Publish(OperatorActivity.Section(FaamActivity.HillClimb,
             climbedOk ? "completed" : "stopped",
             climbRes != null
                 ? $"V {climbRes.VStart:F6} → {climbRes.VPeakGlobal:F6}, Z={climbRes.ZTotalTraveled_um:F1} µm ({climbRes.StopReason})"

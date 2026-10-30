@@ -9,7 +9,7 @@ namespace FAAM.UI.Views;
 /// search); further widgets drop into the same <c>WidgetHost</c> WrapPanel.
 /// The Raster Climb panel that used to sit here is DEPRECATED (do not use) and removed.
 /// </summary>
-public partial class TestingGroundView : UserControl
+public partial class TestingGroundView : UserControl, IStationPage
 {
     private readonly SpiralRunPanel _spiral = new();
 
@@ -21,5 +21,8 @@ public partial class TestingGroundView : UserControl
     }
 
     /// <summary>Called when the tab / Engineer page is left — stops any in-flight experiment.</summary>
+    /// <summary>Nothing runs until the operator starts a routine, so showing the tab starts nothing.</summary>
+    public void Activate() { }
+
     public void Deactivate() => _spiral.Deactivate();
 }

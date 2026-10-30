@@ -23,6 +23,7 @@ public partial class App : Application
 
         // Title of the shared station-UI dialogs (Horizon.Station.UI).
         StationApp.Title = "FAAM";
+        StationApp.ToolDevice = "hex-right";   // the FAU gripper hexapod
 
         // A faulted UI-thread dispatch should never silently kill the app.
         DispatcherUnhandledException += OnDispatcherUnhandledException;

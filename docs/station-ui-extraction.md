@@ -46,8 +46,8 @@ behaves identically after every slice. Layer rule: the library references
 | # | Slice | Status |
 |---|---|---|
 | 1 | Library project + theme + MVVM + telemetry + leaf units | **done** (below) |
-| 2 | Cut the back-edges from generic code into FAU-specific code, still inside FAAM.UI (seams below) | in progress — 3 of 6 seams cut |
-| 3 | Move the generic core (the 128-unit cycle minus FAU-specific units) in one step | |
+| 2 | Cut the back-edges from generic code into FAU-specific code, still inside FAAM.UI (seams below) | **done** — no generic → head-only reference left (scan below) |
+| 3 | Move the generic core (the 128-unit cycle minus FAU-specific units) in one step | next |
 | 4 | DLAM.UI head on the library (`docs/dlam-ui.md` §7 phase 3) | |
 
 ### Slice 1 — done
@@ -75,9 +75,14 @@ The head is an `IStationHead` (FAAM.UI for now; moves with `EngineHost` in slice
 | `ShellWindow` constructs `RunView`, `DutDataView`, … | **done** — the head builds its Run page (`IRunPage`: Activate / Deactivate, progress + edit-program events, process timer) and DUT Data page (`IStationPage`), both interfaces in the library; the DUT process name (`"FAU attach"`) is `IStationHead.DutProcessName`. Every other page is shared, so no general registry yet. |
 | `OpCatalog` / `OpCatalogHelp` hold the `fau.*`, `align.*`, `siphog.*`, `hillclimb.*` blocks | **done** — `OpCatalog.Register` / `OpCatalogHelp.Register`; FAAM's 12 blocks + help are `FaamOps` / `FaamOpHelp` (`IStationHead.Ops` / `OpHelp`, registered by `EngineHost`). Palette categories keep a fixed order (`CategoryOrder`); verified identical to before (70 blocks, same order per category, 39 help entries). DLAM adds `scan.xcan`, `scan.xcanTwoLens`, `scan.climb`, … the same way. |
 | `SettingsSectionViewModel` / View edit FAAM settings (scan-panel slots, script presets, find-first-light) | **done** — `IHeadSettingsPanel` (library: Load / Validate / Save / SavedFiles), listed after the page's own groups and saved with its Save button (head panels first); FAAM: `StartCorrectionSettingsViewModel` + `ScanPanelSettingsViewModel` with DataTemplates in `App.xaml`. Visible change: "Start correction" now sits next to "Run page scanning" instead of after "Startup". |
-| `EngineHost` wires the SiPhOG client / signal source / hill-climb feedback | a head hook on the host (`OnBuilt`, `OnConnected`) that registers product signal sources and providers |
-| `UtilityAppHost` + `Apps/*` adapters | the launcher stays generic; each head registers its apps |
-| ~44 hard-coded `"hex-right"` (jog, registration, gripped object, scan panels) | a per-head station profile (`StationApp`): tool hexapod(s), camera device, default PSU |
+| `EngineHost` wires the SiPhOG client / signal source / hill-climb feedback | **not needed** — the wiring lives in FAAM's Run page (`RunView`), which is the head's. What did need a seam in `EngineHost`: the default product (`IStationHead.DefaultProductName`, FAAM "FAAM") and FAAM's legacy `faam_teach_points.json` import (`IStationHead.OnProductReady`). |
+| `UtilityAppHost` + `Apps/*` adapters | **not needed** — used only by FAAM's Run page and its panels, so the launcher stays in FAAM.UI (head-only). Promote it to the library when a second head wants one. |
+| ~44 hard-coded `"hex-right"` (jog, registration, gripped object, scan panels) | **done** — 16 literals, 10 in head-only files (Run-page panels, scan store). Generic defaults now come from `StationApp.ToolDevice` (FAAM `"hex-right"`): the `tool.*` blocks' Tool device and the Machine › Registration tool picker. The `JogTransforms` seed table lists every device, so it stays. |
+| `OperatorActivity`'s `ActivityCategory` enum lists FAAM routines | **done** — a string-backed `ActivityCategory` with the generic `Jog` / `Sequence` / `Other`; FAAM's routines are `FaamActivity` (same names, so the DUT-record keys are unchanged). |
+| `EngineerPageView` hosts FAAM's Find First Light and Testing Ground tabs | **done** — `IStationHead.CreateEngineerTabs` (`EngineerTab`, an `IStationPage` content is activated / deactivated); the head's tabs follow the shared ones, so Find First Light moved after Dispensing. |
+| `StartupWindow` / `HomeView` / `VersionHistoryWindow` read `AppVersionInfo` (FAAM resource name) | **done** — `AppVersionInfo` reads `<entry assembly>.version_info.json` from the entry assembly and moved to the library. |
+
+Scan after the cuts (comments stripped; `backedges.py`): 108 generic units, 43 head-only, and the only remaining hits are name collisions — the Engineer category "App", the word "Program", `PikaAvatar`'s own `Phase` property. Head-only units: `Siphog/*`, the Run page + its panels + the utility-app launcher, the DUT Data page (UV + SiPhOG), find-first-light, `TestingGroundView`, `ScanPanelStore`, `TeachPointStore`, `DutUvData`, the `Faam*` head classes and FAAM settings panels, `App`, `Program`.
 
 Then slice 3 moves `EngineHost`, the shell chrome, login / access, the Machine page and its
 sections, the jog rail, the Engineer (Gantt) editor, Repository, OEE, Version / update

@@ -482,14 +482,14 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
             if (runU)
             {
                 BeginPhase(Phase.U, "Apply U");
-                _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.UCorrection, "started"));
+                _host.Activities.Publish(OperatorActivity.Section(FaamActivity.UCorrection, "started"));
                 var rU = await _host.Process.RunUCorrectionAsync(BuildUOptions(overrides), this, cts.Token);
                 SetStatus(Phase.U, rU.IsSuccess
                     ? (rU.Value.Applied
                         ? $"Applied U = {rU.Value.CorrectionDegrees:F4}° (angle {rU.Value.AngleDegrees:F4}°)"
                         : $"Declined — angle {rU.Value.AngleDegrees:F4}°")
                     : rU.Message);
-                _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.UCorrection,
+                _host.Activities.Publish(OperatorActivity.Section(FaamActivity.UCorrection,
                     rU.IsSuccess ? (rU.Value.Applied ? "completed" : "declined") : "failed",
                     rU.IsSuccess
                         ? (rU.Value.Applied
@@ -517,14 +517,14 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
             if (runFau && !cts.IsCancellationRequested)
             {
                 BeginPhase(Phase.Fau, "Move FAU");
-                _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.FauPreAlign, "started"));
+                _host.Activities.Publish(OperatorActivity.Section(FaamActivity.FauPreAlign, "started"));
                 var rF = await _host.Process.RunFauPreAlignAsync(BuildFauOptions(overrides), this, cts.Token);
                 SetStatus(Phase.Fau, rF.IsSuccess
                     ? (rF.Value.Applied
                         ? $"Applied hex Y={rF.Value.HexYmm:F4}, Z={rF.Value.HexZmm:F4} mm"
                         : $"Declined — corr ({rF.Value.CorrectionXmm:F4}, {rF.Value.CorrectionYmm:F4}) mm")
                     : rF.Message);
-                _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.FauPreAlign,
+                _host.Activities.Publish(OperatorActivity.Section(FaamActivity.FauPreAlign,
                     rF.IsSuccess ? (rF.Value.Applied ? "completed" : "declined") : "failed",
                     rF.IsSuccess
                         ? (rF.Value.Applied
@@ -546,9 +546,9 @@ public partial class AlignmentPanel : UserControl, IOperatorPrompt
                 // End of corrections: find the Sagnac signal in XY (Stage 1 X line → Stage 2 grid).
                 if (rF.IsSuccess && !cts.IsCancellationRequested && _gridEnabled)
                 {
-                    _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.GridSearch, "started"));
+                    _host.Activities.Publish(OperatorActivity.Section(FaamActivity.GridSearch, "started"));
                     handoffClimb = await RunGridSearchAsync(cts.Token);
-                    _host.Activities.Publish(OperatorActivity.Section(ActivityCategory.GridSearch,
+                    _host.Activities.Publish(OperatorActivity.Section(FaamActivity.GridSearch,
                         handoffClimb ? "completed" : "no-signal",
                         handoffClimb ? "signal found" : "no signal / skipped",
                         new Dictionary<string, object?> { ["signalFound"] = handoffClimb }));

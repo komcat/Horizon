@@ -29,4 +29,16 @@ public interface IStationHead
 
     /// <summary>The head's settings groups for Machine › Settings (each type needs a DataTemplate in the head's App.xaml).</summary>
     IReadOnlyList<IHeadSettingsPanel> CreateSettingsPanels(EngineHost host);
+
+    /// <summary>The head's own Engineer-page tabs, shown after the shared ones.</summary>
+    IReadOnlyList<EngineerTab> CreateEngineerTabs(EngineHost host);
+
+    /// <summary>The product the station creates (if missing) and makes active at startup.</summary>
+    string DefaultProductName { get; }
+
+    /// <summary>
+    /// Runs once at startup after the default product is loaded — e.g. a one-time import of the
+    /// head's legacy data into the product (FAAM: faam_teach_points.json). Must be idempotent.
+    /// </summary>
+    void OnProductReady(EngineHost host);
 }

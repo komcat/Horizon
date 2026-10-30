@@ -6,19 +6,17 @@ namespace FAAM.UI.Views;
 /// The Engineer page — a tab container around the authoring surfaces:
 /// <b>Program</b> (the timeline / Gantt step editor, <see cref="TimelineEditorView"/>),
 /// <b>Process Deck</b> (a collection of programs with transition rules,
-/// <see cref="DeckEditorView"/>), <b>Find First Light</b>, <b>Dispensing</b>, and
-/// <b>Testing Ground</b> (<see cref="TestingGroundView"/> — a scratch area for
-/// experimental alignment routines such as the spiral search). All share the one
-/// engine stack; only the selected tab is activated so background subscriptions
-/// don't run for a hidden tab.
+/// <see cref="DeckEditorView"/>) and <b>Dispensing</b>, followed by the head's own tabs
+/// (<see cref="IStationHead.CreateEngineerTabs"/> — FAAM: Find First Light, Testing Ground).
+/// All share the one engine stack; only the selected tab is activated so background
+/// subscriptions don't run for a hidden tab.
 /// </summary>
 public partial class EngineerPageView : UserControl
 {
     private readonly TimelineEditorView _program;
     private readonly DeckEditorView _deck;
-    private readonly FindFirstLightSettingsView _findFirstLight;
     private readonly DispenseEditorView _dispense;
-    private readonly TestingGroundView _testing;
+    private readonly List<object> _tabContent = new();   // by tab index
     private object? _activeChild;
     private bool _pageActive;
 
@@ -27,14 +25,16 @@ public partial class EngineerPageView : UserControl
         InitializeComponent();
         _program = new TimelineEditorView(host);
         _deck = new DeckEditorView(host);
-        _findFirstLight = new FindFirstLightSettingsView(host);
         _dispense = new DispenseEditorView(host);
-        _testing = new TestingGroundView(host);
         ProgramHost.Content = _program;
         DeckHost.Content = _deck;
-        FindFirstLightHost.Content = _findFirstLight;
         DispenseHost.Content = _dispense;
-        TestingHost.Content = _testing;
+        _tabContent.AddRange(new object[] { _program, _deck, _dispense });
+        foreach (var tab in host.Head.CreateEngineerTabs(host))
+        {
+            Tabs.Items.Add(new TabItem { Header = tab.Header, Content = tab.Content });
+            _tabContent.Add(tab.Content);
+        }
         Downtime.Attach(host);
     }
 
@@ -52,13 +52,13 @@ public partial class EngineerPageView : UserControl
         _program.OpenProgram(name);
     }
 
-    /// <summary>Called when the shell leaves the Engineer page — stops both tabs.</summary>
+    /// <summary>Called when the shell leaves the Engineer page — stops every tab with background work.</summary>
     public void Deactivate()
     {
         _pageActive = false;
         _program.Deactivate();
         _deck.Deactivate();
-        _testing.Deactivate();
+        foreach (var page in _tabContent.OfType<IStationPage>()) page.Deactivate();
         _activeChild = null;
     }
 
@@ -72,29 +72,24 @@ public partial class EngineerPageView : UserControl
 
     private void ActivateSelected()
     {
-        // The Find First Light tab (index 2) is a static settings form with no background
-        // work, so it has no Activate/Deactivate — selecting it just stops the other two.
-        object target = Tabs.SelectedIndex switch
-        {
-            1 => _deck,
-            2 => _findFirstLight,
-            3 => _dispense,
-            4 => _testing,
-            _ => _program,
-        };
+        // A tab with no background work (e.g. a static settings form) has no Activate /
+        // Deactivate — selecting it just stops the previous one.
+        int i = Tabs.SelectedIndex;
+        object target = i >= 0 && i < _tabContent.Count ? _tabContent[i] : _program;
         if (ReferenceEquals(_activeChild, target)) return;
 
         switch (_activeChild)
         {
             case TimelineEditorView t: t.Deactivate(); break;
             case DeckEditorView d: d.Deactivate(); break;
-            case TestingGroundView tg: tg.Deactivate(); break;
+            case IStationPage p: p.Deactivate(); break;
         }
         switch (target)
         {
             case TimelineEditorView t: t.Activate(); break;
             case DeckEditorView d: d.Activate(); break;
             case DispenseEditorView dv: dv.Activate(); break;
+            case IStationPage p: p.Activate(); break;
         }
         _activeChild = target;
     }
