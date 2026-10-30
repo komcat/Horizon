@@ -48,7 +48,8 @@ behaves identically after every slice. Layer rule: the library references
 | 1 | Library project + theme + MVVM + telemetry + leaf units | **done** (below) |
 | 2 | Cut the back-edges from generic code into FAU-specific code, still inside FAAM.UI (seams below) | **done** — no generic → head-only reference left (scan below) |
 | 3 | Move the generic core (the 128-unit cycle minus FAU-specific units) in one step | **done** (below) |
-| 4 | DLAM.UI head on the library (`docs/dlam-ui.md` §7 phase 3) | next |
+| 3b | Run-page kit: FAAM's Run page split into shared pieces | **done** (below) |
+| 4 | DLAM.UI head on the library (`docs/dlam-ui.md` §8) | **first cut built** — not yet run on the rig |
 
 ### Slice 1 — done
 
@@ -125,3 +126,31 @@ feed, so FAAM (default channel `win`, `releases.win.json`) and DLAM never see ea
 The DLAM release pipeline must pass `--channel dlam` to `vpk pack`, `vpk download github` (delta
 base) and `vpk upload github`, use `--packId DLAM.UI`, and tag differently from FAAM's `v*`
 (e.g. `dlam-v0.1.0`). `UpdateOptions.ExplicitChannel` is only for switching channels — not needed.
+
+### Slice 3b — the Run-page kit (done, with slice 4)
+
+FAAM's Run page mixed generic parts with FAU panels; DLAM needs the generic parts, so they moved
+into the library as building blocks a head composes (`Views/`):
+
+- **`RunStepsPanel`** — `git mv` of FAAM's `ProcessStepsPanel`: deck picker → one button per
+  `Run page` program, run / Auto-chain, STOP, process timer, progress bar, DUT banner, Edit /
+  Inspect Motion. A head's fallback steps (shown while no deck drives the list) plug in through
+  **`IRunBuiltInSteps`** (`Title`, `CreateSteps`, `RunAsync(step, IRunStepContext, ct)`); FAAM's
+  Phase-1 FAU-attach sequence is now `FAAM.UI/Views/FaamBuiltInSteps.cs` (moved verbatim). Without
+  built-ins the list is empty and the banner says to author a deck. STOP also raises the new
+  **`EngineHost.StopPressed`**, so other Run-page sequences (DLAM's alignment band) cancel too.
+- **`RunCameraPanel`** — the camera column from FAAM's `RunView` (main feed, crosshair, ROI,
+  MoveClick, detection flash, tool overlays, DUT banner, capture prompts, Zoom 2×, snapshot box,
+  thumbnails, motion inspector — `ShowInspector`). `Attach` registers the prompts on
+  `host.CapturePrompts` and makes the snapshot box the image sink.
+- **`RunLogView`** (log box) and **`RunPageLayout`** (camera column width per head:
+  `faam_run_layout.json`, `dlam_run_layout.json`).
+- **`DutRecordsView`** — a generic DUT Data page (serials → runs → values, CSV export) for a head
+  without its own data views (DLAM).
+
+FAAM's `RunView` is now the kit + its PSU panel + utility apps + SiPhOG wiring; behaviour is meant
+to be unchanged (FAU steps, prompts, inspector, layout file). Verified by build + analyzer diff
+only — needs a FAAM.UI run.
+
+`build/version-info.ps1` moved from `src/FAAM.UI/build/` to the repo root and takes `-TagPrefix`
+(FAAM `v`, DLAM `dlam-v`), so each head's Version window lists only its own releases.

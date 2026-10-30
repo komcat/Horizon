@@ -1,0 +1,80 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- 10.0.19041 platform version to match the other Layer 3 heads — keeps
+         WPF package resolution (SkiaSharp etc.) on net8.0-windows, not net462. -->
+    <TargetFramework>net8.0-windows10.0.19041</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>DLAM.UI</RootNamespace>
+    <AssemblyName>DLAM.UI</AssemblyName>
+    <ApplicationIcon>..\..\assets\appicon.ico</ApplicationIcon>
+    <!-- Release identity. DLAM releases are tagged dlam-v<Version> and published on the
+         Velopack channel "dlam" (docs/dlam-ui.md, docs/station-ui-extraction.md § Slice 3). -->
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <Product>DLAM.UI</Product>
+    <Company>Fabrinet</Company>
+    <Description>Double-lens active alignment operator application for the Horizon engine stack.</Description>
+    <!-- Program.Main runs the Velopack hook before the generated App.Main (software update). -->
+    <StartupObject>DLAM.UI.Program</StartupObject>
+  </PropertyGroup>
+
+  <!-- HALCON native bundle — Horizon.Engine references the managed
+       MVTec.HalconDotNet (Vision facet), so the executable head must carry the
+       native-bundling package or the HALCON DLLs won't be in the output. -->
+  <ItemGroup>
+    <PackageReference Include="MVTec.HalconDotNet-Windows" Version="25110.0.0" />
+    <!-- File logging: the UI log + engine/adapter Serilog diagnostics to
+         %APPDATA%\Horizon\logs\dlam-.log. -->
+    <PackageReference Include="Serilog" Version="4.2.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <!-- Internet software update from GitHub Releases (Home › Version › Update).
+         Same version as the library's reference and the vpk tool the release script uses. -->
+    <PackageReference Include="Velopack" Version="1.2.161" />
+  </ItemGroup>
+
+  <!-- A Layer 3 head: references the Layer 1 engine + Layer 2 workflow interfaces only,
+       plus the shared station UI. Never the hardware adapters or the legacy stack. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Horizon.Engine\Horizon.Engine.csproj" />
+    <ProjectReference Include="..\Horizon.Workflow\Horizon.Workflow.csproj" />
+    <ProjectReference Include="..\Horizon.Common\Horizon.Common.csproj" />
+    <!-- The shared station UI this head is built from (docs/station-ui-extraction.md). -->
+    <ProjectReference Include="..\Horizon.Station.UI\Horizon.Station.UI.csproj" />
+  </ItemGroup>
+
+  <!-- Station-UI namespaces in scope everywhere. -->
+  <ItemGroup>
+    <Using Include="Horizon.Station.UI" />
+    <Using Include="Horizon.Station.UI.Mvvm" />
+    <Using Include="Horizon.Station.UI.Telemetry" />
+    <Using Include="Horizon.Station.UI.Process" />
+    <Using Include="Horizon.Station.UI.ViewModels" />
+    <Using Include="Horizon.Station.UI.ViewModels.Sections" />
+    <Using Include="Horizon.Station.UI.ViewModels.Timeline" />
+    <Using Include="Horizon.Station.UI.Views" />
+    <Using Include="Horizon.Station.UI.Views.Sections" />
+  </ItemGroup>
+
+  <!-- Version history (Home › Version): <repo>\build\version-info.ps1 captures the current commit
+       and the dlam-v* release tags into obj\…\version_info.json, embedded as a resource (stations
+       run a published build with no git). Never fails the build: without git the resource is
+       absent and the window falls back to the assembly version. -->
+  <Target Name="DlamVersionInfo" BeforeTargets="BeforeBuild">
+    <PropertyGroup>
+      <DlamVersionInfoFile>$([System.IO.Path]::Combine($(MSBuildProjectDirectory), $(IntermediateOutputPath), 'version_info.json'))</DlamVersionInfoFile>
+    </PropertyGroup>
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\build\version-info.ps1&quot; -RepoDir &quot;$(MSBuildProjectDirectory)&quot; -OutFile &quot;$(DlamVersionInfoFile)&quot; -Version &quot;$(Version)&quot; -TagPrefix dlam-v"
+          ContinueOnError="true" StandardOutputImportance="low" />
+    <ItemGroup Condition="Exists('$(DlamVersionInfoFile)')">
+      <EmbeddedResource Include="$(DlamVersionInfoFile)" LogicalName="DLAM.UI.version_info.json" />
+    </ItemGroup>
+  </Target>
+
+</Project>

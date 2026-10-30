@@ -4,28 +4,15 @@ using System.Windows.Threading;
 
 namespace Horizon.Station.UI.Views;
 
-/// <summary>What the header pika is doing — follows the station's OEE state.</summary>
-public enum PikaMood
-{
-    /// <summary>Online, nothing executing (standby): sits and blinks now and then.</summary>
-    Awake,
-    /// <summary>A step / program is executing: hops and zaps continuously.</summary>
-    Working,
-    /// <summary>Idle (nothing executed for the idle threshold) or offline: faded fur, eyes shut, Zzz.</summary>
-    Sleeping,
-    /// <summary>Station declared down: red fur, eyes shut, a white "!".</summary>
-    Down,
-}
-
 /// <summary>
-/// The shell header mascot — a blocky pixel-art North American pika with a yellow
+/// FAAM's mascot (the default <see cref="StationApp.Mascot"/>) — a blocky pixel-art North American pika with a yellow
 /// thunderbolt. The pika is a patient, precise forager that sets every stalk just so,
 /// which is a fair stand-in for an active-alignment station; the bolt is the signal it
 /// chases. The sprite is authored as ASCII rows (one char per block) and drawn as filled
 /// squares; a slow <see cref="DispatcherTimer"/> steps the animation for the current
 /// <see cref="Mood"/>. Pure decoration — no I/O, a few hundred rects per changed frame.
 /// </summary>
-public sealed class PikaAvatar : FrameworkElement
+public sealed class PikaAvatar : FrameworkElement, IStationMascot
 {
     // '#' fur · 'd' inner ear · 'o' eye · 'n' nose · 'p' cheek · '.' empty
     private static readonly string[] Body =
@@ -87,7 +74,7 @@ public sealed class PikaAvatar : FrameworkElement
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(120) };
     private int _tick;
     private int _state = -1;                   // packed frame; redraw only on change
-    private PikaMood _mood = PikaMood.Awake;
+    private MascotMood _mood = MascotMood.Awake;
 
     public PikaAvatar()
     {
@@ -99,7 +86,9 @@ public sealed class PikaAvatar : FrameworkElement
         Step();   // initial frame
     }
 
-    public PikaMood Mood
+    public string MascotName => "Pika";
+
+    public MascotMood Mood
     {
         get => _mood;
         set
@@ -115,15 +104,15 @@ public sealed class PikaAvatar : FrameworkElement
     private void Step()
     {
         _tick = (_tick + 1) % (LoopTicks * 8);
-        bool working = _mood == PikaMood.Working;
-        bool awake = _mood == PikaMood.Awake;
-        bool eyesShut = _mood is PikaMood.Sleeping or PikaMood.Down
+        bool working = _mood == MascotMood.Working;
+        bool awake = _mood == MascotMood.Awake;
+        bool eyesShut = _mood is MascotMood.Sleeping or MascotMood.Down
                      || (!working && awake && Phase is 8 or 9 or 31)
                      || (working && Phase is 20 or 21);
         bool hop = working && _tick % 8 is 0 or 1;
         bool zap = working;
         bool flash = zap && (_tick & 1) == 0;
-        int zPhase = _mood == PikaMood.Sleeping ? (_tick / 5) % 4 : 0;
+        int zPhase = _mood == MascotMood.Sleeping ? (_tick / 5) % 4 : 0;
 
         int state = (eyesShut ? 1 : 0) | (hop ? 2 : 0) | (zap ? 4 : 0) | (flash ? 8 : 0)
                   | (zPhase << 4) | ((int)_mood << 8);
@@ -134,15 +123,15 @@ public sealed class PikaAvatar : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
-        var mood = (PikaMood)((_state >> 8) & 0xF);
+        var mood = (MascotMood)((_state >> 8) & 0xF);
         bool eyesShut = (_state & 1) != 0, hop = (_state & 2) != 0, zap = (_state & 4) != 0, flash = (_state & 8) != 0;
         int zPhase = (_state >> 4) & 0x3;
 
         dc.DrawRoundedRectangle(Tile, null, new Rect(0, 0, ActualWidth, ActualHeight), 4, 4);
         var (fur, ear) = mood switch
         {
-            PikaMood.Down => (FurDown, InnerEarDown),
-            PikaMood.Sleeping => (FurSleepy, InnerEarSleepy),
+            MascotMood.Down => (FurDown, InnerEarDown),
+            MascotMood.Sleeping => (FurSleepy, InnerEarSleepy),
             _ => (Fur, InnerEar),
         };
 
@@ -174,15 +163,15 @@ public sealed class PikaAvatar : FrameworkElement
 
         switch (mood)
         {
-            case PikaMood.Working when zap:
+            case MascotMood.Working when zap:
                 Glyph(dc, Bolt, SideCol, BoltRow, flash ? BoltFlash : BoltYellow, ox, oy, cell);
                 break;
-            case PikaMood.Sleeping:
+            case MascotMood.Sleeping:
                 // A "z" drifting up and growing into a "Z", then starting over.
                 var z = zPhase >= 2 ? BigZ : SmallZ;
                 Glyph(dc, z, SideCol + (zPhase & 1), 8 - 2 * zPhase, SleepZ, ox, oy, cell);
                 break;
-            case PikaMood.Down:
+            case MascotMood.Down:
                 Glyph(dc, Bang, SideCol + 2, 3, BangWhite, ox, oy, cell);
                 break;
         }

@@ -21,10 +21,10 @@
 
             <!-- Title + the header mascot: hops and zaps while connecting, red on failure. -->
             <DockPanel Grid.Row="0" Grid.RowSpan="2" Margin="0,0,0,18" LastChildFill="False">
-                <v:PikaAvatar x:Name="Mascot" DockPanel.Dock="Right" Width="110" Height="76"
-                              VerticalAlignment="Center" Mood="Working" />
+                <v:MascotHost x:Name="Mascot" DockPanel.Dock="Right" Width="110" Height="76"
+                              VerticalAlignment="Center" />
                 <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center">
-                    <TextBlock Text="Fiber Active Alignment Machine" TextWrapping="Wrap"
+                    <TextBlock Text="{x:Static ui:StationApp.FullName}" TextWrapping="Wrap"
                                Foreground="{StaticResource Accent}" FontSize="28" FontWeight="Bold" />
                     <TextBlock Text="Operator UI — on the Horizon engine"
                                Foreground="{StaticResource Subtle}" FontSize="13" Margin="2,0,0,0" />

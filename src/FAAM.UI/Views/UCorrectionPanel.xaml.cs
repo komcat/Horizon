@@ -23,7 +23,7 @@ namespace FAAM.UI.Views;
 /// </summary>
 public partial class UCorrectionPanel : UserControl, IOperatorPrompt
 {
-    // FAAM rig device mapping (mirrors ProcessStepsPanel).
+    // FAAM rig device mapping (mirrors FaamBuiltInSteps).
     private const string GantryDevice = "gantry-main";   // ACS gantry (X/Y/Z) — the four reference points live here
     private const string HexDevice = "hex-right";        // PI hexapod — the U axis is corrected here
 

@@ -15,7 +15,7 @@ HEAD_ONLY = {
     "DutUvData.cs", "FindFirstLightSettingsExtensions.cs", "ScanPanelStore.cs", "Process/TeachPointStore.cs",
     "ViewModels/FindFirstLightSettingsViewModel.cs", "Views/FindFirstLightSettingsView.xaml",
     # Run page + its panels + the utility-app launcher
-    "Views/RunView.xaml", "Views/ProcessStepsPanel.xaml", "Views/AlignmentPanel.xaml", "Views/AutoWPanel.xaml",
+    "Views/RunView.xaml", "Views/FaamBuiltInSteps.cs", "Views/AlignmentPanel.xaml", "Views/AutoWPanel.xaml",
     "Views/FauPreAlignPanel.xaml", "Views/HillClimbPanel.xaml", "Views/PsuQuickPanel.xaml",
     "Views/RasterClimbPanel.xaml", "Views/ScanningPanel.xaml", "Views/ScanPanel.xaml", "Views/SpiralRunPanel.xaml",
     "Views/UCorrectionPanel.xaml", "Views/UtilityAppHost.xaml", "Apps/IUtilityApp.cs", "Apps/UtilityAppAdapters.cs",

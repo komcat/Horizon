@@ -66,7 +66,7 @@
     <Using Include="Horizon.Station.UI.Views.Sections" />
   </ItemGroup>
 
-  <!-- Version history (Home › Version): build\version-info.ps1 captures the current commit
+  <!-- Version history (Home › Version): <repo>\build\version-info.ps1 captures the current commit
        and the v* release tags into obj\…\version_info.json, embedded as a resource —
        stations run a published zip with no git, so it must be baked in at build time.
        Rewritten only when it changes (incremental build), and never fails the build:
@@ -76,7 +76,7 @@
     <PropertyGroup>
       <FaamVersionInfoFile>$([System.IO.Path]::Combine($(MSBuildProjectDirectory), $(IntermediateOutputPath), 'version_info.json'))</FaamVersionInfoFile>
     </PropertyGroup>
-    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\build\version-info.ps1&quot; -RepoDir &quot;$(MSBuildProjectDirectory)&quot; -OutFile &quot;$(FaamVersionInfoFile)&quot; -Version &quot;$(Version)&quot;"
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\build\version-info.ps1&quot; -RepoDir &quot;$(MSBuildProjectDirectory)&quot; -OutFile &quot;$(FaamVersionInfoFile)&quot; -Version &quot;$(Version)&quot; -TagPrefix v"
           ContinueOnError="true" StandardOutputImportance="low" />
     <ItemGroup Condition="Exists('$(FaamVersionInfoFile)')">
       <EmbeddedResource Include="$(FaamVersionInfoFile)" LogicalName="FAAM.UI.version_info.json" />

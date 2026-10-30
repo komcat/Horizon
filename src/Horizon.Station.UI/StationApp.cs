@@ -14,6 +14,15 @@ public static class StationApp
     /// <summary>Title of the shell, the shared dialogs / popups and the log source of shared code.</summary>
     public static string Title { get; set; } = "Horizon";
 
+    /// <summary>The machine's full name — the startup screen's headline (FAAM: "Fiber Active Alignment Machine").</summary>
+    public static string FullName { get; set; } = "Horizon Station";
+
+    /// <summary>
+    /// Creates the head's mascot (shell header, startup screen) — a <see cref="System.Windows.FrameworkElement"/>
+    /// implementing <see cref="Views.IStationMascot"/>. Default: FAAM's <see cref="Views.PikaAvatar"/>.
+    /// </summary>
+    public static Func<Views.IStationMascot> Mascot { get; set; } = () => new Views.PikaAvatar();
+
     /// <summary>
     /// The default tool device — the motion device holding the gripper / tool (FAAM: "hex-right").
     /// Pre-fills the Tool device of the tool.* Engineer blocks and the Machine › Registration tool

@@ -168,7 +168,7 @@
                 </Button>
                 <Button Width="70" Height="28" Margin="0,0,6,0" Command="{Binding NewProgramCommand}" ToolTip="New program">
                     <StackPanel Orientation="Horizontal">
-                        <Image Source="/assets/new-file.png" Width="16" Height="16" Margin="0,0,5,0"
+                        <Image Source="/Horizon.Station.UI;component/assets/new-file.png" Width="16" Height="16" Margin="0,0,5,0"
                                RenderOptions.BitmapScalingMode="HighQuality" />
                         <TextBlock Text="New" VerticalAlignment="Center" />
                     </StackPanel>
@@ -176,7 +176,7 @@
                 <Button Width="70" Height="28" Margin="0,0,6,0" Command="{Binding SaveProgramCommand}"
                         ToolTip="Save the working program file (does not create a version)">
                     <StackPanel Orientation="Horizontal">
-                        <Image Source="/assets/save-file.png" Width="16" Height="16" Margin="0,0,5,0"
+                        <Image Source="/Horizon.Station.UI;component/assets/save-file.png" Width="16" Height="16" Margin="0,0,5,0"
                                RenderOptions.BitmapScalingMode="HighQuality" />
                         <TextBlock Text="Save" VerticalAlignment="Center" />
                     </StackPanel>
@@ -190,21 +190,21 @@
                 </Button>
                 <Button Width="80" Height="28" Margin="0,0,16,0" Click="OnHistory" ToolTip="Program history">
                     <StackPanel Orientation="Horizontal">
-                        <Image Source="/assets/history-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                        <Image Source="/Horizon.Station.UI;component/assets/history-button.png" Width="16" Height="16" Margin="0,0,5,0"
                                RenderOptions.BitmapScalingMode="HighQuality" />
                         <TextBlock Text="History" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
                 <Button Width="84" Height="28" Margin="0,0,16,0" Command="{Binding AddStageCommand}" ToolTip="Add stage">
                     <StackPanel Orientation="Horizontal">
-                        <Image Source="/assets/add-stage-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                        <Image Source="/Horizon.Station.UI;component/assets/add-stage-button.png" Width="16" Height="16" Margin="0,0,5,0"
                                RenderOptions.BitmapScalingMode="HighQuality" />
                         <TextBlock Text="Stage" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
                 <Button Width="72" Height="28" Margin="0,0,6,0" FontWeight="SemiBold" Command="{Binding RunCommand}" ToolTip="Run program">
                     <StackPanel Orientation="Horizontal">
-                        <Image Source="/assets/run-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                        <Image Source="/Horizon.Station.UI;component/assets/run-button.png" Width="16" Height="16" Margin="0,0,5,0"
                                RenderOptions.BitmapScalingMode="HighQuality" />
                         <TextBlock Text="Run" VerticalAlignment="Center" />
                     </StackPanel>
@@ -212,14 +212,14 @@
                 <Button Width="96" Height="28" Margin="0,0,6,0" Command="{Binding RunStageCommand}"
                         ToolTip="Run only the highlighted stage — click a stage header to select it">
                     <StackPanel Orientation="Horizontal">
-                        <Image Source="/assets/run-stage-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                        <Image Source="/Horizon.Station.UI;component/assets/run-stage-button.png" Width="16" Height="16" Margin="0,0,5,0"
                                RenderOptions.BitmapScalingMode="HighQuality" />
                         <TextBlock Text="Run Stage" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
                 <Button Width="72" Height="28" Command="{Binding StopCommand}" ToolTip="Stop">
                     <StackPanel Orientation="Horizontal">
-                        <Image Source="/assets/stop-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                        <Image Source="/Horizon.Station.UI;component/assets/stop-button.png" Width="16" Height="16" Margin="0,0,5,0"
                                RenderOptions.BitmapScalingMode="HighQuality" />
                         <TextBlock Text="Stop" VerticalAlignment="Center" />
                     </StackPanel>

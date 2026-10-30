@@ -1,0 +1,152 @@
+<!-- DLAM Run page: the double-lens alignment band — Keithley photocurrent readouts, one card per
+     lens (live pose + XCAN coarse / fine + Climb), Two-lens XCAN and Stop. Presets come from
+     Machine › Settings › Run page alignment band (dlam_align_band.json). Laid out to fit a narrow
+     column: cards stack, labels sit above values, buttons share the width. -->
+<UserControl x:Class="DLAM.UI.Views.AlignBand"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <Style x:Key="ReadoutLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#8FBF8F" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <!-- Device readout — fixed green-on-black, like the process timer. -->
+        <Style x:Key="Readout" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#33FF33" />
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+        </Style>
+        <Style x:Key="PoseCell" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <Style x:Key="BandButton" TargetType="Button">
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <!-- Stop — red while a scan runs; plain and readable while disabled. -->
+        <Style x:Key="StopButton" TargetType="Button" BasedOn="{StaticResource BandButton}">
+            <Setter Property="Margin" Value="4,0,0,0" />
+            <Setter Property="Background" Value="{StaticResource Danger}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Bg}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="8,6,4,8" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+        <Style x:Key="CardTitle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Accent}" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style x:Key="CardDevice" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Margin" Value="8,0,4,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}" BorderThickness="2" CornerRadius="4">
+        <StackPanel Margin="8">
+            <TextBlock Text="DOUBLE-LENS ALIGNMENT" Foreground="{StaticResource Accent}" FontSize="15"
+                       FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,8" />
+
+            <!-- Photocurrent readouts (both SMU channels): label above, value below. -->
+            <UniformGrid Columns="2" Margin="0,0,0,8">
+                <Border Background="Black" CornerRadius="3" Padding="8,3" Margin="0,0,4,0">
+                    <StackPanel>
+                        <TextBlock x:Name="Ch1Label" Text="ch1" Style="{StaticResource ReadoutLabel}" />
+                        <TextBlock x:Name="Ch1Value" Text="—" Style="{StaticResource Readout}" />
+                    </StackPanel>
+                </Border>
+                <Border Background="Black" CornerRadius="3" Padding="8,3" Margin="4,0,0,0">
+                    <StackPanel>
+                        <TextBlock x:Name="Ch2Label" Text="ch2" Style="{StaticResource ReadoutLabel}" />
+                        <TextBlock x:Name="Ch2Value" Text="—" Style="{StaticResource Readout}" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <!-- Left lens. -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,4">
+                        <TextBlock Text="LEFT LENS" Style="{StaticResource CardTitle}" />
+                        <TextBlock x:Name="LeftDevice" Style="{StaticResource CardDevice}" />
+                    </DockPanel>
+                    <TextBlock x:Name="LeftNote" Foreground="{StaticResource Subtle}" FontSize="12" Margin="0,0,0,6"
+                               Visibility="Collapsed" />
+                    <UniformGrid x:Name="LeftPose" Columns="3" Margin="0,0,0,6" />
+                    <UniformGrid x:Name="LeftButtons" Columns="3">
+                        <Button Style="{StaticResource BandButton}" Tag="left:coarse" Click="OnLensRun"
+                                ToolTip="One XCAN pass on this lens with the coarse ladder">
+                            <TextBlock TextAlignment="Center">XCAN<LineBreak />coarse</TextBlock>
+                        </Button>
+                        <Button Style="{StaticResource BandButton}" Tag="left:fine" Click="OnLensRun"
+                                ToolTip="One XCAN pass on this lens with the fine ladder">
+                            <TextBlock TextAlignment="Center">XCAN<LineBreak />fine</TextBlock>
+                        </Button>
+                        <Button Style="{StaticResource BandButton}" Tag="left:climb" Click="OnLensRun" Content="Climb"
+                                ToolTip="Climb scan: step Z toward the part, search each XY plane, stop at 85 % of the climb target" />
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Right lens. -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,4">
+                        <TextBlock Text="RIGHT LENS" Style="{StaticResource CardTitle}" />
+                        <TextBlock x:Name="RightDevice" Style="{StaticResource CardDevice}" />
+                    </DockPanel>
+                    <TextBlock x:Name="RightNote" Foreground="{StaticResource Subtle}" FontSize="12" Margin="0,0,0,6"
+                               Visibility="Collapsed" />
+                    <UniformGrid x:Name="RightPose" Columns="3" Margin="0,0,0,6" />
+                    <UniformGrid x:Name="RightButtons" Columns="3">
+                        <Button Style="{StaticResource BandButton}" Tag="right:coarse" Click="OnLensRun"
+                                ToolTip="One XCAN pass on this lens with the coarse ladder">
+                            <TextBlock TextAlignment="Center">XCAN<LineBreak />coarse</TextBlock>
+                        </Button>
+                        <Button Style="{StaticResource BandButton}" Tag="right:fine" Click="OnLensRun"
+                                ToolTip="One XCAN pass on this lens with the fine ladder">
+                            <TextBlock TextAlignment="Center">XCAN<LineBreak />fine</TextBlock>
+                        </Button>
+                        <Button Style="{StaticResource BandButton}" Tag="right:climb" Click="OnLensRun" Content="Climb"
+                                ToolTip="Climb scan: step Z toward the part, search each XY plane, stop at 85 % of the climb target" />
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
+            <!-- Both lenses + Stop. -->
+            <UniformGrid Columns="2" Margin="0,0,0,6">
+                <Button x:Name="TwoLensButton" Style="{StaticResource BandButton}" Click="OnTwoLens"
+                        ToolTip="Left coarse, left coarse, left fine, right coarse — each pass stops at the target">
+                    <TextBlock TextAlignment="Center">Two-lens XCAN<LineBreak /><Run x:Name="TwoLensTarget" Text="→ target" /></TextBlock>
+                </Button>
+                <Button x:Name="StopButton" Style="{StaticResource StopButton}" Content="Stop" Click="OnStop" IsEnabled="False"
+                        ToolTip="Stop the band's scan — the lens returns to the best point measured" />
+            </UniformGrid>
+
+            <TextBlock x:Name="StatusText" Text="Idle." Foreground="{StaticResource Subtle}" FontSize="11.5"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+    </Border>
+</UserControl>

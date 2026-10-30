@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run
 
-- **Solution**: `Horizon.sln` — 25 projects, all `net8.0`/`net8.0-windows`, x64 only. All projects live under `src/`.
+- **Solution**: `Horizon.sln` — 26 projects, all `net8.0`/`net8.0-windows`, x64 only. All projects live under `src/`.
 - **Claude compiles** — after making code changes, build the solution as **x64 Release**
   (`dotnet build Horizon.sln -c Release -p:Platform=x64`) and fix any errors before reporting
   done. The user still compiles CMake themselves.
@@ -12,7 +12,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - No CI/CD pipelines configured.
 - **Runnable entry points** (`OutputType=Exe`/`WinExe`):
   - `Horizon.UI` — the reference operator application (Layer 3, WPF).
-  - `FAAM.UI` — a second Layer 3 operator app (the FAU-attach "head"), on the *same* engine stack. Run `Horizon.UI` *or* `FAAM.UI` *or* `Horizon.App`, never two at once — a single process owns the hardware SDKs, and the two UIs share `%APPDATA%\Horizon\config\`. See "Layer 3" below and `docs/faam-ui.md`.
+  - `FAAM.UI` — a second Layer 3 operator app (the FAU-attach "head"), on the *same* engine stack. Run `Horizon.UI` *or* `FAAM.UI` *or* `DLAM.UI` *or* `Horizon.App`, never two at once — a single process owns the hardware SDKs, and the UIs share `%APPDATA%\Horizon\config\`. See "Layer 3" below and `docs/faam-ui.md`.
+  - `DLAM.UI` — the third Layer 3 head (double-lens active alignment, the FireDog machine), built on `Horizon.Station.UI` like FAAM.UI. See `docs/dlam-ui.md` §8.
   - `Horizon.App` — the legacy AvalonDock application (see "Legacy stack" below).
   - `Horizon.Console`, `Horizon.Workflow.Console` — Spectre.Console test rigs for Layers 1 & 2.
   - `Horizon.ConfigTool` — Spectre.Console hardware-config authoring utility.
@@ -227,18 +228,22 @@ A second Layer 3 head purpose-built for the FAU-attach process — mirrors
 Horizon.UI's `EngineHost`/`ShellWindow`/`Telemetry`/`Mvvm` shape with its own
 fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.md`.
 
-**`Horizon.Station.UI`** (WPF class library) — the shared station UI FAAM.UI and the planned
-DLAM.UI are built from (`docs/station-ui-extraction.md`). Since slice 3 it holds **everything
+**`Horizon.Station.UI`** (WPF class library) — the shared station UI FAAM.UI and DLAM.UI are
+built from (`docs/station-ui-extraction.md`). Since slice 3 it holds **everything
 generic** — `EngineHost`, `ShellWindow`, startup / login / shutdown, the Home / Machine (all
 sections) / Engineer / Repository / OEE / vision pages, jog rail, Version / update, theme, MVVM,
 telemetry — so most files named below live there, not in FAAM.UI. A head is an `IStationHead`
 (`new EngineHost(head)`: its Run + DUT Data pages, Engineer blocks / help / tabs, settings panels,
-default product) plus `StationApp` (`Title`, `ToolDevice`; `AppName` = entry assembly) and an
+default product) plus `StationApp` (`Title`, `FullName`, `Mascot` — FAAM's Pika / DLAM's FireDog corgi
+behind `MascotHost`, `ToolDevice`; `AppName` = entry assembly) and an
 `App.xaml` merging `Themes/StationTheme.xaml` + `Themes/StationSections.xaml`. Namespaces
 `Horizon.Station.UI.*`; a head's XAML uses prefix `st:` (`urn:horizon-station-ui`) — the library's
 own XAML must use `clr-namespace:` prefixes (a `urn:` namespace doesn't resolve in its defining
-assembly). FAAM.UI keeps only FAU code: `FaamHead`, the Run page + its panels, SiPhOG, DUT Data,
-find-first-light, Testing Ground, `ScanPanelStore`, its settings panels.
+assembly). A head's Run page is composed from the library's **Run-page kit** — `RunStepsPanel`
+(deck steps, STOP → `EngineHost.StopPressed`; a head's fallback steps via `IRunBuiltInSteps`),
+`RunCameraPanel` (camera column), `RunLogView`, `RunPageLayout`; `DutRecordsView` is a generic DUT
+Data page. FAAM.UI keeps only FAU code: `FaamHead`, its Run page + panels + `FaamBuiltInSteps`,
+SiPhOG, DUT Data, find-first-light, Testing Ground, `ScanPanelStore`, its settings panels.
 
 - **Startup flow**: `StartupWindow` (connect hardware) → **`LoginWindow`** (level +
   employee number + that level's shared password; `Session` pushes an
@@ -303,8 +308,9 @@ find-first-light, Testing Ground, `ScanPanelStore`, its settings panels.
 - **Global jog rail** — connected motion devices, X/Y/Z/U/V/W jog pad, velocity +
   step-size presets; jog clicks are in the **global** frame, converted to
   device-local via per-device matrices in `jog_transforms.json` (`JogTransforms.cs`).
-- **Run-page process steps are Phase 1 / hardcoded** in `Views/ProcessStepsPanel`
-  (`RunStepAsync`) — not yet promoted to a Layer 2 `WorkflowDeck`/`PositionStore`.
+- **Run-page process steps** come from the selected deck's `Run page` programs (library
+  `RunStepsPanel`); FAAM's Phase-1 hardcoded FAU sequence (`Views/FaamBuiltInSteps`) is only the
+  fallback while no deck is chosen, or when a step's program is missing.
 - `EngineHost` forces camera **auto-exposure ON** on each camera-connect edge.
 - FAAM-owned config in `%APPDATA%\Horizon\config\`: `jog_transforms.json` (jog
   matrices), `faam_teach_points.json` (legacy taught points, migrated into the product),
@@ -354,8 +360,9 @@ find-first-light, Testing Ground, `ScanPanelStore`, its settings panels.
   `oee.db`; `MaintenanceHistoryWindow` (OEE page) searches / summarises / exports them. `EngineHost` starts/ends the online session and counts `ActivityGate`
   busy (Run-page steps, alignments) as running. The shell header (title · working folder +
   AppData button · clock · `PikaAvatar`) pika follows the OEE state.
-- **Version history** (Home › Version tile → `VersionHistoryWindow`): `build/version-info.ps1`
-  runs before each FAAM.UI build (target `FaamVersionInfo` in `FAAM.UI.csproj`) and embeds
+- **Version history** (Home › Version tile → `VersionHistoryWindow`): `<repo>/build/version-info.ps1`
+  runs before each FAAM.UI build (target `FaamVersionInfo` in `FAAM.UI.csproj`; DLAM.UI's
+  `DlamVersionInfo` passes `-TagPrefix dlam-v`) and embeds
   `version_info.json` — `<Version>`, git id / branch / `describe`, dirty flag, and the `v*`
   release tags from `deploy/release.ps1` — read by `AppVersionInfo`. Rewritten only on change;
   never fails the build (no git → assembly version only).
@@ -486,7 +493,7 @@ write code that won't trip them:
 - Hexapod beam-alignment scan: `docs/hexapod-scanning.md`.
 - Bobcat → Horizon recipe migration: `docs/recipe-migration.md`.
 - FAAM.UI (second Layer 3 head): `docs/faam-ui.md`, `docs/faam-handoff.md`.
-- DLAM.UI (planned third head, FireDog → Horizon migration; shared `Horizon.Station.UI` extraction): `docs/dlam-ui.md`,
+- DLAM.UI (third head, FireDog → Horizon migration; the head itself is §8; shared `Horizon.Station.UI` extraction): `docs/dlam-ui.md`,
   `docs/station-ui-extraction.md`; latest session passdown (state, open checks, next steps): `docs/dlam-handoff.md`.
 - SMU streaming: `docs/smu-streaming-design.md`.
 - Power supply (UDP3305S-E LAN setup, `psu.*` ops, verified `psu.powerUp`, FAAM PSU panel): `docs/power-supply.md`.

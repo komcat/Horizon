@@ -22,7 +22,7 @@
                 Width="290" Height="56" Margin="2,2,8,8" FontSize="14"
                 Style="{StaticResource Bevel3D}">
             <StackPanel Orientation="Horizontal">
-                <Image Source="/assets/home-button.png" Width="24" Height="24" Margin="0,0,8,0"
+                <Image Source="/Horizon.Station.UI;component/assets/home-button.png" Width="24" Height="24" Margin="0,0,8,0"
                        RenderOptions.BitmapScalingMode="HighQuality" />
                 <TextBlock Text="Home" VerticalAlignment="Center" />
             </StackPanel>
@@ -52,9 +52,8 @@
                                    FontSize="22" FontWeight="Bold" VerticalAlignment="Center" />
                         <Border DockPanel.Dock="Left" Width="1" Margin="14,8" Background="#40000000" />
 
-                        <v:PikaAvatar x:Name="Mascot" DockPanel.Dock="Right" Width="64" Height="44"
-                                      VerticalAlignment="Center" Margin="10,0,0,0"
-                                      ToolTip="Pika — FAAM active alignment" />
+                        <v:MascotHost x:Name="Mascot" DockPanel.Dock="Right" Width="64" Height="44"
+                                      VerticalAlignment="Center" Margin="10,0,0,0" />
                         <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="10,0,0,0">
                             <TextBlock x:Name="MachineStateText" FontSize="15" FontWeight="Bold" HorizontalAlignment="Right" />
                             <TextBlock x:Name="MachineSinceText" FontSize="11" Opacity="0.8" HorizontalAlignment="Right" />

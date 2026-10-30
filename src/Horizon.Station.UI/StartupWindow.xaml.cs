@@ -76,7 +76,7 @@ public partial class StartupWindow : Window
     private void ShowConnecting()
     {
         StatusText.Text = "Connecting hardware…";
-        Mascot.Mood = Views.PikaMood.Working;
+        Mascot.Mood = Views.MascotMood.Working;
         Progress.Visibility = Visibility.Visible;
         Progress.IsIndeterminate = true;
         ErrorText.Visibility = Visibility.Collapsed;
@@ -86,7 +86,7 @@ public partial class StartupWindow : Window
     private void ShowError(Exception ex)
     {
         StatusText.Text = "Startup failed.";
-        Mascot.Mood = Views.PikaMood.Down;
+        Mascot.Mood = Views.MascotMood.Down;
         Progress.IsIndeterminate = false;
         Progress.Visibility = Visibility.Collapsed;
         ErrorText.Text = ex.Message;

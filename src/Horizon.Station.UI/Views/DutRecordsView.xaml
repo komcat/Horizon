@@ -1,0 +1,70 @@
+<!-- Generic DUT Data page: the active product's DUT records — serials, each unit's runs, and the
+     selected run's recorded values. A head without its own data views (DLAM) uses it as is. -->
+<UserControl x:Class="Horizon.Station.UI.Views.DutRecordsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Margin="8">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220" />
+            <ColumnDefinition Width="8" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Serials with a filter. -->
+        <DockPanel Grid.Column="0">
+            <TextBlock DockPanel.Dock="Top" Text="DUT SERIALS" Foreground="{StaticResource Accent}"
+                       FontSize="14" FontWeight="Bold" Margin="0,0,0,6" />
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                <Button DockPanel.Dock="Right" Content="⟳" Width="28" Margin="6,0,0,0" Click="OnRefresh"
+                        ToolTip="Re-read the product's DUT records" />
+                <TextBox x:Name="FilterBox" Height="24" VerticalContentAlignment="Center"
+                         TextChanged="OnFilterChanged" ToolTip="Filter serials" />
+            </DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" x:Name="CountText" Foreground="{StaticResource Subtle}"
+                       FontSize="11" Margin="0,4,0,0" />
+            <ListBox x:Name="SerialList" SelectionChanged="OnSerialSelected" FontSize="13" />
+        </DockPanel>
+
+        <Grid Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <DockPanel Grid.Row="0" Margin="0,0,0,6">
+                <Button DockPanel.Dock="Right" x:Name="ExportButton" Content="Export run (CSV)…" Padding="10,3"
+                        Click="OnExport" IsEnabled="False" ToolTip="Save the selected run's values as CSV" />
+                <TextBlock x:Name="UnitTitle" Text="RUNS" Foreground="{StaticResource Accent}"
+                           FontSize="14" FontWeight="Bold" VerticalAlignment="Center" />
+            </DockPanel>
+
+            <!-- One row per run of the selected unit. -->
+            <DataGrid Grid.Row="1" x:Name="RunGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                      HeadersVisibility="Column" GridLinesVisibility="Horizontal" MaxHeight="220"
+                      CanUserAddRows="False" SelectionMode="Single" SelectionChanged="OnRunSelected"
+                      Margin="0,0,0,8">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Started" Binding="{Binding Started}" Width="Auto" />
+                    <DataGridTextColumn Header="Ended" Binding="{Binding Ended}" Width="Auto" />
+                    <DataGridTextColumn Header="Verdict" Binding="{Binding Verdict}" Width="Auto" />
+                    <DataGridTextColumn Header="Operator" Binding="{Binding Operator}" Width="*" />
+                    <DataGridTextColumn Header="Station" Binding="{Binding Station}" Width="Auto" />
+                    <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="*" />
+                    <DataGridTextColumn Header="Values" Binding="{Binding Count}" Width="Auto" />
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- The selected run's recorded values, in recording order. -->
+            <DataGrid Grid.Row="2" x:Name="EntryGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                      HeadersVisibility="Column" GridLinesVisibility="Horizontal" CanUserAddRows="False"
+                      FontFamily="Consolas" FontSize="12">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Time" Binding="{Binding Time}" Width="Auto" />
+                    <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="Auto" MinWidth="120" />
+                    <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="*" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </Grid>
+    </Grid>
+</UserControl>

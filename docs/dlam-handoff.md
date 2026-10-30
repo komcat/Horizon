@@ -1,15 +1,14 @@
 # DLAM — session passdown (2026-10-30)
 
-Read this first, then `docs/dlam-ui.md` (the FireDog → Horizon migration plan) and
-`docs/station-ui-extraction.md` (the shared-library extraction, slice by slice).
+Read this first, then `docs/dlam-ui.md` (the FireDog → Horizon migration plan; the DLAM.UI head is
+§8) and `docs/station-ui-extraction.md` (the shared-library extraction, slice by slice).
 
 ## Where things are
 
 | | State |
 |---|---|
-| `master` (`c839533`, pushed) | DLAM Layer 2 ports (`scan.xcan`, `scan.xcanTwoLens`, `scan.climb`, `motion.liftOff`, `motion.movePath`, `io.waitInput`, `flow.waitUntil`), FireDog config importer, Keithley 2602B fix, `XCAN.moon` + console **Run XCAN** menu, XCAN test programs, `Horizon.sln` fix. Also contains FAAM.UI v0.6.2 (`7ad0221`). |
-| `station-ui-extraction` (tracking) | `Horizon.Station.UI` extraction on top of `c839533`: slice 1 (`c87798a`), slice 2a (`318ed5c`), slice 2b (`cd598cb`) — FAAM.UI checked after 2b, passed — and **slice 3** (the generic core moved into the library, 2026-10-30). FAAM.UI built and ran after slice 3 — passed (2026-10-30). **Not merged yet.** Rebase onto `master` before merging if `master` moved. |
-| Working copy | On `station-ui-extraction`. |
+| `master` (`adcf939`, pushed) | DLAM Layer 2 ports, FireDog config importer, Keithley 2602B fix, `XCAN.moon`, XCAN test programs, FAAM.UI v0.6.2, and the `Horizon.Station.UI` extraction slices 1–3 (merged 2026-10-30; FAAM.UI ran clean after slice 3). |
+| `dlam-ui` (local, committed, not pushed) | Slice 3b — the Run-page kit (`RunStepsPanel` / `RunCameraPanel` / `RunLogView` / `RunPageLayout` / `DutRecordsView`, `EngineHost.StopPressed`, FAAM's FAU fallback steps → `FaamBuiltInSteps`) — and **slice 4, the DLAM.UI head** (first cut). `build/version-info.ps1` moved to the repo root with `-TagPrefix`. Solution builds x64 Release, 0 errors; FAAM.UI's analyzer warnings unchanged, none in DLAM.UI. DLAM.UI starts and shows its Run page (2026-10-30: startup headline, FireDog mascot, icon paths and the band layout fixed after the first look); the band scans and FAAM.UI on this branch are not run yet. |
 
 This PC **is the DLAM rig** (FireDog's machine). FireDog lives in
 `..\komcat\FireDog` (source, C++) and `D:\ProgramData\FireDog` (machine root, read-only to us).
@@ -21,82 +20,77 @@ This PC **is the DLAM rig** (FireDog's machine). FireDog lives in
   unless `--overwrite` (then backed up to `_backup-<stamp>\`).
 - `%APPDATA%\Horizon\products\DLAM_Bringup\processes\` — `XCAN_Test_Left.hwf`,
   `XCAN_Test_TwoLens.hwf` (copies of `tools/dlam/programs/`).
-- `%APPDATA%\Horizon\products\FAAM\` — created by the first FAAM.UI run (expected).
-- FAAM.UI runs on this PC and connects the DLAM hardware (both apps share `%APPDATA%\Horizon\config`).
-  Only one of FireDog / FAAM.UI / Horizon.Console at a time — one process owns the SDKs.
+- `%APPDATA%\Horizon\products\FAAM\` — created by the first FAAM.UI run (expected). The first
+  DLAM.UI run creates `products\DLAM\` and makes it active.
+- FAAM.UI / DLAM.UI / Horizon.Console / FireDog: only one at a time — one process owns the SDKs.
 
 ## Open checks (the user does these; results decide the next step)
 
-**Rig bring-up** (`Horizon.Console`) — done: all 16 devices connect; Keithley answers (VISA), ch1
-continuous read at 77 S/s; camera grabs 2448×2048 at 9.9 fps. Still open:
-1. Keithley **ch2** photocurrent with bias + light (the reason for the two-channel driver fix).
-2. IO watch: switches 1–7, 10 toggle outputs + indicator LEDs. `IOBottom` `Door_Back_6` (in 10) reads low while the other doors read closed — open door or sensor?
-3. Jog each motion device; E-stop raises the alert and stops motion.
-4. **XCAN with light**: the first `Run XCAN` on hex-left ran in the dark (baseline 0.17 µA, the
-   light source was off) — power `PSU_Laser` CH1 first: **current limit 0.25 A, then 2.0 V, output ON**
-   (FireDog "Probe SLED and PIC", CC). Check Keithley ch1 reads tens–hundreds of µA, then Scripting ›
-   Run XCAN › hex-left. Compare with FireDog's XCAN (~18 s, ~91 samples for 10/5/2/1 µm). The script
-   now refuses a baseline < 1 µA (`minSignalUa`).
+**FAAM.UI on `dlam-ui`** — its Run page was recomposed from the kit (meant to be unchanged):
+- Run page: with no deck, the 8 FAU fallback steps under "FAU ATTACH STEPS" + the no-deck banner;
+  with a deck, its Run-page programs. A step runs; STOP halts; Auto-chain; Edit / Inspect Motion
+  (inspector over the camera column, Update / ".." editor).
+- Camera column: feed, MoveClick jog, Zoom 2×, snapshot box, thumbnails, DUT serial banner, the
+  U/FAU capture prompt on the feed. Splitter width persists (`faam_run_layout.json`).
+- Version window still lists the `v*` releases (script moved; `-TagPrefix v`).
 
-**FAAM.UI after slice 3** — 161 files moved to the library; builds clean, same analyzer warnings
-as before; built and ran on the rig — passed (2026-10-30). Checked: same checks as after 2b, plus what slice 3 could break at run time:
-- Every window title shows "FAAM" (shell, startup "FAAM — Starting", login "FAAM — Sign In",
-  shutdown "FAAM — Closing", jog popup, operator prompt).
-- Toolbar images: Engineer timeline toolbar icons, jog-pad stop, Home button, Run-page stop.
-- Machine page: every section renders (templates now come from `Themes/StationSections.xaml`),
-  plus FAAM's two settings panels.
-- OEE page still shows today's history (session app name is still `FAAM.UI`).
+**DLAM.UI first run** (close FAAM.UI first):
+- Startup → login → shell, titles say "DLAM"; Home shows version 0.1.0; product `DLAM` active.
+- Run page: deck picker (empty steps until a deck has Run-page programs), camera column, log.
+  Alignment band: left / right lens poses update; Keithley ch1 / ch2 read (bias + light on first —
+  `PSU_Laser` CH1 0.25 A limit, 2.0 V, ON; Keithley 1 V on ch1).
+- Band: **Left lens XCAN coarse** (compare FireDog: ~18 s, ~91 samples for 10/5/2/1 µm), Stop
+  mid-scan (lens returns to the best point), the Run page STOP also stops it, Climb, Two-lens XCAN.
+  Presets on Machine › Settings › Run page alignment band (`dlam_align_band.json`).
+- Engineer palette: Scan → XCAN, XCAN Two Lens, Climb Scan; Motion → Lift Off & Move, Move Along
+  Map; IO → Wait for Input; Flow → Wait Until; each with help. Author a deck with Run-page programs.
+- DUT Data page: serials → runs → values; CSV export.
 
-The checks run after 2b (all passed):
-- Run page (progress in the header, Start DUT / Pass / Fail), DUT Data page.
-- Engineer: palette unchanged (Align group with the FAU blocks); tabs Program, Process Deck,
-  Dispensing, **Find First Light** (moved after Dispensing), Testing Ground (leaving it stops a spiral).
-- Machine › Settings: "Start correction" + "Run page scanning" near the bottom; edit, Save, persists.
-- Machine › Registration: tool picker defaults to `hex-right`.
-- Startup / Home show the version; Version window opens.
-- A U correction writes `UCorrection:started` into an open DUT record.
+**Rig bring-up leftovers** (`Horizon.Console`): Keithley **ch2** photocurrent with bias + light;
+IO watch switches / LEDs and `IOBottom` `Door_Back_6` (reads low — open door or sensor?); jog each
+device, E-stop stops motion.
 
 ## Next steps
 
-1. ~~Slice 3~~ — done (`docs/station-ui-extraction.md` § Slice 3). FAAM.UI re-check passed — merge
-   `station-ui-extraction` into `master`.
-2. **Phase 3 — DLAM.UI head** on the library: `DlamHead : IStationHead` (Run page with two lens
-   panels + XCAN band, DUT Data page, `Ops` = `scan.xcan` / `scan.xcanTwoLens` / `scan.climb` /
-   `motion.liftOff` / `motion.movePath` / `io.waitInput` / `flow.waitUntil` with help, settings
-   panels, Engineer tabs, `DefaultProductName`), `StationApp.Title = "DLAM"`, its own Velopack app id
-   + its own Velopack **channel** `dlam` in the same repo (agreed 2026-10-30; no `AppUpdater` change —
-   an install updates from the channel it was packed with; the release script passes
-   `--channel dlam` to pack / download / upload and tags `dlam-v*`, see
-   `docs/station-ui-extraction.md` § Slice 3), version-info build target (resource `DLAM.UI.version_info.json`).
-   A head = `IStationHead` + `StationApp` + an `App.xaml` merging `StationTheme.xaml` and
-   `StationSections.xaml` + `Program.Main` with the Velopack hook (copy FAAM.UI's shape).
-3. Product data conversion (`docs/dlam-ui.md` §3): positions, maps, grips → convert; device
-   registrations, needle calibration, NCC vision templates → re-teach / re-measure.
-4. Later (marked in `dlam-ui.md` §6): FireDog alignment procedure (local frame O1), waffle trays.
+1. After both checks: commit `dlam-ui` (slice 3b + slice 4), push, merge to `master`.
+2. **DLAM release pipeline**: `deploy/publish.ps1` / `release.ps1` only know FAAM.UI. DLAM needs
+   package id `DLAM.UI`, Velopack **channel `dlam`** (`--channel dlam` on `vpk pack`, `vpk download
+   github`, `vpk upload github`), tags `dlam-v<Version>` (checked against DLAM.UI.csproj
+   `<Version>`). No `AppUpdater` change (an install updates from the channel it was packed with).
+3. Run page gaps vs the plan: needle / dispense controls (today Engineer › Dispensing + the vision
+   pages); a DLAM DUT view with alignment results if the generic one is not enough.
+4. Product data conversion (`docs/dlam-ui.md` §3): positions, maps, grips → convert; device
+   registrations, needle calibration, NCC vision templates → re-teach / re-measure. Then phase 5:
+   re-author "PROD Tall AUTO V2" and run side by side with FireDog.
+5. Later (`dlam-ui.md` §6): FireDog alignment procedure (local frame O1), waffle trays.
    Follow-ups: a PI on-target (`qONT`) wait in Layer 1 (then the scans' `settleMinMs` can drop to 0);
    a `machine.ctx` / `machine.dut.record` binding so `.moon` scripts can return results.
 
-## Gotchas learned this session
+## Gotchas learned
 
-- **Bash tool heredocs eat backslashes** (`\n`, `\\`, regex escapes): write Python helpers to a
-  file with the Write tool and run them, or edit with the Edit tool. Check output after any
-  scripted edit that contains a backslash.
-- **Build check**: `dotnet build Horizon.sln -c Release -p:Platform=x64` works again (sln fixed).
-  Filter on `": error "` — plain "error" matches CA1806 warning text. Use `--no-incremental` on a
-  project to see its analyzer warnings; CLAUDE.md asks for no new warnings (e.g. S1940 on
-  `!(x > 0)` — use a NaN-safe helper like `Scanning/ScanLimits`).
+- **Bash tool heredocs eat backslashes** (`\n`, `\\`, `\b`, regex escapes) — they turned into
+  control characters in a doc this session. Write Python helpers to a file with the Write tool, or
+  use the Edit tool. Check output after any scripted edit that contains a backslash.
+- **Build check**: `dotnet build Horizon.sln -c Release -p:Platform=x64`. Filter on `": error "` —
+  plain "error" matches CA1806 warning text. For "no new warnings": `--no-incremental` build of a
+  head (pulls the library), then diff the warning set (file basename + rule + message) against
+  the previous build's log. Rules met this session: S1940 (`!(x > 0)` → NaN-safe helper), S1144
+  (binding-only properties on a *private* row class — make the row class public), CA1870 (cache a
+  `SearchValues`), CA1716 (a parameter named `step` on an interface — VB keyword).
 - `dotnet sln add` re-indents a few existing lines and adds a BOM — harmless.
-- FAAM.UI puts every `Horizon.Station.UI.*` namespace in scope with csproj `<Using>`s; XAML uses
+- Heads put every `Horizon.Station.UI.*` namespace in scope with csproj `<Using>`s; head XAML uses
   `xmlns:st="urn:horizon-station-ui"`. Library types used by a head must be `public`.
 - **Inside the library, XAML can't use `st:`** (MC3074 — a `urn:` namespace doesn't resolve in its
-  own assembly); use `clr-namespace:` prefixes there.
+  own assembly); use `clr-namespace:` prefixes there. A library image is `/assets/x.png` in library
+  XAML, `/Horizon.Station.UI;component/assets/x.png` from a head.
 - Removing a git worktree under the scratchpad fails on long paths: delete it with
   `Remove-Item -LiteralPath "\\?\<path>" -Recurse -Force`, then `git worktree prune`.
 - Head-specific values come from `IStationHead` (pages, Engineer blocks / help, settings panels,
   Engineer tabs, default product, product hook, DUT process name) and `StationApp` (`Title`,
-  `ToolDevice`) — set `StationApp` before `new EngineHost(...)` (the Engineer catalog reads
-  `ToolDevice` once).
+  `ToolDevice`; `AppName` = entry assembly) — set `StationApp` before `new EngineHost(...)` (the
+  Engineer catalog reads `ToolDevice` once).
 - The FireDog Keithley speaks VXI-11 (`…::INSTR`); its raw socket on 5025 accepts but never
   answers. `.moon` scripts have no `pcall` (hard sandbox) and no clock.
 - Config files keep the `faam_` prefix even when shared (`faam_position_map.json`,
-  `faam_hexapod_pivot.json`, …) — renaming would orphan FAAM stations' settings.
+  `faam_hexapod_pivot.json`, …) — renaming would orphan FAAM stations' settings. DLAM's own files
+  use `dlam_` (`dlam_align_band.json`, `dlam_run_layout.json`).

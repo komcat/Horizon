@@ -1,0 +1,336 @@
+<!-- The Run page's camera column, shared by every head: the main live feed (crosshair, centre ROI,
+     MoveClick click-to-jog, vision-detection flash, device-registration overlay, DUT serial banner,
+     capture prompt), the Zoom 2x inset, the snapshot box, the other cameras' thumbnails, and the
+     motion inspector that covers the column while open (ShowInspector). -->
+<UserControl x:Class="Horizon.Station.UI.Views.RunCameraPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:Horizon.Station.UI.Views">
+    <UserControl.Resources>
+        <!-- Colour the crosshair + toggle take on while MoveClick is armed. -->
+        <SolidColorBrush x:Key="MoveOn" Color="#00C8FF" />
+
+        <!-- MoveClick enable toggle — cyan when armed (matches the armed crosshair). -->
+        <Style x:Key="MoveToggle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="{StaticResource MoveOn}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource MoveOn}" />
+                    <Setter Property="Foreground" Value="Black" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Crosshair line — yellow normally, cyan while MoveClick is armed. -->
+        <Style x:Key="CrosshairLine" TargetType="Rectangle">
+            <Setter Property="Fill" Value="{StaticResource Crosshair}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsChecked, ElementName=MoveToggle}" Value="True">
+                    <Setter Property="Fill" Value="{StaticResource MoveOn}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Main live feed with crosshair + center-ROI overlay. Clicking the
+             surface while MoveClick is armed measures (and jogs) — see code-behind. -->
+        <Border Grid.Row="1" Background="{StaticResource VideoBg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                CornerRadius="3" MouseLeftButtonDown="OnFeedClick"
+                MouseMove="OnFeedMouseMove" MouseLeave="OnFeedMouseLeave"
+                HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Grid>
+                <!-- Cap at the camera's max (1280×1024); Uniform keeps aspect, so the
+                     Border hugs the image with no black letterbox and the overlay
+                     crosshair sits on the frame's centre. MoveClick / ROI /
+                     detection-overlay maths use the matching fit scale (Math.Min). -->
+                <Image x:Name="MainImage" Stretch="Uniform" Margin="2" MaxWidth="1280" MaxHeight="1024" />
+
+                <!-- Crosshair: full-span center lines. -->
+                <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                           Style="{StaticResource CrosshairLine}" />
+                <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                           Style="{StaticResource CrosshairLine}" />
+
+                <!-- Vision detection flash — a yellow line drawn over the feed for a
+                     brief moment when a vision profile detects a facet line. Canvas is
+                     centred + sized to the image at draw time (see ShowDetectedLine). -->
+                <Canvas x:Name="DetectionOverlay" IsHitTestVisible="False" ClipToBounds="True"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Line x:Name="DetectedLine" Stroke="#FFFFD500" StrokeThickness="2.5"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Visibility="Collapsed" />
+                </Canvas>
+
+                <!-- Device-registration overlay: live gripper centre + outline (or an edge
+                     marker + arrow + distance when it is out of frame). -->
+                <v:ToolOverlayView x:Name="ToolOverlay" />
+
+                <!-- Cursor crosshair — follows the mouse while MoveClick is armed. -->
+                <Grid x:Name="MainCursor" Width="20" Height="20" IsHitTestVisible="False"
+                      HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
+                    <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch" Fill="{StaticResource MoveOn}" />
+                    <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Fill="{StaticResource MoveOn}" />
+                </Grid>
+
+                <!-- Center ROI box (sized to 200×200 source px at the feed's display scale). -->
+                <Rectangle x:Name="RoiBox" Stroke="{StaticResource Roi}" StrokeThickness="1"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Width="0" Height="0" Visibility="Collapsed" />
+
+                <TextBlock x:Name="NoVideo" Text="No video"
+                           Foreground="{StaticResource Subtle}" FontSize="18"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                <!-- Top-left: MoveClick toggle + camera name. -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="6">
+                    <ToggleButton x:Name="MoveToggle" Style="{StaticResource MoveToggle}" Content="MoveClick"
+                                  Unchecked="OnMoveDisarmed"
+                                  ToolTip="Enable MoveClick — click the image to measure (and jog) from the crosshair centre" />
+                    <Border Background="{StaticResource Overlay}" CornerRadius="3" Padding="8,3" Margin="8,0,0,0"
+                            VerticalAlignment="Center">
+                        <TextBlock x:Name="MainLabel" Text="—" Foreground="{StaticResource Accent}"
+                                   FontSize="13" FontWeight="SemiBold" />
+                    </Border>
+                </StackPanel>
+
+                <!-- Top-centre: the active DUT serial, large — shown only while one is set.
+                     Click-through so MoveClick still works underneath. -->
+                <Border x:Name="DutBanner" VerticalAlignment="Top" HorizontalAlignment="Center"
+                        Background="{StaticResource Overlay}" CornerRadius="4" Margin="0,6,0,0" Padding="16,2,16,4"
+                        IsHitTestVisible="False" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="DUT" Foreground="White" Opacity="0.7" FontSize="16" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" Margin="0,4,10,0" />
+                        <TextBlock x:Name="DutBannerText" Foreground="White" FontSize="36" FontWeight="Bold" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Bottom-left: last MoveClick measurement. -->
+                <Border x:Name="MoveReadoutBox" VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                        Background="{StaticResource Overlay}" CornerRadius="3" Margin="6" Padding="8,3"
+                        Visibility="Collapsed">
+                    <TextBlock x:Name="MoveReadout" Foreground="{StaticResource Roi}"
+                               FontFamily="Consolas" FontSize="12.5" />
+                </Border>
+
+                <!-- Generic yes/no prompt overlay (group 2) — hidden until a routine
+                     (e.g. U/FAU capture) drives it; centre stays click-through. -->
+                <v:CameraPromptOverlay x:Name="MainPrompt" />
+            </Grid>
+        </Border>
+
+        <!-- Zoom2x inset + SAG/target chart + thumbnail strip (sits above the feed). -->
+        <Grid Grid.Row="0" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Width="300" Height="300"
+                    Background="{StaticResource VideoBg}" BorderBrush="{StaticResource Accent}" BorderThickness="1"
+                    CornerRadius="3" MouseLeftButtonDown="OnZoomClick"
+                    MouseMove="OnZoomMouseMove" MouseLeave="OnZoomMouseLeave">
+                <Grid>
+                    <Image x:Name="ZoomImage" Stretch="Uniform" Margin="2" />
+
+                    <!-- Crosshair: full-span center lines, matching the main feed. -->
+                    <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                               Style="{StaticResource CrosshairLine}" />
+                    <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                               Style="{StaticResource CrosshairLine}" />
+
+                    <!-- Same registration overlay on the zoom inset (its source is the centre ROI). -->
+                    <v:ToolOverlayView x:Name="ZoomToolOverlay" />
+
+                    <!-- Cursor crosshair — follows the mouse while MoveClick is armed. -->
+                    <Grid x:Name="ZoomCursor" Width="20" Height="20" IsHitTestVisible="False"
+                          HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
+                        <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch" Fill="{StaticResource MoveOn}" />
+                        <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Fill="{StaticResource MoveOn}" />
+                    </Grid>
+
+                    <Border VerticalAlignment="Top" HorizontalAlignment="Left"
+                            Background="{StaticResource Overlay}" CornerRadius="2" Margin="4" Padding="5,1">
+                        <TextBlock Text="Zoom 2×" Foreground="{StaticResource Accent}" FontSize="11"
+                                   FontWeight="SemiBold" />
+                    </Border>
+
+                    <!-- Compact mirror of the capture prompt (small Capture / Cancel in the
+                         lower corners, no banner) — hidden until driven via the hub. -->
+                    <v:CameraPromptOverlay x:Name="ZoomPrompt" Compact="True" />
+                </Grid>
+            </Border>
+
+            <!-- Snapshot box — sits beside the Zoom2x inset (matched height). A process
+                 pushes a still picture here (machine.ui.showImage from a .moon script)
+                 to show the operator what the machine is looking at at this step. -->
+            <v:SnapshotView Grid.Column="1" x:Name="SnapshotPanel" Height="300" Margin="8,0,0,0" />
+
+            <ScrollViewer Grid.Column="2" Margin="8,0,0,0"
+                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="ThumbStrip" Orientation="Horizontal" />
+            </ScrollViewer>
+        </Grid>
+
+        <!-- Motion inspector — fills the camera column when a step's
+             "Inspect Motion" is chosen; Close returns to the live feed. -->
+        <Border x:Name="InspectorPanel" Grid.Row="0" Grid.RowSpan="2" Visibility="Collapsed"
+                MinWidth="600" Background="{StaticResource Panel}" BorderBrush="{StaticResource Accent}"
+                BorderThickness="1" CornerRadius="3">
+            <DockPanel Margin="8">
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Foreground="{StaticResource Accent}" FontSize="14" FontWeight="Bold"
+                                   Text="{Binding Title, StringFormat='Motion Inspector — {0}'}" />
+                        <TextBlock Foreground="{StaticResource Subtle}" FontSize="11"
+                                   Text="{Binding Subtitle, StringFormat='the moves this program performs — in run order — for step: {0}'}" />
+                    </StackPanel>
+                    <Button Content="✕ Close" Click="OnCloseInspector" HorizontalAlignment="Right"
+                            VerticalAlignment="Top" Padding="10,3" Cursor="Hand" />
+                </Grid>
+
+                <!-- Step cursor: walk the program's moves one at a time, in either
+                     direction, so a mis-taught point can be found by watching the
+                     machine execute the sequence step by step. -->
+                <Border DockPanel.Dock="Top" Margin="0,0,0,8" Padding="6"
+                        Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
+                        BorderThickness="1" CornerRadius="3">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Left" Content="◀ Step back" MinWidth="96" Padding="10,4"
+                                Margin="0,0,6,0" Cursor="Hand" Command="{Binding BackCommand}"
+                                ToolTip="Move to the previous position in the program sequence" />
+                        <Button DockPanel.Dock="Left" Content="Step forward ▶" MinWidth="110" Padding="10,4"
+                                Margin="0,0,10,0" Cursor="Hand" Command="{Binding ForwardCommand}"
+                                ToolTip="Move to the next position in the program sequence" />
+                        <TextBlock DockPanel.Dock="Left" Text="{Binding CursorText}" VerticalAlignment="Center"
+                                   Foreground="{StaticResource Accent}" FontWeight="Bold" FontSize="13"
+                                   Margin="0,0,10,0" />
+                        <Button DockPanel.Dock="Right" Content="⟳ Sync" Padding="10,4" Cursor="Hand"
+                                Command="{Binding SyncCommand}"
+                                ToolTip="Re-read the devices and mark which rows they are standing on" />
+                        <TextBlock Text="{Binding Status}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   Foreground="{StaticResource Subtle}" FontSize="11.5" Margin="0,0,10,0" />
+                    </DockPanel>
+                </Border>
+                <!-- All numeric/text columns star-share the width (so the grid fills the
+                     container, no empty filler); MinWidth keeps each header readable. The
+                     trailing action column is fixed-width with a green per-row edit button. -->
+                <DataGrid x:Name="InspectorGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                          ItemsSource="{Binding Rows}"
+                          HeadersVisibility="Column" GridLinesVisibility="All"
+                          Background="Transparent" RowBackground="Transparent"
+                          CanUserAddRows="False" CanUserResizeRows="False" FontSize="12.5">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Setter Property="ToolTip" Value="{Binding StepName, StringFormat='from program step {0}'}" />
+                            <Style.Triggers>
+                                <!-- Untaught point — the sequence cannot be stepped through it. -->
+                                <DataTrigger Binding="{Binding IsTaught}" Value="False">
+                                    <Setter Property="Foreground" Value="#B0704A" />
+                                </DataTrigger>
+                                <!-- The row the step cursor is on. -->
+                                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                    <Setter Property="Background" Value="#1F5C8B" />
+                                    <Setter Property="FontWeight" Value="Bold" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="#" Binding="{Binding Seq}" Width="Auto" MinWidth="26" />
+                        <!-- "At" — the row's device is standing on this taught point right now. -->
+                        <DataGridTemplateColumn Header="At" Width="Auto" CanUserSort="False">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="●" FontSize="13" HorizontalAlignment="Center"
+                                               Foreground="#2ECC71"
+                                               ToolTip="This device is at this position now">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <!-- Set in the style, not locally: a local value would
+                                                     out-rank the trigger and never show. -->
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding AtPosition}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Position" Binding="{Binding Position}" Width="2*" MinWidth="64" />
+                        <DataGridTextColumn Header="Device" Binding="{Binding Device}" Width="1.6*" MinWidth="72" />
+                        <DataGridTextColumn Header="Vel" Binding="{Binding Velocity}" Width="*" MinWidth="44" />
+                        <DataGridTextColumn Header="X" Binding="{Binding X}" Width="*" MinWidth="40" />
+                        <DataGridTextColumn Header="Y" Binding="{Binding Y}" Width="*" MinWidth="40" />
+                        <DataGridTextColumn Header="Z" Binding="{Binding Z}" Width="*" MinWidth="40" />
+                        <DataGridTextColumn Header="U" Binding="{Binding U}" Width="*" MinWidth="40" />
+                        <DataGridTextColumn Header="V" Binding="{Binding V}" Width="*" MinWidth="40" />
+                        <DataGridTextColumn Header="W" Binding="{Binding W}" Width="*" MinWidth="40" />
+                        <DataGridTextColumn Header="Camera" Binding="{Binding Camera}" Width="1.6*" MinWidth="64" />
+                        <DataGridTextColumn Header="Exp µs" Binding="{Binding Exposure}" Width="*" MinWidth="52" />
+                        <!-- Update — re-teach this point from the live pose. Only on the
+                             active row, so it always means "save where we actually are". -->
+                        <DataGridTemplateColumn Header="" Width="Auto" CanUserSort="False">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="Update" Height="20" Margin="2" Padding="6,0"
+                                            Background="#1565C0" Foreground="White" FontWeight="Bold"
+                                            BorderThickness="0" Cursor="Hand"
+                                            ToolTip="Re-teach this position from where the device is now"
+                                            Command="{Binding DataContext.UpdateCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <!-- Set in the style, not locally: a local value would
+                                                     out-rank the trigger and never show. -->
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="" Width="Auto" CanUserSort="False">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content=".." Click="OnEditRow" ToolTip="Edit velocity / axis values"
+                                            Width="30" Height="20" Margin="2" Padding="0"
+                                            Background="#2E7D32" Foreground="White" FontWeight="Bold"
+                                            BorderThickness="0" Cursor="Hand" />
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

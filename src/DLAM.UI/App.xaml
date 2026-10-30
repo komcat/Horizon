@@ -1,0 +1,21 @@
+<Application x:Class="DLAM.UI.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vms="clr-namespace:DLAM.UI.ViewModels.Sections"
+             xmlns:vsec="clr-namespace:DLAM.UI.Views.Sections"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/Horizon.Station.UI;component/Themes/StationTheme.xaml" />
+                <!-- The Machine page's section templates (the shared sections). -->
+                <ResourceDictionary Source="pack://application:,,,/Horizon.Station.UI;component/Themes/StationSections.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- DLAM's Machine › Settings panel (IStationHead.CreateSettingsPanels). -->
+            <DataTemplate DataType="{x:Type vms:AlignBandSettingsViewModel}">
+                <vsec:AlignBandSettingsView />
+            </DataTemplate>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

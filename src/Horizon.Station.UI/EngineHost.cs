@@ -75,6 +75,16 @@ public sealed class EngineHost : IAsyncDisposable
     /// </summary>
     public event Action<SafetyTrip>? SafetyAbort;
 
+    /// <summary>
+    /// Raised on the UI thread when the operator presses the Run page's STOP (<see cref="RaiseStopPressed"/>):
+    /// panels running their own sequences (e.g. a head's scan band) cancel them. The pressing panel
+    /// halts the motion itself.
+    /// </summary>
+    public event Action? StopPressed;
+
+    /// <summary>Tells every subscriber of <see cref="StopPressed"/> that STOP was pressed. UI thread.</summary>
+    public void RaiseStopPressed() => StopPressed?.Invoke();
+
     /// <summary>Mirrors published operator activities into the open interactive DUT run.</summary>
     private readonly DutActivityMirror _dutActivityMirror;
 

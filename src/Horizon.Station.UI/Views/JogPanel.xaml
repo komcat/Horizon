@@ -113,7 +113,7 @@
             <!-- STOP — halts all motion. -->
             <Button x:Name="StopButton" Click="OnStop" Height="36" Margin="0,0,0,8" ToolTip="STOP — halt all motion"
                     Background="{StaticResource Danger}" BorderThickness="0" Cursor="Hand">
-                <Image Source="/assets/stop.png" Height="24" RenderOptions.BitmapScalingMode="HighQuality" />
+                <Image Source="/Horizon.Station.UI;component/assets/stop.png" Height="24" RenderOptions.BitmapScalingMode="HighQuality" />
             </Button>
 
             <!-- Connected motion devices (single-select) — two across. -->

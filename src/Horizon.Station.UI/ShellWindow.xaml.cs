@@ -170,12 +170,12 @@ public partial class ShellWindow : Window
 
         Mascot.Mood = state switch
         {
-            OeeState.Down => PikaMood.Down,
-            OeeState.Running => PikaMood.Working,
-            OeeState.Idle or OeeState.Offline => PikaMood.Sleeping,
-            _ => PikaMood.Awake,
+            OeeState.Down => MascotMood.Down,
+            OeeState.Running => MascotMood.Working,
+            OeeState.Idle or OeeState.Offline => MascotMood.Sleeping,
+            _ => MascotMood.Awake,
         };
-        Mascot.ToolTip = $"Pika — station {OeeColors.Label(state).ToLowerInvariant()}";
+        Mascot.ToolTip = $"{Mascot.MascotName} — station {OeeColors.Label(state).ToLowerInvariant()}";
     }
 
     /// <summary>Opens %APPDATA%\Horizon (config, products, logs, history.db) in Explorer.</summary>

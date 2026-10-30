@@ -1,4 +1,4 @@
-<UserControl x:Class="FAAM.UI.Views.ProcessStepsPanel"
+<UserControl x:Class="Horizon.Station.UI.Views.RunStepsPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <UserControl.Resources>
@@ -124,7 +124,7 @@
             <!-- Title bar — turns green and reads "RUNNING…" while a step is executing. -->
             <Border DockPanel.Dock="Top" x:Name="TitleBar" Background="Transparent" CornerRadius="3"
                     Padding="0,3" Margin="0,0,0,8">
-                <TextBlock x:Name="TitleText" Text="FAU ATTACH STEPS"
+                <TextBlock x:Name="TitleText" Text="PROCESS STEPS"
                            Foreground="{StaticResource Accent}" FontSize="15" FontWeight="Bold"
                            HorizontalAlignment="Center" />
             </Border>
@@ -166,12 +166,11 @@
                           ToolTip="Pick a deck — its programs flagged 'Run page' appear as buttons below" />
             </StackPanel>
 
-            <!-- No-deck guidance — shown when no deck drives the steps (built-in fallback in use). -->
+            <!-- No-deck guidance — shown when no deck drives the steps (text set in code: with or without built-in fallback steps). -->
             <Border DockPanel.Dock="Top" x:Name="NoDeckBanner" Visibility="Collapsed"
                     Background="{StaticResource Panel}" BorderBrush="{StaticResource Warn}" BorderThickness="1"
                     CornerRadius="3" Padding="8,6" Margin="0,0,0,10">
-                <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Warn}" FontSize="11"
-                           Text="No deck linked to this product — showing built-in fallback steps. Author or clone a deck in Engineer and flag its programs 'Run page' to drive this list." />
+                <TextBlock x:Name="NoDeckText" TextWrapping="Wrap" Foreground="{StaticResource Warn}" FontSize="11" />
             </Border>
 
             <!-- Step buttons. -->
