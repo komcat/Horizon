@@ -132,6 +132,15 @@ defines its own program/recipe/position formats.
   held at the current limit (CC mode) as a successful ON. One shared implementation, `Execution/PsuPowerUp.cs`, behind all three
   surfaces. `IProcessService.IsRunning` (program/deck/recipe in progress) lets Layer 3
   lock manual controls during a run. See `docs/power-supply.md`.
+- **FireDog ports for DLAM** (`docs/dlam-ui.md`) — `Xcan/` (`XcanEngine` = FireDog's XCAN:
+  coordinate descent, adaptive log-zoned ladder, stop-and-stay exit; `XcanTwoLens` = left
+  coarse → left coarse → left fine → right coarse), `ClimbScan/` (FireDog's climb raster — a
+  fresh port, not the deprecated `RasterClimbEngine`), `Scanning/FreshSampler` (wait for N new
+  feedback samples instead of a blind settle) and `ScanAxisMotion`. Blocks `scan.xcan`,
+  `scan.xcanTwoLens`, `scan.climb`, `motion.liftOff`, `motion.movePath`, `io.waitInput`,
+  `flow.waitUntil` (`Execution/StepDispatcher.FireDogPorts.cs`; not yet in `OpCatalog`). Every
+  scan parks on its best point on STOP / error. `PositionMap/` (`PositionMapStore`,
+  `PositionMatch`, `PositionRoute`) moved here from FAAM.UI so `motion.movePath` can route.
 - `Dut/` — `DutStore` for per-DUT (device-under-test) results, keyed by serial. A
   `DutRun` is stamped with the operator + station (`OperatorContext`, set via
   `IProcessService.SetOperator`). Beyond the program-driven path, an **interactive DUT
@@ -460,6 +469,7 @@ write code that won't trip them:
 - Hexapod beam-alignment scan: `docs/hexapod-scanning.md`.
 - Bobcat → Horizon recipe migration: `docs/recipe-migration.md`.
 - FAAM.UI (second Layer 3 head): `docs/faam-ui.md`, `docs/faam-handoff.md`.
+- DLAM.UI (planned third head, FireDog → Horizon migration; shared `Horizon.Station.UI` extraction): `docs/dlam-ui.md`.
 - SMU streaming: `docs/smu-streaming-design.md`.
 - Power supply (UDP3305S-E LAN setup, `psu.*` ops, verified `psu.powerUp`, FAAM PSU panel): `docs/power-supply.md`.
 - Product encapsulation + operator login + DUT traceability: `docs/product-and-traceability-design.md`.

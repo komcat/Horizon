@@ -322,6 +322,10 @@ public sealed class ProcessService : IProcessService
         return Result.Ok();
     }
 
+    /// <summary>The active product's position map for <paramref name="device"/> (empty when none). Drives motion.movePath.</summary>
+    private PositionMapLayout LoadPositionMap(string device)
+        => _products.ActiveProduct is { } product ? PositionMapStore.Load(product, device) : new PositionMapLayout();
+
     public Task<Result> MoveToNamedPositionAsync(string device, string name, CancellationToken ct = default)
         => MoveToNamedPositionCoreAsync(device, name, new MoveOverrides(), ct);
 
@@ -965,6 +969,7 @@ public sealed class ProcessService : IProcessService
             () => _siphogSheetSink,
             _signals,
             _deviceLinks,
+            LoadPositionMap,
             OperatorPrompt,
             // dut.promptSerial opens the DUT record mid-run into _runDut, which the
             // finally block persists with the run's verdict.
@@ -2396,6 +2401,7 @@ public sealed class ProcessService : IProcessService
             () => _siphogSheetSink,
             _signals,
             _deviceLinks,
+            LoadPositionMap,
             OperatorPrompt,
             (s, c) => SetRunDutSerial(s, deck.Name, c),
             CloseRunDut,   // dut.close finalises + persists the DUT mid-run

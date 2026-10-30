@@ -16,7 +16,7 @@ namespace Horizon.Workflow;
 /// <c>flow.groupStart/End</c>) are handled by the <see cref="WorkflowRunner"/>,
 /// not here.
 /// </summary>
-internal sealed class StepDispatcher
+internal sealed partial class StepDispatcher
 {
     private readonly IHorizonEngine _engine;
     // (device, position, overrides, ct) — overrides carry the optional velocity / camera / exposure.
@@ -61,6 +61,8 @@ internal sealed class StepDispatcher
     // plus any product source a Layer 3 head registered (FAAM's SiPhOG). Drives signal.read.
     private readonly SignalRegistry _signals;
     private readonly DeviceLinkStore _deviceLinks;
+    // device -> that device's position map in the active product (empty when none). Drives motion.movePath.
+    private readonly Func<string, PositionMapLayout> _loadPositionMap;
     private readonly Action<LogLevel, string> _log;
 
     // The linked CTS of an in-flight hillclimb.start, so a hillclimb.stop step (which only
@@ -94,6 +96,7 @@ internal sealed class StepDispatcher
         Func<ISiphogSheetSink?> siphogSheetSink,
         SignalRegistry signals,
         DeviceLinkStore deviceLinks,
+        Func<string, PositionMapLayout> loadPositionMap,
         Action<LogLevel, string> log)
     {
         _engine = engine;
@@ -117,6 +120,7 @@ internal sealed class StepDispatcher
         _siphogSheetSink = siphogSheetSink;
         _signals = signals;
         _deviceLinks = deviceLinks;
+        _loadPositionMap = loadPositionMap;
         _log = log;
     }
 
@@ -351,6 +355,27 @@ internal sealed class StepDispatcher
 
                 return await RunScanStepAsync(step, ctx, p, new GridScanStrategy(), ct).ConfigureAwait(false);
             }
+
+            case "scan.xcan":
+                return await WithFeedbackAsync(step, ctx, (fb, c) => RunXcanAsync(step, ctx, fb, c), ct).ConfigureAwait(false);
+
+            case "scan.xcantwolens":
+                return await WithFeedbackAsync(step, ctx, (fb, c) => RunXcanTwoLensAsync(step, ctx, fb, c), ct).ConfigureAwait(false);
+
+            case "scan.climb":
+                return await WithFeedbackAsync(step, ctx, (fb, c) => RunClimbAsync(step, ctx, fb, c), ct).ConfigureAwait(false);
+
+            case "motion.liftoff":
+                return await LiftOffAsync(step, ctx, ct).ConfigureAwait(false);
+
+            case "motion.movepath":
+                return await MovePathAsync(step, ctx, ct).ConfigureAwait(false);
+
+            case "io.waitinput":
+                return await WaitInputAsync(step, ctx, ct).ConfigureAwait(false);
+
+            case "flow.waituntil":
+                return await WaitUntilAsync(step, ctx, ct).ConfigureAwait(false);
 
             case "hillclimb.setanchor":
             {

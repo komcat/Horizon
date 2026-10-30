@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Media;
 using FAAM.UI.Mvvm;
+using Horizon.Workflow;
 
 namespace FAAM.UI.ViewModels.Sections;
 

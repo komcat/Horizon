@@ -1,11 +1,11 @@
 using Horizon.Engine;
 
-namespace FAAM.UI;
+namespace Horizon.Workflow;
 
 /// <summary>
 /// "Is the device standing on this taught point?" — shared by the Run-page motion
-/// inspector and the Machine › Motion position map so both agree on what "at a
-/// position" means.
+/// inspector, the Machine › Motion position map and the <c>motion.movePath</c> step so
+/// all agree on what "at a position" means.
 /// </summary>
 public static class PositionMatch
 {
@@ -14,6 +14,10 @@ public static class PositionMatch
 
     /// <summary>True when the live pose sits within <see cref="Tolerance"/> of the taught point on every axis the device owns.</summary>
     public static bool Matches(MotionPosition? taught, MotionPosition live, IReadOnlyList<string> axes)
+        => Matches(taught, live, axes, Tolerance);
+
+    /// <summary>True when the live pose sits within <paramref name="tolerance"/> of the taught point on every axis the device owns.</summary>
+    public static bool Matches(MotionPosition? taught, MotionPosition live, IReadOnlyList<string> axes, double tolerance)
     {
         if (taught == null) return false;
         foreach (var axis in axes)
@@ -28,7 +32,7 @@ public static class PositionMatch
                 "W" => live.W - taught.W,
                 _ => 0,
             };
-            if (Math.Abs(delta) > Tolerance) return false;
+            if (Math.Abs(delta) > tolerance) return false;
         }
         return true;
     }

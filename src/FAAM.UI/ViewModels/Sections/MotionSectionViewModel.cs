@@ -3,6 +3,7 @@ using System.Windows;
 using FAAM.UI.Mvvm;
 using FAAM.UI.Process;
 using FAAM.UI.Views;
+using Horizon.Workflow;
 
 namespace FAAM.UI.ViewModels.Sections;
 

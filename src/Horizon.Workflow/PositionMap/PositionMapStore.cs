@@ -1,6 +1,6 @@
 using Horizon.Common;
 
-namespace FAAM.UI;
+namespace Horizon.Workflow;
 
 /// <summary>
 /// The Machine › Motion position map — per product and motion device, where each
@@ -8,7 +8,9 @@ namespace FAAM.UI;
 /// the position list beside the canvas. Saved in the config dir as
 /// <c>faam_position_map.json</c>:
 /// <c>{ "listWidth": 560, "products": { "&lt;product&gt;": { "&lt;device&gt;": { "nodes": [{ "name", "x", "y" }], "edges": [{ "a", "b" }] } } } }</c>.
-/// View data only — nothing here moves the machine.
+/// Nothing here moves the machine; the links are what the <c>motion.movePath</c> step (and the
+/// Layer 3 map's Follow path) route along — see <see cref="PositionRoute"/>. Lives in Layer 2 so a
+/// program step can read it; the file keeps its historical <c>faam_</c> name, shared by every head.
 /// </summary>
 public static class PositionMapStore
 {

@@ -59,6 +59,7 @@ internal sealed class WorkflowRunner
         Func<ISiphogSheetSink?> siphogSheetSink,
         SignalRegistry signals,
         DeviceLinkStore deviceLinks,
+        Func<string, PositionMapLayout> loadPositionMap,
         IOperatorPrompt? prompt,
         Func<string, WorkflowContext, Result>? setDutSerial,
         Func<DutVerdict, WorkflowContext, Result>? closeDut,
@@ -66,7 +67,7 @@ internal sealed class WorkflowRunner
         Action<WorkflowStepEvent> onStep,
         Action<LogLevel, string> log)
     {
-        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, runDispenseRoutine, runNeedleApproach, moveCameraToTool, moveToolToCamera, moveToolToPose, moveObjectToCamera, runPartAlignment, moveCameraToPartFiducial, moveCameraToPartObject, runScript, saveSiphogSnapshot, hillClimbFeedback, utilityAppHost, siphogSheetSink, signals, deviceLinks, log);
+        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, runDispenseRoutine, runNeedleApproach, moveCameraToTool, moveToolToCamera, moveToolToPose, moveObjectToCamera, runPartAlignment, moveCameraToPartFiducial, moveCameraToPartObject, runScript, saveSiphogSnapshot, hillClimbFeedback, utilityAppHost, siphogSheetSink, signals, deviceLinks, loadPositionMap, log);
         _engine = engine;
         _getPosition = getPosition;
         _savePosition = savePosition;

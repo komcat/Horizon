@@ -6,6 +6,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using FAAM.UI.ViewModels.Sections;
+using Horizon.Workflow;
 
 namespace FAAM.UI.Views.Sections;
 

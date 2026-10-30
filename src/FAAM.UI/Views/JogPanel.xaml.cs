@@ -7,6 +7,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Horizon.Engine;
 using FAAM.UI.ViewModels.Sections;
+using Horizon.Workflow;
 
 namespace FAAM.UI.Views;
 
