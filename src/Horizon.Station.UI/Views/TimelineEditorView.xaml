@@ -1,0 +1,628 @@
+<UserControl x:Class="Horizon.Station.UI.Views.TimelineEditorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Horizon.Station.UI.ViewModels"
+             Focusable="True" PreviewKeyDown="OnPreviewKeyDown">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="SelectedBlock" Color="#00C8FF" />
+        <!-- Translucent tint shown on the lane cell a dragged block would drop into. -->
+        <SolidColorBrush x:Key="DropHighlight" Color="#3300C8FF" />
+        <!-- Conditional-branch stage tints: then-branch (If→Else) pink, else-branch (Else→End If) yellow.
+             Translucent so they read as a light wash over either theme. -->
+        <SolidColorBrush x:Key="ThenRegion" Color="#33E91E63" />
+        <SolidColorBrush x:Key="ElseRegion" Color="#33FFC400" />
+
+        <!-- Stage column header — click to pick it as the "run only this stage" selection. -->
+        <Style x:Key="StageHeader" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+            <Setter Property="BorderThickness" Value="1,0,0,1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource DropHighlight}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- A lane × stage cell — highlights while a compatible block is dragged over it. -->
+        <Style x:Key="DropCell" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Bg}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+            <!-- Right+bottom border, matching the lane-header cells (0,0,1,1) so the
+                 vertical dividers line up with the header columns. The leftmost line is
+                 supplied by the frozen stage-label column's right border. -->
+            <Setter Property="BorderThickness" Value="0,0,1,1" />
+            <Style.Triggers>
+                <!-- Conditional-branch tint (drop highlight below wins when dragging). -->
+                <DataTrigger Binding="{Binding Region}" Value="Then">
+                    <Setter Property="Background" Value="{StaticResource ThenRegion}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Region}" Value="Else">
+                    <Setter Property="Background" Value="{StaticResource ElseRegion}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource DropHighlight}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Palette command tile — drag onto a lane cell, or double-click to add to the selected cell. -->
+        <Style x:Key="PaletteItem" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Bg}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- A scheduled block inside a lane cell — border colours by run status / selection. -->
+        <Style x:Key="BlockBox" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Subtle}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="Margin" Value="3,2" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding RunStatus}" Value="Running">
+                    <Setter Property="BorderBrush" Value="{StaticResource Warn}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding RunStatus}" Value="Passed">
+                    <Setter Property="BorderBrush" Value="{StaticResource Ok}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding RunStatus}" Value="Failed">
+                    <Setter Property="BorderBrush" Value="{StaticResource Danger}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource SelectedBlock}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Enabled}" Value="False">
+                    <Setter Property="Opacity" Value="0.5" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Typed parameter field templates + selector (shared with the param panel). -->
+        <DataTemplate x:Key="TextParam">
+            <StackPanel Margin="0,0,0,8">
+                <TextBlock Text="{Binding Label}" Foreground="{StaticResource Subtle}" Margin="0,0,0,2" />
+                <TextBox Text="{Binding StringValue, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="NumberParam">
+            <StackPanel Margin="0,0,0,8">
+                <TextBlock Text="{Binding Label}" Foreground="{StaticResource Subtle}" Margin="0,0,0,2" />
+                <TextBox Text="{Binding StringValue, UpdateSourceTrigger=PropertyChanged}"
+                         HorizontalContentAlignment="Right" />
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="BoolParam">
+            <CheckBox Content="{Binding Label}" Foreground="{StaticResource Text}"
+                      Margin="0,2,0,8" IsChecked="{Binding BoolValue}" />
+        </DataTemplate>
+        <DataTemplate x:Key="ComboParam">
+            <StackPanel Margin="0,0,0,8">
+                <TextBlock Text="{Binding Label}" Foreground="{StaticResource Subtle}" Margin="0,0,0,2" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox ItemsSource="{Binding Options}" IsEditable="True" DropDownOpened="OnParamDropDownOpened"
+                              Text="{Binding StringValue, UpdateSourceTrigger=PropertyChanged}" />
+                    <!-- Pinned position pickers only (align.* points on gantry-main). -->
+                    <Button Grid.Column="1" Content="Go" Margin="4,0,0,0" Padding="8,0" MinWidth="36"
+                            Command="{Binding GoCommand}"
+                            Visibility="{Binding HasPositionActions, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Move the device to this position" />
+                    <Button Grid.Column="2" Content="Teach here" Margin="4,0,0,0" Padding="8,0"
+                            Command="{Binding TeachCommand}"
+                            Visibility="{Binding HasPositionActions, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Save the device's current position under this name (asks first)" />
+                </Grid>
+            </StackPanel>
+        </DataTemplate>
+        <vm:ParamTemplateSelector x:Key="ParamSelector"
+                                  Text="{StaticResource TextParam}"
+                                  Number="{StaticResource NumberParam}"
+                                  Bool="{StaticResource BoolParam}"
+                                  Combo="{StaticResource ComboParam}" />
+    </UserControl.Resources>
+
+    <Grid Background="{StaticResource Bg}" Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ===== TOP BAR ===== -->
+        <Border Grid.Row="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                BorderThickness="1" CornerRadius="4" Padding="12,8">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Program" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                <TextBox Width="180" Margin="8,0,8,0" VerticalAlignment="Center"
+                         Text="{Binding ProgramName, UpdateSourceTrigger=PropertyChanged}" />
+                <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                        CornerRadius="3" Padding="8,2" Margin="0,0,10,0" VerticalAlignment="Center"
+                        ToolTip="Latest committed version of this program (Commit to bump it)">
+                    <TextBlock Text="{Binding CurrentVersionText}" Foreground="{StaticResource Accent}" FontWeight="SemiBold" />
+                </Border>
+                <Button Width="70" Height="28" Margin="0,0,12,0" Click="OnLoad" ToolTip="Choose a program to load from the product">
+                    <TextBlock Text="Load" VerticalAlignment="Center" />
+                </Button>
+                <Button Width="70" Height="28" Margin="0,0,6,0" Command="{Binding NewProgramCommand}" ToolTip="New program">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="/assets/new-file.png" Width="16" Height="16" Margin="0,0,5,0"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                        <TextBlock Text="New" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button Width="70" Height="28" Margin="0,0,6,0" Command="{Binding SaveProgramCommand}"
+                        ToolTip="Save the working program file (does not create a version)">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="/assets/save-file.png" Width="16" Height="16" Margin="0,0,5,0"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                        <TextBlock Text="Save" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <TextBox Width="150" Height="28" Margin="0,0,6,0" VerticalContentAlignment="Center"
+                         Text="{Binding CommitNote, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Optional note for the next commit (shows in the version repository)" />
+                <Button Width="80" Height="28" Margin="0,0,16,0" Command="{Binding CommitProgramCommand}"
+                        ToolTip="Save and record a new numbered version in the repository">
+                    <TextBlock Text="Commit" VerticalAlignment="Center" />
+                </Button>
+                <Button Width="80" Height="28" Margin="0,0,16,0" Click="OnHistory" ToolTip="Program history">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="/assets/history-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                        <TextBlock Text="History" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button Width="84" Height="28" Margin="0,0,16,0" Command="{Binding AddStageCommand}" ToolTip="Add stage">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="/assets/add-stage-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                        <TextBlock Text="Stage" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button Width="72" Height="28" Margin="0,0,6,0" FontWeight="SemiBold" Command="{Binding RunCommand}" ToolTip="Run program">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="/assets/run-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                        <TextBlock Text="Run" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button Width="96" Height="28" Margin="0,0,6,0" Command="{Binding RunStageCommand}"
+                        ToolTip="Run only the highlighted stage — click a stage header to select it">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="/assets/run-stage-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                        <TextBlock Text="Run Stage" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button Width="72" Height="28" Command="{Binding StopCommand}" ToolTip="Stop">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="/assets/stop-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                        <TextBlock Text="Stop" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+
+                <!-- Lane view controls: zoom column width + show/hide unused device lanes. -->
+                <Border Width="1" Background="{StaticResource Edge}" Margin="14,2,14,2" />
+                <Button Content="−" Width="28" Height="28" Margin="0,0,4,0" FontWeight="Bold" Command="{Binding ZoomOutCommand}"
+                        ToolTip="Narrower lane columns" />
+                <Button Content="+" Width="28" Height="28" Margin="0,0,10,0" FontWeight="Bold" Command="{Binding ZoomInCommand}"
+                        ToolTip="Wider lane columns" />
+                <CheckBox Content="Show all lanes" Foreground="{StaticResource Text}" VerticalAlignment="Center"
+                          IsChecked="{Binding ShowAllLanes}"
+                          ToolTip="Off: show only device lanes the program uses. On: show every device lane (to add a new device)." />
+
+                <TextBlock Text="●  unsaved changes" Foreground="{StaticResource Warn}" FontSize="11" FontWeight="SemiBold"
+                           VerticalAlignment="Center" Margin="20,0,0,0"
+                           Visibility="{Binding IsDirty, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Text="{Binding Status}" Foreground="{StaticResource Subtle}" FontStyle="Italic"
+                           VerticalAlignment="Center" Margin="16,0,0,0" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </Border>
+
+        <!-- ===== FOUR COLUMNS: programs | palette | timeline | param panel ===== -->
+        <Grid Grid.Row="1" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="190" />
+                <ColumnDefinition Width="200" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="300" />
+            </Grid.ColumnDefinitions>
+
+            <!-- FAR LEFT: the product's programs — search, click to open, eye to hide/show.
+                 Hidden programs (per product, faam_hidden_programs.json) are left out unless
+                 "Show hidden" is on, then listed dimmed. The open program is bold. -->
+            <Border Grid.Column="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="4" Margin="0,0,4,0">
+                <DockPanel Margin="8">
+                    <TextBlock DockPanel.Dock="Top" Text="Programs" Foreground="{StaticResource Accent}"
+                               FontWeight="SemiBold" Margin="2,2,0,8" />
+                    <TextBox DockPanel.Dock="Top" Height="24" Margin="0,0,0,6" VerticalContentAlignment="Center"
+                             Text="{Binding ProgramFilter, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Search programs — every word must appear in the name" />
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <CheckBox DockPanel.Dock="Left" Content="Show hidden" Foreground="{StaticResource Text}"
+                                  FontSize="11" VerticalAlignment="Center"
+                                  IsChecked="{Binding ShowHiddenPrograms}"
+                                  ToolTip="Off: only visible programs. On: every program, hidden ones dimmed." />
+                        <TextBlock Text="{Binding ProgramListSummary}" Foreground="{StaticResource Subtle}" FontSize="10"
+                                   HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                    <ListBox x:Name="ProgramListBox" ItemsSource="{Binding ProgramList}"
+                             Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Stretch"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="4,3" />
+                                <Setter Property="Cursor" Value="Hand" />
+                                <EventSetter Event="PreviewMouseLeftButtonUp" Handler="OnProgramItemClick" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Width="22" Height="20" Padding="0" Margin="4,0,0,0"
+                                            Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                            Command="{Binding ToggleHiddenCommand}">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Content" Value="👁" />
+                                                <Setter Property="ToolTip" Value="Hide this program from the list" />
+                                                <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsHidden}" Value="True">
+                                                        <Setter Property="Content" Value="⊘" />
+                                                        <Setter Property="ToolTip" Value="Hidden — click to show it again" />
+                                                        <Setter Property="Foreground" Value="{StaticResource Warn}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                    <TextBlock Text="{Binding Name}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center" ToolTip="{Binding Name}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{StaticResource Text}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsHidden}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+                                                        <Setter Property="FontStyle" Value="Italic" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource Accent}" />
+                                                        <Setter Property="FontWeight" Value="Bold" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <!-- LEFT: command palette -->
+            <Border Grid.Column="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="4" Margin="4,0,4,0">
+                <DockPanel Margin="8">
+                    <TextBlock DockPanel.Dock="Top" Text="Commands" Foreground="{StaticResource Accent}"
+                               FontWeight="SemiBold" Margin="2,2,0,8" />
+                    <TextBox DockPanel.Dock="Top" Height="24" Margin="0,0,0,8" VerticalContentAlignment="Center"
+                             Text="{Binding CommandFilter, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Search commands by name, op key or category (e.g. psu, snapshot, move)" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Palette}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,0,0,10">
+                                        <TextBlock Text="{Binding Category}" Foreground="{StaticResource Subtle}"
+                                                   FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                        <ItemsControl ItemsSource="{Binding Items}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Style="{StaticResource PaletteItem}"
+                                                            ToolTip="Drag onto a lane cell, or double-click to add to the selected cell"
+                                                            PreviewMouseLeftButtonDown="OnPaletteMouseDown"
+                                                            PreviewMouseMove="OnPaletteMouseMove">
+                                                        <TextBlock Text="{Binding Display}" Foreground="{StaticResource Text}" FontSize="12" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- MIDDLE: the timeline grid (stages down as rows, lanes across the top).
+                 Frozen lane-header row + frozen stage-label column; the body owns both
+                 scrollbars and slaves the header (horizontal) and labels (vertical) via
+                 OnBodyScrollChanged. -->
+            <Border Grid.Column="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="4" Margin="4,0,4,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Corner spacer -->
+                    <Border Grid.Row="0" Grid.Column="0" Background="{StaticResource Panel}"
+                            BorderBrush="{StaticResource Edge}" BorderThickness="0,0,1,1" />
+
+                    <!-- Frozen lane-header row (slaved to the body's horizontal scroll) -->
+                    <ScrollViewer Grid.Row="0" Grid.Column="1" x:Name="HeaderScroll"
+                                  HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Lanes}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Width="{Binding DataContext.LaneWidth, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            Height="48" Background="{StaticResource Bg}"
+                                            Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}}"
+                                            BorderBrush="{StaticResource Edge}" BorderThickness="0,0,1,1" Padding="8,0">
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding DomainLabel}" Foreground="{StaticResource Accent}"
+                                                       FontSize="10" FontWeight="SemiBold"
+                                                       Visibility="{Binding IsGroupStart, Converter={StaticResource BoolToVis}}" />
+                                            <TextBlock Text="{Binding Display}" Foreground="{StaticResource Text}"
+                                                       FontSize="{Binding DataContext.LaneFontSize, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <!-- Frozen stage-label column (slaved to the body's vertical scroll) -->
+                    <ScrollViewer Grid.Row="1" Grid.Column="0" x:Name="LabelScroll"
+                                  VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled"
+                                  PreviewMouseWheel="OnFrozenPaneWheel">
+                        <ItemsControl ItemsSource="{Binding Stages}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Width="120" Height="54" Style="{StaticResource StageHeader}"
+                                            BorderThickness="0,0,1,1"
+                                            MouseLeftButtonDown="OnStageHeaderClick"
+                                            ToolTip="Click to select (Shift+click for a range; Ctrl+C / Ctrl+V to copy / paste); right-click to insert">
+                                        <Border.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="Insert Stage Above" Click="OnInsertStageLeft" />
+                                                <MenuItem Header="Insert Stage Below" Click="OnInsertStageRight" />
+                                                <Separator />
+                                                <MenuItem Header="Copy Stage(s)" Click="OnCopyStages" />
+                                                <MenuItem Header="Paste Stage(s)" Click="OnPasteStages" />
+                                                <Separator />
+                                                <MenuItem Header="Remove Stage" Click="OnRemoveStage" />
+                                            </ContextMenu>
+                                        </Border.ContextMenu>
+                                        <Grid Margin="6,0">
+                                            <TextBlock Text="{Binding Title}" Foreground="{StaticResource Subtle}"
+                                                       FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <Button Content="✕" Width="18" Height="18" Padding="0" FontSize="10"
+                                                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                    ToolTip="Remove this stage" Click="OnRemoveStage" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <!-- Cell body — one row per stage, cells across = lanes. Owns both scrollbars. -->
+                    <ScrollViewer Grid.Row="1" Grid.Column="1" x:Name="BodyScroll"
+                                  HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                                  ScrollChanged="OnBodyScrollChanged">
+                        <ItemsControl ItemsSource="{Binding Stages}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <ItemsControl ItemsSource="{Binding Cells}" Height="54">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Width="{Binding DataContext.LaneWidth, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        Height="54" Style="{StaticResource DropCell}"
+                                                        Visibility="{Binding Lane.IsVisible, Converter={StaticResource BoolToVis}}"
+                                                        AllowDrop="True" DragOver="OnCellDragOver" Drop="OnCellDrop"
+                                                        DragLeave="OnCellDragLeave"
+                                                        MouseLeftButtonDown="OnCellClick">
+                                                    <ItemsControl ItemsSource="{Binding Blocks}" VerticalAlignment="Center">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border Style="{StaticResource BlockBox}"
+                                                                        MouseLeftButtonDown="OnBlockClick"
+                                                                        PreviewMouseMove="OnBlockMouseMove" Tag="{Binding}"
+                                                                        ToolTip="{Binding Summary}">
+                                                                    <StackPanel>
+                                                                        <TextBlock Text="{Binding Display}" Foreground="{StaticResource Subtle}"
+                                                                                   FontSize="{Binding DataContext.BlockNameFontSize, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                                   TextTrimming="CharacterEllipsis" />
+                                                                        <TextBlock Text="{Binding ParamSummary}" Foreground="{StaticResource Text}"
+                                                                                   FontSize="{Binding DataContext.BlockValueFontSize, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                                   FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                                    </StackPanel>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- RIGHT: parameter panel for the selected block -->
+            <Border Grid.Column="3" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="4" Margin="4,0,0,0">
+                <Grid>
+                    <!-- Empty state — nothing selected. -->
+                    <TextBlock Text="Select a block to edit, or click a command for help"
+                               Foreground="{StaticResource Subtle}" TextWrapping="Wrap" TextAlignment="Center"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16,0"
+                               Visibility="{Binding ShowEmptyHint, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- Command help — shown when a palette command is clicked (no block selected). -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  Visibility="{Binding ShowPaletteHelp, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Margin="14,12" DataContext="{Binding SelectedHelp}">
+                            <TextBlock Text="{Binding Display}" Foreground="{StaticResource Accent}"
+                                       FontWeight="SemiBold" FontSize="15" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Category, StringFormat='{}{0} command'}"
+                                       Foreground="{StaticResource Subtle}" FontSize="11" Margin="0,1,0,10" />
+
+                            <TextBlock Text="{Binding Summary}" Foreground="{StaticResource Text}"
+                                       FontSize="12.5" TextWrapping="Wrap" Margin="0,0,0,10" />
+
+                            <TextBlock Text="HOW TO USE" Foreground="{StaticResource Subtle}" FontSize="10"
+                                       FontWeight="SemiBold" Margin="0,0,0,3"
+                                       Visibility="{Binding HasUsage, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock Text="{Binding Usage}" Foreground="{StaticResource Text}"
+                                       FontSize="12" TextWrapping="Wrap" Margin="0,0,0,12"
+                                       Visibility="{Binding HasUsage, Converter={StaticResource BoolToVis}}" />
+
+                            <TextBlock Text="PARAMETERS" Foreground="{StaticResource Subtle}" FontSize="10"
+                                       FontWeight="SemiBold" Margin="0,0,0,4"
+                                       Visibility="{Binding HasParams, Converter={StaticResource BoolToVis}}" />
+                            <ItemsControl ItemsSource="{Binding ParamLines}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,0,0,7">
+                                            <TextBlock Text="{Binding Label}" Foreground="{StaticResource Text}"
+                                                       FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding Note}" Foreground="{StaticResource Subtle}"
+                                                       FontSize="11" TextWrapping="Wrap"
+                                                       Visibility="{Binding HasNote, Converter={StaticResource BoolToVis}}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
+                                    BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,8,0,0">
+                                <TextBlock Foreground="{StaticResource Subtle}" FontSize="11" TextWrapping="Wrap"
+                                           Text="Double-click this command, or drag it onto a lane cell, to add it to the sequence." />
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- Parameter editor — shown when a placed block is selected. -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  Visibility="{Binding HasSelectedBlock, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Margin="14,12" DataContext="{Binding SelectedBlock}">
+                            <TextBlock Text="{Binding Display}" Foreground="{StaticResource Accent}"
+                                       FontWeight="SemiBold" FontSize="14" Margin="0,0,0,2" />
+                            <TextBlock Text="{Binding HelpSummary}" Foreground="{StaticResource Subtle}"
+                                       FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"
+                                       Visibility="{Binding HasHelp, Converter={StaticResource BoolToVis}}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="{Binding Id, StringFormat='UID  {0}'}" Foreground="{StaticResource Subtle}"
+                                           FontFamily="Consolas" FontSize="9" TextTrimming="CharacterEllipsis" MaxWidth="150"
+                                           ToolTip="{Binding Id}" VerticalAlignment="Center" />
+                                <Button Content="Copy" Width="40" Height="20" Padding="0" FontSize="9" Margin="6,0,0,0"
+                                        Click="OnCopyUid" ToolTip="Copy this block's UID" />
+                                <Button Content="Query" Width="46" Height="20" Padding="0" FontSize="9" Margin="4,0,0,0"
+                                        Click="OnQueryUid" ToolTip="Open History → Query, filtered to this UID" />
+                            </StackPanel>
+
+                            <TextBlock Text="Name (optional)" Foreground="{StaticResource Subtle}" Margin="0,0,0,2" />
+                            <TextBox Margin="0,0,0,8" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+
+                            <StackPanel Visibility="{Binding ShowDevice, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="Device" Foreground="{StaticResource Subtle}" Margin="0,0,0,2" />
+                                <ComboBox Margin="0,0,0,8" ItemsSource="{Binding DeviceOptions}"
+                                          SelectedItem="{Binding SelectedDevice}" />
+                            </StackPanel>
+
+                            <ItemsControl ItemsSource="{Binding Params}"
+                                          ItemTemplateSelector="{StaticResource ParamSelector}" />
+
+                            <TextBlock Text="{Binding VelocityHint}" Foreground="{StaticResource Subtle}"
+                                       FontSize="10" TextWrapping="Wrap" Margin="0,-2,0,10"
+                                       Visibility="{Binding ShowVelocityHint, Converter={StaticResource BoolToVis}}" />
+
+                            <Border Visibility="{Binding HasPositionPreview, Converter={StaticResource BoolToVis}}"
+                                    Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
+                                    BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,2,0,10">
+                                <StackPanel>
+                                    <TextBlock Text="Position stored default (used when an override above is 0 / blank)"
+                                               Foreground="{StaticResource Subtle}" FontSize="11" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding PositionPreview}" Foreground="{StaticResource Text}"
+                                               FontFamily="Consolas" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                    <Button Content="Edit position…" Width="110" Height="26" HorizontalAlignment="Left"
+                                            Margin="0,6,0,0" Command="{Binding EditPositionCommand}" />
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="Inbound delay (ms)" Foreground="{StaticResource Subtle}" Margin="0,4,0,2" />
+                            <TextBox Margin="0,0,0,8" Text="{Binding DelayBeforeMs, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Text="Debounce delay (ms)" Foreground="{StaticResource Subtle}" Margin="0,0,0,2" />
+                            <TextBox Margin="0,0,0,8" Text="{Binding DelayAfterMs, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox Content="Enabled" Foreground="{StaticResource Text}" IsChecked="{Binding Enabled}" />
+
+                            <Button Content="Delete block" Width="110" Height="28" HorizontalAlignment="Left"
+                                    Margin="0,12,0,0"
+                                    Command="{Binding DataContext.RemoveBlockCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ===== LOG ===== -->
+        <Border Grid.Row="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                BorderThickness="1" CornerRadius="4" Margin="0,8,0,0" Height="140">
+            <DockPanel Margin="8">
+                <TextBlock DockPanel.Dock="Top" Text="Log" Foreground="{StaticResource Accent}"
+                           FontWeight="SemiBold" Margin="2,0,0,4" />
+                <ListBox x:Name="LogList" ItemsSource="{Binding Log}" Background="Transparent"
+                         BorderThickness="0" FontFamily="Consolas" FontSize="12"
+                         Foreground="{StaticResource Text}"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

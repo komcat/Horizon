@@ -1,0 +1,18 @@
+<UserControl x:Class="Horizon.Station.UI.Views.VisionAlignmentView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <TabControl x:Name="Tabs"
+                Background="{StaticResource Bg}"
+                BorderBrush="{StaticResource Edge}"
+                SelectionChanged="OnTabChanged">
+        <TabItem Header="Vision Profile">
+            <ContentControl x:Name="ProfileHost" />
+        </TabItem>
+        <TabItem x:Name="GrippedTab" Header="Gripped FAU">
+            <ContentControl x:Name="GrippedHost" />
+        </TabItem>
+        <TabItem x:Name="PartTab" Header="Part Alignment">
+            <ContentControl x:Name="PartHost" />
+        </TabItem>
+    </TabControl>
+</UserControl>

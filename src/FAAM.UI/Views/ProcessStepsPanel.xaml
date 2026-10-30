@@ -154,7 +154,7 @@
                           ToolTip="When on, running a deck step auto-continues into the following deck entries whose transition is Auto (after each entry's delay). Stops at a manual entry (Auto off), an entry with a condition, a failed program, the end of the deck, or STOP. Default off." />
                 <Button Click="OnStop" Height="44" ToolTip="STOP — halt all motion"
                         Background="{StaticResource Danger}" BorderThickness="0" Cursor="Hand">
-                    <Image Source="/assets/stop.png" Height="30" RenderOptions.BitmapScalingMode="HighQuality" />
+                    <Image Source="/Horizon.Station.UI;component/assets/stop.png" Height="30" RenderOptions.BitmapScalingMode="HighQuality" />
                 </Button>
             </DockPanel>
 

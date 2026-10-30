@@ -1,0 +1,370 @@
+<UserControl x:Class="Horizon.Station.UI.Views.PartAlignmentView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:Horizon.Station.UI.Views">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="PartOn" Color="#00E5FF" />
+        <SolidColorBrush x:Key="MoveOn" Color="#00C8FF" />
+
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+        </Style>
+        <Style x:Key="StepTitle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,10,0,4" />
+        </Style>
+        <Style x:Key="Mono" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="Small" TargetType="TextBox">
+            <Setter Property="Width" Value="64" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+        </Style>
+        <Style x:Key="Btn" TargetType="Button">
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+        </Style>
+        <Style x:Key="Toggle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="MoveToggle" TargetType="ToggleButton" BasedOn="{StaticResource Toggle}">
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="{StaticResource MoveOn}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource MoveOn}" />
+                    <Setter Property="Foreground" Value="Black" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="MarkToggle" TargetType="ToggleButton" BasedOn="{StaticResource Toggle}">
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="{StaticResource PartOn}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource PartOn}" />
+                    <Setter Property="Foreground" Value="Black" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="{StaticResource Bg}" Margin="6">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="380" MinWidth="320" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Live feed: crosshair + MoveClick + the single Mark toggle (its target is chosen on the panel). -->
+        <Border Grid.Column="0" Background="{StaticResource VideoBg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                CornerRadius="3" MouseLeftButtonDown="OnFeedClick"
+                HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Grid>
+                <Image x:Name="MainImage" Source="{Binding Camera.Frame}" Stretch="Uniform" Margin="2"
+                       MaxWidth="1280" MaxHeight="1024" RenderOptions.BitmapScalingMode="LowQuality" />
+                <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch" Fill="{StaticResource Crosshair}" />
+                <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Fill="{StaticResource Crosshair}" />
+
+                <!-- Live glyphs: tools, gripped objects and saved parts (same control as the Run page). -->
+                <v:ToolOverlayView x:Name="ToolOverlay" AlwaysShow="True" />
+
+                <!-- Unsaved edit markers (E1 / E2 / the selected object's points), code-behind. -->
+                <Canvas x:Name="EditOverlay" IsHitTestVisible="False" ClipToBounds="True"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                <TextBlock Text="No video" Foreground="{StaticResource Subtle}" FontSize="18"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="{Binding Camera.HasNoVideo, Converter={StaticResource BoolToVis}}" />
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="6">
+                    <ToggleButton x:Name="MoveToggle" Style="{StaticResource MoveToggle}" Content="MoveClick" Checked="OnMoveArmed"
+                                  ToolTip="Click the image to jog the camera device from the crosshair centre" />
+                    <ToggleButton x:Name="MarkToggle" Style="{StaticResource MarkToggle}" Content="{Binding MarkText}" Margin="6,0,0,0"
+                                  IsChecked="{Binding MarkArmed, Mode=TwoWay}" Checked="OnMarkArmed"
+                                  ToolTip="Armed by the Mark buttons on the panel (E1 / E2 / P1 / P2); click the feed to mark" />
+                    <Border Background="{StaticResource Overlay}" CornerRadius="3" Padding="8,3" Margin="8,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Camera.SelectedCamera}" Foreground="{StaticResource Accent}" FontSize="13" FontWeight="SemiBold" />
+                    </Border>
+                </StackPanel>
+
+                <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Background="{StaticResource Overlay}"
+                        CornerRadius="3" Margin="6" Padding="8,3">
+                    <TextBlock Text="{Binding LiveText}" Foreground="#00E5FF" FontFamily="Consolas" FontSize="12" />
+                </Border>
+
+                <!-- Standard marker placement: yellow crosshair + Confirm / Cancel (topmost). -->
+                <v:MarkerPlacer x:Name="Placer" />
+            </Grid>
+        </Border>
+
+        <!-- Panel -->
+        <Border Grid.Column="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                CornerRadius="4" Margin="8,0,0,0" Padding="10">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="Part alignment" Foreground="{StaticResource Text}" FontSize="15" FontWeight="SemiBold" />
+                    <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,6"
+                               Text="Two fiducials fix the part's frame on the fixture (E1 = origin, E1 → E2 = +X); local objects are taught in that frame. Saved into the active product." />
+
+                    <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                            CornerRadius="3" Padding="8,5" Margin="0,0,0,6">
+                        <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="12">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{StaticResource Text}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding StatusWarn}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource Danger}" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Border>
+
+                    <!-- ====== Frame mode (hidden while an object is being edited) ====== -->
+                    <StackPanel>
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding EditingObject}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Part" Style="{StaticResource FieldLabel}" />
+                            <DockPanel Grid.Row="0" Grid.Column="1" Margin="0,2">
+                                <ComboBox DockPanel.Dock="Right" Width="110" Height="24" Margin="6,0,0,0" ItemsSource="{Binding PartNames}"
+                                          SelectedItem="{Binding SelectedPartName}" ToolTip="Load a saved part alignment" />
+                                <TextBox Height="24" VerticalContentAlignment="Center" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+                            </DockPanel>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Camera" Style="{StaticResource FieldLabel}" />
+                            <ComboBox Grid.Row="1" Grid.Column="1" Height="24" Margin="0,2" ItemsSource="{Binding Camera.Cameras}" SelectedItem="{Binding Camera.SelectedCamera}" />
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Camera device" Style="{StaticResource FieldLabel}" />
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding CameraDevice}" Foreground="{StaticResource Text}" VerticalAlignment="Center" />
+                        </Grid>
+
+                        <TextBlock Text="Camera exposure" Style="{StaticResource StepTitle}" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="µs" Style="{StaticResource FieldLabel}" />
+                            <TextBox Style="{StaticResource Small}" Text="{Binding ExposureUs}" />
+                            <TextBlock Text="Gain" Style="{StaticResource FieldLabel}" />
+                            <TextBox Style="{StaticResource Small}" Width="48" Text="{Binding Gain}" />
+                            <CheckBox Content="Auto" Foreground="{StaticResource Text}" VerticalAlignment="Center" IsChecked="{Binding AutoExposure}" />
+                            <Button Content="Read" Style="{StaticResource Btn}" Margin="10,0,0,0" Command="{Binding ReadExposureCommand}" />
+                            <Button Content="Apply" Style="{StaticResource Btn}" Command="{Binding ApplyExposureCommand}" />
+                        </StackPanel>
+
+                        <!-- 1 · E1 -->
+                        <TextBlock Text="1 · E1 (origin)" Style="{StaticResource StepTitle}" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Teach camera pos" Style="{StaticResource Btn}" Command="{Binding TeachE1CamCommand}" />
+                            <Button Content="Move camera" Style="{StaticResource Btn}" Command="{Binding MoveE1Command}" />
+                            <Button Content="Mark E1" Style="{StaticResource Btn}" Command="{Binding MarkE1Command}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding E1CamText}" Style="{StaticResource Mono}" Margin="0,2,0,2" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Vision" Style="{StaticResource FieldLabel}" />
+                            <ComboBox Width="160" Height="24" ItemsSource="{Binding VisionProfiles}" SelectedItem="{Binding E1Profile}" />
+                            <Button Content="Run" Style="{StaticResource Btn}" Margin="6,0,0,0" Command="{Binding RunE1Command}"
+                                    ToolTip="Move to the taught camera position, then detect E1 (anchor preferred)" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding E1Text}" Style="{StaticResource Mono}" Foreground="#00E5FF" Margin="0,2,0,0" />
+
+                        <!-- 2 · E2 -->
+                        <TextBlock Text="2 · E2 (+X axis)" Style="{StaticResource StepTitle}" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Teach camera pos" Style="{StaticResource Btn}" Command="{Binding TeachE2CamCommand}" />
+                            <Button Content="Move camera" Style="{StaticResource Btn}" Command="{Binding MoveE2Command}" />
+                            <Button Content="Mark E2" Style="{StaticResource Btn}" Command="{Binding MarkE2Command}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding E2CamText}" Style="{StaticResource Mono}" Margin="0,2,0,2" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Vision" Style="{StaticResource FieldLabel}" />
+                            <ComboBox Width="160" Height="24" ItemsSource="{Binding VisionProfiles}" SelectedItem="{Binding E2Profile}" />
+                            <Button Content="Run" Style="{StaticResource Btn}" Margin="6,0,0,0" Command="{Binding RunE2Command}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding E2Text}" Style="{StaticResource Mono}" Foreground="#00E5FF" Margin="0,2,0,0" />
+
+                        <!-- 3 · Frame -->
+                        <TextBlock Text="3 · Reference frame" Style="{StaticResource StepTitle}" />
+                        <TextBlock Text="{Binding FrameText}" Style="{StaticResource Mono}" Foreground="#00E5FF" />
+                        <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0"
+                                   Text="Origin E1, +X along E1 → E2, +Y = +X rotated 90° counter-clockwise (gantry XY), mm." />
+
+                        <!-- 4 · Objects -->
+                        <TextBlock Text="4 · Local objects" Style="{StaticResource StepTitle}" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="+ Point" Style="{StaticResource Btn}" Command="{Binding AddPointCommand}" />
+                            <Button Content="+ Line" Style="{StaticResource Btn}" Command="{Binding AddLineCommand}" />
+                            <Button Content="Remove" Style="{StaticResource Btn}" Command="{Binding RemoveObjectCommand}" />
+                        </StackPanel>
+                        <ListBox ItemsSource="{Binding Objects}" SelectedItem="{Binding SelectedObject}" Margin="0,4,0,0"
+                                 MaxHeight="160" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" Foreground="{StaticResource Text}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Summary}" FontSize="12" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0" Text="Select an object to edit it (the panel switches to the object editor)." />
+
+                        <!-- 5 · Save -->
+                        <TextBlock Text="5 · Save" Style="{StaticResource StepTitle}" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Save profile" Height="28" Padding="12,0" Margin="0,0,6,0" FontWeight="SemiBold" Command="{Binding SaveCommand}" />
+                            <Button Content="Delete" Height="28" Padding="10,0" Margin="0,0,6,0" Command="{Binding DeleteCommand}" />
+                            <Button Content="Reload" Height="28" Padding="10,0" Command="{Binding ReloadCommand}" />
+                        </StackPanel>
+
+                        <!-- 6 · Run -->
+                        <TextBlock Text="6 · Run procedure" Style="{StaticResource StepTitle}" />
+                        <TextBlock Style="{StaticResource Hint}"
+                                   Text="Camera → E1, detect; → E2, detect; rebuild the frame; re-measure every object (profile, or wait for your Mark click). An object that is not found keeps its taught position." />
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <Button Content="Run" Height="28" Padding="14,0" Margin="0,0,6,0" FontWeight="SemiBold" Command="{Binding RunProcedureCommand}" />
+                            <Button Content="Cancel" Height="28" Padding="10,0" Margin="0,0,10,0" Command="{Binding CancelProcedureCommand}" />
+                            <TextBlock Text="Settle (ms)" Style="{StaticResource FieldLabel}" />
+                            <TextBox Style="{StaticResource Small}" Width="56" Text="{Binding SettleMs}" />
+                        </StackPanel>
+
+                        <!-- 7 · Moves -->
+                        <TextBlock Text="7 · Camera moves" Style="{StaticResource StepTitle}" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Camera → E1" Style="{StaticResource Btn}" Command="{Binding CameraToE1Command}" />
+                            <Button Content="Camera → E2" Style="{StaticResource Btn}" Command="{Binding CameraToE2Command}" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0" Text="Measured positions after a run, taught ones before." />
+
+                        <!-- Saved objects, one Camera -> button each (measured / taught state alongside). -->
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,2">
+                            <TextBlock Text="Local objects" Foreground="{StaticResource Text}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <CheckBox Content="+ offset" Foreground="{StaticResource Text}" VerticalAlignment="Center" Margin="12,0,0,0" IsChecked="{Binding ApplyOffset}"
+                                      ToolTip="Go to the object's reference plus its local-frame XY offset" />
+                        </StackPanel>
+                        <ItemsControl ItemsSource="{Binding MoveTargets}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,1">
+                                        <Button DockPanel.Dock="Left" Content="Camera →" Height="24" Padding="8,0" Margin="0,0,8,0" Command="{Binding MoveCommand}" />
+                                        <TextBlock Text="{Binding Kind}" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" DockPanel.Dock="Right" Margin="8,0,0,0" />
+                                        <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+                                            <Run Text="{Binding Name, Mode=OneWay}" Foreground="#00E5FF" FontWeight="SemiBold" />
+                                            <Run Text="  " />
+                                            <Run Text="{Binding State, Mode=OneWay}" Foreground="{StaticResource Subtle}" />
+                                        </TextBlock>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0" Text="Appears once the profile is saved; run the procedure to switch every row to its measured position." />
+                    </StackPanel>
+
+                    <!-- ====== Object editor (shown while an object is selected) ====== -->
+                    <StackPanel Visibility="{Binding EditingObject, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Button Content="‹ Back to part" Style="{StaticResource Btn}" Command="{Binding CloseObjectCommand}" />
+                            <TextBlock Text="{Binding SelectedObject.Kind}" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" Margin="6,0,0,0" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Name" Style="{StaticResource FieldLabel}" />
+                            <TextBox Width="180" Height="24" VerticalContentAlignment="Center" Text="{Binding SelectedObject.Name, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <!-- P1 -->
+                        <TextBlock Text="Point 1" Style="{StaticResource StepTitle}" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Teach camera pos" Style="{StaticResource Btn}" Command="{Binding TeachP1CamCommand}" />
+                            <Button Content="Move camera" Style="{StaticResource Btn}" Command="{Binding MoveP1Command}" />
+                            <Button Content="Mark P1" Style="{StaticResource Btn}" Command="{Binding MarkP1Command}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <TextBlock Text="Vision" Style="{StaticResource FieldLabel}" />
+                            <ComboBox Width="160" Height="24" ItemsSource="{Binding VisionProfiles}" SelectedItem="{Binding SelectedObject.Points[0].Profile}" />
+                            <Button Content="Run" Style="{StaticResource Btn}" Margin="6,0,0,0" Command="{Binding RunP1Command}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding SelectedObject.Points[0].Text}" Style="{StaticResource Mono}" Foreground="#00E5FF" Margin="0,2,0,0" />
+
+                        <!-- P2 (lines only) -->
+                        <StackPanel Visibility="{Binding SelectedObject.IsLine, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="Point 2" Style="{StaticResource StepTitle}" />
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Teach camera pos" Style="{StaticResource Btn}" Command="{Binding TeachP2CamCommand}" />
+                                <Button Content="Move camera" Style="{StaticResource Btn}" Command="{Binding MoveP2Command}" />
+                                <Button Content="Mark P2" Style="{StaticResource Btn}" Command="{Binding MarkP2Command}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                <TextBlock Text="Vision" Style="{StaticResource FieldLabel}" />
+                                <ComboBox Width="160" Height="24" ItemsSource="{Binding VisionProfiles}" SelectedItem="{Binding SelectedObject.Points[1].Profile}" />
+                                <Button Content="Run" Style="{StaticResource Btn}" Margin="6,0,0,0" Command="{Binding RunP2Command}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding SelectedObject.Points[1].Text}" Style="{StaticResource Mono}" Foreground="#00E5FF" Margin="0,2,0,0" />
+                        </StackPanel>
+
+                        <!-- Offset -->
+                        <TextBlock Text="XY offset (local frame, mm)" Style="{StaticResource StepTitle}" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="X" Style="{StaticResource FieldLabel}" />
+                            <TextBox Style="{StaticResource Small}" Text="{Binding SelectedObject.OffsetX, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Text="Y" Style="{StaticResource FieldLabel}" />
+                            <TextBox Style="{StaticResource Small}" Text="{Binding SelectedObject.OffsetY, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0"
+                                   Text="Applied from the object's reference (the point, or a line's midpoint) along the part's local axes." />
+
+                        <TextBlock Text="Camera move" Style="{StaticResource StepTitle}" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Camera → object" Style="{StaticResource Btn}" Command="{Binding CameraToObjectCommand}" />
+                            <CheckBox Content="+ offset" Foreground="{StaticResource Text}" VerticalAlignment="Center" IsChecked="{Binding ApplyOffset}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button Content="Save profile" Height="28" Padding="12,0" Margin="0,0,6,0" FontWeight="SemiBold" Command="{Binding SaveCommand}"
+                                    ToolTip="Persist the whole part profile, this object included" />
+                            <Button Content="Save &amp; back" Height="28" Padding="12,0" Command="{Binding SaveAndBackCommand}"
+                                    ToolTip="Save the profile and return to the part panel" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

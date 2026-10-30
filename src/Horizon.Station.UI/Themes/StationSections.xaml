@@ -1,0 +1,50 @@
+<!-- Machine-page section view resolution: the Machine page binds a section view model; WPF picks
+     the matching view. Every head merges this after StationTheme.xaml; a head's own Machine ›
+     Settings panels (IStationHead.CreateSettingsPanels) get their DataTemplates in the head's App.xaml. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vms="clr-namespace:Horizon.Station.UI.ViewModels.Sections"
+                    xmlns:vsec="clr-namespace:Horizon.Station.UI.Views.Sections">
+    <DataTemplate DataType="{x:Type vms:StatusSectionViewModel}">
+        <vsec:StatusSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vms:PlaceholderSectionViewModel}">
+        <vsec:PlaceholderSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vms:SmuSectionViewModel}">
+        <vsec:SmuSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vms:MeasurementSectionViewModel}">
+        <vsec:MeasurementSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vms:IoSectionViewModel}">
+        <vsec:IoSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vms:IoWatchSectionViewModel}">
+        <vsec:IoWatchSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vms:PneumaticSectionViewModel}">
+        <vsec:PneumaticSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vms:MotionSectionViewModel}">
+        <vsec:MotionSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vms:LaserSectionViewModel}">
+        <vsec:LaserSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vms:TecSectionViewModel}">
+        <vsec:TecSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vms:PowerSupplySectionViewModel}">
+        <vsec:PowerSupplySectionView />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vms:CameraSectionViewModel}">
+        <vsec:CameraSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vms:SettingsSectionViewModel}">
+        <vsec:SettingsSectionView />
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type vms:DeviceRegistrationSectionViewModel}">
+        <vsec:DeviceRegistrationSectionView />
+    </DataTemplate>
+</ResourceDictionary>

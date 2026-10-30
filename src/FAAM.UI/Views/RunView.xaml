@@ -141,7 +141,7 @@
 
                         <!-- Device-registration overlay: live gripper centre + outline (or an edge
                              marker + arrow + distance when it is out of frame). -->
-                        <v:ToolOverlayView x:Name="ToolOverlay" />
+                        <st:ToolOverlayView x:Name="ToolOverlay" />
 
                         <!-- Cursor crosshair — follows the mouse while MoveClick is armed. -->
                         <Grid x:Name="MainCursor" Width="20" Height="20" IsHitTestVisible="False"
@@ -193,7 +193,7 @@
 
                         <!-- Generic yes/no prompt overlay (group 2) — hidden until a routine
                              (e.g. U/FAU capture) drives it; centre stays click-through. -->
-                        <v:CameraPromptOverlay x:Name="MainPrompt" />
+                        <st:CameraPromptOverlay x:Name="MainPrompt" />
                     </Grid>
                 </Border>
 
@@ -218,7 +218,7 @@
                                        Style="{StaticResource CrosshairLine}" />
 
                             <!-- Same registration overlay on the zoom inset (its source is the centre ROI). -->
-                            <v:ToolOverlayView x:Name="ZoomToolOverlay" />
+                            <st:ToolOverlayView x:Name="ZoomToolOverlay" />
 
                             <!-- Cursor crosshair — follows the mouse while MoveClick is armed. -->
                             <Grid x:Name="ZoomCursor" Width="20" Height="20" IsHitTestVisible="False"
@@ -235,7 +235,7 @@
 
                             <!-- Compact mirror of the capture prompt (small Capture / Cancel in the
                                  lower corners, no banner) — hidden until driven via the hub. -->
-                            <v:CameraPromptOverlay x:Name="ZoomPrompt" Compact="True" />
+                            <st:CameraPromptOverlay x:Name="ZoomPrompt" Compact="True" />
                         </Grid>
                     </Border>
 

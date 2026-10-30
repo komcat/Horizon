@@ -18,8 +18,35 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Lua folding for the .moon script editor. -->
+    <!-- Code editor for the .moon script page (syntax highlight, completion, Lua folding). -->
     <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
+    <!-- SMU / Measurement live trend charts (SKElement). -->
+    <PackageReference Include="SkiaSharp.Views.WPF" Version="3.116.1" />
+    <!-- Diagnostics from the updater and shutdown path; the head configures the sinks. -->
+    <PackageReference Include="Serilog" Version="4.2.0" />
+    <!-- Internet software update (AppUpdater). Keep in step with the vpk tool version
+         deploy/release.ps1 packs with, and with the head's own Velopack reference. -->
+    <PackageReference Include="Velopack" Version="1.2.161" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Toolbar / jog images, as WPF resources (/assets/... from library XAML;
+         /Horizon.Station.UI;component/assets/... from a head). -->
+    <Resource Include="assets\**\*.png" />
+  </ItemGroup>
+
+  <!-- Every library namespace in scope in every library file (types moved out of FAAM.UI
+       keep resolving where they were used by their old enclosing-namespace names). -->
+  <ItemGroup>
+    <Using Include="Horizon.Station.UI" />
+    <Using Include="Horizon.Station.UI.Mvvm" />
+    <Using Include="Horizon.Station.UI.Telemetry" />
+    <Using Include="Horizon.Station.UI.Process" />
+    <Using Include="Horizon.Station.UI.ViewModels" />
+    <Using Include="Horizon.Station.UI.ViewModels.Sections" />
+    <Using Include="Horizon.Station.UI.ViewModels.Timeline" />
+    <Using Include="Horizon.Station.UI.Views" />
+    <Using Include="Horizon.Station.UI.Views.Sections" />
   </ItemGroup>
 
   <ItemGroup>

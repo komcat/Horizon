@@ -47,8 +47,8 @@ behaves identically after every slice. Layer rule: the library references
 |---|---|---|
 | 1 | Library project + theme + MVVM + telemetry + leaf units | **done** (below) |
 | 2 | Cut the back-edges from generic code into FAU-specific code, still inside FAAM.UI (seams below) | **done** — no generic → head-only reference left (scan below) |
-| 3 | Move the generic core (the 128-unit cycle minus FAU-specific units) in one step | next |
-| 4 | DLAM.UI head on the library (`docs/dlam-ui.md` §7 phase 3) | |
+| 3 | Move the generic core (the 128-unit cycle minus FAU-specific units) in one step | **done** (below) |
+| 4 | DLAM.UI head on the library (`docs/dlam-ui.md` §7 phase 3) | next |
 
 ### Slice 1 — done
 
@@ -84,6 +84,44 @@ The head is an `IStationHead` (FAAM.UI for now; moves with `EngineHost` in slice
 
 Scan after the cuts (comments stripped; `backedges.py`): 108 generic units, 43 head-only, and the only remaining hits are name collisions — the Engineer category "App", the word "Program", `PikaAvatar`'s own `Phase` property. Head-only units: `Siphog/*`, the Run page + its panels + the utility-app launcher, the DUT Data page (UV + SiPhOG), find-first-light, `TestingGroundView`, `ScanPanelStore`, `TeachPointStore`, `DutUvData`, the `Faam*` head classes and FAAM settings panels, `App`, `Program`.
 
-Then slice 3 moves `EngineHost`, the shell chrome, login / access, the Machine page and its
-sections, the jog rail, the Engineer (Gantt) editor, Repository, OEE, Version / update
-(`AppUpdater` takes the head's Velopack app id), the vision pages, and the DUT viewer.
+### Slice 3 — done
+
+Moved in one step (`tools/station-ui/move_slice3.py`: `git mv` of every unit not in
+`backedges.py`'s `HEAD_ONLY`, then `namespace` / `using` / `x:Class` / `clr-namespace`
+`FAAM.UI` → `Horizon.Station.UI`): 161 files — `EngineHost`, `IStationHead`, `ShellWindow`,
+startup / login / shutdown windows, `AccessPolicy`, `ActivityGate`, operator activity / prompt /
+attention, `TowerLight`, `HexapodPivotDefaults`, `AppUpdater`, Version window, the history / picker
+windows, Home, the Machine page and every section, jog rail / pad / popup, the Engineer page
+(timeline, deck, dispensing, script editor, `OpCatalog` + help), Repository, OEE + downtime +
+maintenance history, the vision pages (Vision Profile, Gripped FAU, Part Alignment, calibration,
+needle calibration), the DUT results viewer, and the toolbar images (`assets/*.png`). FAAM.UI keeps
+66 files, all head-only (`backedges.py` now reports 0 generic units).
+
+What else changed:
+
+- **Section templates** left FAAM's `App.xaml` for `Themes/StationSections.xaml`; a head's
+  `App.xaml` merges `StationTheme.xaml` then `StationSections.xaml`, and keeps only DataTemplates for
+  its own settings panels.
+- **Library XAML cannot use `st:`** — a `urn:` `XmlnsDefinition` doesn't resolve inside its own
+  assembly (MC3074). Library XAML uses `clr-namespace:` prefixes
+  (`tools/station-ui/unprefix_lib_xaml.py` rewrote the five files that used `st:`); heads keep `st:`.
+- **Identity**: the shell, jog popup, operator prompt, startup / login / shutdown titles and the
+  shared log source read `StationApp.Title`; the OEE session's app name and the Version window's
+  product line read the new `StationApp.AppName` (entry assembly name, so FAAM still records
+  `"FAAM.UI"`).
+- **Images**: library XAML keeps `/assets/x.png` (resolves to the library); FAAM's Run page points
+  at `/Horizon.Station.UI;component/assets/stop.png`.
+- **Packages**: the library carries AvalonEdit, SkiaSharp.Views.WPF, Serilog and Velopack (same
+  versions); FAAM.UI drops AvalonEdit and keeps SkiaSharp (its own charts) and Velopack (`Program.Main`).
+  The library also gets the same `<Using>` list as the head.
+- No type needed to go `internal` → `public` — the moved code was already public where a head uses it.
+- Verified: solution builds x64 Release with no errors; FAAM.UI's analyzer warnings
+  (`--no-incremental`) are the same set as before the move (268 distinct, none new).
+
+Left for slice 4 — **DLAM publishes on its own Velopack channel** in the same repo
+(`komcat/Horizon`). No `AppUpdater` change: an installed copy updates from the channel it was
+packed with (`releases.<channel>.json`), and `GithubSource` skips releases that don't carry that
+feed, so FAAM (default channel `win`, `releases.win.json`) and DLAM never see each other's packages.
+The DLAM release pipeline must pass `--channel dlam` to `vpk pack`, `vpk download github` (delta
+base) and `vpk upload github`, use `--packId DLAM.UI`, and tag differently from FAAM's `v*`
+(e.g. `dlam-v0.1.0`). `UpdateOptions.ExplicitChannel` is only for switching channels — not needed.

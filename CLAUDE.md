@@ -228,12 +228,17 @@ Horizon.UI's `EngineHost`/`ShellWindow`/`Telemetry`/`Mvvm` shape with its own
 fixed chrome. Full design + status in `docs/faam-ui.md` and `docs/faam-handoff.md`.
 
 **`Horizon.Station.UI`** (WPF class library) — the shared station UI FAAM.UI and the planned
-DLAM.UI are built from, being extracted from FAAM.UI slice by slice
-(`docs/station-ui-extraction.md`). Slice 1 moved the theme (`Themes/StationTheme.xaml`, merged
-by `App.xaml`), `Mvvm/`, `Telemetry/`, `Session`, the small dialogs and other leaf types;
-namespaces `Horizon.Station.UI.*`, XAML prefix `st:` (`urn:horizon-station-ui`), in scope in
-FAAM.UI through csproj `<Using>`s. Per-head identity: `StationApp` (`Title`). New shared code
-goes in the library; FAU-specific code (SiPhOG, Run page + its panels, `fau.*`) stays in FAAM.UI.
+DLAM.UI are built from (`docs/station-ui-extraction.md`). Since slice 3 it holds **everything
+generic** — `EngineHost`, `ShellWindow`, startup / login / shutdown, the Home / Machine (all
+sections) / Engineer / Repository / OEE / vision pages, jog rail, Version / update, theme, MVVM,
+telemetry — so most files named below live there, not in FAAM.UI. A head is an `IStationHead`
+(`new EngineHost(head)`: its Run + DUT Data pages, Engineer blocks / help / tabs, settings panels,
+default product) plus `StationApp` (`Title`, `ToolDevice`; `AppName` = entry assembly) and an
+`App.xaml` merging `Themes/StationTheme.xaml` + `Themes/StationSections.xaml`. Namespaces
+`Horizon.Station.UI.*`; a head's XAML uses prefix `st:` (`urn:horizon-station-ui`) — the library's
+own XAML must use `clr-namespace:` prefixes (a `urn:` namespace doesn't resolve in its defining
+assembly). FAAM.UI keeps only FAU code: `FaamHead`, the Run page + its panels, SiPhOG, DUT Data,
+find-first-light, Testing Ground, `ScanPanelStore`, its settings panels.
 
 - **Startup flow**: `StartupWindow` (connect hardware) → **`LoginWindow`** (level +
   employee number + that level's shared password; `Session` pushes an
@@ -481,7 +486,8 @@ write code that won't trip them:
 - Hexapod beam-alignment scan: `docs/hexapod-scanning.md`.
 - Bobcat → Horizon recipe migration: `docs/recipe-migration.md`.
 - FAAM.UI (second Layer 3 head): `docs/faam-ui.md`, `docs/faam-handoff.md`.
-- DLAM.UI (planned third head, FireDog → Horizon migration; shared `Horizon.Station.UI` extraction): `docs/dlam-ui.md`.
+- DLAM.UI (planned third head, FireDog → Horizon migration; shared `Horizon.Station.UI` extraction): `docs/dlam-ui.md`,
+  `docs/station-ui-extraction.md`; latest session passdown (state, open checks, next steps): `docs/dlam-handoff.md`.
 - SMU streaming: `docs/smu-streaming-design.md`.
 - Power supply (UDP3305S-E LAN setup, `psu.*` ops, verified `psu.powerUp`, FAAM PSU panel): `docs/power-supply.md`.
 - Product encapsulation + operator login + DUT traceability: `docs/product-and-traceability-design.md`.

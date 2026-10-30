@@ -30,14 +30,12 @@
        native-bundling package or the HALCON DLLs won't be in the output. -->
   <ItemGroup>
     <PackageReference Include="MVTec.HalconDotNet-Windows" Version="25110.0.0" />
-    <!-- Required by the ported SMU / Measurement chart views (SKElement). -->
+    <!-- The DUT Data trend chart and the SiPhOG chart (SKElement). -->
     <PackageReference Include="SkiaSharp.Views.WPF" Version="3.116.1" />
     <!-- File logging: persist the UI log + engine/adapter Serilog diagnostics to
          %APPDATA%\Horizon\logs\faam-.log (mirrors Horizon.App's versions). -->
     <PackageReference Include="Serilog" Version="4.2.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
-    <!-- Code editor for the .moon script page (syntax highlight + completion). -->
-    <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
     <!-- Internet software update from GitHub Releases (Home › Version › Update).
          Keep in step with the vpk tool version deploy/release.ps1 packs with. -->
     <PackageReference Include="Velopack" Version="1.2.161" />
@@ -66,11 +64,6 @@
     <Using Include="Horizon.Station.UI.ViewModels.Timeline" />
     <Using Include="Horizon.Station.UI.Views" />
     <Using Include="Horizon.Station.UI.Views.Sections" />
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="assets\" />
-    <!-- Embed image assets (teach.png etc.) as WPF resources. -->
-    <Resource Include="assets\**\*.png" />
   </ItemGroup>
 
   <!-- Version history (Home › Version): build\version-info.ps1 captures the current commit

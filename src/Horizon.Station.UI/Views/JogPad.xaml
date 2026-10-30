@@ -1,0 +1,132 @@
+<UserControl x:Class="Horizon.Station.UI.Views.JogPad"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- Jog direction button — one click moves the selected step. -->
+        <Style x:Key="JogBtn" TargetType="Button">
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="Background" Value="{StaticResource Bg}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{StaticResource Edge}"
+                                BorderThickness="1" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Step-size preset — selectable chip. Unselected chips get a dark outline so they
+             stand clear of the gray window; the active one is a solid accent fill, bold. -->
+        <Style x:Key="StepBtn" TargetType="ToggleButton">
+            <Setter Property="Width" Value="52" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="Background" Value="{StaticResource Bg}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{StaticResource Subtle}"
+                                BorderThickness="1" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Accent}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Text}" />
+                                <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                                <Setter Property="Foreground" Value="{StaticResource OnAccent}" />
+                                <Setter Property="FontWeight" Value="Bold" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel>
+        <!-- Device selector (filled in code from the configured / connected devices). -->
+        <Grid Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Device" Foreground="{StaticResource Subtle}" FontSize="11"
+                       VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox x:Name="DeviceSelect" Grid.Column="1" Height="26" VerticalContentAlignment="Center"
+                      SelectionChanged="OnDeviceChanged" />
+        </Grid>
+
+        <!-- Live position readout for the selected device. -->
+        <Border Background="Black" CornerRadius="3" Padding="8,5" Margin="0,0,0,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.Resources>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="FontFamily" Value="Consolas" />
+                        <Setter Property="FontSize" Value="12.5" />
+                    </Style>
+                </Grid.Resources>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="X" Foreground="#2E9E2E" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Y" Foreground="#2E9E2E" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Z" Foreground="#2E9E2E" />
+                <TextBlock x:Name="PosX" Grid.Row="0" Grid.Column="1" Text="—" Foreground="#33FF33" TextAlignment="Right" />
+                <TextBlock x:Name="PosY" Grid.Row="1" Grid.Column="1" Text="—" Foreground="#33FF33" TextAlignment="Right" />
+                <TextBlock x:Name="PosZ" Grid.Row="2" Grid.Column="1" Text="—" Foreground="#33FF33" TextAlignment="Right" />
+
+                <TextBlock Grid.Row="0" Grid.Column="3" Text="U" Foreground="#2E9E2E" />
+                <TextBlock Grid.Row="1" Grid.Column="3" Text="V" Foreground="#2E9E2E" />
+                <TextBlock Grid.Row="2" Grid.Column="3" Text="W" Foreground="#2E9E2E" />
+                <TextBlock x:Name="PosU" Grid.Row="0" Grid.Column="4" Text="—" Foreground="#33FF33" TextAlignment="Right" />
+                <TextBlock x:Name="PosV" Grid.Row="1" Grid.Column="4" Text="—" Foreground="#33FF33" TextAlignment="Right" />
+                <TextBlock x:Name="PosW" Grid.Row="2" Grid.Column="4" Text="—" Foreground="#33FF33" TextAlignment="Right" />
+            </Grid>
+        </Border>
+
+        <!-- Step-size presets. -->
+        <TextBlock Text="Step size" Foreground="{StaticResource Subtle}" FontSize="11" Margin="0,0,0,2" />
+        <WrapPanel x:Name="StepList" Margin="0,0,0,6" />
+
+        <!-- One [-] axis [+] row per configured axis (filled in code). -->
+        <StackPanel x:Name="AxisList" />
+
+        <Button Content="STOP" Click="OnStop" Height="32" Margin="0,8,0,0"
+                Background="{StaticResource Danger}" Foreground="White" BorderThickness="0"
+                FontSize="14" FontWeight="Bold" Cursor="Hand" />
+
+        <TextBlock x:Name="PadStatus" Foreground="{StaticResource Subtle}" FontSize="11"
+                   TextWrapping="Wrap" Margin="0,6,0,0" />
+    </StackPanel>
+</UserControl>

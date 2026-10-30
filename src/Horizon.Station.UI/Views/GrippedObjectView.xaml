@@ -1,0 +1,318 @@
+<UserControl x:Class="Horizon.Station.UI.Views.GrippedObjectView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:Horizon.Station.UI.Views">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="ObjectOn" Color="#B070FF" />
+        <SolidColorBrush x:Key="OutlineOn" Color="#C8C8C8" />
+        <SolidColorBrush x:Key="MoveOn" Color="#00C8FF" />
+
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+        </Style>
+        <Style x:Key="StepTitle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,10,0,4" />
+        </Style>
+        <Style x:Key="Mono" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="Small" TargetType="TextBox">
+            <Setter Property="Width" Value="64" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+        </Style>
+        <Style x:Key="Btn" TargetType="Button">
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+        </Style>
+        <Style x:Key="Toggle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="MoveToggle" TargetType="ToggleButton" BasedOn="{StaticResource Toggle}">
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="{StaticResource MoveOn}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource MoveOn}" />
+                    <Setter Property="Foreground" Value="Black" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="MarkToggle" TargetType="ToggleButton" BasedOn="{StaticResource Toggle}">
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="{StaticResource ObjectOn}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource ObjectOn}" />
+                    <Setter Property="Foreground" Value="Black" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="OutlineToggle" TargetType="ToggleButton" BasedOn="{StaticResource Toggle}">
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="{StaticResource OutlineOn}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource OutlineOn}" />
+                    <Setter Property="Foreground" Value="Black" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="{StaticResource Bg}" Margin="6">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="360" MinWidth="300" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Live feed: crosshair + MoveClick + Mark 1 / Mark 2 + Pick outline. -->
+        <Border Grid.Column="0" Background="{StaticResource VideoBg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                CornerRadius="3" MouseLeftButtonDown="OnFeedClick"
+                HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Grid>
+                <Image x:Name="MainImage" Source="{Binding Camera.Frame}" Stretch="Uniform" Margin="2"
+                       MaxWidth="1280" MaxHeight="1024" RenderOptions.BitmapScalingMode="LowQuality" />
+
+                <Rectangle Width="1" HorizontalAlignment="Center" VerticalAlignment="Stretch" Fill="{StaticResource Crosshair}" />
+                <Rectangle Height="1" HorizontalAlignment="Stretch" VerticalAlignment="Center" Fill="{StaticResource Crosshair}" />
+
+                <!-- Live tool + gripped-object glyphs (same control as the Run page). -->
+                <v:ToolOverlayView x:Name="ToolOverlay" AlwaysShow="True" />
+
+                <!-- Taught points, centre and outline preview (purple, code-behind). -->
+                <Canvas x:Name="PointOverlay" IsHitTestVisible="False" ClipToBounds="True"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                <TextBlock Text="No video" Foreground="{StaticResource Subtle}" FontSize="18"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="{Binding Camera.HasNoVideo, Converter={StaticResource BoolToVis}}" />
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="6">
+                    <ToggleButton x:Name="MoveToggle" Style="{StaticResource MoveToggle}" Content="MoveClick" Checked="OnMoveArmed"
+                                  ToolTip="Click the image to jog the camera device from the crosshair centre" />
+                    <ToggleButton x:Name="Mark1Toggle" Style="{StaticResource MarkToggle}" Content="Mark 1" Margin="6,0,0,0"
+                                  IsChecked="{Binding Mark1Armed, Mode=TwoWay}" Checked="OnMarkArmed"
+                                  ToolTip="Click point 1 of the gripped object" />
+                    <ToggleButton x:Name="Mark2Toggle" Style="{StaticResource MarkToggle}" Content="Mark 2" Margin="6,0,0,0"
+                                  IsChecked="{Binding Mark2Armed, Mode=TwoWay}" Checked="OnMarkArmed"
+                                  ToolTip="Click point 2 of the gripped object" />
+                    <ToggleButton x:Name="OutlineToggle" Style="{StaticResource OutlineToggle}" Content="Pick outline" Margin="6,0,0,0"
+                                  IsChecked="{Binding PickOutlineArmed, Mode=TwoWay}" Checked="OnOutlineArmed"
+                                  ToolTip="Click two opposite corners of the object to set its outline box" />
+                    <Border Background="{StaticResource Overlay}" CornerRadius="3" Padding="8,3" Margin="8,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Camera.SelectedCamera}" Foreground="{StaticResource Accent}" FontSize="13" FontWeight="SemiBold" />
+                    </Border>
+                </StackPanel>
+
+                <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Background="{StaticResource Overlay}"
+                        CornerRadius="3" Margin="6" Padding="8,3">
+                    <TextBlock Text="{Binding LiveText}" Foreground="#B070FF" FontFamily="Consolas" FontSize="12" />
+                </Border>
+
+                <!-- Standard marker placement: yellow crosshair + Confirm / Cancel (topmost). -->
+                <v:MarkerPlacer x:Name="Placer" />
+            </Grid>
+        </Border>
+
+        <!-- Procedure panel -->
+        <Border Grid.Column="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                CornerRadius="4" Margin="8,0,0,0" Padding="10">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="Gripped object" Foreground="{StaticResource Text}" FontSize="15" FontWeight="SemiBold" />
+                    <TextBlock Foreground="{StaticResource Subtle}" TextWrapping="Wrap" FontSize="11.5" Margin="0,2,0,6"
+                               Text="Teach what the registered gripper is holding (the FAU) from two reference points, so it tracks purple on every camera view. Saved into the active product." />
+
+                    <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                            CornerRadius="3" Padding="8,5" Margin="0,0,0,6">
+                        <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="12">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{StaticResource Text}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding StatusWarn}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource Danger}" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Border>
+
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Object" Style="{StaticResource FieldLabel}" />
+                        <DockPanel Grid.Row="0" Grid.Column="1" Margin="0,2">
+                            <ComboBox DockPanel.Dock="Right" Width="110" Height="24" Margin="6,0,0,0" ItemsSource="{Binding ObjectNames}"
+                                      SelectedItem="{Binding SelectedObjectName}" ToolTip="Load a saved object" />
+                            <TextBox Height="24" VerticalContentAlignment="Center" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+                        </DockPanel>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Tool" Style="{StaticResource FieldLabel}" />
+                        <ComboBox Grid.Row="1" Grid.Column="1" Height="24" Margin="0,2" ItemsSource="{Binding Tools}" SelectedItem="{Binding ToolDevice}" />
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Camera" Style="{StaticResource FieldLabel}" />
+                        <ComboBox Grid.Row="2" Grid.Column="1" Height="24" Margin="0,2" ItemsSource="{Binding Camera.Cameras}" SelectedItem="{Binding Camera.SelectedCamera}" />
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Camera device" Style="{StaticResource FieldLabel}" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding CameraDevice}" Foreground="{StaticResource Text}" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <!-- 1 -->
+                    <TextBlock Text="1 · Tool pose" Style="{StaticResource StepTitle}" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Capture tool pose" Style="{StaticResource Btn}" Command="{Binding CaptureToolPoseCommand}" />
+                        <Button Content="Move to pose" Style="{StaticResource Btn}" Command="{Binding MoveToPoseCommand}" />
+                        <Button Content="Camera → tool centre" Style="{StaticResource Btn}" Command="{Binding CameraToToolCommand}"
+                                ToolTip="Centre the camera on the registered gripper anchor (bounded move). Point positions are taught relative to this." />
+                    </StackPanel>
+                    <TextBlock Text="{Binding ToolPoseText}" Style="{StaticResource Mono}" Margin="0,2,0,0" />
+
+                    <!-- 2 -->
+                    <TextBlock Text="2 · Camera exposure" Style="{StaticResource StepTitle}" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="µs" Style="{StaticResource FieldLabel}" />
+                        <TextBox Style="{StaticResource Small}" Text="{Binding ExposureUs}" />
+                        <TextBlock Text="Gain" Style="{StaticResource FieldLabel}" />
+                        <TextBox Style="{StaticResource Small}" Width="48" Text="{Binding Gain}" />
+                        <CheckBox Content="Auto" Foreground="{StaticResource Text}" VerticalAlignment="Center" IsChecked="{Binding AutoExposure}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <Button Content="Read current" Style="{StaticResource Btn}" Command="{Binding ReadExposureCommand}" />
+                        <Button Content="Apply" Style="{StaticResource Btn}" Command="{Binding ApplyExposureCommand}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <TextBlock Text="Lighting" Style="{StaticResource FieldLabel}" />
+                        <TextBox Width="180" Height="24" VerticalContentAlignment="Center" Text="{Binding LightingNote}"
+                                 ToolTip="Placeholder — note the lighting setting used; not applied yet" />
+                        <TextBlock Text="(placeholder)" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" Margin="6,0,0,0" />
+                    </StackPanel>
+
+                    <!-- 3 -->
+                    <TextBlock Text="3 · Point 1" Style="{StaticResource StepTitle}" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Teach camera pos" Style="{StaticResource Btn}" Command="{Binding TeachCamera1Command}"
+                                ToolTip="Record where the camera device is now for point 1 — stored as an offset from the tool centre, so it follows the tool" />
+                        <Button Content="Move camera" Style="{StaticResource Btn}" Command="{Binding MoveCamera1Command}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding CamPose1Text}" Style="{StaticResource Mono}" Margin="0,2,0,2" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Vision" Style="{StaticResource FieldLabel}" />
+                        <ComboBox Width="150" Height="24" ItemsSource="{Binding VisionProfiles}" SelectedItem="{Binding Profile1}" />
+                        <Button Content="Run" Style="{StaticResource Btn}" Margin="6,0,0,0" Command="{Binding RunVision1Command}"
+                                ToolTip="Move the camera to the taught point-1 position, apply the exposure, then detect with this profile (anchor / x-y)" />
+                    </StackPanel>
+                    <TextBlock Foreground="{StaticResource Subtle}" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap"
+                               Text="…or arm Mark 1 on the feed and click the point." />
+                    <TextBlock Text="{Binding Point1Text}" Style="{StaticResource Mono}" Foreground="#B070FF" Margin="0,2,0,0" />
+
+                    <TextBlock Text="3 · Point 2" Style="{StaticResource StepTitle}" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Teach camera pos" Style="{StaticResource Btn}" Command="{Binding TeachCamera2Command}" />
+                        <Button Content="Move camera" Style="{StaticResource Btn}" Command="{Binding MoveCamera2Command}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding CamPose2Text}" Style="{StaticResource Mono}" Margin="0,2,0,2" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Vision" Style="{StaticResource FieldLabel}" />
+                        <ComboBox Width="150" Height="24" ItemsSource="{Binding VisionProfiles}" SelectedItem="{Binding Profile2}" />
+                        <Button Content="Run" Style="{StaticResource Btn}" Margin="6,0,0,0" Command="{Binding RunVision2Command}"
+                                ToolTip="Move the camera to the taught point-2 position, apply the exposure, then detect with this profile (anchor / x-y)" />
+                    </StackPanel>
+                    <TextBlock Foreground="{StaticResource Subtle}" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap"
+                               Text="…or arm Mark 2 on the feed and click the point." />
+                    <TextBlock Text="{Binding Point2Text}" Style="{StaticResource Mono}" Foreground="#B070FF" Margin="0,2,0,0" />
+                    <Button Content="Clear points" Style="{StaticResource Btn}" HorizontalAlignment="Left" Margin="0,4,0,0" Command="{Binding ClearPointsCommand}" />
+
+                    <!-- 4 -->
+                    <TextBlock Text="4 · Centre" Style="{StaticResource StepTitle}" />
+                    <TextBlock Text="{Binding CentreText}" Style="{StaticResource Mono}" Foreground="#B070FF" />
+
+                    <!-- 5 -->
+                    <TextBlock Text="5 · Outline" Style="{StaticResource StepTitle}" />
+                    <TextBlock Foreground="{StaticResource Subtle}" TextWrapping="Wrap" FontSize="11.5"
+                               Text="Arm 'Pick outline' and click two opposite corners of the object; the box offset from the centre is derived. Fine-tune below." />
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <TextBlock Text="{Binding OutlineSummary}" Foreground="{StaticResource Text}" VerticalAlignment="Center" />
+                        <Button Content="Clear outline" Style="{StaticResource Btn}" Margin="10,0,0,0" Command="{Binding ClearOutlineCommand}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <TextBlock Text="Width (mm)" Style="{StaticResource FieldLabel}" />
+                        <TextBox Style="{StaticResource Small}" Text="{Binding OutlineWidth, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="Length (mm)" Style="{StaticResource FieldLabel}" />
+                        <TextBox Style="{StaticResource Small}" Text="{Binding OutlineLength, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <TextBlock Text="Box offset X (mm)" Style="{StaticResource FieldLabel}" />
+                        <TextBox Style="{StaticResource Small}" Text="{Binding OutlineOffsetX, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="Y (mm)" Style="{StaticResource FieldLabel}" />
+                        <TextBox Style="{StaticResource Small}" Text="{Binding OutlineOffsetY, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+
+                    <!-- 6 -->
+                    <TextBlock Text="6 · Save / clear" Style="{StaticResource StepTitle}" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Save object" Height="28" Padding="12,0" Margin="0,0,6,0" FontWeight="SemiBold" Command="{Binding SaveCommand}" />
+                        <Button Content="Clear object" Height="28" Padding="10,0" Margin="0,0,6,0" Command="{Binding ClearObjectCommand}"
+                                ToolTip="Remove the saved object — its points and outline" />
+                        <Button Content="Reload" Height="28" Padding="10,0" Command="{Binding ReloadCommand}" />
+                    </StackPanel>
+
+                    <!-- 7 -->
+                    <TextBlock Text="7 · Run object detect procedure" Style="{StaticResource StepTitle}" />
+                    <TextBlock Foreground="{StaticResource Subtle}" TextWrapping="Wrap" FontSize="11.5"
+                               Text="Wherever the tool is: camera → tool centre, then camera → point 1 by its offset and detect (vision profile, or wait for your Mark click), same for point 2, then save — the outline is redrawn at the new place." />
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <Button Content="Run procedure" Height="28" Padding="12,0" Margin="0,0,6,0" FontWeight="SemiBold" Command="{Binding RunProcedureCommand}" />
+                        <Button Content="Cancel" Height="28" Padding="10,0" Margin="0,0,10,0" Command="{Binding CancelProcedureCommand}" />
+                        <TextBlock Text="Settle (ms)" Style="{StaticResource FieldLabel}" />
+                        <TextBox Style="{StaticResource Small}" Width="56" Text="{Binding SettleMs}"
+                                 ToolTip="Motion settling wait after each move in the procedure (saved with the object)" />
+                    </StackPanel>
+
+                    <!-- 8 -->
+                    <TextBlock Text="8 · Object → camera centre" Style="{StaticResource StepTitle}" />
+                    <TextBlock Foreground="{StaticResource Subtle}" TextWrapping="Wrap" FontSize="11.5"
+                               Text="Move the gripper so the object's centre sits under the camera centre (bounded move). With Z, its focus plane lands at the camera Z + offset." />
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <TextBlock Text="Z offset (mm)" Style="{StaticResource FieldLabel}" />
+                        <TextBox Style="{StaticResource Small}" Text="{Binding ToCameraZOffset}"
+                                 ToolTip="Negative = higher (hex-right X+), positive = lower (hex-right X−). Saved with the object." />
+                        <CheckBox Content="include Z" Foreground="{StaticResource Text}" VerticalAlignment="Center" IsChecked="{Binding ToCameraIncludeZ}" />
+                    </StackPanel>
+                    <TextBlock Foreground="{StaticResource Subtle}" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap"
+                               Text="Negative = object higher than the camera focus (hex-right X+); positive = lower (hex-right X−)." />
+                    <Button Content="Object → camera" Height="28" Padding="12,0" Margin="0,4,0,0" HorizontalAlignment="Left" FontWeight="SemiBold"
+                            Command="{Binding ObjectToCameraCommand}" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

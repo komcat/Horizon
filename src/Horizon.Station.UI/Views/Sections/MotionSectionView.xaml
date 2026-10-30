@@ -1,0 +1,303 @@
+<UserControl x:Class="Horizon.Station.UI.Views.Sections.MotionSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Horizon.Station.UI.Views.Sections">
+    <Grid Background="{StaticResource Panel}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Device-level controls + Stop -->
+        <Border Grid.Row="0" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1" Padding="12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Text="Device" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                    <ListBox Style="{StaticResource DeviceSelector}" Margin="8,0,16,0" VerticalAlignment="Center"
+                             ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" />
+                    <TextBlock Text="Connected" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Connected}" Foreground="{StaticResource Text}"
+                               Margin="8,0,16,0" VerticalAlignment="Center" />
+                    <TextBlock Text="Moving" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding IsMoving}" Foreground="{StaticResource Warn}"
+                               Margin="8,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <Button Grid.Column="1" Content="STOP" Width="110" Height="34"
+                        FontWeight="Bold" Foreground="White" Background="{StaticResource Danger}" BorderThickness="0"
+                        Command="{Binding StopCommand}" />
+            </Grid>
+        </Border>
+
+        <!-- Jog step + velocity -->
+        <Border Grid.Row="1" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Padding="12,8">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Jog step" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                <TextBox Width="70" Margin="8,0,16,0" VerticalAlignment="Center" Text="{Binding JogStep}" />
+                <TextBlock Text="Velocity" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                <TextBox Width="70" Margin="8,0,8,0" VerticalAlignment="Center" Text="{Binding Velocity}" />
+                <Button Content="Apply" Width="64" Height="26" Margin="0,0,16,0"
+                        Command="{Binding ApplyVelocityCommand}" />
+                <TextBlock Text="{Binding Status}" Foreground="{StaticResource Subtle}" FontStyle="Italic"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <!-- ACS-only: axis enable, program buffer run/stop, Z park move -->
+        <Border Grid.Row="2" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Padding="12,8"
+                Visibility="{Binding IsAcs, Converter={StaticResource BoolToVis}}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Axes" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                <Button Content="Enable all" Height="26" Padding="10,0" Margin="8,0,6,0"
+                        Command="{Binding EnableAllCommand}" />
+                <Button Content="Disable all" Height="26" Padding="10,0" Margin="0,0,24,0"
+                        Command="{Binding DisableAllCommand}" />
+
+                <TextBlock Text="{Binding BufferLabel}" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                <Ellipse Width="12" Height="12" Margin="8,0,4,0" VerticalAlignment="Center">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Fill" Value="{StaticResource Subtle}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding BufferRunning}" Value="True">
+                                    <Setter Property="Fill" Value="{StaticResource Ok}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
+                <TextBlock Text="{Binding BufferStateText}" Foreground="{StaticResource Text}"
+                           Width="60" VerticalAlignment="Center" />
+                <Button Content="{Binding RunBufferText}" Height="26" Padding="10,0" Margin="0,0,6,0"
+                        Command="{Binding RunBufferCommand}"
+                        ToolTip="{Binding RunBufferTip}" />
+                <Button Content="{Binding StopBufferText}" Height="26" Padding="10,0" Margin="0,0,24,0"
+                        FontWeight="Bold" Foreground="White" Background="{StaticResource Danger}" BorderThickness="0"
+                        Command="{Binding StopBufferCommand}"
+                        ToolTip="{Binding StopBufferTip}" />
+
+                <Button Content="{Binding MoveZText}" Height="26" Padding="10,0"
+                        Command="{Binding MoveZCommand}"
+                        ToolTip="Absolute move of the Z axis" />
+            </StackPanel>
+        </Border>
+
+        <!-- PI-only: hexapod referencing (FRF, all axes) -->
+        <Border Grid.Row="2" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1,0,1,1" Padding="12,8"
+                Visibility="{Binding IsPi, Converter={StaticResource BoolToVis}}">
+            <StackPanel Orientation="Horizontal">
+                <Ellipse Width="12" Height="12" Margin="0,0,6,0" VerticalAlignment="Center">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Fill" Value="{StaticResource Subtle}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsReferenced}" Value="True">
+                                    <Setter Property="Fill" Value="{StaticResource Ok}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsReferenced}" Value="False">
+                                    <Setter Property="Fill" Value="{StaticResource Danger}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Referencing}" Value="True">
+                                    <Setter Property="Fill" Value="{StaticResource Warn}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
+                <TextBlock Text="{Binding ReferenceStateText}" Foreground="{StaticResource Text}"
+                           Width="110" VerticalAlignment="Center" />
+                <Button Content="Reference" Height="26" Padding="12,0"
+                        Command="{Binding ReferenceCommand}"
+                        ToolTip="Reference every hexapod axis (FRF), then restore the configured pivot point. STOP aborts." />
+            </StackPanel>
+        </Border>
+
+        <!-- Per-axis position + jog: one column per axis — name / [−] value [+] / target + Move (hexapod) or enable (ACS) -->
+        <Border Grid.Row="3" Margin="0,8,0,0" Background="{StaticResource Bg}"
+                BorderBrush="{StaticResource Edge}" BorderThickness="1" HorizontalAlignment="Left">
+            <ItemsControl ItemsSource="{Binding Axes}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border BorderBrush="{StaticResource Edge}" BorderThickness="0,0,1,0" Padding="10,6" Width="170">
+                            <StackPanel>
+                                <!-- Row 1: axis name -->
+                                <TextBlock Text="{Binding Name}" Foreground="{StaticResource Accent}" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" Margin="0,0,0,6" />
+                                <!-- Row 2: [−] value [+] -->
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" Content="−" Width="26" Height="22" Padding="0"
+                                            Command="{Binding JogNegativeCommand}" ToolTip="Jog − by the jog step" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Position}" Foreground="{StaticResource Text}"
+                                               FontFamily="Consolas" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <Button Grid.Column="2" Content="+" Width="26" Height="22" Padding="0"
+                                            Command="{Binding JogPositiveCommand}" ToolTip="Jog + by the jog step" />
+                                </Grid>
+                                <!-- Row 3: absolute move to a typed target — hexapod axes -->
+                                <Grid Visibility="{Binding ShowAbsoluteMove, Converter={StaticResource BoolToVis}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" Height="24" VerticalContentAlignment="Center" Margin="0,0,4,0"
+                                             FontFamily="Consolas"
+                                             Text="{Binding TargetText, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="Absolute target for this axis" />
+                                    <Button Grid.Column="1" Content="Move" Width="52" Height="24" Padding="0"
+                                            Command="{Binding MoveAbsoluteCommand}"
+                                            ToolTip="Move this axis to the absolute target" />
+                                </Grid>
+                                <!-- Row 3 (ACS): enable state + toggle — only for controllers that report it -->
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                            Visibility="{Binding HasEnable, Converter={StaticResource BoolToVis}}">
+                                    <Ellipse Width="12" Height="12" Margin="0,0,6,0" VerticalAlignment="Center">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="{StaticResource Danger}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsEnabled}" Value="True">
+                                                        <Setter Property="Fill" Value="{StaticResource Ok}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBlock Text="{Binding EnableText}" Foreground="{StaticResource Text}"
+                                               Width="60" VerticalAlignment="Center" />
+                                    <Button Content="{Binding ToggleText}" Width="60" Height="24" Padding="0"
+                                            Command="{Binding ToggleEnableCommand}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Border>
+
+        <!-- Positions: the list (left) | splitter | the position map canvas (right). -->
+        <Grid Grid.Row="4" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="ListColumn" Width="720" MinWidth="320" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" MinWidth="200" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Named positions (active product) — a grid; Move / Update / Edit act on the selected row. -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Margin="2,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Positions" Foreground="{StaticResource Subtle}"
+                               FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <!-- Selected-row actions (disabled until a row is selected) -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="Move" Height="26" Padding="14,0" Margin="0,0,6,0" FontWeight="SemiBold"
+                                Command="{Binding MoveSelectedPositionCommand}"
+                                ToolTip="Move the device to the selected position (section velocity). STOP aborts." />
+                        <Button Content="Update" Height="26" Padding="12,0" Margin="0,0,6,0"
+                                Command="{Binding UpdateSelectedPositionCommand}"
+                                ToolTip="Save the device's current axis position into the selected position (asks first)" />
+                        <Button Content="Edit…" Height="26" Padding="12,0"
+                                Command="{Binding EditSelectedPositionCommand}"
+                                ToolTip="Edit the selected position's axis values, velocity and camera/exposure by hand (or double-click the row)" />
+                    </StackPanel>
+                    <!-- New position -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="12,0,0,0">
+                        <TextBox Width="120" Margin="0,0,6,0" VerticalAlignment="Center"
+                                 Text="{Binding NewPositionName, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="Name for the new position (or an existing one to overwrite)" />
+                        <Button Content="Save current" Height="26" Padding="10,0" Margin="0,0,6,0"
+                                Command="{Binding SaveNewPositionCommand}"
+                                ToolTip="Capture the device's CURRENT pose under this name" />
+                        <Button Content="Add…" Height="26" Padding="10,0"
+                                Command="{Binding AddPositionCommand}"
+                                ToolTip="Add by typing coordinates (velocity, camera, exposure) — no need to jog there" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Axis columns (one per installed axis of the device) are added in code-behind after Name. -->
+                <DataGrid x:Name="PositionGrid" Grid.Row="1"
+                          ItemsSource="{Binding Positions}" SelectedItem="{Binding SelectedPosition}"
+                          AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
+                          CanUserReorderColumns="False" SelectionMode="Single" SelectionUnit="FullRow"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeight="30"
+                          Background="{StaticResource Bg}" RowBackground="{StaticResource Bg}"
+                          Foreground="{StaticResource Text}" BorderBrush="{StaticResource Edge}"
+                          HorizontalGridLinesBrush="{StaticResource Edge}"
+                          MouseDoubleClick="OnPositionGridDoubleClick">
+                    <DataGrid.Resources>
+                        <Style x:Key="AxisCell" TargetType="TextBlock">
+                            <Setter Property="FontFamily" Value="Consolas" />
+                            <Setter Property="HorizontalAlignment" Value="Right" />
+                            <Setter Property="VerticalAlignment" Value="Center" />
+                            <Setter Property="Margin" Value="6,0" />
+                        </Style>
+                    </DataGrid.Resources>
+                    <DataGrid.Columns>
+                        <DataGridTemplateColumn Header="Map" Width="46" CanUserSort="False">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <CheckBox HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              IsChecked="{Binding IsOnMap, UpdateSourceTrigger=PropertyChanged}"
+                                              ToolTip="Show this position as a node on the map" />
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="Name" Width="160" SortMemberPath="Name">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               Margin="6,0" TextTrimming="CharacterEllipsis" Cursor="Hand"
+                                               MouseMove="OnPositionNameDrag"
+                                               ToolTip="Drag onto the map to place this position's node there">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{StaticResource Accent}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=DataGridRow}}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource OnAccent}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+
+            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                          ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Background="Transparent"
+                          DragCompleted="OnSplitterDragCompleted"
+                          ToolTip="Drag to resize the list and the map" />
+
+            <local:PositionMapView Grid.Column="2" DataContext="{Binding Map}" />
+        </Grid>
+    </Grid>
+</UserControl>

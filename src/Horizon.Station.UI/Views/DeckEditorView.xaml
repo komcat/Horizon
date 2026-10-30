@@ -1,0 +1,204 @@
+<UserControl x:Class="Horizon.Station.UI.Views.DeckEditorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource Bg}">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <!-- Row state tints: enabled-but-manual = light blue; enabled + auto-start =
+             pale green; disabled rows keep the default Panel background. -->
+        <SolidColorBrush x:Key="EnabledRowBrush" Color="#DCEAF7" />
+        <SolidColorBrush x:Key="AutoRowBrush"    Color="#DFF3E1" />
+
+        <!-- A deck row card. -->
+        <Style x:Key="RowCard" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Style.Triggers>
+                <!-- Enabled (manual) → light blue. -->
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding Enabled}" Value="True" />
+                        <Condition Binding="{Binding Auto}" Value="False" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Background" Value="{StaticResource EnabledRowBrush}" />
+                </MultiDataTrigger>
+                <!-- Enabled + auto-start → pale green (will advance on its own). -->
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding Enabled}" Value="True" />
+                        <Condition Binding="{Binding Auto}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Background" Value="{StaticResource AutoRowBrush}" />
+                </MultiDataTrigger>
+                <DataTrigger Binding="{Binding RunState}" Value="awaiting">
+                    <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding RunState}" Value="running">
+                    <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Run-state text marker. -->
+        <Style x:Key="RunStateText" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="MinWidth" Value="60" />
+            <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding RunState}" Value="running">
+                    <Setter Property="Foreground" Value="{StaticResource Accent}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding RunState}" Value="awaiting">
+                    <Setter Property="Foreground" Value="{StaticResource Accent}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding RunState}" Value="failed">
+                    <Setter Property="Foreground" Value="{StaticResource Danger}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ToolButton" TargetType="Button">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinWidth" Value="56" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Padding" Value="8,0" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="120" />
+        </Grid.RowDefinitions>
+
+        <!-- Toolbar -->
+        <WrapPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+            <TextBlock Text="Deck" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{StaticResource Text}" />
+            <TextBox Width="200" Height="28" Margin="0,0,8,0" VerticalContentAlignment="Center"
+                     Text="{Binding DeckName, UpdateSourceTrigger=PropertyChanged}" />
+            <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                    CornerRadius="3" Padding="8,2" Margin="0,0,10,0" VerticalAlignment="Center"
+                    ToolTip="Latest committed version of this deck (Commit to bump it)">
+                <TextBlock Text="{Binding CurrentVersionText}" Foreground="{StaticResource Accent}" FontWeight="SemiBold" />
+            </Border>
+            <Button Content="Load" Style="{StaticResource ToolButton}" MinWidth="56" Click="OnLoad"
+                    ToolTip="Choose a deck to load from the product" />
+            <Button Content="New" Style="{StaticResource ToolButton}" Command="{Binding NewCommand}" />
+            <Button Content="Save" Style="{StaticResource ToolButton}" Command="{Binding SaveCommand}"
+                    ToolTip="Save the working deck file (does not create a version)" />
+            <TextBox Width="130" Height="28" Margin="0,0,6,0" VerticalContentAlignment="Center"
+                     Text="{Binding CommitNote, UpdateSourceTrigger=PropertyChanged}"
+                     ToolTip="Optional note for the next commit (shows in the version repository)" />
+            <Button Content="Commit" Style="{StaticResource ToolButton}" MinWidth="64" Command="{Binding CommitCommand}"
+                    ToolTip="Save and record a new numbered version in the repository" />
+            <Button Content="Save As" Style="{StaticResource ToolButton}" MinWidth="64" Click="OnSaveAs"
+                    ToolTip="Save the current deck as a new, independent deck to edit for a product variation" />
+            <Button Content="Import" Style="{StaticResource ToolButton}" MinWidth="60" Click="OnImport"
+                    ToolTip="Import a deck (and its programs) from another product, saved under a new name here" />
+            <Button Content="Delete" Style="{StaticResource ToolButton}" Command="{Binding DeleteCommand}" />
+            <Button Content="History" Style="{StaticResource ToolButton}" MinWidth="62" Click="OnHistory" />
+            <Border Width="1" Margin="6,2,12,2" Background="{StaticResource Edge}" />
+            <Button Content="+ Program" Style="{StaticResource ToolButton}" Command="{Binding AddProgramCommand}" />
+            <Border Width="1" Margin="6,2,12,2" Background="{StaticResource Edge}" />
+            <Button Content="Run" Style="{StaticResource ToolButton}" Command="{Binding RunCommand}" />
+            <Button Content="Activate Next" Style="{StaticResource ToolButton}" MinWidth="92" Command="{Binding ActivateNextCommand}" />
+            <Button Content="Stop" Style="{StaticResource ToolButton}" Command="{Binding StopCommand}" />
+            <TextBlock Text="●  unsaved changes" Foreground="{StaticResource Warn}" FontSize="11" FontWeight="SemiBold"
+                       VerticalAlignment="Center" Margin="12,0,0,0"
+                       Visibility="{Binding IsDirty, Converter={StaticResource BoolToVis}}" />
+            <TextBlock Text="{Binding Status}" VerticalAlignment="Center" Margin="12,0,0,0"
+                       Foreground="{StaticResource Subtle}" TextTrimming="CharacterEllipsis" />
+        </WrapPanel>
+
+        <!-- Program rows -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding Entries}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Style="{StaticResource RowCard}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Order}" Width="22" VerticalAlignment="Center"
+                                           Foreground="{StaticResource Subtle}" />
+
+                                <!-- Transition INTO this program — moved to the front so the
+                                     auto-start / delay is read first. Fixed-width cell so the
+                                     Program columns line up across rows; the first row has no
+                                     transition (it runs immediately) and shows a faint hint. -->
+                                <Grid Width="500" Margin="0,0,10,0">
+                                    <TextBlock Text="▶ runs first (no wait)" Foreground="{StaticResource Subtle}"
+                                               FontStyle="Italic" VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasTransition}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <StackPanel Orientation="Horizontal"
+                                                Visibility="{Binding HasTransition, Converter={StaticResource BoolToVis}}">
+                                        <CheckBox Content="Auto start, after delay" IsChecked="{Binding Auto}"
+                                                  VerticalAlignment="Center" Margin="0,0,12,0"
+                                                  ToolTip="On = this program starts automatically (after the delay / condition) once the previous one finishes.  Off = the deck pauses and waits for the operator to press Activate Next." />
+                                        <TextBlock Text="Delay(s)" VerticalAlignment="Center" Margin="0,0,4,0"
+                                                   Foreground="{StaticResource Text}" />
+                                        <TextBox Width="48" Height="26" Margin="0,0,12,0" VerticalContentAlignment="Center"
+                                                 Text="{Binding DelaySeconds}" IsEnabled="{Binding Auto}" />
+                                        <TextBlock Text="When" VerticalAlignment="Center" Margin="0,0,4,0"
+                                                   Foreground="{StaticResource Text}" />
+                                        <TextBox Width="150" Height="26" VerticalContentAlignment="Center"
+                                                 Text="{Binding Condition}" IsEnabled="{Binding Auto}"
+                                                 ToolTip="Optional condition, e.g. sag_v &gt; 0.5  (empty = always)" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <TextBlock Text="Program" VerticalAlignment="Center" Margin="0,0,4,0"
+                                           Foreground="{StaticResource Text}" />
+                                <ComboBox Width="180" Height="26" Margin="0,0,8,0" VerticalContentAlignment="Center"
+                                          ItemsSource="{Binding AvailablePrograms}" SelectedItem="{Binding Program}" />
+                                <Button Content="▶ Run" Height="26" MinWidth="52" Margin="0,0,8,0" Padding="6,0"
+                                        Command="{Binding RunProgramCommand}"
+                                        ToolTip="Run only this program (not the whole deck)" />
+                                <CheckBox Content="Run page" IsChecked="{Binding ShowInRun}" VerticalAlignment="Center"
+                                          Margin="0,0,12,0"
+                                          ToolTip="Show a button for this program on the Run page" />
+
+                                <Button Content="↑" Width="26" Height="26" Margin="0,0,4,0" Command="{Binding MoveUpCommand}" />
+                                <Button Content="↓" Width="26" Height="26" Margin="0,0,4,0" Command="{Binding MoveDownCommand}" />
+                                <Button Content="✕" Width="26" Height="26" Margin="0,0,8,0" Command="{Binding RemoveCommand}" />
+                                <TextBlock Text="{Binding RunState}" Style="{StaticResource RunStateText}" />
+
+                                <!-- Enable last — unchecked rows are skipped at run time. -->
+                                <CheckBox Content="Enabled" IsChecked="{Binding Enabled}" VerticalAlignment="Center"
+                                          Margin="12,0,0,0" ToolTip="Enabled — unchecked rows are skipped" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- Log -->
+        <Border Grid.Row="2" Margin="0,10,0,0" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                Background="{StaticResource Panel}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Log" Margin="6,4" FontWeight="SemiBold"
+                           Foreground="{StaticResource Accent}" />
+                <ListBox x:Name="LogList" ItemsSource="{Binding Log}" Background="Transparent"
+                         BorderThickness="0" Foreground="{StaticResource Text}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

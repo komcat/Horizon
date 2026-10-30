@@ -1,0 +1,188 @@
+<Window x:Class="Horizon.Station.UI.ShellWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:Horizon.Station.UI"
+        xmlns:v="clr-namespace:Horizon.Station.UI.Views"
+        Title="{x:Static ui:StationApp.Title}"
+        Height="900" Width="1400"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource Bg}">
+    <Grid Margin="8">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Top-left: Home button (raised 3D). -->
+        <Button Grid.Row="0" Grid.Column="0" Click="OnHomeClick"
+                Width="290" Height="56" Margin="2,2,8,8" FontSize="14"
+                Style="{StaticResource Bevel3D}">
+            <StackPanel Orientation="Horizontal">
+                <Image Source="/assets/home-button.png" Width="24" Height="24" Margin="0,0,8,0"
+                       RenderOptions.BitmapScalingMode="HighQuality" />
+                <TextBlock Text="Home" VerticalAlignment="Center" />
+            </StackPanel>
+        </Button>
+
+        <!-- Top: identity chip + page-specific panel (engine status / DUT) + info bar.
+             The page panel sizes to its content; the info bar takes the rest. -->
+        <Grid Grid.Row="0" Grid.Column="1" Margin="0,2,2,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <!-- Info bar: page title │ working folder + open AppData │ date/time │ machine state + pika.
+                 Its background is the machine state colour (UpdateStatusChrome): green running,
+                 light green standby, amber idle, red down — text inherits a matching foreground. -->
+            <Border x:Name="InfoBar" Grid.Column="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="3" Margin="6,0,0,0">
+                <Grid>
+                    <!-- Big run-progress band behind the bar — shown on the Run page while a step
+                         executes (title then reads "RUNNING…  ≈42% · 2:10 left"). Translucent dark so
+                         it reads on any state colour. -->
+                    <ProgressBar x:Name="HeaderProgress" Minimum="0" Maximum="100" Visibility="Collapsed"
+                                 BorderThickness="0" Background="Transparent" Foreground="#40000000" />
+                    <DockPanel Margin="14,0,4,0" LastChildFill="True">
+                        <TextBlock x:Name="Header1Text" DockPanel.Dock="Left" Text="HOME"
+                                   FontSize="22" FontWeight="Bold" VerticalAlignment="Center" />
+                        <Border DockPanel.Dock="Left" Width="1" Margin="14,8" Background="#40000000" />
+
+                        <v:PikaAvatar x:Name="Mascot" DockPanel.Dock="Right" Width="64" Height="44"
+                                      VerticalAlignment="Center" Margin="10,0,0,0"
+                                      ToolTip="Pika — FAAM active alignment" />
+                        <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="10,0,0,0">
+                            <TextBlock x:Name="MachineStateText" FontSize="15" FontWeight="Bold" HorizontalAlignment="Right" />
+                            <TextBlock x:Name="MachineSinceText" FontSize="11" Opacity="0.8" HorizontalAlignment="Right" />
+                        </StackPanel>
+                        <Border DockPanel.Dock="Right" Width="1" Margin="10,8,0,8" Background="#40000000" />
+                        <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="10,0,0,0">
+                            <TextBlock x:Name="ClockTime" FontFamily="Consolas" FontSize="16" FontWeight="Bold"
+                                       HorizontalAlignment="Right" />
+                            <TextBlock x:Name="ClockDate" FontSize="11" Opacity="0.8" HorizontalAlignment="Right" />
+                        </StackPanel>
+                        <Border DockPanel.Dock="Right" Width="1" Margin="10,8,0,8" Background="#40000000" />
+
+                        <!-- Fill: where this FAAM.UI executable runs from (trims when space is short). -->
+                        <DockPanel VerticalAlignment="Center">
+                            <Button DockPanel.Dock="Right" Content="AppData" FontSize="11" Height="22"
+                                    Padding="6,0" Margin="8,0,0,0" VerticalAlignment="Center"
+                                    ToolTip="Open %APPDATA%\Horizon (config, products, logs)"
+                                    Click="OnOpenAppData" />
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Working folder" FontSize="10" Opacity="0.8" />
+                                <TextBlock x:Name="WorkFolderText" FontSize="12" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </DockPanel>
+                    </DockPanel>
+                </Grid>
+            </Border>
+            <!-- Engine status + Reconnect — bound to the Machine page VM in code,
+                 shown only on the Machine page (its sampler drives these). -->
+            <Border x:Name="EngineHeader" Grid.Column="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="3" Margin="6,0,0,0" MaxWidth="560" Visibility="Collapsed">
+                <Grid Margin="12,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" VerticalAlignment="Center">
+                        <Run Text="Engine: " Foreground="{StaticResource Subtle}" />
+                        <Run Text="{Binding EngineState, Mode=OneWay}" Foreground="{StaticResource Text}" FontWeight="SemiBold" />
+                    </TextBlock>
+                    <TextBlock Grid.Column="1" Text="{Binding DeviceSummary, Mode=OneWay}"
+                               Foreground="{StaticResource Subtle}" FontSize="13" Margin="12,0"
+                               TextTrimming="CharacterEllipsis"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Content="Reconnect" Width="100" Height="26"
+                            VerticalAlignment="Center" Command="{Binding ReconnectCommand}" />
+                </Grid>
+            </Border>
+
+            <!-- DUT serial + run lifecycle — shown only on the Run page (shares Column 1
+                 with the Machine-page engine status). Serial-bracketed, operator-stamped. -->
+            <Border x:Name="DutHeader" Grid.Column="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
+                    BorderThickness="1" CornerRadius="3" Margin="6,0,0,0" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" Margin="12,0" VerticalAlignment="Center">
+                    <TextBlock Text="DUT Serial" Foreground="{StaticResource Subtle}" FontSize="12"
+                               VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBox x:Name="SerialBox" Width="150" Height="28" FontSize="13" VerticalContentAlignment="Center" />
+                    <Button x:Name="StartDutButton" Content="Start" Width="64" Height="28" Margin="6,0,0,0" Click="OnStartDut" />
+                    <Button x:Name="PassButton" Content="PASS" Width="64" Height="28" Margin="12,0,0,0" Click="OnPass"
+                            Background="{StaticResource Ok}" Foreground="White" BorderThickness="0" FontWeight="Bold" IsEnabled="False" />
+                    <Button x:Name="FailButton" Content="FAIL" Width="64" Height="28" Margin="6,0,0,0" Click="OnFail"
+                            Background="{StaticResource Danger}" Foreground="White" BorderThickness="0" FontWeight="Bold" IsEnabled="False" />
+                    <Button x:Name="ResultsButton" Content="Results" Width="72" Height="28" Margin="12,0,0,0" Click="OnResults" />
+                </StackPanel>
+            </Border>
+
+            <!-- Identity chip — current product + signed-in operator + log in/out.
+                 Always visible; populated in code from the product/session state. -->
+            <Border x:Name="IdentityHeader" Grid.Column="0" Background="{StaticResource Panel}"
+                    BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3" Margin="0,0,6,0">
+                <StackPanel Orientation="Horizontal" Margin="12,0" VerticalAlignment="Center">
+                    <TextBlock VerticalAlignment="Center">
+                        <Run Text="Product: " Foreground="{StaticResource Subtle}" />
+                        <Run x:Name="ProductRun" Foreground="{StaticResource Text}" FontWeight="SemiBold" />
+                    </TextBlock>
+                    <TextBlock VerticalAlignment="Center" Margin="16,0,0,0">
+                        <Run Text="Operator: " Foreground="{StaticResource Subtle}" />
+                        <Run x:Name="OperatorRun" Foreground="{StaticResource Text}" FontWeight="SemiBold" />
+                    </TextBlock>
+                    <!-- Active DUT serial — shown only while a unit run is in progress. -->
+                    <TextBlock x:Name="SerialChip" VerticalAlignment="Center" Margin="16,0,0,0" Visibility="Collapsed">
+                        <Run Text="DUT: " Foreground="{StaticResource Subtle}" />
+                        <Run x:Name="SerialRun" Foreground="{StaticResource Accent}" FontWeight="SemiBold" />
+                    </TextBlock>
+                    <!-- Clears the sticky DUT serial without switching products (disabled mid-run). -->
+                    <Button x:Name="ClearSerialButton" Content="✕" Width="18" Height="18" Padding="0" FontSize="10"
+                            Margin="4,0,0,0" VerticalAlignment="Center" Background="Transparent" BorderThickness="0"
+                            Cursor="Hand" Foreground="{StaticResource Subtle}" Visibility="Collapsed"
+                            ToolTip="Clear current DUT serial" Click="OnClearSerial" />
+                    <Button x:Name="LogoutButton" Content="Logout" Width="82" Height="26"
+                            Margin="16,0,0,0" Click="OnLogout" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Left rail — global jog panel. -->
+        <ScrollViewer Grid.Row="1" Grid.Column="0" Width="290" Margin="2,0,8,2"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <v:JogPanel x:Name="JogPanelControl" />
+        </ScrollViewer>
+
+        <!-- Main content: the active page. -->
+        <Border Grid.Row="1" Grid.Column="1" Margin="0,0,2,2"
+                Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="3">
+            <ContentControl x:Name="PageHost" Margin="12" />
+        </Border>
+
+        <!-- Safety / E-Stop acknowledge overlay — shown on a watchdog trip, dims and blocks
+             the whole shell until the operator clears the hazard and Acknowledges (which
+             clears the engine safety flag so steps / motion can run again). -->
+        <Border x:Name="SafetyOverlay" Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Grid.ColumnSpan="2"
+                Background="#CC000000" Visibility="Collapsed" Panel.ZIndex="1000">
+            <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Danger}" BorderThickness="2"
+                    CornerRadius="6" Padding="32" MaxWidth="580"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel>
+                    <TextBlock x:Name="SafetyTitle" Text="⚠ SAFETY STOP" Foreground="{StaticResource Danger}"
+                               FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,14" />
+                    <TextBlock x:Name="SafetyMessage" Foreground="{StaticResource Text}" FontSize="15"
+                               TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,22" />
+                    <Button x:Name="AcknowledgeButton" Content="Acknowledge" Width="200" Height="44" FontSize="16"
+                            HorizontalAlignment="Center" Click="OnAcknowledgeSafety"
+                            Background="{StaticResource Danger}" Foreground="White" BorderThickness="0" FontWeight="Bold" />
+                    <TextBlock x:Name="SafetyHint" Foreground="{StaticResource Subtle}" FontSize="12.5"
+                               HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0"
+                               Text="Clear the hazard and release the E-Stop, then Acknowledge to resume." />
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</Window>

@@ -6,7 +6,12 @@ namespace Horizon.Station.UI;
 /// </summary>
 public static class StationApp
 {
-    /// <summary>Title of the shared dialogs / popups.</summary>
+    /// <summary>The head's executable name (entry assembly, e.g. "FAAM.UI") — the OEE session's app
+    /// name and the Version window's product line.</summary>
+    public static string AppName { get; } =
+        System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name ?? "Horizon";
+
+    /// <summary>Title of the shell, the shared dialogs / popups and the log source of shared code.</summary>
     public static string Title { get; set; } = "Horizon";
 
     /// <summary>
