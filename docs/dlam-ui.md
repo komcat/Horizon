@@ -29,7 +29,7 @@ From `D:\ProgramData\FireDog\config\hardware.json`:
 |---|---|---|
 | `gantry-main` ACS (192.168.0.50:701), `hex-left` PI (.10), `hex-right` PI (.30) | `ACSMotionController`, `PIMotionController` | Pivots −15.7 / 0 / 111 for both hexapods (`pivot.local.json`) — FAAM's per-hexapod pivot write-back already handles two. |
 | Basler `main_camera` (192.168.1.68), 0.001725 mm/px | `PylonCameraAdapter` | |
-| Keithley 2602B, `TCPIP0::192.168.0.111::INSTR`, ch1 + ch2, NPLC 0.1 | `Keithley2602BAdapter` | **Verify on the rig**: FireDog switches *every enabled channel's* output on to measure (an SMU with its output off reads ~0 A), and sends `localnode.prompts = 0` before the first query. |
+| Keithley 2602B, `TCPIP0::192.168.0.111::INSTR`, ch1 + ch2, NPLC 0.1 | `Keithley2602BAdapter` | Adapter fixed 2026-10-29 to FireDog's rule: a `::INSTR` resource opens through NI-VISA (VXI-11; the raw socket on 5025 accepted the link but never answered), connect is confirmed by `*IDN?`, prompts / error echo go off before the first query, every enabled channel is configured, and output ON / OFF and compliance apply to all of them (the source level only to the primary, the others at 0 V — an SMU with its output off reads ~0 A). Verified on the rig: ch1 continuous read at 77 samples/s. Ch2 photocurrent still to verify. |
 | UNI-T UDP3305S `PSU_Laser`, `TCPIP0::192.168.0.88::INSTR` | `UnitTUDP3305SAdapter` (VISA) | |
 | CCS PD3 `LIGHT1` (192.168.0.2:40001), L1 collimate, L2–L4 R/G/B in group `main_camera_light` | `CcsPd3Adapter` | Map to Horizon's lighting groups / colour call-outs. |
 | 4 × Ezi-IO: `IOBottom` (.3), `IOTop` (.5), `IOSwitch` (.6), `IOTower` (.4) | `EziIODevice` | |
@@ -40,12 +40,22 @@ From `D:\ProgramData\FireDog\config\hardware.json`:
 | Tower light `IOTower` Green/Yellow/Red/Buzzer | FAAM `TowerLight` | Moves to the shared library. |
 | `motion_transforms.json` | `jog_transforms.json` | Same `DeviceId` / `M11…M33` format — copies over as is. |
 
-**To do — config importer** (`Horizon.ConfigTool`, "Import FireDog" preset): read
-`hardware.json`, `pivot.local.json`, `tower_light.local.json`, `motion_transforms.json` and
-write the per-domain Horizon files (`motor_devices.json`, `io_devices.json`,
-`pneumatic_slides.json`, `safety_watch.json`, IO watch, `camera-config.json`, SMU / PSU /
-lighting files, `jog_transforms.json`, pivots, tower light). `%APPDATA%\Horizon\config` is
-empty on the DLAM PC, so nothing collides with a FAAM install.
+**Config importer — done** (`Horizon.ConfigTool/FireDogImport.cs`). Menu **Import from
+FireDog**, or non-interactive:
+
+```
+Horizon.ConfigTool --import-firedog [<FireDog root>] [<config dir>] [--overwrite]
+```
+
+It reads `config\hardware.json`, `motion_transforms.json` and `pivot` / `tower_light`
+(`.local.json` first), never writes to FireDog's folder, and stages the Horizon files through
+Horizon's own loaders: `motor_devices`, `io_devices`, `io_watch`, `pneumatic_slides`,
+`safety_watch`, `camera-config`, `smu_devices`, `power_supply_devices`, `lighting_devices`,
+`jog_transforms`, `faam_hexapod_pivot`, `faam_tower_light`. Existing files are skipped
+unless overwriting is chosen (`--overwrite`), which copies them to `_backup-<stamp>\` first;
+the config validator runs afterwards. Reported, not imported: WAGO devices, the camera
+exposure, the SMU bias voltage (a program sets it), FireDog's registration `Rotation`
+matrices. Run on the DLAM PC on 2026-10-29: 12 files, validator clean.
 
 ## 3. Product and machine data
 
@@ -224,7 +234,7 @@ read is a live query, so FireDog's frozen-stream check has no equivalent); resul
 
 | # | Phase | Notes |
 |---|---|---|
-| 1 | Config importer; bring-up of every device | Validates Layer 1 on the DLAM rig (Keithley 2602B two-channel + IO-watch LED checks, §2). |
+| 1 | ~~Config importer~~ (done); bring-up of every device | Validates Layer 1 on the DLAM rig (Keithley 2602B two-channel + IO-watch LED checks, §2). |
 | 2 | Extract `Horizon.Station.UI` | FAAM.UI keeps working unchanged; de-hardcode FAAM's `hex-right` (≈ 44 references) into per-head settings. |
 | 3 | DLAM.UI head | Own Velopack app id + release channel; Run page: two lens panels, XCAN band (presets → `scan.xcan` / `scan.xcanTwoLens`), climb, needle / dispense, Keithley ch1 / ch2 readouts. `OpCatalog` entries + help for every §5 block. |
 | 4 | Product data conversion; re-teach registrations, needle, vision | §3. |
