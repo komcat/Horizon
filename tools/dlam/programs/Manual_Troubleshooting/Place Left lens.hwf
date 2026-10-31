@@ -1,0 +1,66 @@
+{
+  "Name": "Place Left lens",
+  "Steps": [
+    {
+      "Id": "p10-01",
+      "Name": "Ported from FireDog",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "FireDog recipe 'Place Left lens' (19cdd889), product siphog888, slot 'PROD Tall AUTO V3' folder 'Manual Troubleshooting'. "
+      }
+    },
+    {
+      "Id": "p10-02",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-left",
+      "Parameters": {
+        "position": "approachlensplace",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p10-03",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-left",
+      "Parameters": {
+        "position": "lensPlace2",
+        "velocity": "0",
+        "approachDistance": "1",
+        "approachVelocity": "0.25",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p10-04",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "gantry-main",
+      "Parameters": {
+        "position": "safe",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p10-05",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "gantry-main",
+      "Parameters": {
+        "position": "See Collimate Lens",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "camera": "main_camera",
+        "exposure": "700"
+      }
+    }
+  ]
+}

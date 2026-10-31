@@ -1,0 +1,37 @@
+{
+  "Name": "RIGHT HOME",
+  "Steps": [
+    {
+      "Id": "p9-01",
+      "Name": "Ported from FireDog",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "FireDog recipe 'RIGHT HOME' (c98418ed), product siphog888, slot 'PROD Tall AUTO V3' folder 'Manual Troubleshooting'. "
+      }
+    },
+    {
+      "Id": "p9-02",
+      "Name": "",
+      "Op": "motion.moveRelative",
+      "Device": "hex-right",
+      "Parameters": {
+        "axis": "X",
+        "distance": "3",
+        "velocity": "2"
+      }
+    },
+    {
+      "Id": "p9-03",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "home",
+        "velocity": "5",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    }
+  ]
+}

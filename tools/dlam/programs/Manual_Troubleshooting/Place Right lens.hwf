@@ -1,0 +1,65 @@
+{
+  "Name": "Place Right lens",
+  "Steps": [
+    {
+      "Id": "p11-01",
+      "Name": "Ported from FireDog",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "FireDog recipe 'Place Right lens' (19d198c3), product siphog888, slot 'PROD Tall AUTO V3' folder 'Manual Troubleshooting'. "
+      }
+    },
+    {
+      "Id": "p11-02",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "approachlensplace",
+        "velocity": "5",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p11-03",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "lensPlace2",
+        "velocity": "0",
+        "approachDistance": "1",
+        "approachVelocity": "0.25",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p11-04",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "gantry-main",
+      "Parameters": {
+        "position": "safe",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p11-05",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "gantry-main",
+      "Parameters": {
+        "position": "See Focus Lens",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    }
+  ]
+}

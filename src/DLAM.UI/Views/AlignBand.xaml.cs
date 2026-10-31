@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Threading;
 using Horizon.Common;
 using Horizon.Engine;
@@ -84,8 +85,21 @@ public partial class AlignBand : UserControl
         Ch2Label.Text = ChannelLabel(2);
         Ch1Label.ToolTip = $"{_settings.Smu} channel 1";
         Ch2Label.ToolTip = $"{_settings.Smu} channel 2";
-        TwoLensTarget.Text = $"→ {_settings.TwoLensTargetUa.ToString("0.#", CultureInfo.InvariantCulture)} µA";
+        TwoLensTarget.Text = $"→ {Ua(_settings.TwoLensTargetUa)}";
+        TargetALabel.Text = Ua(_settings.TargetAUa);
+        TargetBLabel.Text = Ua(_settings.TargetBUa);
+        TargetAGroup.ToolTip = TargetTip(_settings.TargetAUa, _settings.TargetAZoneLowUa,
+            _settings.TargetACoarseStepsUm, _settings.TargetAFineStepsUm);
+        TargetBGroup.ToolTip = TargetTip(_settings.TargetBUa, _settings.TargetBZoneLowUa,
+            _settings.TargetBCoarseStepsUm, _settings.TargetBFineStepsUm);
     }
+
+    private static string TargetTip(double target, double zoneLow, string coarse, string fine)
+        => $"One adaptive XCAN pass that stops at {Ua(target)}\n"
+           + $"Zone {Ua(zoneLow)} … {Ua(target)} · coarse {coarse} µm · fine {fine} µm\n"
+           + "Right-click to edit";
+
+    private static string Ua(double v) => v.ToString("0.#", CultureInfo.InvariantCulture) + " µA";
 
     private string ChannelLabel(int channel)
         => $"ch{channel}{(channel == _settings.FeedbackChannel ? " · feedback" : "")}";
@@ -109,6 +123,65 @@ public partial class AlignBand : UserControl
             _ => ($"{lens} climb", Climb(device)),
         };
         await RunAsync(label, step);
+    }
+
+    /// <summary>
+    /// An XCAN-to-target button (tag <c>a|b : left|right : coarse|fine</c>): one pass with the
+    /// ladder, adaptive over [the target's zone low, the target], exiting at the target.
+    /// </summary>
+    private async void OnTargetRun(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag })
+            return;
+
+        var parts = tag.Split(':');
+        bool targetB = parts[0] == "b";
+        bool left = parts[1] == "left";
+        bool fine = parts[2] == "fine";
+        double target = targetB ? _settings.TargetBUa : _settings.TargetAUa;
+        double zoneLow = targetB ? _settings.TargetBZoneLowUa : _settings.TargetAZoneLowUa;
+        string ladder = (targetB, fine) switch
+        {
+            (true, true) => _settings.TargetBFineStepsUm,
+            (true, false) => _settings.TargetBCoarseStepsUm,
+            (false, true) => _settings.TargetAFineStepsUm,
+            _ => _settings.TargetACoarseStepsUm,
+        };
+
+        var step = Step("scan.xcan", left ? _settings.LeftDevice : _settings.RightDevice, new Dictionary<string, string>
+        {
+            ["axes"] = _settings.Axes,
+            ["stepsUm"] = ladder,
+            ["minSignal"] = Num(_settings.MinSignalUa),
+            ["adaptive"] = "true",
+            ["zoneLow"] = Num(zoneLow),
+            ["zoneHigh"] = Num(target),
+            ["exitTarget"] = Num(target),
+            ["captureAs"] = "band_xcan",
+        });
+        await RunAsync($"{(left ? "Left" : "Right")} {(fine ? "fine" : "coarse")} XCAN → {Ua(target)}", step);
+    }
+
+    /// <summary>Right-click on a target group: edit its threshold, zone low and ladders.</summary>
+    private void OnTargetEdit(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag })
+            return;
+        e.Handled = true;
+
+        LoadSettings();   // edit the file's current values, not a stale copy
+        bool targetB = tag == "b";
+        var dlg = new XcanTargetWindow(_settings, targetB) { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() != true || dlg.Saved is not { } saved)
+            return;
+
+        LoadSettings();
+        var (target, zoneLow, coarse, fine) = targetB
+            ? (saved.TargetBUa, saved.TargetBZoneLowUa, saved.TargetBCoarseStepsUm, saved.TargetBFineStepsUm)
+            : (saved.TargetAUa, saved.TargetAZoneLowUa, saved.TargetACoarseStepsUm, saved.TargetAFineStepsUm);
+        var what = $"XCAN target {(targetB ? "B" : "A")} set: {Ua(target)}, zone low {Ua(zoneLow)}, coarse {coarse} µm, fine {fine} µm.";
+        ShowStatus(what);
+        Log(LogLevel.Info, what);
     }
 
     private async void OnTwoLens(object sender, RoutedEventArgs e)
@@ -244,8 +317,12 @@ public partial class AlignBand : UserControl
     private void UpdateEnabled()
     {
         bool idle = BusyReason() == null;
-        LeftButtons.IsEnabled = idle && HasDevice(_settings.LeftDevice);
-        RightButtons.IsEnabled = idle && HasDevice(_settings.RightDevice);
+        bool leftOk = idle && HasDevice(_settings.LeftDevice);
+        bool rightOk = idle && HasDevice(_settings.RightDevice);
+        LeftButtons.IsEnabled = leftOk;
+        RightButtons.IsEnabled = rightOk;
+        TargetALeftCoarse.IsEnabled = TargetBLeftCoarse.IsEnabled = TargetBLeftFine.IsEnabled = leftOk;
+        TargetBRightCoarse.IsEnabled = TargetBRightFine.IsEnabled = rightOk;
         TwoLensButton.IsEnabled = idle && HasDevice(_settings.LeftDevice) && HasDevice(_settings.RightDevice);
         StopButton.IsEnabled = _cts != null;
     }

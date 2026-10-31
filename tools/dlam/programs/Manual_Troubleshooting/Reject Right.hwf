@@ -1,0 +1,88 @@
+{
+  "Name": "Reject Right",
+  "Steps": [
+    {
+      "Id": "p7-01",
+      "Name": "Ported from FireDog",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "FireDog recipe 'Reject Right' (24810455), product siphog888, slot 'PROD Tall AUTO V3' folder 'Manual Troubleshooting'. "
+      }
+    },
+    {
+      "Id": "p7-02",
+      "Name": "",
+      "Op": "motion.moveRelative",
+      "Device": "hex-right",
+      "Parameters": {
+        "axis": "X",
+        "distance": "3",
+        "velocity": "1"
+      }
+    },
+    {
+      "Id": "p7-03",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "home",
+        "velocity": "5",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p7-04",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-left",
+      "Parameters": {
+        "position": "approachlensgrip",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      },
+      "Enabled": false
+    },
+    {
+      "Id": "p7-05",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "Reject Tall Lens",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p7-06",
+      "Name": "R gripper open",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "R_Gripper",
+        "state": "false"
+      },
+      "DelayAfterMs": 1500
+    },
+    {
+      "Id": "p7-07",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "home",
+        "velocity": "5",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "Uid": "fd-manual-troubleshooting",
+  "Name": "Manual Troubleshooting",
+  "Entries": [
+    {
+      "Uid": "fd-mt-1",
+      "Program": "Reject Left",
+      "Enabled": true,
+      "Condition": "",
+      "Auto": false,
+      "DelaySeconds": 0,
+      "ShowInRun": true
+    },
+    {
+      "Uid": "fd-mt-2",
+      "Program": "Reject Right",
+      "Enabled": true,
+      "Condition": "",
+      "Auto": false,
+      "DelaySeconds": 0,
+      "ShowInRun": true
+    },
+    {
+      "Uid": "fd-mt-3",
+      "Program": "LEFT HOME",
+      "Enabled": true,
+      "Condition": "",
+      "Auto": false,
+      "DelaySeconds": 0,
+      "ShowInRun": true
+    },
+    {
+      "Uid": "fd-mt-4",
+      "Program": "RIGHT HOME",
+      "Enabled": true,
+      "Condition": "",
+      "Auto": false,
+      "DelaySeconds": 0,
+      "ShowInRun": true
+    },
+    {
+      "Uid": "fd-mt-5",
+      "Program": "Place Left lens",
+      "Enabled": true,
+      "Condition": "",
+      "Auto": false,
+      "DelaySeconds": 0,
+      "ShowInRun": true
+    },
+    {
+      "Uid": "fd-mt-6",
+      "Program": "Place Right lens",
+      "Enabled": true,
+      "Condition": "",
+      "Auto": false,
+      "DelaySeconds": 0,
+      "ShowInRun": true
+    },
+    {
+      "Uid": "fd-mt-7",
+      "Program": "Put down left lens2",
+      "Enabled": true,
+      "Condition": "",
+      "Auto": false,
+      "DelaySeconds": 0,
+      "ShowInRun": true
+    },
+    {
+      "Uid": "fd-mt-8",
+      "Program": "Put down right lens2",
+      "Enabled": true,
+      "Condition": "",
+      "Auto": false,
+      "DelaySeconds": 0,
+      "ShowInRun": true
+    }
+  ]
+}

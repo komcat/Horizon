@@ -33,6 +33,7 @@
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+                <RowDefinition /><RowDefinition />
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Grid.Column="0" Text="Left lens hexapod" Style="{StaticResource FieldLabel}" />
@@ -70,6 +71,18 @@
             <TextBox Grid.Row="5" Grid.Column="4" Text="{Binding ClimbZStepUm, UpdateSourceTrigger=PropertyChanged}" />
             <TextBlock Grid.Row="6" Grid.Column="3" Text="Climb Z budget (µm, ≤ 200)" Style="{StaticResource FieldLabel}" />
             <TextBox Grid.Row="6" Grid.Column="4" Text="{Binding ClimbMaxZUm, UpdateSourceTrigger=PropertyChanged}" />
+
+            <!-- XCAN-to-target buttons: one adaptive pass over [zone low, target], exiting at the target. -->
+            <TextBlock Grid.Row="7" Grid.Column="0" Text="XCAN target A (FireDog 800)" Style="{StaticResource FieldLabel}" />
+            <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding TargetAUa, UpdateSourceTrigger=PropertyChanged}"
+                     ToolTip="The Run page's target-A XCAN button exits here (adaptive zone high)" />
+            <TextBlock Grid.Row="7" Grid.Column="3" Text="Target A zone low" Style="{StaticResource FieldLabel}" />
+            <TextBox Grid.Row="7" Grid.Column="4" Text="{Binding TargetAZoneLowUa, UpdateSourceTrigger=PropertyChanged}" />
+            <TextBlock Grid.Row="8" Grid.Column="0" Text="XCAN target B (FireDog 6800)" Style="{StaticResource FieldLabel}" />
+            <TextBox Grid.Row="8" Grid.Column="1" Text="{Binding TargetBUa, UpdateSourceTrigger=PropertyChanged}"
+                     ToolTip="The Run page's target-B XCAN buttons exit here (adaptive zone high)" />
+            <TextBlock Grid.Row="8" Grid.Column="3" Text="Target B zone low" Style="{StaticResource FieldLabel}" />
+            <TextBox Grid.Row="8" Grid.Column="4" Text="{Binding TargetBZoneLowUa, UpdateSourceTrigger=PropertyChanged}" />
         </Grid>
     </StackPanel>
 </UserControl>

@@ -20,6 +20,10 @@ public sealed class AlignBandSettingsViewModel : ObservableObject, IHeadSettings
     private string _minSignalUa = "";
     private string _twoLensTargetUa = "";
     private string _zoneLowUa = "";
+    private string _targetAUa = "";
+    private string _targetAZoneLowUa = "";
+    private string _targetBUa = "";
+    private string _targetBZoneLowUa = "";
     private string _climbTargetUa = "";
     private string _climbZStepUm = "";
     private string _climbMaxZUm = "";
@@ -38,15 +42,24 @@ public sealed class AlignBandSettingsViewModel : ObservableObject, IHeadSettings
     public string MinSignalUa { get => _minSignalUa; set => SetField(ref _minSignalUa, value); }
     public string TwoLensTargetUa { get => _twoLensTargetUa; set => SetField(ref _twoLensTargetUa, value); }
     public string ZoneLowUa { get => _zoneLowUa; set => SetField(ref _zoneLowUa, value); }
+    public string TargetAUa { get => _targetAUa; set => SetField(ref _targetAUa, value); }
+    public string TargetAZoneLowUa { get => _targetAZoneLowUa; set => SetField(ref _targetAZoneLowUa, value); }
+    public string TargetBUa { get => _targetBUa; set => SetField(ref _targetBUa, value); }
+    public string TargetBZoneLowUa { get => _targetBZoneLowUa; set => SetField(ref _targetBZoneLowUa, value); }
     public string ClimbTargetUa { get => _climbTargetUa; set => SetField(ref _climbTargetUa, value); }
     public string ClimbZStepUm { get => _climbZStepUm; set => SetField(ref _climbZStepUm, value); }
     public string ClimbMaxZUm { get => _climbMaxZUm; set => SetField(ref _climbMaxZUm, value); }
 
     public string SavedFiles => AlignBandSettings.FileName + ".json";
 
+    /// <summary>The settings as loaded — fields this panel doesn't show (the XCAN target ladders,
+    /// edited on the Run page) are carried through a save unchanged.</summary>
+    private AlignBandSettings _loaded = new();
+
     public void Load()
     {
         var s = AlignBandSettings.Load();
+        _loaded = s;
         LeftDevice = s.LeftDevice;
         RightDevice = s.RightDevice;
         Smu = s.Smu;
@@ -58,6 +71,10 @@ public sealed class AlignBandSettingsViewModel : ObservableObject, IHeadSettings
         MinSignalUa = Text(s.MinSignalUa);
         TwoLensTargetUa = Text(s.TwoLensTargetUa);
         ZoneLowUa = Text(s.ZoneLowUa);
+        TargetAUa = Text(s.TargetAUa);
+        TargetAZoneLowUa = Text(s.TargetAZoneLowUa);
+        TargetBUa = Text(s.TargetBUa);
+        TargetBZoneLowUa = Text(s.TargetBZoneLowUa);
         ClimbTargetUa = Text(s.ClimbTargetUa);
         ClimbZStepUm = Text(s.ClimbZStepUm);
         ClimbMaxZUm = Text(s.ClimbMaxZUm);
@@ -84,7 +101,8 @@ public sealed class AlignBandSettingsViewModel : ObservableObject, IHeadSettings
         {
             ("XCAN exit target", ExitTargetUa), ("Min signal", MinSignalUa), ("Two-lens target", TwoLensTargetUa),
             ("Zone low", ZoneLowUa), ("Climb target", ClimbTargetUa), ("Climb Z step", ClimbZStepUm),
-            ("Climb Z budget", ClimbMaxZUm),
+            ("Climb Z budget", ClimbMaxZUm), ("Target A", TargetAUa), ("Target A zone low", TargetAZoneLowUa),
+            ("Target B", TargetBUa), ("Target B zone low", TargetBZoneLowUa),
         };
         var values = new double[fields.Length];
         for (int i = 0; i < fields.Length; i++)
@@ -93,7 +111,7 @@ public sealed class AlignBandSettingsViewModel : ObservableObject, IHeadSettings
                 return (null, $"Alignment band: {fields[i].Label} must be a number");
         }
 
-        return (new AlignBandSettings
+        return (_loaded with
         {
             LeftDevice = LeftDevice.Trim(),
             RightDevice = RightDevice.Trim(),
@@ -109,6 +127,10 @@ public sealed class AlignBandSettingsViewModel : ObservableObject, IHeadSettings
             ClimbTargetUa = values[4],
             ClimbZStepUm = values[5],
             ClimbMaxZUm = values[6],
+            TargetAUa = values[7],
+            TargetAZoneLowUa = values[8],
+            TargetBUa = values[9],
+            TargetBZoneLowUa = values[10],
         }, null);
     }
 

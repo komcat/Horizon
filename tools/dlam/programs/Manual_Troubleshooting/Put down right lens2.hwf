@@ -1,0 +1,108 @@
+{
+  "Name": "Put down right lens2",
+  "Steps": [
+    {
+      "Id": "p13-01",
+      "Name": "Ported from FireDog",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "FireDog recipe 'Put down right lens2' (88d8b233), product siphog888, slot 'PROD Tall AUTO V3' folder 'Manual Troubleshooting'. "
+      }
+    },
+    {
+      "Id": "p13-02",
+      "Name": "",
+      "Op": "motion.moveRelative",
+      "Device": "hex-right",
+      "Parameters": {
+        "axis": "X",
+        "distance": "2",
+        "velocity": "2"
+      }
+    },
+    {
+      "Id": "p13-03",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "home",
+        "velocity": "5",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p13-04",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "approachlensgrip",
+        "velocity": "5",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p13-05",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "lensgrip2",
+        "velocity": "5",
+        "approachDistance": "1",
+        "approachVelocity": "0.25",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p13-06",
+      "Name": "",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "R_Gripper",
+        "state": "false"
+      },
+      "DelayAfterMs": 1500
+    },
+    {
+      "Id": "p13-07",
+      "Name": "",
+      "Op": "motion.movePath",
+      "Device": "hex-right",
+      "Parameters": {
+        "to": "home",
+        "from": "lensgrip2",
+        "startTolMm": "0.01",
+        "velocity": "5",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p13-08",
+      "Name": "XCAN hex-right (10,5,2,1 um)",
+      "Op": "scan.xcan",
+      "Device": "hex-right",
+      "Parameters": {
+        "signal": "smu.Keithley_2602B.ch1.current",
+        "unit": "uA",
+        "axes": "XYZ",
+        "stepsUm": "10,5,2,1",
+        "velocity": "1",
+        "adaptive": "false",
+        "exitTarget": "0",
+        "zoneLow": "1",
+        "zoneHigh": "400",
+        "captureAs": "xcan_right"
+      },
+      "Enabled": false
+    }
+  ]
+}

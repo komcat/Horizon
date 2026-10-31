@@ -135,6 +135,35 @@
                 </StackPanel>
             </Border>
 
+            <!-- XCAN to target (FireDog's Run-page XCAN band): one adaptive pass that exits at the
+                 target. Tag = target (a / b) : lens : ladder. Target labels / tooltips set in code.
+                 Right-click a group (its wrapper takes the click even while the buttons are disabled)
+                 to edit its threshold, zone low and ladders. -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <TextBlock Text="XCAN TO TARGET" Style="{StaticResource CardTitle}" Margin="0,0,0,4"
+                               ToolTip="Right-click a group to edit its target threshold and ladders" />
+                    <StackPanel x:Name="TargetAGroup" Tag="a" Background="Transparent" MouseRightButtonUp="OnTargetEdit">
+                        <TextBlock x:Name="TargetALabel" Text="target A" Foreground="{StaticResource Subtle}" FontSize="12" Margin="0,0,0,3" />
+                        <Button x:Name="TargetALeftCoarse" Style="{StaticResource BandButton}" Tag="a:left:coarse" Click="OnTargetRun"
+                                Content="Left Coarse" Margin="0,0,4,8" />
+                    </StackPanel>
+                    <StackPanel x:Name="TargetBGroup" Tag="b" Background="Transparent" MouseRightButtonUp="OnTargetEdit">
+                        <TextBlock x:Name="TargetBLabel" Text="target B" Foreground="{StaticResource Subtle}" FontSize="12" Margin="0,0,0,3" />
+                        <UniformGrid Columns="2">
+                            <Button x:Name="TargetBLeftCoarse" Style="{StaticResource BandButton}" Tag="b:left:coarse" Click="OnTargetRun"
+                                    Content="Left Coarse" Margin="0,0,4,4" />
+                            <Button x:Name="TargetBLeftFine" Style="{StaticResource BandButton}" Tag="b:left:fine" Click="OnTargetRun"
+                                    Content="Left Fine" Margin="0,0,4,4" />
+                            <Button x:Name="TargetBRightCoarse" Style="{StaticResource BandButton}" Tag="b:right:coarse" Click="OnTargetRun"
+                                    Content="Right Coarse" />
+                            <Button x:Name="TargetBRightFine" Style="{StaticResource BandButton}" Tag="b:right:fine" Click="OnTargetRun"
+                                    Content="Right Fine" />
+                        </UniformGrid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Both lenses + Stop. -->
             <UniformGrid Columns="2" Margin="0,0,0,6">
                 <Button x:Name="TwoLensButton" Style="{StaticResource BandButton}" Click="OnTwoLens"

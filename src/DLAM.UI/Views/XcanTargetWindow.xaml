@@ -1,0 +1,65 @@
+<!-- Run page › XCAN TO TARGET, right-click: one target group's threshold, adaptive zone low and
+     coarse / fine ladders (XcanTargetWindow.xaml.cs). -->
+<Window x:Class="DLAM.UI.Views.XcanTargetWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="420" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Background="{StaticResource Bg}">
+    <Window.Resources>
+        <Style TargetType="TextBlock" x:Key="FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,12,10" />
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+        </Style>
+    </Window.Resources>
+
+    <StackPanel Margin="20,16">
+        <TextBlock x:Name="Heading" Foreground="{StaticResource Accent}" FontSize="16" FontWeight="Bold" Margin="0,0,0,4" />
+        <TextBlock Text="Each button runs one XCAN pass, adaptive over [zone low, target], that stops as soon as the photocurrent reaches the target."
+                   Foreground="{StaticResource Subtle}" FontSize="11.5" TextWrapping="Wrap" Margin="0,0,0,14" />
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Target threshold (µA)" Style="{StaticResource FieldLabel}" />
+            <TextBox Grid.Row="0" Grid.Column="1" x:Name="TargetBox"
+                     ToolTip="The scan exits the moment the photocurrent reaches this (also the adaptive zone high)" />
+            <TextBlock Grid.Row="1" Text="Zone low (µA)" Style="{StaticResource FieldLabel}" />
+            <TextBox Grid.Row="1" Grid.Column="1" x:Name="ZoneLowBox"
+                     ToolTip="Lower edge of the adaptive zones — above 0 and below the target" />
+            <TextBlock Grid.Row="2" Text="Coarse ladder (µm)" Style="{StaticResource FieldLabel}" />
+            <TextBox Grid.Row="2" Grid.Column="1" x:Name="CoarseBox"
+                     ToolTip="Step sizes for the Coarse buttons, coarse → fine, comma-separated (e.g. 10,5,2,1)" />
+            <TextBlock Grid.Row="3" Text="Fine ladder (µm)" Style="{StaticResource FieldLabel}" />
+            <TextBox Grid.Row="3" Grid.Column="1" x:Name="FineBox"
+                     ToolTip="Step sizes for the Fine buttons, coarse → fine, comma-separated (e.g. 2,1,0.5)" />
+        </Grid>
+
+        <TextBlock x:Name="ErrorText" Foreground="{StaticResource Danger}" TextWrapping="Wrap" Margin="0,0,0,10"
+                   Visibility="Collapsed" />
+
+        <DockPanel>
+            <Button DockPanel.Dock="Left" Content="FireDog defaults" Width="120" Height="32" Click="OnDefaults"
+                    ToolTip="Fill in FireDog's values for this target (not saved until Save)" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Cancel" Width="90" Height="32" Margin="0,0,8,0" IsCancel="True" />
+                <Button Content="Save" Width="90" Height="32" FontWeight="SemiBold" IsDefault="True" Click="OnSave" />
+            </StackPanel>
+        </DockPanel>
+    </StackPanel>
+</Window>

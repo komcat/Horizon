@@ -1,0 +1,78 @@
+{
+  "Name": "Reject Left",
+  "Steps": [
+    {
+      "Id": "p6-01",
+      "Name": "Ported from FireDog",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "FireDog recipe 'Reject Left' (b8bf7cce), product siphog888, slot 'PROD Tall AUTO V3' folder 'Manual Troubleshooting'. "
+      }
+    },
+    {
+      "Id": "p6-02",
+      "Name": "",
+      "Op": "motion.moveRelative",
+      "Device": "hex-left",
+      "Parameters": {
+        "axis": "X",
+        "distance": "3",
+        "velocity": "1"
+      }
+    },
+    {
+      "Id": "p6-03",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-left",
+      "Parameters": {
+        "position": "home",
+        "velocity": "5",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p6-04",
+      "Name": "",
+      "Op": "motion.movePath",
+      "Device": "hex-left",
+      "Parameters": {
+        "to": "Reject Tall Lens",
+        "from": "home",
+        "startTolMm": "0.01",
+        "velocity": "5",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p6-05",
+      "Name": "",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "L_Gripper",
+        "state": "false"
+      },
+      "DelayAfterMs": 1500
+    },
+    {
+      "Id": "p6-06",
+      "Name": "",
+      "Op": "motion.movePath",
+      "Device": "hex-left",
+      "Parameters": {
+        "to": "home",
+        "from": "Reject Tall Lens",
+        "startTolMm": "0.01",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    }
+  ]
+}

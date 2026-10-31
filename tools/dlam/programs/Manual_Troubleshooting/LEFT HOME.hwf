@@ -1,0 +1,37 @@
+{
+  "Name": "LEFT HOME",
+  "Steps": [
+    {
+      "Id": "p8-01",
+      "Name": "Ported from FireDog",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "FireDog recipe 'LEFT HOME' (3d17b61c), product siphog888, slot 'PROD Tall AUTO V3' folder 'Manual Troubleshooting'. "
+      }
+    },
+    {
+      "Id": "p8-02",
+      "Name": "",
+      "Op": "motion.moveRelative",
+      "Device": "hex-left",
+      "Parameters": {
+        "axis": "X",
+        "distance": "3",
+        "velocity": "2"
+      }
+    },
+    {
+      "Id": "p8-03",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-left",
+      "Parameters": {
+        "position": "home",
+        "velocity": "5",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    }
+  ]
+}

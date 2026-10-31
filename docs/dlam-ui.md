@@ -269,8 +269,8 @@ the Velopack hook → `App` → `new EngineHost(new DlamHead())` → startup / l
 | `App` | `StationApp.Title = "DLAM"`, `FullName = "Dual Lens Alignment Machine"` (startup headline), `Mascot` = `FireDogAvatar` (FireDog's flame-tailed corgi, ported from FireDog `Widgets.cpp` `DrawFireDog`), no default tool device (both hexapods hold a lens), log `%APPDATA%\Horizon\logs\dlam-.log`. |
 | `DlamHead` | DUT process "Double-lens alignment", default product `DLAM`, no Engineer tabs, no legacy import. |
 | Run page (`DlamRunView`) | The shared Run-page kit — `RunStepsPanel` (the product's deck; no built-in fallback steps), `RunCameraPanel`, `RunLogView` — plus `AlignBand`. Camera column width in `dlam_run_layout.json`. |
-| `AlignBand` | Keithley ch1 / ch2 photocurrent (read directly while idle, from the SMU stream while something runs); a card per lens (live X Y Z U V W; **XCAN coarse**, **XCAN fine**, **Climb**); **Two-lens XCAN → target**; Stop. Each button runs one Layer 2 block (`scan.xcan` / `scan.climb` / `scan.xcanTwoLens`) as a one-step program, so it is the same code an Engineer program runs, fail-safe park included. Holds the activity gate's alignment side; refused while a program / step runs or a safety flag is up; cancelled by its Stop, the Run page STOP (`EngineHost.StopPressed`) and a safety trip. Writes `align` lines into the open DUT run. |
-| Settings | Machine › Settings › **Run page alignment band** — `dlam_align_band.json` (`AlignBandSettings`): lens hexapods (`hex-left` / `hex-right`), SMU (`Keithley_2602B`) + feedback channel, axes, coarse / fine ladders, XCAN exit target, min starting signal (1 µA), two-lens target (6800 µA) + zone low (200), climb target / Z step / Z budget. |
+| `AlignBand` | Keithley ch1 / ch2 photocurrent (read directly while idle, from the SMU stream while something runs); a card per lens (live X Y Z U V W; **XCAN coarse**, **XCAN fine**, **Climb**); an **XCAN to target** card (FireDog's Run-page XCAN band: target A 800 µA — Left Coarse; target B 6800 µA — Left / Right × Coarse / Fine; each one adaptive `scan.xcan` pass over [zone low, target] that exits at the target; **right-click a group** → `XcanTargetWindow` edits its target threshold, zone low and its own coarse / fine ladders, saved to `dlam_align_band.json`); **Two-lens XCAN → target**; Stop. Each button runs one Layer 2 block (`scan.xcan` / `scan.climb` / `scan.xcanTwoLens`) as a one-step program, so it is the same code an Engineer program runs, fail-safe park included. Holds the activity gate's alignment side; refused while a program / step runs or a safety flag is up; cancelled by its Stop, the Run page STOP (`EngineHost.StopPressed`) and a safety trip. Writes `align` lines into the open DUT run. |
+| Settings | Machine › Settings › **Run page alignment band** — `dlam_align_band.json` (`AlignBandSettings`): lens hexapods (`hex-left` / `hex-right`), SMU (`Keithley_2602B`) + feedback channel, axes, coarse / fine ladders, XCAN exit target, min starting signal (1 µA), two-lens target (6800 µA) + zone low (200), XCAN targets A (800 µA, zone low 20) / B (6800 µA, zone low 400), climb target / Z step / Z budget. |
 | DUT Data page | The library's generic `DutRecordsView` (serials → runs → recorded values, CSV export of a run). |
 | Engineer blocks | `DlamOps` / `DlamOpHelp`: XCAN, XCAN Two Lens, Climb Scan (Scan); Lift Off & Move, Move Along Map (Motion); Wait for Input (IO); Wait Until (Flow). Tuning params left blank = the Layer 2 default. |
 | Version | `DlamVersionInfo` target → `<repo>\build\version-info.ps1 -TagPrefix dlam-v`, resource `DLAM.UI.version_info.json`. `<Version>` 0.1.0. |
@@ -283,13 +283,19 @@ programs. It reads FireDog read-only, writes the programs + deck for review to
 (`processes\`, `decks\` — made the active deck — `scripts\CaptureView.moon` + `UV_Advanced.moon`),
 writes the product's `positions.json` (FireDog's 29 visible positions by name; the 15 hidden
 `algn_*` alignment positions skipped) and the three FireDog "ProcessFlow" maps into
-`faam_position_map.json` (an existing file is backed up first). Re-runnable; extend `RECIPES` to
-port more.
+`faam_position_map.json` (an existing file is backed up first). Re-runnable; extend `DECKS` to
+port more. Note `--install` overwrites every ported program in the product — an Engineer edit to
+one is lost; copy single files from `tools/dlam/programs/<deck>/` instead when that matters.
 
 Ported (slot "2 PROD Tall AUTO V3"): **Initial Machine**, **Probe SLED and PIC**, **PP Left - Array**,
 **PP Right - Array**, **UV advance1** — deck `PROD Tall AUTO V3`, every entry a Run-page button,
 Auto off (the slot's Scan Left 800uA / Scan Two Lens 6800uA, Init SMU and TEC and STEP DISPENSE
 are not ported yet, so nothing chains past them).
+
+Also ported (the slot's "Manual Troubleshooting" folder): deck **Manual Troubleshooting** — **Reject
+Left / Right**, **LEFT / RIGHT HOME**, **Place Left / Right lens**, **Put down left / right lens2**,
+each a Run-page button, Auto off. FireDog's `move_to_position_approach` maps to
+`motion.moveToPosition` with its approach; the (disabled) inline `xcan` step to a disabled `scan.xcan`.
 
 | FireDog | Horizon |
 |---|---|

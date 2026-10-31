@@ -41,6 +41,22 @@ public sealed record AlignBandSettings
     /// <summary>Climb: expected peak (µA); the climb stops at 85 % of it.</summary>
     public double ClimbTargetUa { get; init; } = 6800;
 
+    /// <summary>
+    /// XCAN-to-target buttons (FireDog's Run-page XCAN band): one pass, adaptive over
+    /// [zone low, target], exiting at the target. Each target has its own coarse / fine ladders
+    /// (edited by right-clicking the group on the Run page). Target A — FireDog's 800 µA (zone low 20).
+    /// </summary>
+    public double TargetAUa { get; init; } = 800;
+    public double TargetAZoneLowUa { get; init; } = 20;
+    public string TargetACoarseStepsUm { get; init; } = "10,5,2,1";
+    public string TargetAFineStepsUm { get; init; } = "2,1,0.5";
+
+    /// <summary>Target B — FireDog's 6800 µA (zone low 400).</summary>
+    public double TargetBUa { get; init; } = 6800;
+    public double TargetBZoneLowUa { get; init; } = 400;
+    public string TargetBCoarseStepsUm { get; init; } = "10,5,2,1";
+    public string TargetBFineStepsUm { get; init; } = "2,1,0.5";
+
     public double ClimbZStepUm { get; init; } = 1;
     public double ClimbMaxZUm { get; init; } = 20;
 
@@ -69,6 +85,11 @@ public sealed record AlignBandSettings
             return "levels must be 0 or more";
         if (!IsPositive(TwoLensTargetUa) || !IsPositive(ClimbTargetUa))
             return "the two-lens and climb targets must be above 0";
+        if (!IsZone(TargetAZoneLowUa, TargetAUa) || !IsZone(TargetBZoneLowUa, TargetBUa))
+            return "each XCAN target's zone low must be above 0 and below its target";
+        if (!IsLadder(TargetACoarseStepsUm) || !IsLadder(TargetAFineStepsUm)
+            || !IsLadder(TargetBCoarseStepsUm) || !IsLadder(TargetBFineStepsUm))
+            return "an XCAN target's step ladder must be numbers in µm, each above 0 and at most 100, comma-separated";
         if (!IsPositive(ClimbZStepUm) || !IsPositive(ClimbMaxZUm) || ClimbMaxZUm > 200)
             return "the climb Z step must be above 0 and the Z budget above 0 and at most 200 µm";
         return null;
@@ -78,8 +99,13 @@ public sealed record AlignBandSettings
 
     private static bool IsPositive(double v) => double.IsFinite(v) && v > 0;
 
-    private static bool IsLadder(string text)
+    /// <summary>An adaptive zone: 0 &lt; low &lt; target (XCAN refuses anything else).</summary>
+    private static bool IsZone(double low, double target) => IsPositive(low) && IsPositive(target) && low < target;
+
+    private static bool IsLadder(string? text)
     {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
         var parts = text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return parts.Length > 0 && parts.All(p =>
             double.TryParse(p, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v)

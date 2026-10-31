@@ -1,9 +1,9 @@
 """Port FireDog recipes (a program slot) into Horizon DLAM programs (.hwf) + a deck (.hwd).
 
 Reads FireDog's machine root read-only (D:\\ProgramData\\FireDog) and writes, for review, into
-tools/dlam/programs/<deck>/ : one .hwf per recipe, the deck, and CaptureView.moon. With
+tools/dlam/programs/<deck>/ : one .hwf per recipe and the deck (+ CaptureView.moon). With
 --install it also installs into %APPDATA%\\Horizon\\products\\<product>\\ :
-  processes\\*.hwf, decks\\<deck>.hwd (+ active deck), scripts\\CaptureView.moon + UV_Advanced.moon,
+  processes\\*.hwf, decks\\<deck>.hwd (the first deck made active), scripts\\CaptureView.moon + UV_Advanced.moon,
   positions.json        - FireDog product positions (hidden ones skipped), by name
   config\\faam_position_map.json - FireDog's per-device "ProcessFlow" maps, for motion.movePath
 An existing positions.json / map entry is backed up (*.bak-<stamp>) before it is replaced.
@@ -24,14 +24,27 @@ FD_POSITIONS = os.path.join(FD_PRODUCT, "1682f762.positions.json")
 FD_MAPS = os.path.join(FD_ROOT, "config", "maps.local.json")
 FD_MAP_NAME = "ProcessFlow"
 
-# The recipes of "2 PROD Tall AUTO V3" being ported, in slot order, with the program names.
-DECK_NAME = "PROD Tall AUTO V3"
-RECIPES = [
-    ("48877384", "Initial Machine"),
-    ("519c5828", "Probe SLED and PIC"),
-    ("eb47eb90", "PP Left - Array"),
-    ("16933405", "PP Right - Array"),
-    ("795859c2", "UV advance1"),
+# The decks being ported: (deck name, deck uid, entry uid prefix, FireDog source, recipes in slot
+# order with the program names). The first deck is made the product's active deck on --install.
+DECKS = [
+    ("PROD Tall AUTO V3", "fd-prod-tall-v3", "fd-v3", "slot 'PROD Tall AUTO V3'", [
+        ("48877384", "Initial Machine"),
+        ("519c5828", "Probe SLED and PIC"),
+        ("eb47eb90", "PP Left - Array"),
+        ("16933405", "PP Right - Array"),
+        ("795859c2", "UV advance1"),
+    ]),
+    ("Manual Troubleshooting", "fd-manual-troubleshooting", "fd-mt",
+     "slot 'PROD Tall AUTO V3' folder 'Manual Troubleshooting'", [
+        ("b8bf7cce", "Reject Left"),
+        ("24810455", "Reject Right"),
+        ("3d17b61c", "LEFT HOME"),
+        ("c98418ed", "RIGHT HOME"),
+        ("19cdd889", "Place Left lens"),
+        ("19d198c3", "Place Right lens"),
+        ("2ef86ac1", "Put down left lens2"),
+        ("88d8b233", "Put down right lens2"),
+    ]),
 ]
 
 # Horizon device names on this rig (config imported from FireDog's hardware.json).
@@ -42,7 +55,7 @@ LIGHT_DEVICE = "LIGHT1"
 TOPICS = {"keithley/ch1": f"smu.{SMU}.ch1.current", "keithley/ch2": f"smu.{SMU}.ch2.current"}
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT_DIR = os.path.join(HERE, "programs", DECK_NAME.replace(" ", "_"))
+OUT_ROOT = os.path.join(HERE, "programs")
 UV_SCRIPT = os.path.join(HERE, "scripts", "UV_Advanced.moon")
 
 CAPTURE_VIEW_MOON = """-- CaptureView - FireDog's capture_view: snap a camera and show the frame in the Run page's
@@ -91,6 +104,7 @@ class Program:
         self.prefix = prefix
         self.n = 0
         self.notes = notes
+        self.last_device = ""   # the last motion device, for a FireDog step that names none (xcan)
 
     def step(self, op, name="", device="", params=None, enabled=True, before=0, after=0):
         self.n += 1
@@ -126,6 +140,8 @@ class Program:
         en = enabled and s.get("enabled", True)
         t, p, nick = s["type"], s.get("params", {}), s.get("nickname", "")
         dev = p.get("device", "")
+        if dev.startswith(("hex-", "gantry-")):
+            self.last_device = dev
         delays = {"before": p.get("pre_delay_ms", 0), "after": p.get("post_delay_ms", 0)}
 
         if t == "group":
@@ -151,7 +167,7 @@ class Program:
                 out += self.convert(c, en)
             return out + [self.step("flow.endif", nick, enabled=en)]
 
-        if t == "move_to_position":
+        if t in ("move_to_position", "move_to_position_approach"):
             return [self.step("motion.moveToPosition", nick, dev,
                               {"position": self.pos.name(p["position"], dev), **self.move_params(p)}, en, **delays)]
 
@@ -179,7 +195,8 @@ class Program:
 
         if t == "move_relative":
             return [self.step("motion.moveRelative", nick, dev,
-                              {"axis": p["axis"], "distance": p["delta_mm"], "velocity": p.get("velocity_mm_s") or 0}, en)]
+                              {"axis": p["axis"], "distance": p["delta_mm"], "velocity": p.get("velocity_mm_s") or 0},
+                              en, **delays)]
 
         if t == "set_velocity":
             return [self.step("motion.setVelocity", nick, dev, {"speed": p["velocity_mm_s"]}, en)]
@@ -189,7 +206,7 @@ class Program:
             return [self.step(op, nick, p["slide"], enabled=en)]
 
         if t == "set_output":
-            return [self.step("io.setOutputByName", nick, dev, {"pin": p["pin"], "state": bool(p["on"])}, en)]
+            return [self.step("io.setOutputByName", nick, dev, {"pin": p["pin"], "state": bool(p["on"])}, en, **delays)]
 
         if t == "delay":
             return [self.step("flow.wait", nick, params={"ms": p["ms"]}, enabled=en)]
@@ -248,6 +265,17 @@ class Program:
         if t == "dut_close":
             return [self.step("dut.close", nick, params={"verdict": "Pass"}, enabled=en)]
 
+        if t == "xcan":
+            # FireDog's inline XCAN step (no device: the recipe's hexapod) → scan.xcan.
+            device = dev or self.last_device
+            return [self.step("scan.xcan", nick or f"XCAN {device} ({p.get('steps_um', '')} um)", device, {
+                "signal": TOPICS[p.get("topic", "keithley/ch1")], "unit": "uA",
+                "axes": str(p.get("axes", "XYZ")).replace(",", ""), "stepsUm": p.get("steps_um"),
+                "settleMinMs": p.get("settle_min_ms") or None, "velocity": p.get("velocity_mm_s") or None,
+                "adaptive": bool(p.get("adaptive", False)), "exitTarget": p.get("exit_target_ua", 0),
+                "zoneLow": p.get("zone_low_ua"), "zoneHigh": p.get("zone_high_ua"),
+                "captureAs": "xcan_" + device.split("-")[-1]}, en)]
+
         if t == "run_script" and "uv_advanced" in p.get("file", ""):
             return [self.step("script.run", nick or "UV advanced", params={"script": "UV_Advanced"}, enabled=en)]
 
@@ -283,23 +311,29 @@ class Program:
 
 
 def convert_all():
+    """→ [(deck, programs)], positions, notes. Step ids p<n>- number the programs across all decks."""
     recipes = {r["uid"]: r for r in json.load(open(FD_RECIPES, encoding="utf-8"))["recipes"]}
     positions = Positions()
     notes = []
-    programs = []
-    for i, (uid, name) in enumerate(RECIPES, 1):
-        r = recipes[uid]
-        prog = Program(positions, f"p{i}", notes)
-        steps = [prog.step("flow.comment", "Ported from FireDog", params={
-            "text": f"FireDog recipe '{r['name']}' ({uid}), product siphog888, slot '{DECK_NAME}'. {r.get('description', '')}"})]
-        for s in r["steps"]:
-            steps += prog.convert(s)
-        programs.append({"Name": name, "Steps": steps})
-    deck = {"Uid": "fd-prod-tall-v3", "Name": DECK_NAME, "Entries": [
-        {"Uid": f"fd-v3-{i}", "Program": name, "Enabled": True, "Condition": "", "Auto": False,
-         "DelaySeconds": 0, "ShowInRun": True}
-        for i, (_, name) in enumerate(RECIPES, 1)]}
-    return programs, deck, positions, notes
+    decks = []
+    n = 0
+    for deck_name, deck_uid, entry_prefix, source, deck_recipes in DECKS:
+        programs = []
+        for uid, name in deck_recipes:
+            n += 1
+            r = recipes[uid]
+            prog = Program(positions, f"p{n}", notes)
+            steps = [prog.step("flow.comment", "Ported from FireDog", params={
+                "text": f"FireDog recipe '{r['name']}' ({uid}), product siphog888, {source}. {r.get('description', '')}"})]
+            for s in r["steps"]:
+                steps += prog.convert(s)
+            programs.append({"Name": name, "Steps": steps})
+        deck = {"Uid": deck_uid, "Name": deck_name, "Entries": [
+            {"Uid": f"{entry_prefix}-{i}", "Program": name, "Enabled": True, "Condition": "", "Auto": False,
+             "DelaySeconds": 0, "ShowInRun": True}
+            for i, (_, name) in enumerate(deck_recipes, 1)]}
+        decks.append((deck, programs))
+    return decks, positions, notes
 
 
 def write_json(path, obj):
@@ -315,17 +349,18 @@ def backup(path, stamp):
         print(f"  backed up {path}")
 
 
-def install(product, programs, deck, positions):
+def install(product, decks, positions):
     appdata = os.environ["APPDATA"]
     pdir = os.path.join(appdata, "Horizon", "products", product)
     if not os.path.isfile(os.path.join(pdir, "product.json")):
         raise SystemExit(f"product '{product}' not found at {pdir} - start DLAM.UI once to create it")
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    for p in programs:
-        write_json(os.path.join(pdir, "processes", p["Name"] + ".hwf"), p)
-    write_json(os.path.join(pdir, "decks", deck["Name"] + ".hwd"), deck)
-    write_json(os.path.join(pdir, "decks", "active.json"), {"ActiveDeck": deck["Name"]})
+    for deck, programs in decks:
+        for p in programs:
+            write_json(os.path.join(pdir, "processes", p["Name"] + ".hwf"), p)
+        write_json(os.path.join(pdir, "decks", deck["Name"] + ".hwd"), deck)
+    write_json(os.path.join(pdir, "decks", "active.json"), {"ActiveDeck": decks[0][0]["Name"]})
     os.makedirs(os.path.join(pdir, "scripts"), exist_ok=True)
     with open(os.path.join(pdir, "scripts", "CaptureView.moon"), "w", encoding="utf-8", newline="\n") as f:
         f.write(CAPTURE_VIEW_MOON)
@@ -371,18 +406,21 @@ def install(product, programs, deck, positions):
 
 
 def main():
-    programs, deck, positions, notes = convert_all()
-    for p in programs:
-        write_json(os.path.join(OUT_DIR, p["Name"] + ".hwf"), p)
-    write_json(os.path.join(OUT_DIR, deck["Name"] + ".hwd"), deck)
-    with open(os.path.join(OUT_DIR, "CaptureView.moon"), "w", encoding="utf-8", newline="\n") as f:
+    decks, positions, notes = convert_all()
+    for deck, programs in decks:
+        out_dir = os.path.join(OUT_ROOT, deck["Name"].replace(" ", "_"))
+        for p in programs:
+            write_json(os.path.join(out_dir, p["Name"] + ".hwf"), p)
+        write_json(os.path.join(out_dir, deck["Name"] + ".hwd"), deck)
+        print(f"wrote {len(programs)} programs + deck to {out_dir}")
+    first_dir = os.path.join(OUT_ROOT, decks[0][0]["Name"].replace(" ", "_"))
+    with open(os.path.join(first_dir, "CaptureView.moon"), "w", encoding="utf-8", newline="\n") as f:
         f.write(CAPTURE_VIEW_MOON)
-    print(f"wrote {len(programs)} programs + deck to {OUT_DIR}")
     for n in notes:
         print("  note:", n)
     if "--install" in sys.argv:
         product = sys.argv[sys.argv.index("--product") + 1] if "--product" in sys.argv else "DLAM"
-        install(product, programs, deck, positions)
+        install(product, decks, positions)
 
 
 if __name__ == "__main__":
