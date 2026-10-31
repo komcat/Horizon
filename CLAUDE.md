@@ -371,7 +371,9 @@ SiPhOG, DUT Data, find-first-light, Testing Ground, `ScanPanelStore`, its settin
   then the normal exit disconnects hardware and `ShutdownWindow` hands off to Velopack's updater,
   which swaps the install's `current\` folder and relaunches. `Program.Main` runs the Velopack hook
   (auto-apply off); `AppUpdater` wraps it; `release.ps1` packs/uploads with a pinned `vpk` — keep
-  its version equal to the NuGet package. Nothing may write into the install folder. Update only —
+  its version equal to the NuGet package. DLAM.UI releases from the same repo with
+  `release.ps1 -App DLAM.UI` (tag `dlam-v*`, Velopack channel `dlam`; FAAM.UI stays on the default
+  channel), after `publish.ps1 -Apps DLAM.UI,Horizon.Console,Horizon.ConfigTool -Zip`. Nothing may write into the install folder. Update only —
   no rollback. See `docs/software-update-design.md`.
 - **Theme rule (both heads)**: use the Windows `SystemColors` palette via the
   theme brushes (`Bg/Panel/Text/Subtle/Edge/Accent` — Horizon.UI's `App.xaml`, FAAM.UI's via

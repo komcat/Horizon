@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-  Tag the current commit and publish a GitHub release for FAAM.UI, attaching the
-  published app zips (plus the %APPDATA% seed) as the release assets.
+  Tag the current commit and publish a GitHub release for an operator app (FAAM.UI,
+  or DLAM.UI with -App DLAM.UI), attaching the published app zips (plus the %APPDATA%
+  seed) as the release assets.
 
 .DESCRIPTION
   Assumes the assets already exist - build them first with:
@@ -13,14 +14,22 @@
   Horizon.Console proves the hardware headlessly, then FAAM.UI runs the process.
   Shipping only the UI would leave a new station with no way to fix its config.
 
+  The two heads release independently from the same repo:
+
+    -App FAAM.UI (default)  tag v<Version>       Velopack channel 'win' (the default)
+    -App DLAM.UI            tag dlam-v<Version>  Velopack channel 'dlam'
+
+  An install updates only from the channel it was packed with, so a DLAM release is
+  never offered to a FAAM station and the reverse.
+
   This script only does the git/GitHub side:
     1. sanity-check the working tree, the gh CLI and its auth
     2. resolve the release assets in artifacts\deploy
-    3. check the tag version agrees with <Version> in FAAM.UI.csproj
-    4. pack the FAAM.UI software update with Velopack (vpk) into artifacts\velopack,
+    3. check the tag version agrees with <Version> in <App>.csproj
+    4. pack the <App> software update with Velopack (vpk) into artifacts\velopack,
        as a delta against the previous release's package when there is one
     5. create an annotated tag and push it to origin
-    6. gh release create, with docs/release-notes-v<n>.md as the body, and
+    6. gh release create, with docs/release-notes-<tag>.md as the body, and
        upload the assets
     7. vpk upload github --merge: add the update packages to that same release,
        where installed stations find them (Home > Version > Update)
@@ -33,14 +42,24 @@
   pwsh deploy/release.ps1 -Version 0.1 -DryRun
 
 .EXAMPLE
+  # A DLAM.UI release (tag dlam-v0.1, channel dlam), after
+  # pwsh deploy/publish.ps1 -Apps DLAM.UI,Horizon.Console,Horizon.ConfigTool -Zip
+  pwsh deploy/release.ps1 -App DLAM.UI -Version 0.1 -PreRelease -NoAppData -NoScripts
+
+.EXAMPLE
   # Attach an explicit set instead of the auto-resolved one:
   pwsh deploy/release.ps1 -Version 0.1 -Assets .\artifacts\deploy\FAAM.UI-v0.1.0-win-x64.zip
 #>
 [CmdletBinding()]
 param(
-    # Release version without the leading 'v' (e.g. 0.1). The tag becomes v<Version>.
+    # Release version without the leading 'v' (e.g. 0.1). The tag becomes v<Version>
+    # (dlam-v<Version> for DLAM.UI).
     [Parameter(Mandatory = $true)]
     [string]$Version,
+
+    # The operator app being released.
+    [ValidateSet('FAAM.UI', 'DLAM.UI')]
+    [string]$App = 'FAAM.UI',
 
     # Files to attach. Defaults to the app zips for this version in
     # artifacts\deploy, plus Horizon-appdata.zip + restore-appdata.ps1 and the
@@ -56,7 +75,7 @@ param(
     [switch]$NoScripts,
 
     # Skip the Velopack update packages (Setup.exe, Portable.zip, full/delta .nupkg,
-    # releases.win.json) that let installed FAAM.UI stations update themselves from
+    # releases.<channel>.json) that let installed stations update themselves from
     # this release. See docs/software-update-design.md.
     [switch]$NoUpdatePackage,
 
@@ -65,7 +84,7 @@ param(
     # attach an asset that a release shipped without.
     [switch]$UploadOnly,
 
-    # Markdown file used as the release body. Defaults to docs/release-notes-v<Version>.md.
+    # Markdown file used as the release body. Defaults to docs/release-notes-<tag>.md.
     [string]$NotesFile,
 
     # Publish as a draft so it can be reviewed on github.com before going live.
@@ -83,12 +102,18 @@ $ErrorActionPreference = 'Stop'
 function Fail($msg) { throw $msg }
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$tag  = "v$Version"
 
-# Every app publish.ps1 -Zip produces. All three ship in a release: the UI runs
-# the process, the ConfigTool authors the target's hardware config, the Console
+# Per head: the tag prefix (also version-info.ps1's -TagPrefix in the csproj) and the
+# Velopack channel. FAAM.UI keeps vpk's default channel ('win') so stations installed
+# before DLAM existed keep updating.
+$tagPrefix = if ($App -eq 'DLAM.UI') { 'dlam-v' } else { 'v' }
+$channel   = if ($App -eq 'DLAM.UI') { 'dlam' } else { $null }
+$tag       = "$tagPrefix$Version"
+
+# The apps publish.ps1 -Zip produces for this head. All three ship in a release: the UI
+# runs the process, the ConfigTool authors the target's hardware config, the Console
 # proves that config against real devices before the UI is trusted with it.
-$releaseApps = @('FAAM.UI', 'Horizon.Console', 'Horizon.ConfigTool')
+$releaseApps = @($App, 'Horizon.Console', 'Horizon.ConfigTool')
 
 # The tag is coarse (v0.1) while the assembly version is a full triple (0.1.0),
 # and publish.ps1 names the zip after the latter. Accept the exact name first,
@@ -147,7 +172,7 @@ if (-not $Assets) {
     $Assets = $resolved
 }
 if (-not $NotesFile) {
-    $NotesFile = Join-Path $repo "docs\release-notes-v$Version.md"
+    $NotesFile = Join-Path $repo "docs\release-notes-$tag.md"
 }
 
 # --- preflight ---------------------------------------------------------------
@@ -191,23 +216,24 @@ if (-not (Test-Path -LiteralPath $NotesFile)) {
 
 # The tag must agree with the version stamped into the assembly, or the binary
 # and the release page disagree about what this build is.
-$faamProj = Join-Path $repo 'src\FAAM.UI\FAAM.UI.csproj'
-$m = [regex]::Match((Get-Content -LiteralPath $faamProj -Raw), '<Version>([^<]+)</Version>')
-if (-not $m.Success) { Fail "No <Version> element in $faamProj" }
+$appProj = Join-Path $repo "src\$App\$App.csproj"
+$m = [regex]::Match((Get-Content -LiteralPath $appProj -Raw), '<Version>([^<]+)</Version>')
+if (-not $m.Success) { Fail "No <Version> element in $appProj" }
 $asmVersion = $m.Groups[1].Value
 if (-not $asmVersion.StartsWith($Version)) {
-    Fail "Version mismatch: tag '$tag' vs <Version>$asmVersion</Version> in FAAM.UI.csproj. Reconcile them first."
+    Fail "Version mismatch: tag '$tag' vs <Version>$asmVersion</Version> in $App.csproj. Reconcile them first."
 }
 
 # --- Velopack software update ------------------------------------------------
-# Installed stations check this repo's releases for releases.win.json and download the
-# full / delta .nupkg it lists (FAAM.UI AppUpdater). The vpk CLI version must match the
-# Velopack NuGet package FAAM.UI.csproj references.
+# Installed stations check this repo's releases for releases.<channel>.json and download the
+# full / delta .nupkg it lists (Horizon.Station.UI AppUpdater). The vpk CLI version must
+# match the Velopack NuGet package the station library references.
 $VpkVersion = '1.2.161'
 $repoUrl    = 'https://github.com/komcat/Horizon'
 $vpkDir     = Join-Path $repo 'artifacts\velopack'
-$faamDir    = Join-Path $deployDir 'FAAM.UI'
+$appDir     = Join-Path $deployDir $App
 $makeUpdate = -not $NoUpdatePackage -and -not $UploadOnly
+$channelArgs = if ($channel) { @('--channel', $channel) } else { @() }
 
 # Runs the pinned vpk without installing it; returns its exit code. Output goes to the
 # host so it is not mixed into the return value.
@@ -216,44 +242,44 @@ function Invoke-Vpk([string[]]$VpkArgs) {
     return $LASTEXITCODE
 }
 
-if ($makeUpdate -and -not (Test-Path -LiteralPath (Join-Path $faamDir 'FAAM.UI.exe'))) {
-    Fail "No published FAAM.UI folder at $faamDir to pack the update from.`n  Build it first: pwsh deploy/publish.ps1 -Zip  (or pass -NoUpdatePackage)"
+if ($makeUpdate -and -not (Test-Path -LiteralPath (Join-Path $appDir "$App.exe"))) {
+    Fail "No published $App folder at $appDir to pack the update from.`n  Build it first: pwsh deploy/publish.ps1 -Zip  (or pass -NoUpdatePackage)"
 }
 
-# Packs artifacts\deploy\FAAM.UI into artifacts\velopack. Runs before anything is tagged,
+# Packs artifacts\deploy\<App> into artifacts\velopack. Runs before anything is tagged,
 # so a packing failure leaves no half-made release behind.
 function New-UpdatePackage {
     if (Test-Path -LiteralPath $vpkDir) { Remove-Item -LiteralPath $vpkDir -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $vpkDir | Out-Null
     $token = (& $ghExe auth token).Trim()
 
-    # The previous release's full package lets vpk build a small delta. The first
-    # Velopack release has none - it then ships the full package only.
+    # The previous release's full package (same channel) lets vpk build a small delta.
+    # The first Velopack release of a channel has none - it then ships the full package only.
     Write-Host "==> Fetching the previous update package (for the delta)" -ForegroundColor Cyan
-    if ((Invoke-Vpk @('download', 'github', '--repoUrl', $repoUrl, '--token', $token, '--pre', '--outputDir', $vpkDir)) -ne 0) {
+    if ((Invoke-Vpk (@('download', 'github', '--repoUrl', $repoUrl, '--token', $token, '--pre', '--outputDir', $vpkDir) + $channelArgs)) -ne 0) {
         Write-Host "  (no previous update package - this release carries the full package only)" -ForegroundColor Yellow
     }
 
-    Write-Host "==> Packing the FAAM.UI update (Velopack $asmVersion)" -ForegroundColor Cyan
+    Write-Host "==> Packing the $App update (Velopack $asmVersion$(if ($channel) { ", channel $channel" }))" -ForegroundColor Cyan
     $packArgs = @('pack',
-        '--packId', 'FAAM.UI', '--packVersion', $asmVersion, '--packDir', $faamDir,
-        '--mainExe', 'FAAM.UI.exe', '--packTitle', 'FAAM.UI', '--packAuthors', 'Fabrinet',
+        '--packId', $App, '--packVersion', $asmVersion, '--packDir', $appDir,
+        '--mainExe', "$App.exe", '--packTitle', $App, '--packAuthors', 'Fabrinet',
         '--runtime', 'win-x64',
         '--icon', (Join-Path $repo 'assets\appicon.ico'), '--releaseNotes', $NotesFile,
-        '--outputDir', $vpkDir)
+        '--outputDir', $vpkDir) + $channelArgs
     if ((Invoke-Vpk $packArgs) -ne 0) { Fail "vpk pack failed" }
 }
 
 # Adds the packed update to the release gh just created (same tag).
 function Publish-UpdatePackage {
-    Write-Host "==> Uploading the FAAM.UI update packages to $tag" -ForegroundColor Cyan
+    Write-Host "==> Uploading the $App update packages to $tag" -ForegroundColor Cyan
     $token = (& $ghExe auth token).Trim()
     $upArgs = @('upload', 'github', '--outputDir', $vpkDir, '--repoUrl', $repoUrl, '--token', $token,
-                '--merge', '--tag', $tag, '--releaseName', "FAAM.UI $tag")
+                '--merge', '--tag', $tag, '--releaseName', "$App $tag") + $channelArgs
     if (-not $Draft)   { $upArgs += '--publish' }
     if ($PreRelease)   { $upArgs += '--pre' }
     if ((Invoke-Vpk $upArgs) -ne 0) {
-        Fail "vpk upload failed - the release exists without its update packages. Re-run the upload:`n  dotnet tool exec vpk@$VpkVersion --yes -- upload github --outputDir `"$vpkDir`" --repoUrl $repoUrl --token <gh auth token> --merge --tag $tag"
+        Fail "vpk upload failed - the release exists without its update packages. Re-run the upload:`n  dotnet tool exec vpk@$VpkVersion --yes -- upload github --outputDir `"$vpkDir`" --repoUrl $repoUrl --token <gh auth token> --merge --tag $tag $channelArgs"
     }
 }
 
@@ -331,7 +357,7 @@ try {
         Write-Host "               $line"
     }
     Write-Host "  notes      : $NotesFile"
-    Write-Host "  update     : $(if ($makeUpdate) { "Velopack FAAM.UI $asmVersion from $faamDir (Setup.exe, Portable.zip, full + delta .nupkg)" } else { 'skipped (-NoUpdatePackage)' })"
+    Write-Host "  update     : $(if ($makeUpdate) { "Velopack $App $asmVersion, channel $(if ($channel) { $channel } else { 'win (default)' }), from $appDir (Setup.exe, Portable.zip, full + delta .nupkg)" } else { 'skipped (-NoUpdatePackage)' })"
     Write-Host "  draft      : $([bool]$Draft)   prerelease: $([bool]$PreRelease)"
     Write-Host ""
 
@@ -350,7 +376,7 @@ try {
 
     if (-not $tagExists) {
         Write-Host "==> Tagging $tag" -ForegroundColor Cyan
-        git tag -a $tag -m "FAAM.UI $tag"
+        git tag -a $tag -m "$App $tag"
         if ($LASTEXITCODE -ne 0) { Fail "git tag failed" }
     }
 
@@ -365,7 +391,7 @@ try {
     # from it. Passing a short SHA there is rejected as an invalid target_commitish.
     Write-Host "==> Creating GitHub release" -ForegroundColor Cyan
     $ghArgs = @('release', 'create', $tag) + $Assets + @(
-        '--title', "FAAM.UI $tag",
+        '--title', "$App $tag",
         '--notes-file', $NotesFile
     )
     if ($Draft)      { $ghArgs += '--draft' }

@@ -39,8 +39,9 @@ param(
     [string]$Runtime       = 'win-x64',
     [string]$Output        = (Join-Path $PSScriptRoot '..\artifacts\deploy'),
 
-    # Which apps to publish. Defaults to all three deployables.
-    [ValidateSet('FAAM.UI', 'Horizon.Console', 'Horizon.ConfigTool')]
+    # Which apps to publish. Defaults to the FAAM.UI release set; a DLAM release is
+    # -Apps DLAM.UI,Horizon.Console,Horizon.ConfigTool.
+    [ValidateSet('FAAM.UI', 'DLAM.UI', 'Horizon.Console', 'Horizon.ConfigTool')]
     [string[]]$Apps = @('FAAM.UI', 'Horizon.Console', 'Horizon.ConfigTool'),
 
     # Skip staging the native Basler pylon runtime into the published folders.
@@ -48,7 +49,8 @@ param(
 
     # Zip each published app folder as <App>-v<Version>-<Runtime>.zip.
     [switch]$Zip,
-    # Version string used in the zip name (e.g. 0.1). Defaults to FAAM.UI's <Version>.
+    # Version string used in the zip name (e.g. 0.1). Defaults to the operator app's
+    # <Version> - DLAM.UI's when only DLAM.UI is published, else FAAM.UI's.
     [string]$Version,
 
     # Also snapshot %APPDATA%\Horizon (config + products + history) into the output.
@@ -69,16 +71,18 @@ $Output = [System.IO.Path]::GetFullPath($Output)
 
 $projectFor = @{
     'FAAM.UI'            = 'src\FAAM.UI\FAAM.UI.csproj'
+    'DLAM.UI'            = 'src\DLAM.UI\DLAM.UI.csproj'
     'Horizon.Console'    = 'src\Horizon.Console\Horizon.Console.csproj'
     'Horizon.ConfigTool' = 'src\Horizon.ConfigTool\Horizon.ConfigTool.csproj'
 }
 
-# Default the zip version to whatever FAAM.UI.csproj declares, so the release
+# Default the zip version to whatever the operator app's csproj declares, so the release
 # asset name and the assembly version cannot drift apart.
 if (($Zip -or $Scripts) -and -not $Version) {
-    $faamProj = Join-Path $repo $projectFor['FAAM.UI']
-    $m = [regex]::Match((Get-Content -LiteralPath $faamProj -Raw), '<Version>([^<]+)</Version>')
-    if (-not $m.Success) { throw "-Zip needs -Version: no <Version> found in $faamProj" }
+    $versionApp = if ($Apps -contains 'DLAM.UI' -and $Apps -notcontains 'FAAM.UI') { 'DLAM.UI' } else { 'FAAM.UI' }
+    $appProj = Join-Path $repo $projectFor[$versionApp]
+    $m = [regex]::Match((Get-Content -LiteralPath $appProj -Raw), '<Version>([^<]+)</Version>')
+    if (-not $m.Success) { throw "-Zip needs -Version: no <Version> found in $appProj" }
     $Version = $m.Groups[1].Value
 }
 
