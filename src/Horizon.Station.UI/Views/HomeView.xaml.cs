@@ -183,7 +183,7 @@ public partial class HomeView : UserControl
         var newName = PromptForName(
             "Save product as",
             $"Clone '{source}' to a new product.\n\n" +
-            "Positions, vision profiles, and programs / decks copy over so you can " +
+            "Positions, the position map, vision profiles, and programs / decks copy over so you can " +
             "edit them for the variation. DUT history starts empty.\n\nNew product name:",
             SuggestProductName(source));
         if (string.IsNullOrWhiteSpace(newName)) return;   // cancelled or blank

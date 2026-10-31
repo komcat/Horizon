@@ -194,6 +194,19 @@ public sealed class ProcessService : IProcessService
 
         _products.Clone(source, newName);
         Log(LogLevel.Info, $"Product cloned: {source} -> {newName}");
+
+        // The position map lives in the config dir keyed by product name, not in the product
+        // folder — copy it too. Best-effort: the clone itself already succeeded.
+        try
+        {
+            var maps = PositionMapStore.CopyProduct(source, newName);
+            if (maps > 0)
+                Log(LogLevel.Info, $"Position map copied to {newName} ({maps} device map(s)).");
+        }
+        catch (Exception ex)
+        {
+            Log(LogLevel.Warning, $"Product cloned, but its position map was not copied: {ex.Message}");
+        }
         return Result.Ok();
     }
 

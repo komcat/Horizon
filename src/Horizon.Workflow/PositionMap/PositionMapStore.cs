@@ -54,6 +54,35 @@ public static class PositionMapStore
         Saved?.Invoke(product, device, origin);
     }
 
+    /// <summary>
+    /// Copies every device map of product <paramref name="source"/> to <paramref name="target"/>
+    /// (product Save As — the maps are keyed by product name, so a clone would otherwise start
+    /// with none and <c>motion.movePath</c> would have nothing to route along). Replaces any maps
+    /// <paramref name="target"/> already has. Returns how many device maps were copied (0 when the
+    /// source has none). Throws on I/O failure or an unparseable file.
+    /// </summary>
+    public static int CopyProduct(string source, string target)
+    {
+        var file = Read();
+        var devices = Find(file.Products, source);
+        if (devices == null || devices.Count == 0)
+            return 0;
+
+        var copy = devices.ToDictionary(
+            d => d.Key,
+            d => new PositionMapLayout
+            {
+                Nodes = d.Value.Nodes.Select(n => new PositionMapNode { Name = n.Name, X = n.X, Y = n.Y }).ToList(),
+                Edges = d.Value.Edges.Select(e => new PositionMapEdge { A = e.A, B = e.B }).ToList(),
+            },
+            StringComparer.OrdinalIgnoreCase);
+        file.Products[KeyOf(file.Products, target)] = copy;
+        ConfigLoader.SaveJson(ConfigLoader.GetConfigDirectory(), FileName, file);
+        foreach (var device in copy.Keys)
+            Saved?.Invoke(target, device, null);
+        return copy.Count;
+    }
+
     /// <summary>Saved pixel width of the position list column; null = default.</summary>
     public static double? LoadListWidth()
     {

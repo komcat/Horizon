@@ -88,7 +88,8 @@ defines its own program/recipe/position formats.
   **Product variations** (same process, different positions/edited blocks — each
   product owns an editable copy, not a shared library): `ProductStore.CloneProduct`
   (FAAM Home "Save As…") deep-copies positions, vision profiles, and
-  programs/decks/recipes into a new product with a fresh identity and empty DUT
+  programs/decks/recipes into a new product (`ProcessService.CloneProduct` also copies the product's
+  position map in `faam_position_map.json`, which is keyed by product name) with a fresh identity and empty DUT
   history (only `dut\` is excluded). The deck editor has its own **Save As**
   (duplicate a deck in-product with fresh deck/entry UIDs so history doesn't fork)
   and **Import** (`ListDecksOf`/`ImportDeck` — pull a deck from another product,
