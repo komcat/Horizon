@@ -1512,7 +1512,10 @@ internal sealed partial class StepDispatcher
             Num(step, "amps", ctx),
             Has(step, "settleMs") ? (int)Num(step, "settleMs", ctx) : PsuPowerUp.DefaultSettleMs,
             Has(step, "toleranceV") ? Num(step, "toleranceV", ctx) : PsuPowerUp.DefaultToleranceV,
-            !Has(step, "offOnFail") || Bool(step, "offOnFail", ctx));
+            !Has(step, "offOnFail") || Bool(step, "offOnFail", ctx),
+            // Opt-in: a load held at the current limit (CC mode — e.g. a laser / SLED driven by
+            // its current) counts as ON, as FireDog's psu_startup mode "CC" did.
+            AcceptCurrentLimit: Has(step, "acceptCurrentLimit") && Bool(step, "acceptCurrentLimit", ctx));
 
         var r = await PsuPowerUp.RunAsync(_engine.PowerSupply, req, _log, ct);
         if (!r.IsSuccess) return Result.Fail(r.Error, r.Message);

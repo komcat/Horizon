@@ -129,7 +129,7 @@ defines its own program/recipe/position formats.
   `psu.disconnect` (outputs forced OFF first). **`psu.powerUp`** is a verified power-up —
   link check (one reconnect) → I-limit → V → ON → settle (150 ms) → read-back polled (up to
   `VerifyMs`, 2 s) until it shows ON and V within tolerance, else the output is switched back
-  **OFF** (fail-safe, also on cancel). `AcceptCurrentLimit` (Run-page panel only) treats a load
+  **OFF** (fail-safe, also on cancel). `AcceptCurrentLimit` (FAAM Run-page panel; the block's opt-in `acceptCurrentLimit` param) treats a load
   held at the current limit (CC mode) as a successful ON. One shared implementation, `Execution/PsuPowerUp.cs`, behind all three
   surfaces. `IProcessService.IsRunning` (program/deck/recipe in progress) lets Layer 3
   lock manual controls during a run. See `docs/power-supply.md`.
@@ -493,7 +493,7 @@ write code that won't trip them:
 - Hexapod beam-alignment scan: `docs/hexapod-scanning.md`.
 - Bobcat → Horizon recipe migration: `docs/recipe-migration.md`.
 - FAAM.UI (second Layer 3 head): `docs/faam-ui.md`, `docs/faam-handoff.md`.
-- DLAM.UI (third head, FireDog → Horizon migration; the head itself is §8; shared `Horizon.Station.UI` extraction): `docs/dlam-ui.md`,
+- DLAM.UI (third head, FireDog → Horizon migration; the head itself is §8, ported FireDog recipes + `tools/dlam/firedog_port.py` §9; shared `Horizon.Station.UI` extraction): `docs/dlam-ui.md`,
   `docs/station-ui-extraction.md`; latest session passdown (state, open checks, next steps): `docs/dlam-handoff.md`.
 - SMU streaming: `docs/smu-streaming-design.md`.
 - Power supply (UDP3305S-E LAN setup, `psu.*` ops, verified `psu.powerUp`, FAAM PSU panel): `docs/power-supply.md`.

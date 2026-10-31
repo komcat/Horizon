@@ -27,6 +27,13 @@ public sealed class WorkflowContext
     public bool DutIsFallback { get; set; }
 
     /// <summary>
+    /// True when the fallback <see cref="Dut"/> is an open operator session (the Run page's
+    /// Start DUT) — the operator chose this unit — rather than the sticky last serial. A
+    /// <c>dut.promptSerial</c> with <c>newUnit</c> adopts a session but never the sticky serial.
+    /// </summary>
+    public bool DutIsSession { get; set; }
+
+    /// <summary>
     /// Serial of the active <see cref="Dut"/> run, kept alongside it (the run itself
     /// doesn't carry the serial). Lets a <c>dut.promptSerial</c> step <em>adopt</em>
     /// an already-active DUT — skipping its prompt — so the block and the Run-page

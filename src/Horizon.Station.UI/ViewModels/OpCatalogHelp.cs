@@ -183,6 +183,7 @@ public static class OpCatalogHelp
                 ("settleMs", "Wait between output ON and the verifying read-back (0–10000 ms)."),
                 ("toleranceV", "Allowed |measured − setpoint| voltage difference."),
                 ("offOnFail", "Switch the output back OFF when verification fails (recommended)."),
+                ("acceptCurrentLimit", "On: a load the supply holds at the current limit (voltage below the setpoint — constant-current mode, e.g. a laser or SLED driven by its current) counts as a successful ON. Off: that reads as an overload and fails. FireDog's psu_startup mode CC."),
                 ("captureAs", "Prefix for the measured readings: {prefix}_v (volts) and {prefix}_i (amps). Blank = don't store."),
             },
         },

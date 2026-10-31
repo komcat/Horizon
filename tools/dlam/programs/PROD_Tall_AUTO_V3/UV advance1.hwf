@@ -1,0 +1,519 @@
+{
+  "Name": "UV advance1",
+  "Steps": [
+    {
+      "Id": "p5-01",
+      "Name": "Ported from FireDog",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "FireDog recipe 'UV advance1' (795859c2), product siphog888, slot 'PROD Tall AUTO V3'. Migrated from bobcat 'UV'. XCAN peaks recorded to the DUT as Xcan_Left_Peak / Xcan_Right_Peak (ctx align_best is overwritten by the second run). UV_PLC1 duplicate writes collapsed to the down/up pulse. DUT steps are on_error=continue so a run without an open DUT still completes. Hex velocities carry over from the earlier recipes (they persist on the device)."
+      }
+    },
+    {
+      "Id": "p5-02",
+      "Name": "Laser 150mA ON",
+      "Op": "flow.groupStart",
+      "Parameters": {
+        "name": "Laser 150mA ON"
+      }
+    },
+    {
+      "Id": "p5-03",
+      "Name": "FireDog: cld_set_laser_current {\"ma\": 150.0}",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "cld_set_laser_current {\"ma\": 150.0}"
+      },
+      "Enabled": false
+    },
+    {
+      "Id": "p5-04",
+      "Name": "FireDog: cld_laser {\"on\": true}",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "cld_laser {\"on\": true}"
+      },
+      "Enabled": false
+    },
+    {
+      "Id": "p5-05",
+      "Name": "Laser 150mA ON",
+      "Op": "flow.groupEnd",
+      "Parameters": {}
+    },
+    {
+      "Id": "p5-06",
+      "Name": "read current",
+      "Op": "smu.readCurrent",
+      "Device": "Keithley_2602B",
+      "Parameters": {
+        "channel": "1",
+        "captureAs": "check_low_power"
+      }
+    },
+    {
+      "Id": "p5-07",
+      "Name": "warn if power < 900uA",
+      "Op": "flow.if",
+      "Parameters": {
+        "condition": "check_low_power < 0.0009"
+      },
+      "Enabled": false
+    },
+    {
+      "Id": "p5-08",
+      "Name": "Power <900 uA",
+      "Op": "flow.askUser",
+      "Parameters": {
+        "title": "Power <900 uA",
+        "message": "Power <900 uA - does not suggest to continue UV. OK to continue anyway, Cancel to stop."
+      },
+      "Enabled": false
+    },
+    {
+      "Id": "p5-09",
+      "Name": "warn if power < 900uA",
+      "Op": "flow.endif",
+      "Parameters": {},
+      "Enabled": false
+    },
+    {
+      "Id": "p5-10",
+      "Name": "",
+      "Op": "flow.wait",
+      "Parameters": {
+        "ms": "1000"
+      }
+    },
+    {
+      "Id": "p5-11",
+      "Name": "Retract UV head",
+      "Op": "pneumatic.retract",
+      "Device": "UV_Head",
+      "Parameters": {}
+    },
+    {
+      "Id": "p5-12",
+      "Name": "",
+      "Op": "psu.powerUp",
+      "Device": "PSU_Laser",
+      "Parameters": {
+        "channel": "1",
+        "volts": "2",
+        "amps": "0.15",
+        "settleMs": "300",
+        "toleranceV": "0.1",
+        "offOnFail": "true",
+        "acceptCurrentLimit": "true",
+        "captureAs": "psu"
+      }
+    },
+    {
+      "Id": "p5-13",
+      "Name": "Gantry Safe",
+      "Op": "motion.moveToPosition",
+      "Device": "gantry-main",
+      "Parameters": {
+        "position": "safe",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p5-14",
+      "Name": "Gantry UV",
+      "Op": "motion.moveToPosition",
+      "Device": "gantry-main",
+      "Parameters": {
+        "position": "UV",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p5-15",
+      "Name": "Extend UV head",
+      "Op": "pneumatic.extend",
+      "Device": "UV_Head",
+      "Parameters": {}
+    },
+    {
+      "Id": "p5-16",
+      "Name": "XCAN left fine (1,0.5um)",
+      "Op": "flow.groupStart",
+      "Parameters": {
+        "name": "XCAN left fine (1,0.5um)"
+      }
+    },
+    {
+      "Id": "p5-17",
+      "Name": "XCAN hex-left (1,0.5 um)",
+      "Op": "scan.xcan",
+      "Device": "hex-left",
+      "Parameters": {
+        "signal": "smu.Keithley_2602B.ch1.current",
+        "unit": "uA",
+        "axes": "XYZ",
+        "stepsUm": "1,0.5",
+        "settleMs": "150",
+        "exitTarget": "0",
+        "captureAs": "xcan_left"
+      }
+    },
+    {
+      "Id": "p5-18",
+      "Name": "record peak to DUT",
+      "Op": "dut.recordFromContext",
+      "Parameters": {
+        "key": "Xcan_Left_Peak",
+        "from": "xcan_left_best"
+      }
+    },
+    {
+      "Id": "p5-19",
+      "Name": "XCAN left fine (1,0.5um)",
+      "Op": "flow.groupEnd",
+      "Parameters": {}
+    },
+    {
+      "Id": "p5-20",
+      "Name": "XCAN right fine (1,0.5um)",
+      "Op": "flow.groupStart",
+      "Parameters": {
+        "name": "XCAN right fine (1,0.5um)"
+      }
+    },
+    {
+      "Id": "p5-21",
+      "Name": "XCAN hex-right (1,0.5 um)",
+      "Op": "scan.xcan",
+      "Device": "hex-right",
+      "Parameters": {
+        "signal": "smu.Keithley_2602B.ch1.current",
+        "unit": "uA",
+        "axes": "XYZ",
+        "stepsUm": "1,0.5",
+        "settleMs": "150",
+        "exitTarget": "0",
+        "captureAs": "xcan_right"
+      }
+    },
+    {
+      "Id": "p5-22",
+      "Name": "record peak to DUT",
+      "Op": "dut.recordFromContext",
+      "Parameters": {
+        "key": "Xcan_Right_Peak",
+        "from": "xcan_right_best"
+      }
+    },
+    {
+      "Id": "p5-23",
+      "Name": "XCAN right fine (1,0.5um)",
+      "Op": "flow.groupEnd",
+      "Parameters": {}
+    },
+    {
+      "Id": "p5-24",
+      "Name": "pre-UV dry value",
+      "Op": "smu.readCurrent",
+      "Device": "Keithley_2602B",
+      "Parameters": {
+        "channel": "1",
+        "captureAs": "DRY_VALUE"
+      }
+    },
+    {
+      "Id": "p5-25",
+      "Name": "UV PLC down leg",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "UV_PLC1",
+        "state": "false"
+      },
+      "Enabled": false
+    },
+    {
+      "Id": "p5-26",
+      "Name": "",
+      "Op": "flow.wait",
+      "Parameters": {
+        "ms": "100"
+      },
+      "Enabled": false
+    },
+    {
+      "Id": "p5-27",
+      "Name": "UV PLC up leg (trigger)",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "UV_PLC1",
+        "state": "true"
+      },
+      "Enabled": false
+    },
+    {
+      "Id": "p5-28",
+      "Name": "delay 95000",
+      "Op": "flow.wait",
+      "Parameters": {
+        "ms": "95000"
+      },
+      "Enabled": false
+    },
+    {
+      "Id": "p5-29",
+      "Name": "UV advanced",
+      "Op": "script.run",
+      "Parameters": {
+        "script": "UV_Advanced"
+      }
+    },
+    {
+      "Id": "p5-30",
+      "Name": "",
+      "Op": "flow.askUser",
+      "Parameters": {
+        "title": "Confirm",
+        "message": "UV completed, continue?"
+      }
+    },
+    {
+      "Id": "p5-31",
+      "Name": "Retract UV head",
+      "Op": "pneumatic.retract",
+      "Device": "UV_Head",
+      "Parameters": {}
+    },
+    {
+      "Id": "p5-32",
+      "Name": "gantry UV -> safe (bobcat Move to Graph Node)",
+      "Op": "motion.movePath",
+      "Device": "gantry-main",
+      "Parameters": {
+        "to": "safe",
+        "from": "UV",
+        "velocity": "50",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p5-33",
+      "Name": "release left gripper",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "L_Gripper",
+        "state": "false"
+      }
+    },
+    {
+      "Id": "p5-34",
+      "Name": "release right gripper",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "R_Gripper",
+        "state": "false"
+      }
+    },
+    {
+      "Id": "p5-35",
+      "Name": "",
+      "Op": "flow.wait",
+      "Parameters": {
+        "ms": "3000"
+      }
+    },
+    {
+      "Id": "p5-36",
+      "Name": "Grippers both move up 4mm (bobcat Parallel Move Relative)",
+      "Op": "flow.groupStart",
+      "Parameters": {
+        "name": "Grippers both move up 4mm (bobcat Parallel Move Relative)"
+      }
+    },
+    {
+      "Id": "p5-37",
+      "Name": "",
+      "Op": "motion.moveRelative",
+      "Device": "hex-left",
+      "Parameters": {
+        "axis": "X",
+        "distance": "4",
+        "velocity": "5"
+      }
+    },
+    {
+      "Id": "p5-38",
+      "Name": "",
+      "Op": "motion.moveRelative",
+      "Device": "hex-right",
+      "Parameters": {
+        "axis": "X",
+        "distance": "4",
+        "velocity": "5"
+      }
+    },
+    {
+      "Id": "p5-39",
+      "Name": "Grippers both move up 4mm (bobcat Parallel Move Relative)",
+      "Op": "flow.groupEnd",
+      "Parameters": {}
+    },
+    {
+      "Id": "p5-40",
+      "Name": "post-UV value 1",
+      "Op": "smu.readCurrent",
+      "Device": "Keithley_2602B",
+      "Parameters": {
+        "channel": "1",
+        "captureAs": "UV_VALUE1"
+      }
+    },
+    {
+      "Id": "p5-41",
+      "Name": "post-UV value",
+      "Op": "smu.readCurrent",
+      "Device": "Keithley_2602B",
+      "Parameters": {
+        "channel": "1",
+        "captureAs": "UV_VALUE"
+      }
+    },
+    {
+      "Id": "p5-42",
+      "Name": "Grippers home (bobcat Parallel Move)",
+      "Op": "flow.groupStart",
+      "Parameters": {
+        "name": "Grippers home (bobcat Parallel Move)"
+      }
+    },
+    {
+      "Id": "p5-43",
+      "Name": "hex-left home",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-left",
+      "Parameters": {
+        "position": "home",
+        "velocity": "10",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p5-44",
+      "Name": "hex-right home",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "home",
+        "velocity": "10",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p5-45",
+      "Name": "Grippers home (bobcat Parallel Move)",
+      "Op": "flow.groupEnd",
+      "Parameters": {}
+    },
+    {
+      "Id": "p5-46",
+      "Name": "",
+      "Op": "flow.wait",
+      "Parameters": {
+        "ms": "2000"
+      }
+    },
+    {
+      "Id": "p5-47",
+      "Name": "vacuum off",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "Vacuum_Base",
+        "state": "false"
+      }
+    },
+    {
+      "Id": "p5-48",
+      "Name": "DUT pre_uv_value",
+      "Op": "dut.recordFromContext",
+      "Parameters": {
+        "key": "pre_uv_value",
+        "from": "DRY_VALUE"
+      }
+    },
+    {
+      "Id": "p5-49",
+      "Name": "DUT post_uv_value",
+      "Op": "dut.recordFromContext",
+      "Parameters": {
+        "key": "post_uv_value",
+        "from": "UV_VALUE1"
+      }
+    },
+    {
+      "Id": "p5-50",
+      "Name": "DUT Close",
+      "Op": "dut.close",
+      "Parameters": {
+        "verdict": "Pass"
+      }
+    },
+    {
+      "Id": "p5-51",
+      "Name": "FireDog: cld_laser {\"on\": false}",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "cld_laser {\"on\": false}"
+      },
+      "Enabled": false
+    },
+    {
+      "Id": "p5-52",
+      "Name": "",
+      "Op": "psu.outputOff",
+      "Device": "PSU_Laser",
+      "Parameters": {
+        "channel": "1"
+      }
+    },
+    {
+      "Id": "p5-53",
+      "Name": "FireDog: cld_tec {\"on\": false}",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "cld_tec {\"on\": false}"
+      },
+      "Enabled": false
+    },
+    {
+      "Id": "p5-54",
+      "Name": "gantry safe -> SN view (bobcat Move to Graph Node)",
+      "Op": "motion.movePath",
+      "Device": "gantry-main",
+      "Parameters": {
+        "to": "SN view",
+        "from": "safe",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      },
+      "Enabled": false
+    }
+  ]
+}

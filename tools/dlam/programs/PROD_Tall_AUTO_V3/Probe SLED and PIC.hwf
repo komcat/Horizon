@@ -1,0 +1,288 @@
+{
+  "Name": "Probe SLED and PIC",
+  "Steps": [
+    {
+      "Id": "p2-01",
+      "Name": "Ported from FireDog",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "FireDog recipe 'Probe SLED and PIC' (519c5828), product siphog888, slot 'PROD Tall AUTO V3'. Migrated from bobcat 'Probe SLED and PIC'. Camera gain steps dropped (FireDog camera exposes exposure only). The bobcat slot dependency 'DarkCurrent>0' became the gate at the end of this recipe (ctx does not cross recipes; a failed gate stops the run)."
+      }
+    },
+    {
+      "Id": "p2-02",
+      "Name": "exposure 500us (gain steps dropped)",
+      "Op": "camera.setExposure",
+      "Device": "main_camera",
+      "Parameters": {
+        "exposureUs": "500"
+      },
+      "Enabled": false
+    },
+    {
+      "Id": "p2-03",
+      "Name": "Retract all slides",
+      "Op": "flow.groupStart",
+      "Parameters": {
+        "name": "Retract all slides"
+      }
+    },
+    {
+      "Id": "p2-04",
+      "Name": "",
+      "Op": "pneumatic.retract",
+      "Device": "UV_Head",
+      "Parameters": {}
+    },
+    {
+      "Id": "p2-05",
+      "Name": "",
+      "Op": "pneumatic.retract",
+      "Device": "Dispenser_Head",
+      "Parameters": {}
+    },
+    {
+      "Id": "p2-06",
+      "Name": "Retract all slides",
+      "Op": "flow.groupEnd",
+      "Parameters": {}
+    },
+    {
+      "Id": "p2-07",
+      "Name": "vac base ON",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "Vacuum_Base",
+        "state": "true"
+      }
+    },
+    {
+      "Id": "p2-11",
+      "Name": "parallel: hex-right, hex-left, gantry-main",
+      "Op": "flow.parallel",
+      "Parameters": {},
+      "Branches": [
+        {
+          "Lane": "hex-right",
+          "Steps": [
+            {
+              "Id": "p2-08",
+              "Name": "hex-right clear_vision v=5",
+              "Op": "motion.moveToPosition",
+              "Device": "hex-right",
+              "Parameters": {
+                "position": "clear_vision",
+                "velocity": "5",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              }
+            }
+          ]
+        },
+        {
+          "Lane": "hex-left",
+          "Steps": [
+            {
+              "Id": "p2-09",
+              "Name": "hex-left clear_vision v=5",
+              "Op": "motion.moveToPosition",
+              "Device": "hex-left",
+              "Parameters": {
+                "position": "clear_vision",
+                "velocity": "5",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              }
+            }
+          ]
+        },
+        {
+          "Lane": "gantry-main",
+          "Steps": [
+            {
+              "Id": "p2-10",
+              "Name": "move_to_position gantry-main seesled",
+              "Op": "motion.moveToPosition",
+              "Device": "gantry-main",
+              "Parameters": {
+                "position": "seesled",
+                "velocity": "0",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "p2-12",
+      "Name": "Probe SLED",
+      "Op": "flow.askUser",
+      "Parameters": {
+        "title": "Probe SLED",
+        "message": "Probe SLED? Please confirm to continue."
+      }
+    },
+    {
+      "Id": "p2-13",
+      "Name": "",
+      "Op": "camera.setExposure",
+      "Device": "main_camera",
+      "Parameters": {
+        "exposureUs": "300"
+      }
+    },
+    {
+      "Id": "p2-14",
+      "Name": "Laser 250mA ON",
+      "Op": "flow.groupStart",
+      "Parameters": {
+        "name": "Laser 250mA ON"
+      }
+    },
+    {
+      "Id": "p2-15",
+      "Name": "",
+      "Op": "psu.powerUp",
+      "Device": "PSU_Laser",
+      "Parameters": {
+        "channel": "1",
+        "volts": "3",
+        "amps": "0.25",
+        "settleMs": "300",
+        "toleranceV": "0.1",
+        "offOnFail": "true",
+        "acceptCurrentLimit": "true",
+        "captureAs": "psu"
+      }
+    },
+    {
+      "Id": "p2-16",
+      "Name": "Laser 250mA ON",
+      "Op": "flow.groupEnd",
+      "Parameters": {}
+    },
+    {
+      "Id": "p2-17",
+      "Name": "",
+      "Op": "flow.askUser",
+      "Parameters": {
+        "title": "Confirm",
+        "message": "Turn on TEC controller, then continue"
+      }
+    },
+    {
+      "Id": "p2-18",
+      "Name": "see PIC",
+      "Op": "motion.moveToPosition",
+      "Device": "gantry-main",
+      "Parameters": {
+        "position": "seepic",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "camera": "main_camera",
+        "exposure": "150"
+      }
+    },
+    {
+      "Id": "p2-19",
+      "Name": "Probe PIC",
+      "Op": "flow.askUser",
+      "Parameters": {
+        "title": "Probe PIC",
+        "message": "Probe PIC - please confirm to continue."
+      }
+    },
+    {
+      "Id": "p2-20",
+      "Name": "",
+      "Op": "flow.log",
+      "Parameters": {
+        "message": "======== Read from Data Channel"
+      }
+    },
+    {
+      "Id": "p2-21",
+      "Name": "read SMU ch1 stream",
+      "Op": "signal.read",
+      "Parameters": {
+        "signal": "smu.Keithley_2602B.ch1.current",
+        "storeAs": "smu_ch1"
+      }
+    },
+    {
+      "Id": "p2-22",
+      "Name": "FireDog: log SMU ch1 = {smu_ch1}",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "log SMU ch1 = {smu_ch1}"
+      }
+    },
+    {
+      "Id": "p2-23",
+      "Name": "",
+      "Op": "flow.log",
+      "Parameters": {
+        "message": "=========== READ DONE"
+      }
+    },
+    {
+      "Id": "p2-24",
+      "Name": "",
+      "Op": "flow.wait",
+      "Parameters": {
+        "ms": "500"
+      }
+    },
+    {
+      "Id": "p2-25",
+      "Name": "dark current",
+      "Op": "smu.readCurrent",
+      "Device": "Keithley_2602B",
+      "Parameters": {
+        "channel": "1",
+        "captureAs": "DarkCurrent"
+      }
+    },
+    {
+      "Id": "p2-26",
+      "Name": "see serial number",
+      "Op": "motion.moveToPosition",
+      "Device": "gantry-main",
+      "Parameters": {
+        "position": "SN view",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "camera": "main_camera",
+        "exposure": "1500"
+      },
+      "DelayAfterMs": 300
+    },
+    {
+      "Id": "p2-27",
+      "Name": "capture view",
+      "Op": "script.run",
+      "Parameters": {
+        "script": "CaptureView",
+        "args": "camera = \"main_camera\", label = \"serial number\""
+      }
+    },
+    {
+      "Id": "p2-28",
+      "Name": "DUT serial",
+      "Op": "dut.promptSerial",
+      "Parameters": {
+        "message": "Enter serial number",
+        "var": "serial",
+        "newUnit": "true"
+      }
+    }
+  ]
+}

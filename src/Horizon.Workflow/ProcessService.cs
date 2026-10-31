@@ -1055,6 +1055,7 @@ public sealed class ProcessService : IProcessService
         _runDut = begun;
         BeginSiphogRun(begun.Value.Record.Serial);   // serial entered → a new pass, even for a repeat serial
         ctx.DutIsFallback = false;
+        ctx.DutIsSession = false;
         return Result.Ok();
     }
 
@@ -1090,6 +1091,7 @@ public sealed class ProcessService : IProcessService
         ctx.Dut = null;
         ctx.DutSerial = null;
         ctx.DutIsFallback = false;
+        ctx.DutIsSession = false;
         return Result.Ok();
     }
 
@@ -1372,6 +1374,7 @@ public sealed class ProcessService : IProcessService
             ctx.Dut = _interactiveDut.Value.Run;
             ctx.DutSerial = _interactiveDut.Value.Record.Serial;
             ctx.DutIsFallback = true;
+            ctx.DutIsSession = true;
             return _interactiveDut.Value.Record.Serial;
         }
         _runDut = BeginDut(ActiveSerial, source, ctx);

@@ -274,3 +274,39 @@ the Velopack hook → `App` → `new EngineHost(new DlamHead())` → startup / l
 | DUT Data page | The library's generic `DutRecordsView` (serials → runs → recorded values, CSV export of a run). |
 | Engineer blocks | `DlamOps` / `DlamOpHelp`: XCAN, XCAN Two Lens, Climb Scan (Scan); Lift Off & Move, Move Along Map (Motion); Wait for Input (IO); Wait Until (Flow). Tuning params left blank = the Layer 2 default. |
 | Version | `DlamVersionInfo` target → `<repo>\build\version-info.ps1 -TagPrefix dlam-v`, resource `DLAM.UI.version_info.json`. `<Version>` 0.1.0. |
+
+## 9. Ported FireDog recipes (2026-10-30)
+
+`tools/dlam/firedog_port.py` converts recipes of the FireDog product `siphog888` into Horizon
+programs. It reads FireDog read-only, writes the programs + deck for review to
+`tools/dlam/programs/PROD_Tall_AUTO_V3/`, and with `--install` installs them into the DLAM product
+(`processes\`, `decks\` — made the active deck — `scripts\CaptureView.moon` + `UV_Advanced.moon`),
+writes the product's `positions.json` (FireDog's 29 visible positions by name; the 15 hidden
+`algn_*` alignment positions skipped) and the three FireDog "ProcessFlow" maps into
+`faam_position_map.json` (an existing file is backed up first). Re-runnable; extend `RECIPES` to
+port more.
+
+Ported (slot "2 PROD Tall AUTO V3"): **Initial Machine**, **Probe SLED and PIC**, **PP Left - Array**,
+**PP Right - Array**, **UV advance1** — deck `PROD Tall AUTO V3`, every entry a Run-page button,
+Auto off (the slot's Scan Left 800uA / Scan Two Lens 6800uA, Init SMU and TEC and STEP DISPENSE
+are not ported yet, so nothing chains past them).
+
+| FireDog | Horizon |
+|---|---|
+| `parallel` (children per device run in order) | `flow.parallel`, one branch per device |
+| `group` | `flow.groupStart` … `flow.groupEnd` |
+| `move_to_position` / `move_lift_off` / `move_path` / `move_relative` / `set_velocity` | `motion.moveToPosition` / `motion.liftOff` / `motion.movePath` / `motion.moveRelative` / `motion.setVelocity`; an exposure override names `main_camera` |
+| `move_axis_to` (gantry Z → 30) | `motion.readPosition` (prefix `fd_axis`) + `motion.moveRelative` distance `expr:30 - fd_axis_z` |
+| `psu_startup` mode CC | `psu.powerUp` + **`acceptCurrentLimit`** (new block param) |
+| `prompt_input` serial + `dut_open` new | `dut.promptSerial` + **`newUnit`** (new block param: never adopt the previous unit's sticky serial; a Run-page Start DUT is still adopted) |
+| `read_topic keithley/ch1`, `keithley_read` | `signal.read smu.Keithley_2602B.ch1.current`, `smu.readCurrent` |
+| `ctx_set align_*` + `run_script hexapod_align.lua` (+ `dut_record align_best`) | `scan.xcan` (axes XYZ, ladder 1,0.5 µm, settle 150 ms, captureAs `xcan_left` / `xcan_right`) + `dut.recordFromContext` from `…_best` |
+| `run_script uv_advanced.lua` | `script.run UV_Advanced` (no args — the defaults equal FireDog's) |
+| `capture_view` | `script.run CaptureView` (snap `main_camera` → Run-page snapshot box) |
+| `log "… {ctx}"` | `flow.comment` (`flow.log` does not interpolate; the read steps log their values) |
+| `cld_*` (disabled in FireDog; no CLD101x on this rig) | disabled `flow.comment` |
+
+Differences: each deck step is its own program run, so a unit's DUT record gets one run entry per
+program (all under the serial entered in Probe SLED; UV advance1's `dut.close` ends it). XCAN reads
+the Keithley live through the signal catalog (FireDog used the stream). First run: verify the
+motion at low speed, as FireDog's own notes ask.

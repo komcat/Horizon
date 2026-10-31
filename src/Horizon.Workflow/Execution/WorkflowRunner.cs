@@ -687,7 +687,12 @@ internal sealed class WorkflowRunner
         // If a unit is already active — an open Run-page "Start DUT" session, an
         // inherited active serial, or an earlier prompt this run — adopt it and skip
         // the prompt, so this block and the Start button are fully interchangeable.
-        if (ctx.Dut != null)
+        // 'newUnit' (FireDog's dut_open new): the inherited sticky serial is the LAST unit,
+        // not this one — prompt instead (the new serial overrides that fallback).
+        var newUnit = step.Parameters.TryGetValue("newUnit", out var nu)
+                      && bool.TryParse(nu, out var isNew) && isNew;
+        bool inheritedOnly = ctx.DutIsFallback && !ctx.DutIsSession;
+        if (ctx.Dut != null && !(newUnit && inheritedOnly))
         {
             var adopted = ctx.DutSerial ?? string.Empty;
             ctx.DutIsFallback = false;   // the block has explicitly chosen this DUT

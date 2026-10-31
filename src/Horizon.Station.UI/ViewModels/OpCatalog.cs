@@ -174,6 +174,7 @@ public static class OpCatalog
                 new ParamSpec("settleMs", "Verify after (ms)", ParamKind.Number, "150"),
                 new ParamSpec("toleranceV", "Voltage tolerance (± V)", ParamKind.Number, "0.1"),
                 new ParamSpec("offOnFail", "Switch output OFF if verify fails", ParamKind.Bool, "true"),
+                new ParamSpec("acceptCurrentLimit", "Accept current-limit (CC) mode as ON", ParamKind.Bool, "false"),
                 new ParamSpec("captureAs", "Store readings as (→ _v / _i, blank = none)", ParamKind.Text),
             }),
         new("psu.setVoltage", "Set PSU Voltage", "Power", DeviceKind.PowerSupply,
@@ -452,6 +453,7 @@ public static class OpCatalog
                 new ParamSpec("title", "Dialog title", ParamKind.Text, "DUT Serial"),
                 new ParamSpec("message", "Prompt", ParamKind.Text, "Enter or scan the unit serial number:"),
                 new ParamSpec("var", "Store serial in variable (optional)", ParamKind.Text),
+                new ParamSpec("newUnit", "New unit — don't reuse the last unit's serial", ParamKind.Bool, "false"),
             }),
         // Prompts the operator (modal) to type free text (lot number, remark, rework
         // reason…) and records it in the open DUT record under 'key'. Cancel fails the

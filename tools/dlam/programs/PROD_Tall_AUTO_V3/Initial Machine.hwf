@@ -1,0 +1,191 @@
+{
+  "Name": "Initial Machine",
+  "Steps": [
+    {
+      "Id": "p1-01",
+      "Name": "Ported from FireDog",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "FireDog recipe 'Initial Machine' (48877384), product siphog888, slot 'PROD Tall AUTO V3'. Migrated from bobcat 'Initial Machine'. Parallel Move -> sequential moves (hexes home first, then gantry safe); Slide Retract All -> per-slide retracts; velocities fold into each device's first move (they persist on the device)."
+      }
+    },
+    {
+      "Id": "p1-02",
+      "Name": "Retract UV head",
+      "Op": "pneumatic.retract",
+      "Device": "UV_Head",
+      "Parameters": {}
+    },
+    {
+      "Id": "p1-03",
+      "Name": "Retract dispenser (bobcat: disabled)",
+      "Op": "pneumatic.retract",
+      "Device": "Dispenser_Head",
+      "Parameters": {},
+      "Enabled": false
+    },
+    {
+      "Id": "p1-04",
+      "Name": "Retract all slides (bobcat Slide Retract All)",
+      "Op": "flow.groupStart",
+      "Parameters": {
+        "name": "Retract all slides (bobcat Slide Retract All)"
+      }
+    },
+    {
+      "Id": "p1-05",
+      "Name": "",
+      "Op": "pneumatic.retract",
+      "Device": "UV_Head",
+      "Parameters": {}
+    },
+    {
+      "Id": "p1-06",
+      "Name": "",
+      "Op": "pneumatic.retract",
+      "Device": "Dispenser_Head",
+      "Parameters": {}
+    },
+    {
+      "Id": "p1-07",
+      "Name": "Retract all slides (bobcat Slide Retract All)",
+      "Op": "flow.groupEnd",
+      "Parameters": {}
+    },
+    {
+      "Id": "p1-15",
+      "Name": "parallel: hex-left, hex-right, gantry-main",
+      "Op": "flow.parallel",
+      "Parameters": {},
+      "Branches": [
+        {
+          "Lane": "hex-left",
+          "Steps": [
+            {
+              "Id": "p1-08",
+              "Name": "hex-left home v=8",
+              "Op": "motion.moveToPosition",
+              "Device": "hex-left",
+              "Parameters": {
+                "position": "home",
+                "velocity": "8",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              },
+              "Enabled": false
+            },
+            {
+              "Id": "p1-09",
+              "Name": "",
+              "Op": "motion.liftOff",
+              "Device": "hex-left",
+              "Parameters": {
+                "position": "home",
+                "liftMm": "1",
+                "liftAxis": "X+",
+                "velocity": "5",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              }
+            }
+          ]
+        },
+        {
+          "Lane": "hex-right",
+          "Steps": [
+            {
+              "Id": "p1-10",
+              "Name": "",
+              "Op": "motion.liftOff",
+              "Device": "hex-right",
+              "Parameters": {
+                "position": "home",
+                "liftMm": "1",
+                "liftAxis": "X+",
+                "velocity": "5",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              }
+            },
+            {
+              "Id": "p1-11",
+              "Name": "hex-right home v=8",
+              "Op": "motion.moveToPosition",
+              "Device": "hex-right",
+              "Parameters": {
+                "position": "home",
+                "velocity": "8",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              },
+              "Enabled": false
+            }
+          ]
+        },
+        {
+          "Lane": "gantry-main",
+          "Steps": [
+            {
+              "Id": "p1-12",
+              "Name": "read gantry-main pose",
+              "Op": "motion.readPosition",
+              "Device": "gantry-main",
+              "Parameters": {
+                "prefix": "fd_axis"
+              }
+            },
+            {
+              "Id": "p1-13",
+              "Name": "gantry-main Z to 30 mm",
+              "Op": "motion.moveRelative",
+              "Device": "gantry-main",
+              "Parameters": {
+                "axis": "Z",
+                "distance": "expr:30 - fd_axis_z",
+                "velocity": "5"
+              }
+            },
+            {
+              "Id": "p1-14",
+              "Name": "gantry safe v=50",
+              "Op": "motion.moveToPosition",
+              "Device": "gantry-main",
+              "Parameters": {
+                "position": "safe",
+                "velocity": "20",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "p1-16",
+      "Name": "Vacuum off",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "Vacuum_Base",
+        "state": "false"
+      }
+    },
+    {
+      "Id": "p1-17",
+      "Name": "",
+      "Op": "lighting.setLightColor",
+      "Device": "LIGHT1",
+      "Parameters": {
+        "light": "main_camera_light",
+        "color": "collimate",
+        "percent": "50"
+      }
+    }
+  ]
+}

@@ -1,0 +1,298 @@
+{
+  "Name": "PP Left - Array",
+  "Steps": [
+    {
+      "Id": "p3-01",
+      "Name": "Ported from FireDog",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "FireDog recipe 'PP Left - Array' (eb47eb90), product siphog888, slot 'PROD Tall AUTO V3'. Migrated from bobcat 'PP Left Lens SIPHOG'. Hexapod graph-node moves emulated as approach->target position pairs (FireDog has no hex maps); gantry graph moves use move_path on ProcessFlow. Manual Adjust + XCAN kept but DISABLED, exactly as in bobcat. VERIFY MOTION PATHS AT LOW SPEED ON FIRST RUN."
+      }
+    },
+    {
+      "Id": "p3-02",
+      "Name": "Clear gripper",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "L_Gripper",
+        "state": "false"
+      }
+    },
+    {
+      "Id": "p3-03",
+      "Name": "",
+      "Op": "camera.setExposure",
+      "Device": "main_camera",
+      "Parameters": {
+        "exposureUs": "250"
+      }
+    },
+    {
+      "Id": "p3-04",
+      "Name": "Gantry is safe",
+      "Op": "motion.moveToPosition",
+      "Device": "gantry-main",
+      "Parameters": {
+        "position": "safe",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p3-08",
+      "Name": "parallel: gantry-main, hex-left",
+      "Op": "flow.parallel",
+      "Parameters": {},
+      "Branches": [
+        {
+          "Lane": "gantry-main",
+          "Steps": [
+            {
+              "Id": "p3-05",
+              "Name": "gantry safe -> See Grip collimate lens",
+              "Op": "motion.movePath",
+              "Device": "gantry-main",
+              "Parameters": {
+                "to": "See Grip collimate lens",
+                "from": "safe",
+                "velocity": "0",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              }
+            }
+          ]
+        },
+        {
+          "Lane": "hex-left",
+          "Steps": [
+            {
+              "Id": "p3-06",
+              "Name": "hex-left approach grip (graph-route emulation)",
+              "Op": "motion.moveToPosition",
+              "Device": "hex-left",
+              "Parameters": {
+                "position": "approachlensgrip",
+                "velocity": "5",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              }
+            },
+            {
+              "Id": "p3-07",
+              "Name": "hex-left lensgrip",
+              "Op": "motion.moveToPosition",
+              "Device": "hex-left",
+              "Parameters": {
+                "position": "lensgrip2",
+                "velocity": "2",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "p3-09",
+      "Name": "",
+      "Op": "camera.setExposure",
+      "Device": "main_camera",
+      "Parameters": {
+        "exposureUs": "5110"
+      },
+      "Enabled": false
+    },
+    {
+      "Id": "p3-10",
+      "Name": "Ask User To Grip",
+      "Op": "flow.askUser",
+      "Parameters": {
+        "title": "Ask User To Grip",
+        "message": "Is lens in place, good to grip?"
+      }
+    },
+    {
+      "Id": "p3-11",
+      "Name": "Gripper On",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "L_Gripper",
+        "state": "true"
+      }
+    },
+    {
+      "Id": "p3-12",
+      "Name": "",
+      "Op": "flow.wait",
+      "Parameters": {
+        "ms": "500"
+      }
+    },
+    {
+      "Id": "p3-13",
+      "Name": "Gripper Off",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "L_Gripper",
+        "state": "false"
+      }
+    },
+    {
+      "Id": "p3-14",
+      "Name": "",
+      "Op": "flow.wait",
+      "Parameters": {
+        "ms": "800"
+      }
+    },
+    {
+      "Id": "p3-15",
+      "Name": "Gripper On last",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "L_Gripper",
+        "state": "true"
+      }
+    },
+    {
+      "Id": "p3-16",
+      "Name": "Good to place?",
+      "Op": "flow.askUser",
+      "Parameters": {
+        "title": "Good to place?",
+        "message": "Lens are good after gripping?"
+      }
+    },
+    {
+      "Id": "p3-22",
+      "Name": "parallel: gantry-main, hex-left",
+      "Op": "flow.parallel",
+      "Parameters": {},
+      "Branches": [
+        {
+          "Lane": "gantry-main",
+          "Steps": [
+            {
+              "Id": "p3-17",
+              "Name": "gantry See Grip collimate lens -> See Collimate Lens",
+              "Op": "motion.movePath",
+              "Device": "gantry-main",
+              "Parameters": {
+                "to": "See Collimate Lens",
+                "from": "See Grip collimate lens",
+                "velocity": "0",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              }
+            }
+          ]
+        },
+        {
+          "Lane": "hex-left",
+          "Steps": [
+            {
+              "Id": "p3-18",
+              "Name": "",
+              "Op": "motion.movePath",
+              "Device": "hex-left",
+              "Parameters": {
+                "to": "approachlensplace",
+                "from": "lensgrip array 0",
+                "startTolMm": "0.01",
+                "velocity": "5",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              },
+              "Enabled": false
+            },
+            {
+              "Id": "p3-19",
+              "Name": "",
+              "Op": "motion.liftOff",
+              "Device": "hex-left",
+              "Parameters": {
+                "position": "approachlensgrip",
+                "liftMm": "2",
+                "liftAxis": "X+",
+                "velocity": "3",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              }
+            },
+            {
+              "Id": "p3-20",
+              "Name": "",
+              "Op": "motion.moveToPosition",
+              "Device": "hex-left",
+              "Parameters": {
+                "position": "approachlensplace",
+                "velocity": "5",
+                "approachDistance": "0",
+                "approachVelocity": "0",
+                "exposure": "0"
+              }
+            },
+            {
+              "Id": "p3-21",
+              "Name": "",
+              "Op": "motion.moveToPosition",
+              "Device": "hex-left",
+              "Parameters": {
+                "position": "lensPlace2",
+                "velocity": "5",
+                "approachDistance": "1",
+                "approachVelocity": "0.3",
+                "exposure": "0"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "p3-23",
+      "Name": "set camera and velocity back",
+      "Op": "flow.groupStart",
+      "Parameters": {
+        "name": "set camera and velocity back"
+      }
+    },
+    {
+      "Id": "p3-24",
+      "Name": "",
+      "Op": "camera.setExposure",
+      "Device": "main_camera",
+      "Parameters": {
+        "exposureUs": "250"
+      }
+    },
+    {
+      "Id": "p3-25",
+      "Name": "",
+      "Op": "motion.setVelocity",
+      "Device": "hex-left",
+      "Parameters": {
+        "speed": "2"
+      }
+    },
+    {
+      "Id": "p3-26",
+      "Name": "set camera and velocity back",
+      "Op": "flow.groupEnd",
+      "Parameters": {}
+    }
+  ]
+}

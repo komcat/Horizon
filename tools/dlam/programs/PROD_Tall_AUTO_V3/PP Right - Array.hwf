@@ -1,0 +1,248 @@
+{
+  "Name": "PP Right - Array",
+  "Steps": [
+    {
+      "Id": "p4-01",
+      "Name": "Ported from FireDog",
+      "Op": "flow.comment",
+      "Parameters": {
+        "text": "FireDog recipe 'PP Right - Array' (16933405), product siphog888, slot 'PROD Tall AUTO V3'. Migrated from bobcat 'PP Right Lens SIPHOG'. Same conventions as the left recipe. Fast Align XY dropped (PI firmware FSM - future pi_fast_scan command); Manual Adjust + XCAN kept DISABLED as in bobcat (XCAN device hex-left, faithful to the bobcat step). VERIFY MOTION PATHS AT LOW SPEED ON FIRST RUN."
+      }
+    },
+    {
+      "Id": "p4-02",
+      "Name": "bobcat Capture Snapshot (no image)",
+      "Op": "flow.log",
+      "Parameters": {
+        "message": "snapshot: left lens align"
+      }
+    },
+    {
+      "Id": "p4-03",
+      "Name": "Clear gripper",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "R_Gripper",
+        "state": "false"
+      }
+    },
+    {
+      "Id": "p4-04",
+      "Name": "Gantry is safe",
+      "Op": "motion.moveToPosition",
+      "Device": "gantry-main",
+      "Parameters": {
+        "position": "safe",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p4-05",
+      "Name": "Grip (bobcat Parallel Move via graph)",
+      "Op": "flow.groupStart",
+      "Parameters": {
+        "name": "Grip (bobcat Parallel Move via graph)"
+      }
+    },
+    {
+      "Id": "p4-06",
+      "Name": "gantry safe -> See Grip Focus Lens",
+      "Op": "motion.movePath",
+      "Device": "gantry-main",
+      "Parameters": {
+        "to": "See Grip Focus Lens",
+        "from": "safe",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p4-07",
+      "Name": "hex-right approach grip (graph-route emulation)",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "approachlensgrip",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "camera": "main_camera",
+        "exposure": "250"
+      }
+    },
+    {
+      "Id": "p4-08",
+      "Name": "hex-right lensgrip",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "lensgrip2",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p4-09",
+      "Name": "Grip (bobcat Parallel Move via graph)",
+      "Op": "flow.groupEnd",
+      "Parameters": {}
+    },
+    {
+      "Id": "p4-10",
+      "Name": "Ask User To Grip",
+      "Op": "flow.askUser",
+      "Parameters": {
+        "title": "Ask User To Grip",
+        "message": "Is lens in place, good to grip?"
+      }
+    },
+    {
+      "Id": "p4-11",
+      "Name": "Gripper On",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "R_Gripper",
+        "state": "true"
+      }
+    },
+    {
+      "Id": "p4-12",
+      "Name": "",
+      "Op": "flow.wait",
+      "Parameters": {
+        "ms": "500"
+      }
+    },
+    {
+      "Id": "p4-13",
+      "Name": "Gripper Off",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "R_Gripper",
+        "state": "false"
+      }
+    },
+    {
+      "Id": "p4-14",
+      "Name": "",
+      "Op": "flow.wait",
+      "Parameters": {
+        "ms": "800"
+      }
+    },
+    {
+      "Id": "p4-15",
+      "Name": "Gripper On last",
+      "Op": "io.setOutputByName",
+      "Device": "IOBottom",
+      "Parameters": {
+        "pin": "R_Gripper",
+        "state": "true"
+      }
+    },
+    {
+      "Id": "p4-16",
+      "Name": "Good to place?",
+      "Op": "flow.askUser",
+      "Parameters": {
+        "title": "Good to place?",
+        "message": "Lens are good after gripping?"
+      }
+    },
+    {
+      "Id": "p4-17",
+      "Name": "Place (bobcat Parallel Move via graph)",
+      "Op": "flow.groupStart",
+      "Parameters": {
+        "name": "Place (bobcat Parallel Move via graph)"
+      }
+    },
+    {
+      "Id": "p4-18",
+      "Name": "gantry See Grip Focus Lens -> See Focus Lens",
+      "Op": "motion.movePath",
+      "Device": "gantry-main",
+      "Parameters": {
+        "to": "See Focus Lens",
+        "from": "See Grip Focus Lens",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p4-19",
+      "Name": "",
+      "Op": "motion.movePath",
+      "Device": "hex-right",
+      "Parameters": {
+        "to": "approachlensplace",
+        "from": "lensgrip array 0",
+        "startTolMm": "0.01",
+        "velocity": "0",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      },
+      "Enabled": false
+    },
+    {
+      "Id": "p4-20",
+      "Name": "",
+      "Op": "motion.liftOff",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "approachlensgrip",
+        "liftMm": "2",
+        "liftAxis": "X+",
+        "velocity": "3",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p4-21",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "approachlensplace",
+        "velocity": "5",
+        "approachDistance": "0",
+        "approachVelocity": "0",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p4-22",
+      "Name": "",
+      "Op": "motion.moveToPosition",
+      "Device": "hex-right",
+      "Parameters": {
+        "position": "lensPlace2",
+        "velocity": "5",
+        "approachDistance": "1",
+        "approachVelocity": "0.3",
+        "exposure": "0"
+      }
+    },
+    {
+      "Id": "p4-23",
+      "Name": "Place (bobcat Parallel Move via graph)",
+      "Op": "flow.groupEnd",
+      "Parameters": {}
+    }
+  ]
+}

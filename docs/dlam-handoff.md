@@ -7,8 +7,8 @@ Read this first, then `docs/dlam-ui.md` (the FireDog → Horizon migration plan;
 
 | | State |
 |---|---|
-| `master` (`adcf939`, pushed) | DLAM Layer 2 ports, FireDog config importer, Keithley 2602B fix, `XCAN.moon`, XCAN test programs, FAAM.UI v0.6.2, and the `Horizon.Station.UI` extraction slices 1–3 (merged 2026-10-30; FAAM.UI ran clean after slice 3). |
-| `dlam-ui` (local, committed, not pushed) | Slice 3b — the Run-page kit (`RunStepsPanel` / `RunCameraPanel` / `RunLogView` / `RunPageLayout` / `DutRecordsView`, `EngineHost.StopPressed`, FAAM's FAU fallback steps → `FaamBuiltInSteps`) — and **slice 4, the DLAM.UI head** (first cut). `build/version-info.ps1` moved to the repo root with `-TagPrefix`. Solution builds x64 Release, 0 errors; FAAM.UI's analyzer warnings unchanged, none in DLAM.UI. DLAM.UI starts and shows its Run page (2026-10-30: startup headline, FireDog mascot, icon paths and the band layout fixed after the first look); the band scans and FAAM.UI on this branch are not run yet. |
+| `master` (pushed) | Everything below: DLAM Layer 2 ports, FireDog config importer, Keithley 2602B fix, `XCAN.moon`, FAAM.UI v0.6.2, the `Horizon.Station.UI` extraction slices 1–3, slice 3b (the Run-page kit — `RunStepsPanel` / `RunCameraPanel` / `RunLogView` / `RunPageLayout` / `DutRecordsView`, `EngineHost.StopPressed`, FAAM's FAU fallback steps → `FaamBuiltInSteps`), **slice 4 — the DLAM.UI head**, and the **FireDog recipe port** (`docs/dlam-ui.md` §9). DLAM.UI starts and shows its Run page; the band scans, the ported programs and FAAM.UI after slice 3b are not run on the rig yet. |
+| Release | **DLAM.UI `dlam-v0.1`** — first DLAM release, Velopack channel `dlam` (`deploy/release.ps1 -App DLAM.UI`). FAAM.UI's latest is `v0.6.2` on the default channel. |
 
 This PC **is the DLAM rig** (FireDog's machine). FireDog lives in
 `..\komcat\FireDog` (source, C++) and `D:\ProgramData\FireDog` (machine root, read-only to us).
@@ -20,8 +20,13 @@ This PC **is the DLAM rig** (FireDog's machine). FireDog lives in
   unless `--overwrite` (then backed up to `_backup-<stamp>\`).
 - `%APPDATA%\Horizon\products\DLAM_Bringup\processes\` — `XCAN_Test_Left.hwf`,
   `XCAN_Test_TwoLens.hwf` (copies of `tools/dlam/programs/`).
-- `%APPDATA%\Horizon\products\FAAM\` — created by the first FAAM.UI run (expected). The first
-  DLAM.UI run creates `products\DLAM\` and makes it active.
+- `%APPDATA%\Horizon\products\FAAM\` — created by the first FAAM.UI run (expected).
+- `%APPDATA%\Horizon\products\DLAM\` (active) — written by `tools/dlam/firedog_port.py --install`:
+  5 programs (Initial Machine, Probe SLED and PIC, PP Left / PP Right - Array, UV advance1), deck
+  **PROD Tall AUTO V3** (active, Auto off — the scan / SMU-init / dispense steps are not ported),
+  `scripts\CaptureView.moon` + `UV_Advanced.moon`, 29 FireDog positions (hidden `algn_*` skipped;
+  earlier files backed up). `config\faam_position_map.json` gained the DLAM ProcessFlow maps
+  (gantry-main, hex-left, hex-right; 2 hex-right links dropped — FireDog no longer has the nodes).
 - FAAM.UI / DLAM.UI / Horizon.Console / FireDog: only one at a time — one process owns the SDKs.
 
 ## Open checks (the user does these; results decide the next step)
@@ -46,22 +51,29 @@ This PC **is the DLAM rig** (FireDog's machine). FireDog lives in
   Map; IO → Wait for Input; Flow → Wait Until; each with help. Author a deck with Run-page programs.
 - DUT Data page: serials → runs → values; CSV export.
 
+**Ported recipes** (close FireDog first; low jog velocity for the first pass): step through
+Initial Machine, then each PP program, watching the moves and the map routes; Probe SLED powers
+`PSU_Laser` in CC mode (`psu.powerUp` `acceptCurrentLimit`) and asks the serial (`newUnit`); UV
+advance1 closes the DUT as Pass.
+
 **Rig bring-up leftovers** (`Horizon.Console`): Keithley **ch2** photocurrent with bias + light;
 IO watch switches / LEDs and `IOBottom` `Door_Back_6` (reads low — open door or sensor?); jog each
 device, E-stop stops motion.
 
 ## Next steps
 
-1. After both checks: commit `dlam-ui` (slice 3b + slice 4), push, merge to `master`.
-2. **DLAM release pipeline**: `deploy/publish.ps1` / `release.ps1` only know FAAM.UI. DLAM needs
-   package id `DLAM.UI`, Velopack **channel `dlam`** (`--channel dlam` on `vpk pack`, `vpk download
-   github`, `vpk upload github`), tags `dlam-v<Version>` (checked against DLAM.UI.csproj
-   `<Version>`). No `AppUpdater` change (an install updates from the channel it was packed with).
+1. Port the rest of "PROD Tall AUTO V3" (Scan Left 800uA, Scan Two Lens 6800uA, Init SMU and
+   TEC, STEP DISPENSE) — add their recipe ids to `RECIPES` in `tools/dlam/firedog_port.py` and map
+   any new step types; then turn deck Auto on.
+2. DLAM releases: `pwsh deploy/publish.ps1 -Apps DLAM.UI,Horizon.Console,Horizon.ConfigTool -Zip`,
+   then `pwsh deploy/release.ps1 -App DLAM.UI -Version <n> -PreRelease -NoAppData -NoScripts`
+   (tag `dlam-v<n>`, channel `dlam`, notes `docs/release-notes-dlam-v<n>.md`). Velopack's GitHub
+   source reads only the most recent page of releases — fine while both heads release often.
 3. Run page gaps vs the plan: needle / dispense controls (today Engineer › Dispensing + the vision
    pages); a DLAM DUT view with alignment results if the generic one is not enough.
-4. Product data conversion (`docs/dlam-ui.md` §3): positions, maps, grips → convert; device
-   registrations, needle calibration, NCC vision templates → re-teach / re-measure. Then phase 5:
-   re-author "PROD Tall AUTO V2" and run side by side with FireDog.
+4. Product data conversion (`docs/dlam-ui.md` §3): grips → convert; device registrations, needle
+   calibration, NCC vision templates → re-teach / re-measure. Then phase 5: run the ported deck
+   side by side with FireDog.
 5. Later (`dlam-ui.md` §6): FireDog alignment procedure (local frame O1), waffle trays.
    Follow-ups: a PI on-target (`qONT`) wait in Layer 1 (then the scans' `settleMinMs` can drop to 0);
    a `machine.ctx` / `machine.dut.record` binding so `.moon` scripts can return results.

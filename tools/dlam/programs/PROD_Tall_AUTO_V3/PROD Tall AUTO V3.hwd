@@ -1,0 +1,51 @@
+{
+  "Uid": "fd-prod-tall-v3",
+  "Name": "PROD Tall AUTO V3",
+  "Entries": [
+    {
+      "Uid": "fd-v3-1",
+      "Program": "Initial Machine",
+      "Enabled": true,
+      "Condition": "",
+      "Auto": false,
+      "DelaySeconds": 0,
+      "ShowInRun": true
+    },
+    {
+      "Uid": "fd-v3-2",
+      "Program": "Probe SLED and PIC",
+      "Enabled": true,
+      "Condition": "",
+      "Auto": false,
+      "DelaySeconds": 0,
+      "ShowInRun": true
+    },
+    {
+      "Uid": "fd-v3-3",
+      "Program": "PP Left - Array",
+      "Enabled": true,
+      "Condition": "",
+      "Auto": false,
+      "DelaySeconds": 0,
+      "ShowInRun": true
+    },
+    {
+      "Uid": "fd-v3-4",
+      "Program": "PP Right - Array",
+      "Enabled": true,
+      "Condition": "",
+      "Auto": false,
+      "DelaySeconds": 0,
+      "ShowInRun": true
+    },
+    {
+      "Uid": "fd-v3-5",
+      "Program": "UV advance1",
+      "Enabled": true,
+      "Condition": "",
+      "Auto": false,
+      "DelaySeconds": 0,
+      "ShowInRun": true
+    }
+  ]
+}
