@@ -119,14 +119,14 @@ $releaseApps = @($App, 'Horizon.Console', 'Horizon.ConfigTool')
 # and publish.ps1 names the zip after the latter. Accept the exact name first,
 # then any zip whose version refines the tag (0.1 -> 0.1.0).
 # $suffix is the runtime part of the name; the scripts bundle has none.
-function Resolve-AppZip($deployDir, $app, $suffix = '-win-x64') {
-    $exact = Join-Path $deployDir "$app-v$Version$suffix.zip"
+function Resolve-AppZip($deployDir, $zipApp, $suffix = '-win-x64') {
+    $exact = Join-Path $deployDir "$zipApp-v$Version$suffix.zip"
     if (Test-Path -LiteralPath $exact) { return $exact }
 
-    $candidates = @(Get-ChildItem -LiteralPath $deployDir -Filter "$app-v$Version.*$suffix.zip" -ErrorAction SilentlyContinue)
+    $candidates = @(Get-ChildItem -LiteralPath $deployDir -Filter "$zipApp-v$Version.*$suffix.zip" -ErrorAction SilentlyContinue)
     if ($candidates.Count -eq 1) { return $candidates[0].FullName }
     if ($candidates.Count -gt 1) {
-        Fail ("Ambiguous {0} asset for v{1} - pass -Assets explicitly:`n  {2}" -f $app, $Version, (($candidates.Name) -join "`n  "))
+        Fail ("Ambiguous {0} asset for v{1} - pass -Assets explicitly:`n  {2}" -f $zipApp, $Version, (($candidates.Name) -join "`n  "))
     }
     return $null   # missing; the caller reports it
 }
@@ -136,9 +136,9 @@ $deployDir = Join-Path $repo 'artifacts\deploy'
 if (-not $Assets) {
     $resolved = @()
     $missing  = @()
-    foreach ($app in $releaseApps) {
-        $zip = Resolve-AppZip $deployDir $app
-        if ($zip) { $resolved += $zip } else { $missing += $app }
+    foreach ($zipApp in $releaseApps) {
+        $zip = Resolve-AppZip $deployDir $zipApp
+        if ($zip) { $resolved += $zip } else { $missing += $zipApp }
     }
     if ($missing) {
         # Creating a release with an app silently absent is a defect; topping up an
