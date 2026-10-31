@@ -25,6 +25,12 @@ public partial class DispenseEditorView : UserControl
         _vm.PreviewChanged += RedrawPreview;
         PreviewCanvas.SizeChanged += (_, _) => RedrawPreview();
         Loaded += (_, _) => RedrawPreview();
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(DispenseEditorViewModel.CalibrationBrushKey) or nameof(DispenseEditorViewModel.TrimWarn))
+                ApplyBrushes();
+        };
+        ApplyBrushes();
     }
 
     /// <summary>Re-read routine names (the active product may have changed) and redraw.</summary>
@@ -32,6 +38,13 @@ public partial class DispenseEditorView : UserControl
     {
         _vm.ReloadCommand.Execute(null);
         RedrawPreview();
+    }
+
+    /// <summary>Status colours from theme keys: the calibration line (Ok / Warn / Danger) and a non-zero trim.</summary>
+    private void ApplyBrushes()
+    {
+        CalibrationLine.Foreground = TryFindResource(_vm.CalibrationBrushKey) as Brush ?? (Brush)FindResource("Text");
+        TrimHintText.Foreground = (Brush)FindResource(_vm.TrimWarn ? "Warn" : "Subtle");
     }
 
     private void RedrawPreview()

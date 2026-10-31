@@ -1549,25 +1549,64 @@ public sealed class ProcessService : IProcessService
 
     public CameraNeedleCalibrationData GetCameraNeedleCalibration() => _cameraNeedle.Current;
 
-    public void SetCameraNeedleSettings(
-        double vcamneedleX, double vcamneedleY, double approachMm,
-        double touchZAdjustMm, int dwellMs, int outputDebounceMs)
+    public event Action? CameraNeedleCalibrationChanged;
+
+    public void SetCameraNeedleSeed(double vcamneedleX, double vcamneedleY)
     {
         var cfg = _cameraNeedle.Current;
+        bool changed = Math.Abs(cfg.VcamneedleX - vcamneedleX) > 1e-9 || Math.Abs(cfg.VcamneedleY - vcamneedleY) > 1e-9;
+        if (!changed) return;
+        // A typed offset is a SEED: enough to aim the first imprint, never enough to dispense through.
         _cameraNeedle.Update(cfg with
         {
             VcamneedleX = vcamneedleX,
             VcamneedleY = vcamneedleY,
-            ApproachMm = approachMm,
-            TouchZAdjustMm = touchZAdjustMm,
-            DwellMs = dwellMs,
-            OutputDebounceMs = outputDebounceMs,
+            Valid = false,
+            Verified = false,
+            ZChecked = false,
             SavedBy = _operator?.DisplayName,
             SavedAt = DateTimeOffset.Now.ToString("o"),
         });
-        Log(LogLevel.Info,
-            $"Camera-needle settings set: offset ({vcamneedleX:F4}, {vcamneedleY:F4}) mm, approach {approachMm:F2} mm, " +
-            $"touch-Z adjust {touchZAdjustMm:F3} mm, dwell {dwellMs} ms, debounce {outputDebounceMs} ms.");
+        Log(LogLevel.Warning,
+            $"Camera-needle seed offset ({vcamneedleX:F4}, {vcamneedleY:F4}) mm saved — NOT a calibration; dispensing refuses until it is calibrated.");
+        CameraNeedleCalibrationChanged?.Invoke();
+    }
+
+    public Result SaveCameraNeedleParameters(CameraNeedleCalibrationData parameters)
+    {
+        if (IsRunning)
+            return Result.Fail(ErrorCode.OperationFailed, "A run is in progress — the calibration parameters are locked until it ends.");
+        var cfg = _cameraNeedle.Current;
+        // Parameters + hardware only — the measured result is written by a calibration run alone.
+        _cameraNeedle.Update(cfg with
+        {
+            GantryDevice = parameters.GantryDevice.Trim(),
+            DispenserSlide = parameters.DispenserSlide.Trim(),
+            ShotIoDevice = parameters.ShotIoDevice.Trim(),
+            ShotPin = parameters.ShotPin.Trim(),
+            ShotMs = Math.Clamp(parameters.ShotMs, 1, 60000),
+            SettleMs = Math.Clamp(parameters.SettleMs, 0, 60000),
+            ClearMm = Math.Clamp(parameters.ClearMm, 0, 20),
+            FirstClearMm = Math.Clamp(parameters.FirstClearMm, 0, 20),
+            VerifyGapMm = Math.Clamp(parameters.VerifyGapMm, 0, 2),
+            LiftMm = Math.Clamp(parameters.LiftMm, 0, 20),
+            Passes = Math.Clamp(parameters.Passes, 1, 5),
+            TolMm = Math.Clamp(parameters.TolMm, 0.001, 5),
+            ZTolMm = Math.Clamp(parameters.ZTolMm, 0.001, 5),
+            VTraverse = Math.Clamp(parameters.VTraverse, 0.001, 100),
+            VApproach = Math.Clamp(parameters.VApproach, 0.001, 100),
+            VFinal = Math.Clamp(parameters.VFinal, 0.001, 100),
+            VLiftoff = Math.Clamp(parameters.VLiftoff, 0.001, 100),
+            ClearMoves = parameters.ClearMoves
+                .Where(m => !string.IsNullOrWhiteSpace(m.Device) && !string.IsNullOrWhiteSpace(m.Position))
+                .Select(m => new NeedleClearMove(m.Device.Trim(), m.Position.Trim()))
+                .ToList(),
+            SavedBy = _operator?.DisplayName,
+            SavedAt = DateTimeOffset.Now.ToString("o"),
+        });
+        Log(LogLevel.Info, "Camera-needle calibration parameters saved.");
+        CameraNeedleCalibrationChanged?.Invoke();
+        return Result.Ok();
     }
 
     public Task<Result<CameraNeedleResult>> RunCameraNeedleCalibrationAsync(CancellationToken ct = default)
@@ -1581,30 +1620,51 @@ public sealed class ProcessService : IProcessService
         IOperatorPrompt? prompt, CancellationToken ct)
     {
         var cfg = _cameraNeedle.Current;
-        var options = new CameraNeedleOptions(
-            cfg.GantryDevice, cfg.DispenserSlide, cfg.ShotIoDevice, cfg.ShotPin, cfg.OutputDebounceMs,
-            cfg.DwellMs, cfg.LiftoffMm, cfg.ApproachMm, cfg.SlowZVelocity, cfg.TouchZAdjustMm,
-            cfg.CalPosition, cfg.VcamneedleX, cfg.VcamneedleY, cfg.FocusToNeedleZmm);
 
-        var routine = new CameraNeedleCalibrationRoutine(_engine, prompt, Log);
-        Log(LogLevel.Info, $"Camera-needle calibration started: gantry '{cfg.GantryDevice}', dispenser '{cfg.DispenserSlide}'.");
-
-        var result = await routine.RunAsync(options, ct).ConfigureAwait(false);
-        if (result.IsSuccess)
+        // "Clear first" positions are held by NAME — refuse before anything moves when one is missing.
+        foreach (var m in cfg.ClearMoves)
         {
-            var r = result.Value;
-            _cameraNeedle.Update(cfg with
-            {
-                CalPosition = r.CalPosition,
-                VcamneedleX = r.VcamneedleX,
-                VcamneedleY = r.VcamneedleY,
-                FocusToNeedleZmm = r.FocusToNeedleZmm,
-                SavedBy = _operator?.DisplayName,
-                SavedAt = DateTimeOffset.Now.ToString("o"),
-            });
-            Log(LogLevel.Info, "Camera-needle calibration saved.");
+            if (GetPosition(m.Device, m.Position) == null)
+                return Result<CameraNeedleResult>.Fail(ErrorCode.InvalidParameter,
+                    $"Clear first: '{m.Device}' has no position '{m.Position}' in this product.");
         }
-        return result;
+
+        var routine = new CameraNeedleCalibrationRoutine(_engine, prompt, Log,
+            (device, position, token) => MoveToNamedPositionAsync(device, position, token),
+            SaveCameraNeedlePass);
+        Log(LogLevel.Info,
+            $"Camera-needle calibration started: gantry '{cfg.GantryDevice}', dispenser '{cfg.DispenserSlide}', {cfg.Passes} pass(es).");
+        return await routine.RunAsync(cfg, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Persists one calibration pass (called after every pass, from the routine's thread).</summary>
+    private void SaveCameraNeedlePass(CameraNeedleResult r)
+    {
+        var now = DateTimeOffset.Now.ToString("o");
+        _cameraNeedle.Update(_cameraNeedle.Current with
+        {
+            VcamneedleX = r.VcamneedleX,
+            VcamneedleY = r.VcamneedleY,
+            FocusToNeedleZmm = r.FocusToNeedleZmm,
+            Valid = true,
+            Verified = r.Verified && r.ZChecked,
+            ZChecked = r.ZChecked,
+            ResidualMm = r.ResidualMm,
+            ZResidualMm = r.ZResidualMm,
+            Camera = r.Camera,
+            Needle = r.Needle,
+            Imprint = r.Imprint,
+            CalibratedBy = _operator?.DisplayName,
+            CalibratedAt = now,
+            SavedBy = _operator?.DisplayName,
+            SavedAt = now,
+        });
+        Log(LogLevel.Info,
+            $"Camera-needle pass {r.Pass} saved: ({r.VcamneedleX:F4}, {r.VcamneedleY:F4}, dZ {-r.FocusToNeedleZmm:F4}) mm" +
+            (r.ZChecked
+                ? $", residual {r.ResidualMm:F4} mm XY / {r.ZResidualMm:+0.0000;-0.0000} mm Z{(r.Verified ? " — VERIFIED" : "")}."
+                : " (measure pass)."));
+        CameraNeedleCalibrationChanged?.Invoke();
     }
 
     // --- Dispensing routines (per-product) ---
@@ -1643,41 +1703,16 @@ public sealed class ProcessService : IProcessService
         return Result.Ok();
     }
 
-    public DispenseRoutine NewDispenseRoutine(string name)
-    {
-        // Seed the shot params from the machine camera→needle calibration so a fresh routine
-        // dispenses with the already-tuned timing / motion.
-        var cal = _cameraNeedle.Current;
-        return new DispenseRoutine
-        {
-            Name = name,
-            GantryDevice = cal.GantryDevice,
-            DispenserSlide = cal.DispenserSlide,
-            Shot = new DispenseShot
-            {
-                DwellMs = cal.DwellMs,
-                OutputDebounceMs = cal.OutputDebounceMs,
-                LiftoffMm = cal.LiftoffMm,
-                ApproachMm = cal.ApproachMm,
-                SlowZVelocity = cal.SlowZVelocity,
-                TouchZAdjustMm = cal.TouchZAdjustMm,
-                ShotIoDevice = cal.ShotIoDevice,
-                ShotPin = cal.ShotPin,
-            },
-        };
-    }
+    public DispenseRoutine NewDispenseRoutine(string name) => new() { Name = name };
 
     public async Task<Result> RunDispenseRoutineAsync(string name, CancellationToken ct = default)
     {
         var load = LoadDispenseRoutine(name);
         if (!load.IsSuccess) return Result.Fail(load.Error, load.Message);
 
-        var cal = _cameraNeedle.Current;
-        var runner = new DispenseRoutineRunner(_engine, Log);
+        var runner = new DispenseRoutineRunner(_engine, OperatorPrompt, Log);
         Log(LogLevel.Info, $"Dispense routine started: {name}");
-        return await runner
-            .RunAsync(load.Value, cal.VcamneedleX, cal.VcamneedleY, cal.FocusToNeedleZmm, ct)
-            .ConfigureAwait(false);
+        return await runner.RunAsync(load.Value, _cameraNeedle.Current, ct).ConfigureAwait(false);
     }
 
     public async Task<Result> RunNeedleApproachAsync(double approachDistanceMm, double velocity, CancellationToken ct = default)

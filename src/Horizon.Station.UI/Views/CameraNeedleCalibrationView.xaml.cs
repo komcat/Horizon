@@ -10,18 +10,19 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Horizon.Engine;
+using Horizon.Station.UI.ViewModels;
 using Horizon.Workflow;
-using Horizon.Workflow.Calibration;
 
 namespace Horizon.Station.UI.Views;
 
 /// <summary>
-/// Camera→needle calibration panel. Runs the Layer 2 routine
-/// (<see cref="IProcessService.RunCameraNeedleCalibrationAsync(IOperatorPrompt, CancellationToken)"/>)
-/// and serves as its non-modal <see cref="IOperatorPrompt"/> — each routine confirm
-/// gate shows a green/red banner on the live feed while the operator jogs (left rail)
-/// or MoveClicks to satisfy it. Mirrors the Run page's camera + crosshair + MoveClick
-/// and the AlignmentPanel's TaskCompletionSource prompt pattern.
+/// Camera→needle calibration page (FireDog's Needle page). Runs the Layer 2 measure + verify
+/// procedure (<see cref="IProcessService.RunCameraNeedleCalibrationAsync(IOperatorPrompt, CancellationToken)"/>)
+/// and serves as its non-modal <see cref="IOperatorPrompt"/> — each confirm and jog gate shows a
+/// green/red banner on the live feed while the operator jogs (left rail) or MoveClicks to satisfy
+/// it. Below the feed: the needle-motion drawing with the protocol's parameters under it
+/// (<see cref="CameraNeedleCalibrationViewModel"/>); beside it, the current offset and whether a
+/// second pass verified it.
 /// </summary>
 public partial class CameraNeedleCalibrationView : UserControl, IOperatorPrompt
 {
@@ -36,6 +37,8 @@ public partial class CameraNeedleCalibrationView : UserControl, IOperatorPrompt
     private bool _renderScheduled;
     private bool _active;
     private bool _subscribed;
+
+    private readonly CameraNeedleCalibrationViewModel _vm;
 
     private CancellationTokenSource? _cts;
     private TaskCompletionSource<bool>? _pending;
@@ -55,12 +58,24 @@ public partial class CameraNeedleCalibrationView : UserControl, IOperatorPrompt
 
         MainPrompt.Affirmed += () => CompletePrompt(true);
         MainPrompt.Negated += () => CompletePrompt(false);
+
+        _vm = new CameraNeedleCalibrationViewModel(host);
+        DataContext = _vm;
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(CameraNeedleCalibrationViewModel.StateBrushKey)) ApplyStateBrush();
+        };
+        ApplyStateBrush();
     }
+
+    private void ApplyStateBrush()
+        => StateLine.Foreground = (TryFindResource(_vm.StateBrushKey) as Brush) ?? (Brush)FindResource("Text");
 
     // --- page lifecycle ---
 
     public void Activate()
     {
+        if (_cts == null) _vm.Reload();
         if (_active || _mainCamera == null) return;
         _active = true;
         _ = _host.Engine.Camera.StartGrabbingAsync(_mainCamera);
@@ -91,11 +106,12 @@ public partial class CameraNeedleCalibrationView : UserControl, IOperatorPrompt
         if (_cts != null) return;
         if (_mainCamera == null) { SetStatus("No camera available.", true); return; }
 
-        ResultText.Text = "—";
         SetStatus("Running…");
         StartButton.IsEnabled = false;
         CancelButton.IsEnabled = true;
         BackButton.IsEnabled = false;
+        _vm.IsEditable = false;
+        MotionExpander.IsExpanded = false;   // the run needs the feed
 
         _cts = new CancellationTokenSource();
         var activity = _host.Activity.Begin(ActivityKind.Alignment, "Camera-needle calibration");
@@ -105,15 +121,15 @@ public partial class CameraNeedleCalibrationView : UserControl, IOperatorPrompt
             if (r.IsSuccess)
             {
                 var v = r.Value;
-                SetStatus("Saved.");
-                StepText.Text = "Calibration complete and saved to camera_needle_calibration.json.";
-                ResultText.Text =
-                    $"vcamneedle = ({v.VcamneedleX:F4}, {v.VcamneedleY:F4}) mm\n" +
-                    $"focus → needle Z = {v.FocusToNeedleZmm:F4} mm";
+                SetStatus(v.Verified ? "Calibrated and verified." : "Saved — UNVERIFIED (one pass).", !v.Verified);
+                StepText.Text = string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                    "Done. dX {0:F4}, dY {1:F4}, dZ {2:F4} mm saved to camera_needle_calibration.json.",
+                    v.VcamneedleX, v.VcamneedleY, -v.FocusToNeedleZmm);
             }
             else
             {
                 SetStatus(r.Message, true);
+                StepText.Text = r.Message;
             }
         }
         catch (Exception ex)
@@ -130,6 +146,8 @@ public partial class CameraNeedleCalibrationView : UserControl, IOperatorPrompt
             StartButton.IsEnabled = true;
             CancelButton.IsEnabled = false;
             BackButton.IsEnabled = true;
+            _vm.IsEditable = true;
+            _vm.RefreshStatus();
         }
     }
 
@@ -157,6 +175,28 @@ public partial class CameraNeedleCalibrationView : UserControl, IOperatorPrompt
             MainPrompt.Show(message, "Confirm", "Cancel");
         });
 
+        return tcs.Task;
+    }
+
+    /// <summary>
+    /// The procedure's jog steps ("centre the camera", "touch the coupon", "centre on the imprint")
+    /// are a banner here: the operator jogs on the rail or MoveClicks, then presses Continue.
+    /// </summary>
+    public Task<bool> JogPopupAsync(JogPopupRequest request, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registration = ct.Register(() => tcs.TrySetResult(false));
+        tcs.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
+
+        string axes = string.Join("/", request.Axes.ToUpperInvariant().ToCharArray());
+        string message = $"{request.Message}  (jog {axes} on the rail, or MoveClick the feed)";
+        Dispatcher.Invoke(() =>
+        {
+            _pending = tcs;
+            StepText.Text = message;
+            SetStatus(request.Title + "…");
+            MainPrompt.Show(message, "Continue", "Cancel");
+        });
         return tcs.Task;
     }
 

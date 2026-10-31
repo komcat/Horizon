@@ -126,8 +126,8 @@ internal static class MoveApproach
     };
 
     /// <summary>The device's current velocity — PI: the system velocity; others: every installed axis. A read of 0 counts as a failure.</summary>
-    private static async Task<Result<Dictionary<string, double>>> ReadVelocitiesAsync(
-        IMotionFacet motion, string device, bool isPi, IReadOnlyList<string> axes)
+    internal static async Task<Result<Dictionary<string, double>>> ReadVelocitiesAsync(
+        IMotionFacet motion, string device, bool isPi, IReadOnlyList<string> axes, string what = "Approach")
     {
         var map = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         if (isPi)
@@ -135,7 +135,7 @@ internal static class MoveApproach
             var r = await motion.GetSystemVelocityAsync(device).ConfigureAwait(false);
             if (!r.IsSuccess || r.Value <= 0)
                 return Result<Dictionary<string, double>>.Fail(ErrorCode.MotionCommunicationError,
-                    $"Approach {device}: could not read the system velocity — approach refused (it could not be restored).");
+                    $"{what} {device}: could not read the system velocity — refused (it could not be restored).");
             map[SystemKey] = r.Value;
             return Result<Dictionary<string, double>>.Ok(map);
         }
@@ -145,14 +145,14 @@ internal static class MoveApproach
             var r = await motion.GetVelocityAsync(device, axis).ConfigureAwait(false);
             if (!r.IsSuccess || r.Value <= 0)
                 return Result<Dictionary<string, double>>.Fail(ErrorCode.MotionCommunicationError,
-                    $"Approach {device}: could not read the {axis} velocity — approach refused (it could not be restored).");
+                    $"{what} {device}: could not read the {axis} velocity — refused (it could not be restored).");
             map[axis] = r.Value;
         }
         return Result<Dictionary<string, double>>.Ok(map);
     }
 
     /// <summary>Writes a velocity snapshot back; tries every entry, reports the first failure.</summary>
-    private static async Task<Result> WriteVelocitiesAsync(
+    internal static async Task<Result> WriteVelocitiesAsync(
         IMotionFacet motion, string device, IReadOnlyDictionary<string, double> velocities)
     {
         Result firstFailure = Result.Ok();

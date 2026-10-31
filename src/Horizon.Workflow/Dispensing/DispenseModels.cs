@@ -104,52 +104,84 @@ public sealed record DispensePattern
 }
 
 /// <summary>
-/// How each dot is dispensed — the shot timing + motion, plus which output fires the
-/// epoxy. Per-routine so variations can differ (a fine dot vs a heavy line). Seeded from
-/// the machine camera→needle calibration defaults when a routine is created.
+/// How each dot is dispensed — FireDog's <c>dispense_run</c> parameters, one group per stage of
+/// the needle-motion drawing. Per-routine, because how much glue goes where is a fact about the
+/// product. The hardware (gantry, slide, valve) and the touch height come from the machine
+/// camera→needle calibration, never from here, so nothing in a routine goes stale when the needle
+/// is changed: re-calibrate and every routine still works.
 /// </summary>
 public sealed record DispenseShot
 {
-    /// <summary>Epoxy window: shot output held ON (ms).</summary>
-    public int DwellMs { get; init; } = 500;
-    /// <summary>Settle delay on both shot edges (ms).</summary>
-    public int OutputDebounceMs { get; init; } = 300;
-    /// <summary>Slow lift-off distance after a dot (mm), away from the surface.</summary>
-    public double LiftoffMm { get; init; } = 5.0;
-    /// <summary>Slow-approach distance before touch (mm): fast to here, then crawl.</summary>
-    public double ApproachMm { get; init; } = 10.0;
-    /// <summary>Velocity for the slow approach / lift-off Z moves (mm/s).</summary>
-    public double SlowZVelocity { get; init; } = 1.0;
-    /// <summary>Touch-height tweak (mm): + presses deeper toward the surface, − higher.</summary>
-    public double TouchZAdjustMm { get; init; }
-    /// <summary>IO device carrying the shot output pin.</summary>
-    public string ShotIoDevice { get; init; } = "IOBottom";
-    /// <summary>Output pin pulsed to fire the epoxy shot.</summary>
-    public string ShotPin { get; init; } = "Dispenser_Shot";
+    // 1 — camera over the point, needle over it
+
+    /// <summary>After arriving, the operator nudges X/Y onto this part's point; the dot goes where they
+    /// leave it. This run only — nothing is written back. Z stays: the touch height is computed from it.</summary>
+    public bool Adjust { get; init; } = true;
+
+    /// <summary>XY traverse velocity (mm/s); 0 = the device's own speed.</summary>
+    public double VTravel { get; init; }
+
+    // 2–4 — down to the part
+
+    /// <summary>Ask before extending the slide and before firing.</summary>
+    public bool Confirm { get; init; } = true;
+
+    /// <summary>Z down to the safety height (mm/s).</summary>
+    public double VApproach { get; init; } = 20.0;
+
+    /// <summary>Fast → slow handover, this far above the stop height (mm).</summary>
+    public double SafetyMm { get; init; } = 1.0;
+
+    /// <summary>Z from the safety height to the stop height (mm/s).</summary>
+    public double VFinal { get; init; } = 5.0;
+
+    /// <summary>Deliberate standoff ABOVE the touch height (mm) — the bead bridges it. A property of
+    /// the glue and the dot size. 0 = stop at the touch.</summary>
+    public double GapMm { get; init; }
+
+    /// <summary>Corrects the CALIBRATED touch height (mm, + = closer to the part). Normally 0 with a
+    /// verified calibration — not the same correction as <see cref="GapMm"/>.</summary>
+    public double ZTrimMm { get; init; }
+
+    // 5–7 — shot and up
+
+    /// <summary>Settle at height before firing (ms).</summary>
+    public int BeforeMs { get; init; }
+
+    /// <summary>Valve open time = shot size (ms). No pressure control: the regulator sets the flow.</summary>
+    public int ShotMs { get; init; } = 300;
+
+    /// <summary>Dwell after firing — the string break (ms).</summary>
+    public int AfterMs { get; init; }
+
+    /// <summary>Z lift-off after the shot, before the slide comes up (mm). 0 = slide first.</summary>
+    public double LiftMm { get; init; } = 1.5;
+
+    /// <summary>Z lifting off the dot (mm/s).</summary>
+    public double VLiftoff { get; init; } = 5.0;
+
+    // 8 — back and inspect
+
+    /// <summary>Bring the camera back over the pattern after the last dot.</summary>
+    public bool VerifyBack { get; init; } = true;
+
+    /// <summary>With <see cref="Confirm"/> off, the "check the dot" prompt continues by itself after
+    /// this long (ms) and a Cancel inside it rejects the dot; 0 = no prompt.</summary>
+    public int VerifyMs { get; init; } = 3000;
 }
 
 /// <summary>
-/// A named, reusable dispensing routine — a pattern + per-dot shot settings, scoped to a
-/// product. At run time the operator points the camera at the target; the runner uses the
-/// machine camera→needle calibration to put the needle there and lays the pattern down.
+/// A named, reusable dispensing routine — a pattern + per-dot motion/shot settings, scoped to a
+/// product. At run time the camera is over the target (the program moved it there); the runner
+/// uses the machine camera→needle calibration to put the needle there and lays the pattern down.
 /// </summary>
 public sealed record DispenseRoutine
 {
     /// <summary>Unique routine name within the product (also the file name).</summary>
     public string Name { get; init; } = "";
 
-    /// <summary>Gantry carrying the camera + dispenser.</summary>
-    public string GantryDevice { get; init; } = "gantry-main";
-
-    /// <summary>Pneumatic slide that lowers/raises the dispenser head (sensor-confirmed).</summary>
-    public string DispenserSlide { get; init; } = "Dispenser_Head";
-
     public DispensePattern Pattern { get; init; } = new();
     public DispenseShot Shot { get; init; } = new();
-
-    /// <summary>When true, after the last dot the gantry returns so the camera frames the
-    /// dispensed location (for visual inspection). Off by default.</summary>
-    public bool ReturnToView { get; init; }
 
     /// <summary>Optional free-text note.</summary>
     public string? Notes { get; init; }

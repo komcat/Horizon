@@ -18,10 +18,6 @@ public sealed class SettingsSectionViewModel : ObservableObject
     private double _mmPerPixel;
     private double _cameraNeedleOffsetX;
     private double _cameraNeedleOffsetY;
-    private double _cameraNeedleApproachMm;
-    private double _cameraNeedleTouchZAdjustMm;
-    private int _cameraNeedleDwellMs;
-    private int _cameraNeedleDebounceMs;
     private string _moveClickDevice = "";
     private string _moveClickXAxis = "X";
     private string _moveClickYAxis = "Y";
@@ -69,24 +65,12 @@ public sealed class SettingsSectionViewModel : ObservableObject
     /// <summary>Camera scale — real-world millimetres per image pixel.</summary>
     public double MmPerPixel { get => _mmPerPixel; set => SetField(ref _mmPerPixel, value); }
 
-    /// <summary>Camera→needle X offset (mm): the relative gantry move that puts the
-    /// needle under the camera-centered point (needle = cam + offset).</summary>
+    /// <summary>Camera→needle X SEED (mm, needle = cam + offset): aims the first calibration
+    /// imprint. Changing it marks the needle not calibrated.</summary>
     public double CameraNeedleOffsetX { get => _cameraNeedleOffsetX; set => SetField(ref _cameraNeedleOffsetX, value); }
 
     /// <summary>Camera→needle Y offset (mm).</summary>
     public double CameraNeedleOffsetY { get => _cameraNeedleOffsetY; set => SetField(ref _cameraNeedleOffsetY, value); }
-
-    /// <summary>Slow-approach distance before the needle-touch height on automated re-runs (mm).</summary>
-    public double CameraNeedleApproachMm { get => _cameraNeedleApproachMm; set => SetField(ref _cameraNeedleApproachMm, value); }
-
-    /// <summary>Manual touch-height tweak (mm): + presses deeper toward the surface, − backs off higher.</summary>
-    public double CameraNeedleTouchZAdjustMm { get => _cameraNeedleTouchZAdjustMm; set => SetField(ref _cameraNeedleTouchZAdjustMm, value); }
-
-    /// <summary>Epoxy dispense dwell while the shot output is ON (ms).</summary>
-    public int CameraNeedleDwellMs { get => _cameraNeedleDwellMs; set => SetField(ref _cameraNeedleDwellMs, value); }
-
-    /// <summary>Settle delay after toggling the shot output, on both the ON and OFF edges (ms).</summary>
-    public int CameraNeedleDebounceMs { get => _cameraNeedleDebounceMs; set => SetField(ref _cameraNeedleDebounceMs, value); }
 
     public string MoveClickDevice { get => _moveClickDevice; set => SetField(ref _moveClickDevice, value); }
     public string MoveClickXAxis { get => _moveClickXAxis; set => SetField(ref _moveClickXAxis, value); }
@@ -416,10 +400,6 @@ public sealed class SettingsSectionViewModel : ObservableObject
         var cn = _host.Process.GetCameraNeedleCalibration();
         CameraNeedleOffsetX = cn.VcamneedleX;
         CameraNeedleOffsetY = cn.VcamneedleY;
-        CameraNeedleApproachMm = cn.ApproachMm;
-        CameraNeedleTouchZAdjustMm = cn.TouchZAdjustMm;
-        CameraNeedleDwellMs = cn.DwellMs;
-        CameraNeedleDebounceMs = cn.OutputDebounceMs;
 
         LoadPsuSetpoints();
         LoadPivotSettings();
@@ -486,9 +466,7 @@ public sealed class SettingsSectionViewModel : ObservableObject
         try
         {
             _store.Save();
-            _host.Process.SetCameraNeedleSettings(
-                _cameraNeedleOffsetX, _cameraNeedleOffsetY, _cameraNeedleApproachMm,
-                _cameraNeedleTouchZAdjustMm, _cameraNeedleDwellMs, _cameraNeedleDebounceMs);
+            _host.Process.SetCameraNeedleSeed(_cameraNeedleOffsetX, _cameraNeedleOffsetY);   // no-op when unchanged
             SavePsuSetpoints();
             SavePivotSettings();
             SaveScriptPresets();

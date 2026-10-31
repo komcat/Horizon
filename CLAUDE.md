@@ -143,6 +143,14 @@ defines its own program/recipe/position formats.
   `flow.waitUntil` (`Execution/StepDispatcher.FireDogPorts.cs`; not yet in `OpCatalog`). Every
   scan parks on its best point on STOP / error. `PositionMap/` (`PositionMapStore`,
   `PositionMatch`, `PositionRoute`) moved here from FAAM.UI so `motion.movePath` can route.
+- **Needle calibration + dispensing** (FireDog port, `docs/needle-dispense-design.md`) —
+  `Calibration/CameraNeedleCalibrationRoutine` (multi-pass measure → verify; verified = XY **and** Z
+  residual in tolerance; every pass saved to machine-global `camera_needle_calibration.json`, which
+  also holds the protocol params + hardware) and `Dispensing/DispenseRoutineRunner` (per-product
+  Dot/Grid/Line routines: touch = cam Z + dz + trim, stop = touch − gap, two-speed descent, lift
+  before slide, Z climbs before XY). `NeedleGantry` reads the velocity before the first move and
+  restores it on every exit. UI: Calibration › Camera → Needle and Engineer › Dispensing, both
+  drawing `NeedleMotionDiagram` with their parameters in columns under its stages.
 - `Dut/` — `DutStore` for per-DUT (device-under-test) results, keyed by serial. A
   `DutRun` is stamped with the operator + station (`OperatorContext`, set via
   `IProcessService.SetOperator`). Beyond the program-driven path, an **interactive DUT
@@ -507,6 +515,7 @@ write code that won't trip them:
 - Program / deck version repository (commit notes + checkout): `docs/version-repository-design.md`.
 - Vision Profile page (per-position vision recipes): `docs/vision-profile-design.md`.
 - Device registration (hex-right gripper ↔ gantry camera; `tool.cameraToTool` / `tool.toolToCamera` blocks + live overlay): `docs/device-registration-design.md`.
+- Needle calibration + dispensing (FireDog port, motion drawing, parameters): `docs/needle-dispense-design.md`.
 - Run-page utility-app launcher (phone-style springboard + L2→L3 app facet): `docs/utility-app-launcher-design.md`.
 - Engineer command help (palette help panel + `OpCatalogHelp` authoring): `docs/engineer-command-help.md`.
 - Station OEE (uptime / downtime / utilization, DOWN-UP toggle, OEE page): `docs/oee-design.md`.

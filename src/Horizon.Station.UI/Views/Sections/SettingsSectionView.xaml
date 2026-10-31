@@ -120,8 +120,10 @@
                          ToolTip="Comma-separated mm, e.g. 0.1, 0.2, 0.25, 0.5, 1, 2, 5" />
             </Grid>
 
-            <TextBlock Text="Camera → Needle offset (mm)" Foreground="{StaticResource Text}"
+            <TextBlock Text="Camera → Needle seed (mm)" Foreground="{StaticResource Text}"
                        FontSize="14" FontWeight="SemiBold" Margin="0,14,0,8" />
+            <TextBlock Foreground="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,0,0,8"
+                       Text="A tape-measure needle-to-lens estimate, for the FIRST calibration only: it aims the first imprint into the field of view. Changing it marks the needle NOT calibrated — every dispense refuses until Home › Calibration › Camera → Needle is run. The calibration's parameters live on that page." />
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -131,10 +133,6 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="X offset" Style="{StaticResource FieldLabel}" />
                 <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding CameraNeedleOffsetX}" />
@@ -142,22 +140,6 @@
                            Foreground="{StaticResource Subtle}" VerticalAlignment="Center" Margin="12,0,0,8" />
                 <TextBlock Grid.Row="1" Grid.Column="0" Text="Y offset" Style="{StaticResource FieldLabel}" />
                 <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding CameraNeedleOffsetY}" />
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="Approach" Style="{StaticResource FieldLabel}" />
-                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding CameraNeedleApproachMm}" />
-                <TextBlock Grid.Row="2" Grid.Column="2" Text="slow-crawl distance (mm) before touch on automated re-runs"
-                           Foreground="{StaticResource Subtle}" VerticalAlignment="Center" Margin="12,0,0,8" />
-                <TextBlock Grid.Row="3" Grid.Column="0" Text="Touch Z adjust" Style="{StaticResource FieldLabel}" />
-                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding CameraNeedleTouchZAdjustMm}" />
-                <TextBlock Grid.Row="3" Grid.Column="2" Text="tweak touch height (mm): + deeper toward surface, − higher"
-                           Foreground="{StaticResource Subtle}" VerticalAlignment="Center" Margin="12,0,0,8" />
-                <TextBlock Grid.Row="4" Grid.Column="0" Text="Dwell (ms)" Style="{StaticResource FieldLabel}" />
-                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding CameraNeedleDwellMs}" />
-                <TextBlock Grid.Row="4" Grid.Column="2" Text="epoxy window — shot output held ON (Dispenser_Shot)"
-                           Foreground="{StaticResource Subtle}" VerticalAlignment="Center" Margin="12,0,0,8" />
-                <TextBlock Grid.Row="5" Grid.Column="0" Text="Debounce (ms)" Style="{StaticResource FieldLabel}" />
-                <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding CameraNeedleDebounceMs}" />
-                <TextBlock Grid.Row="5" Grid.Column="2" Text="settle delay on the shot ON and OFF edges"
-                           Foreground="{StaticResource Subtle}" VerticalAlignment="Center" Margin="12,0,0,8" />
             </Grid>
 
             <TextBlock Text="Camera" Foreground="{StaticResource Text}"

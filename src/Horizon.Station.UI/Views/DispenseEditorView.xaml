@@ -1,6 +1,7 @@
 <UserControl x:Class="Horizon.Station.UI.Views.DispenseEditorView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:Horizon.Station.UI.Views">
     <UserControl.Resources>
         <Style TargetType="TextBlock" x:Key="FieldLabel">
             <Setter Property="Foreground" Value="{StaticResource Subtle}" />
@@ -18,6 +19,36 @@
             <Setter Property="Height" Value="26" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+        <!-- Motion / shot parameter rows: box, then its name (FireDog's dispense helper layout). -->
+        <Style x:Key="ParamBox" TargetType="TextBox">
+            <Setter Property="Width" Value="70" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="ParamLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+        </Style>
+        <Style x:Key="ParamRow" TargetType="StackPanel">
+            <Setter Property="Orientation" Value="Horizontal" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+        <Style x:Key="ParamCheck" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="Margin" Value="0,2,0,7" />
+        </Style>
+        <Style x:Key="ColumnTitle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="FontSize" Value="11.5" />
         </Style>
     </UserControl.Resources>
 
@@ -40,27 +71,16 @@
         </DockPanel>
 
         <!-- Editor -->
-        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel>
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="0,0,6,0">
                 <TextBlock Text="Routine" Style="{StaticResource SectionHeader}" Margin="0,0,0,8" />
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Name" Style="{StaticResource FieldLabel}" />
-                    <TextBox Grid.Row="0" Grid.Column="1" Width="200" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Gantry" Style="{StaticResource FieldLabel}" />
-                    <TextBox Grid.Row="1" Grid.Column="1" Width="200" Text="{Binding GantryDevice}" />
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Dispenser slide" Style="{StaticResource FieldLabel}" />
-                    <TextBox Grid.Row="2" Grid.Column="1" Width="200" Text="{Binding DispenserSlide}" />
-                </Grid>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Name" Style="{StaticResource FieldLabel}" />
+                    <TextBox Width="200" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+                <!-- The calibration this routine moves by: hardware, offset and touch height are machine-level. -->
+                <TextBlock x:Name="CalibrationLine" Text="{Binding CalibrationText}" TextWrapping="Wrap"
+                           FontWeight="SemiBold" Margin="0,2,0,0" />
 
                 <TextBlock Text="Pattern" Style="{StaticResource SectionHeader}" />
                 <Grid>
@@ -109,43 +129,111 @@
                 </Border>
                 <TextBlock x:Name="PreviewLabel" Foreground="{StaticResource Subtle}" Margin="2,4,0,0" />
 
-                <TextBlock Text="Shot" Style="{StaticResource SectionHeader}" />
-                <Grid>
+                <!-- The needle motion, drawn and labelled with this routine's values; each column
+                     of fields sits under the stage it drives. -->
+                <TextBlock Text="Needle motion and shot" Style="{StaticResource SectionHeader}" />
+                <v:NeedleMotionDiagram TraverseText="{Binding TraverseText}" ApproachText="{Binding ApproachText}"
+                                       SafetyText="{Binding SafetyText}" FinalText="{Binding FinalText}"
+                                       Final2Text="{Binding Final2Text}" ShotText="{Binding ShotText}"
+                                       LiftText="{Binding LiftText}" BackText="{Binding BackText}"
+                                       ClimbFirst="True" ShowBack="{Binding VerifyBack}" />
+
+                <Grid Margin="0,4,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="255*" />
+                        <ColumnDefinition Width="325*" />
+                        <ColumnDefinition Width="290*" />
+                        <ColumnDefinition Width="230*" />
                     </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Dwell (ms)" Style="{StaticResource FieldLabel}" />
-                    <TextBox Grid.Row="0" Grid.Column="1" Width="90" HorizontalAlignment="Left" Text="{Binding DwellMs}" />
-                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Debounce (ms)" Style="{StaticResource FieldLabel}" Margin="16,0,10,6" />
-                    <TextBox Grid.Row="0" Grid.Column="3" Width="90" HorizontalAlignment="Left" Text="{Binding OutputDebounceMs}" />
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Lift-off (mm)" Style="{StaticResource FieldLabel}" />
-                    <TextBox Grid.Row="1" Grid.Column="1" Width="90" HorizontalAlignment="Left" Text="{Binding LiftoffMm}" />
-                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Approach (mm)" Style="{StaticResource FieldLabel}" Margin="16,0,10,6" />
-                    <TextBox Grid.Row="1" Grid.Column="3" Width="90" HorizontalAlignment="Left" Text="{Binding ApproachMm}" />
+                    <!-- 1  Camera over the point, then the needle over it -->
+                    <StackPanel Grid.Column="0" Margin="4,0,8,0">
+                        <TextBlock Text="1  Camera over the point, traverse" Style="{StaticResource ColumnTitle}" TextWrapping="Wrap" />
+                        <CheckBox Content="nudge onto point" Style="{StaticResource ParamCheck}" IsChecked="{Binding Adjust}"
+                                  ToolTip="After arriving, the operator nudges X/Y onto this part's point; the dot goes where they leave it. This run only — nothing is written back. Z stays: the touch height is computed from it." />
+                        <StackPanel Style="{StaticResource ParamRow}"
+                                    ToolTip="XY traverse: needle over the point (1), camera back over the dot (8). 0 = the device's own speed.">
+                            <TextBox Style="{StaticResource ParamBox}" Text="{Binding VTravel}" />
+                            <TextBlock Text="v travel mm/s" Style="{StaticResource ParamLabel}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding VTravelHint}" Style="{StaticResource Hint}" />
+                    </StackPanel>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Slow Z (mm/s)" Style="{StaticResource FieldLabel}" />
-                    <TextBox Grid.Row="2" Grid.Column="1" Width="90" HorizontalAlignment="Left" Text="{Binding SlowZVelocity}" />
-                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Touch Z adjust" Style="{StaticResource FieldLabel}" Margin="16,0,10,6" />
-                    <TextBox Grid.Row="2" Grid.Column="3" Width="90" HorizontalAlignment="Left" Text="{Binding TouchZAdjustMm}" />
+                    <!-- 2-4  Down to the part -->
+                    <StackPanel Grid.Column="1" Margin="8,0">
+                        <TextBlock Text="2-4  Down to the part" Style="{StaticResource ColumnTitle}" />
+                        <CheckBox Content="ask the operator" Style="{StaticResource ParamCheck}" IsChecked="{Binding Confirm}"
+                                  ToolTip="Ask before extending the slide and before firing (and 'does it look right?' at the end)." />
+                        <StackPanel Style="{StaticResource ParamRow}" ToolTip="Z down to the safety height (3).">
+                            <TextBox Style="{StaticResource ParamBox}" Text="{Binding VApproach}" />
+                            <TextBlock Text="v approach mm/s" Style="{StaticResource ParamLabel}" />
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource ParamRow}" ToolTip="Fast → slow handover, this far above the stop height.">
+                            <TextBox Style="{StaticResource ParamBox}" Text="{Binding SafetyMm}" />
+                            <TextBlock Text="safety mm" Style="{StaticResource ParamLabel}" />
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource ParamRow}" ToolTip="Z from the safety height to the stop height (4).">
+                            <TextBox Style="{StaticResource ParamBox}" Text="{Binding VFinal}" />
+                            <TextBlock Text="v final mm/s" Style="{StaticResource ParamLabel}" />
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource ParamRow}"
+                                    ToolTip="A deliberate standoff above the touch height — the bead bridges it. A property of the glue and the dot size; 0 = stop at the touch.">
+                            <TextBox Style="{StaticResource ParamBox}" Text="{Binding GapMm}" />
+                            <TextBlock Text="gap mm (standoff)" Style="{StaticResource ParamLabel}" />
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource ParamRow}"
+                                    ToolTip="Corrects the CALIBRATED touch height (+ = closer to the part). Not the same correction as the gap.">
+                            <TextBox Style="{StaticResource ParamBox}" Text="{Binding ZTrimMm}" />
+                            <TextBlock Text="trim mm (touch fix)" Style="{StaticResource ParamLabel}" />
+                        </StackPanel>
+                        <v:GapTrimDiagram GapMm="{Binding GapMm}" TrimMm="{Binding ZTrimMm}" Margin="0,4,0,4" />
+                        <TextBlock Style="{StaticResource Hint}"
+                                   Text="gap: a deliberate standoff for the bead — the glue and the dot size. 0 = stop at the touch." />
+                        <TextBlock x:Name="TrimHintText" Text="{Binding TrimHint}" Style="{StaticResource Hint}" Margin="0,3,0,0" />
+                    </StackPanel>
 
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Shot device / pin" Style="{StaticResource FieldLabel}" />
-                    <TextBox Grid.Row="3" Grid.Column="1" Width="90" HorizontalAlignment="Left" Text="{Binding ShotIoDevice}" />
-                    <TextBox Grid.Row="3" Grid.Column="3" Width="120" HorizontalAlignment="Left" Text="{Binding ShotPin}" />
+                    <!-- 5-7  Shot and up -->
+                    <StackPanel Grid.Column="2" Margin="8,0">
+                        <TextBlock Text="5-7  Shot and up" Style="{StaticResource ColumnTitle}" />
+                        <StackPanel Style="{StaticResource ParamRow}" ToolTip="Settle at height before firing.">
+                            <TextBox Style="{StaticResource ParamBox}" Text="{Binding BeforeMs}" />
+                            <TextBlock Text="wait before ms" Style="{StaticResource ParamLabel}" />
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource ParamRow}"
+                                    ToolTip="Valve open time = shot size. There is no pressure control in this loop — the external regulator sets the flow.">
+                            <TextBox Style="{StaticResource ParamBox}" Text="{Binding ShotMs}" />
+                            <TextBlock Text="shot ms" Style="{StaticResource ParamLabel}" />
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource ParamRow}" ToolTip="Dwell after firing — the string break.">
+                            <TextBox Style="{StaticResource ParamBox}" Text="{Binding AfterMs}" />
+                            <TextBlock Text="dwell after ms" Style="{StaticResource ParamLabel}" />
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource ParamRow}"
+                                    ToolTip="Z lifts this far off the dot (6) before the slide comes up (7). 0 = slide first.">
+                            <TextBox Style="{StaticResource ParamBox}" Text="{Binding LiftMm}" />
+                            <TextBlock Text="lift mm" Style="{StaticResource ParamLabel}" />
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource ParamRow}" ToolTip="Z lifting off the dot, and the climb back to the camera's Z.">
+                            <TextBox Style="{StaticResource ParamBox}" Text="{Binding VLiftoff}" />
+                            <TextBlock Text="v lift-off mm/s" Style="{StaticResource ParamLabel}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- 8  Back over the dot -->
+                    <StackPanel Grid.Column="3" Margin="8,0,4,0">
+                        <TextBlock Text="8  Back and inspect" Style="{StaticResource ColumnTitle}" />
+                        <CheckBox Content="back over dot" Style="{StaticResource ParamCheck}" IsChecked="{Binding VerifyBack}"
+                                  ToolTip="Bring the camera back over the pattern after the last dot." />
+                        <StackPanel Style="{StaticResource ParamRow}" IsEnabled="{Binding VerifyMsEnabled}"
+                                    ToolTip="With 'ask the operator' off, the 'check the dot' prompt continues by itself after this long; a Cancel inside it rejects the dot. 0 = no prompt.">
+                            <TextBox Style="{StaticResource ParamBox}" Text="{Binding VerifyMs}" />
+                            <TextBlock Text="auto-OK ms" Style="{StaticResource ParamLabel}" />
+                        </StackPanel>
+                    </StackPanel>
                 </Grid>
 
-                <CheckBox Content="Return camera over the dispensed location after the last dot"
-                          Foreground="{StaticResource Text}" Margin="0,10,0,0"
-                          IsChecked="{Binding ReturnToView}" />
+                <TextBlock Style="{StaticResource Hint}" Margin="4,8,4,0"
+                           Text="The program puts the camera over the point; with 'nudge onto point' the operator centres X/Y on this part. Then the needle travels over it at the camera's Z and comes down: fast to safety above the stop, slow to the stop — gap above the touch height, moved closer by trim. After the shot Z lifts off, the slide comes up, and Z climbs all the way to the camera's Z before anything moves sideways. A grid or line hops between dots at the higher of lift and safety, slide down. The gantry's velocity is put back afterwards." />
 
                 <TextBlock Text="Notes" Style="{StaticResource SectionHeader}" />
                 <TextBox Width="Auto" HorizontalAlignment="Stretch" Height="48" AcceptsReturn="True"

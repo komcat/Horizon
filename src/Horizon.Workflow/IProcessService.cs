@@ -326,28 +326,36 @@ public interface IProcessService
     /// <summary>The current camera→needle calibration (config + last measured results).</summary>
     CameraNeedleCalibrationData GetCameraNeedleCalibration();
 
-    /// <summary>
-    /// Overwrites the operator-editable camera→needle settings — XY offset (mm,
-    /// needle = cam + offset), slow-approach distance (mm), touch-Z tweak (mm), dispense
-    /// dwell (ms) and output debounce (ms) — and persists them to the machine-global
-    /// calibration file, without running a calibration. Lets the operator seed / hand-tune
-    /// these from the Machine Settings page.
-    /// </summary>
-    void SetCameraNeedleSettings(
-        double vcamneedleX, double vcamneedleY, double approachMm,
-        double touchZAdjustMm, int dwellMs, int outputDebounceMs);
+    /// <summary>Raised (on any thread) after the camera→needle calibration file changes — a pass
+    /// saved, parameters saved, or a seed typed.</summary>
+    event Action? CameraNeedleCalibrationChanged;
 
     /// <summary>
-    /// Runs the camera→needle "dispense-and-look" calibration using the globally-registered
-    /// <see cref="OperatorPrompt"/>. Measures the camera-needle XY offset and the
-    /// focus-to-needle-tip Z, and persists them to the machine-global calibration file.
+    /// Types a rough camera→needle XY offset (a tape-measure SEED, mm, needle = cam + offset).
+    /// Stored as NOT calibrated: enough to aim the first calibration imprint into the field of
+    /// view, never enough to dispense through. No-op when the values are unchanged.
+    /// </summary>
+    void SetCameraNeedleSeed(double vcamneedleX, double vcamneedleY);
+
+    /// <summary>
+    /// Saves the calibration protocol's parameters + hardware names (shot, settle, heights,
+    /// velocities, passes, tolerances, clear-first moves) from <paramref name="parameters"/>; the
+    /// measured result is untouched. Refused while a run is in progress.
+    /// </summary>
+    Result SaveCameraNeedleParameters(CameraNeedleCalibrationData parameters);
+
+    /// <summary>
+    /// Runs the camera→needle calibration (FireDog's measure + verify procedure) using the
+    /// globally-registered <see cref="OperatorPrompt"/>. Every pass is persisted to the
+    /// machine-global calibration file; with 2+ passes it fails when a verify pass is outside
+    /// the XY / Z tolerance (the offset is saved anyway).
     /// </summary>
     Task<Result<CameraNeedleResult>> RunCameraNeedleCalibrationAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// As <see cref="RunCameraNeedleCalibrationAsync(CancellationToken)"/> but drives the focus /
-    /// needle-touch / center-the-dot confirmations through the supplied non-modal
-    /// <paramref name="prompt"/> (the Calibration page's inline buttons + live camera).
+    /// As <see cref="RunCameraNeedleCalibrationAsync(CancellationToken)"/> but drives the
+    /// confirmations and jog steps through the supplied non-modal <paramref name="prompt"/>
+    /// (the Calibration page's inline buttons + live camera).
     /// </summary>
     Task<Result<CameraNeedleResult>> RunCameraNeedleCalibrationAsync(IOperatorPrompt prompt, CancellationToken ct = default);
 
@@ -365,14 +373,15 @@ public interface IProcessService
     /// <summary>Deletes a dispense routine from the active product.</summary>
     Result DeleteDispenseRoutine(string name);
 
-    /// <summary>A new routine with the given name, its shot parameters seeded from the current
-    /// camera→needle calibration so it matches the tuned dispense behavior out of the box.</summary>
+    /// <summary>A new routine with the given name and the protocol's default parameters.</summary>
     DispenseRoutine NewDispenseRoutine(string name);
 
     /// <summary>
-    /// Runs a saved dispense routine at the current camera target: uses the machine
-    /// camera→needle calibration to place the needle where the camera is centred, then lays
-    /// down the routine's pattern. The camera→needle calibration must have been run.
+    /// Runs a saved dispense routine at the current camera target (FireDog's dispense
+    /// procedure): uses the machine camera→needle calibration — hardware, offset and touch
+    /// height — to place the needle where the camera is centred, then lays down the routine's
+    /// pattern. Prompts go through <see cref="OperatorPrompt"/>. Refused when the needle has not
+    /// been calibrated.
     /// </summary>
     Task<Result> RunDispenseRoutineAsync(string name, CancellationToken ct = default);
 

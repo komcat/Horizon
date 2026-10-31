@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using Horizon.Workflow.Dispensing;
 
@@ -9,7 +10,10 @@ namespace Horizon.Station.UI.ViewModels;
 /// View-model for the Engineer "Dispensing" tab: browse / create / edit / delete the
 /// active product's dispense routines. Holds a flat set of mutable fields mapped to /
 /// from the immutable <see cref="DispenseRoutine"/> record. The pattern fields drive a
-/// live preview (see <see cref="PreviewPoints"/>) the view redraws on any change.
+/// live preview (see <see cref="PreviewPoints"/>) the view redraws on any change; the
+/// motion / shot fields (FireDog's dispense_run parameters) label the needle-motion
+/// drawing they sit under. Hardware and the touch height come from the machine
+/// camera→needle calibration, shown read-only (<see cref="CalibrationText"/>).
 /// </summary>
 public sealed class DispenseEditorViewModel : ObservableObject
 {
@@ -20,8 +24,6 @@ public sealed class DispenseEditorViewModel : ObservableObject
 
     // editable fields
     private string _name = "";
-    private string _gantryDevice = "gantry-main";
-    private string _dispenserSlide = "Dispenser_Head";
     private DispensePatternKind _patternKind = DispensePatternKind.Dot;
     private int _columns = 2;
     private int _rows = 2;
@@ -30,16 +32,13 @@ public sealed class DispenseEditorViewModel : ObservableObject
     private int _pointCount = 3;
     private double _lengthMm = 5.0;
     private double _angleDeg;
-    private int _dwellMs = 500;
-    private int _outputDebounceMs = 300;
-    private double _liftoffMm = 5.0;
-    private double _approachMm = 10.0;
-    private double _slowZVelocity = 1.0;
-    private double _touchZAdjustMm;
-    private string _shotIoDevice = "IOBottom";
-    private string _shotPin = "Dispenser_Shot";
-    private bool _returnToView;
+    private bool _adjust, _confirm, _verifyBack;
+    private double _vTravel, _vApproach, _safetyMm, _vFinal, _gapMm, _zTrimMm, _liftMm, _vLiftoff;
+    private int _beforeMs, _shotMs, _afterMs, _verifyMs;
     private string _notes = "";
+
+    private string _calibrationText = "";
+    private string _calibrationBrushKey = "Subtle";
 
     public DispenseEditorViewModel(EngineHost host)
     {
@@ -50,6 +49,9 @@ public sealed class DispenseEditorViewModel : ObservableObject
         ReloadCommand = new RelayCommand(Reload);
         Reload();
         LoadInto(host.Process.NewDispenseRoutine(""));
+        var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+        host.Process.CameraNeedleCalibrationChanged += () => dispatcher.BeginInvoke(RefreshCalibration);
+        RefreshCalibration();
     }
 
     public string Title => "Dispensing";
@@ -79,8 +81,6 @@ public sealed class DispenseEditorViewModel : ObservableObject
     public string Status { get => _status; private set => SetField(ref _status, value); }
 
     public string Name { get => _name; set => SetField(ref _name, value); }
-    public string GantryDevice { get => _gantryDevice; set => SetField(ref _gantryDevice, value); }
-    public string DispenserSlide { get => _dispenserSlide; set => SetField(ref _dispenserSlide, value); }
 
     public DispensePatternKind PatternKind
     {
@@ -96,17 +96,84 @@ public sealed class DispenseEditorViewModel : ObservableObject
     public double LengthMm { get => _lengthMm; set { if (SetField(ref _lengthMm, value)) RaisePreview(); } }
     public double AngleDeg { get => _angleDeg; set { if (SetField(ref _angleDeg, value)) RaisePreview(); } }
 
-    public int DwellMs { get => _dwellMs; set => SetField(ref _dwellMs, value); }
-    public int OutputDebounceMs { get => _outputDebounceMs; set => SetField(ref _outputDebounceMs, value); }
-    public double LiftoffMm { get => _liftoffMm; set => SetField(ref _liftoffMm, value); }
-    public double ApproachMm { get => _approachMm; set => SetField(ref _approachMm, value); }
-    public double SlowZVelocity { get => _slowZVelocity; set => SetField(ref _slowZVelocity, value); }
-    public double TouchZAdjustMm { get => _touchZAdjustMm; set => SetField(ref _touchZAdjustMm, value); }
-    public string ShotIoDevice { get => _shotIoDevice; set => SetField(ref _shotIoDevice, value); }
-    public string ShotPin { get => _shotPin; set => SetField(ref _shotPin, value); }
+    // --- 1: camera over the point, needle over it ---
 
-    /// <summary>Return the camera over the dispensed location after the last dot (for inspection).</summary>
-    public bool ReturnToView { get => _returnToView; set => SetField(ref _returnToView, value); }
+    public bool Adjust { get => _adjust; set => SetField(ref _adjust, value); }
+
+    public double VTravel
+    {
+        get => _vTravel;
+        set
+        {
+            if (!SetField(ref _vTravel, value)) return;
+            Raise(nameof(TraverseText));
+            Raise(nameof(BackText));
+            Raise(nameof(VTravelHint));
+        }
+    }
+
+    public string VTravelHint => _vTravel <= 0 ? "0 = keep the device's speed" : "";
+
+    // --- 2-4: down to the part ---
+
+    public bool Confirm { get => _confirm; set { if (SetField(ref _confirm, value)) Raise(nameof(VerifyMsEnabled)); } }
+    public double VApproach { get => _vApproach; set { if (SetField(ref _vApproach, value)) Raise(nameof(ApproachText)); } }
+    public double SafetyMm { get => _safetyMm; set { if (SetField(ref _safetyMm, value)) Raise(nameof(SafetyText)); } }
+    public double VFinal { get => _vFinal; set { if (SetField(ref _vFinal, value)) Raise(nameof(FinalText)); } }
+    public double GapMm { get => _gapMm; set { if (SetField(ref _gapMm, value)) Raise(nameof(Final2Text)); } }
+
+    public double ZTrimMm
+    {
+        get => _zTrimMm;
+        set { if (SetField(ref _zTrimMm, value)) { Raise(nameof(TrimHint)); Raise(nameof(TrimWarn)); } }
+    }
+
+    /// <summary>A non-zero trim: a calibration that probably wants redoing.</summary>
+    public bool TrimWarn => _zTrimMm != 0;
+
+    public string TrimHint => _zTrimMm != 0
+        ? "trim: corrects the calibrated touch height. Normally 0 with a verified calibration — re-calibrate rather than trim every routine."
+        : "trim: corrects the calibrated touch height (+ = closer). Leave 0 unless this part needs it.";
+
+    // --- 5-7: shot and up ---
+
+    public int BeforeMs { get => _beforeMs; set { if (SetField(ref _beforeMs, value)) Raise(nameof(ShotText)); } }
+    public int ShotMs { get => _shotMs; set { if (SetField(ref _shotMs, value)) Raise(nameof(ShotText)); } }
+    public int AfterMs { get => _afterMs; set { if (SetField(ref _afterMs, value)) Raise(nameof(ShotText)); } }
+    public double LiftMm { get => _liftMm; set { if (SetField(ref _liftMm, value)) Raise(nameof(LiftText)); } }
+    public double VLiftoff { get => _vLiftoff; set { if (SetField(ref _vLiftoff, value)) Raise(nameof(LiftText)); } }
+
+    // --- 8: back and inspect ---
+
+    public bool VerifyBack
+    {
+        get => _verifyBack;
+        set { if (SetField(ref _verifyBack, value)) { Raise(nameof(BackText)); Raise(nameof(VerifyMsEnabled)); } }
+    }
+
+    public int VerifyMs { get => _verifyMs; set => SetField(ref _verifyMs, value); }
+
+    /// <summary>The auto-OK time is only read with confirm off — a confirm-on run waits for the answer.</summary>
+    public bool VerifyMsEnabled => _verifyBack && !_confirm;
+
+    // --- the drawing's labels (changing a number changes the picture) ---
+
+    public string TraverseText => _vTravel > 0 ? F("v travel {0:F1} mm/s", _vTravel) : "v travel: keep current";
+    public string ApproachText => F("v approach {0:F1} mm/s", _vApproach);
+    public string SafetyText => F("safety {0:F2} mm", _safetyMm);
+    public string FinalText => F("v final {0:F1} mm/s", _vFinal);
+    public string Final2Text => F("stops {0:F3} above touch", _gapMm);
+    public string ShotText => string.Format(CultureInfo.CurrentCulture, "{0} + shot {1} + {2} ms", _beforeMs, _shotMs, _afterMs);
+    public string LiftText => _liftMm > 0
+        ? string.Format(CultureInfo.CurrentCulture, "{0:F2} mm @ {1:F1} mm/s", _liftMm, _vLiftoff)
+        : "0 mm: slide first";
+    public string BackText => _verifyBack ? TraverseText : "verify off: stays over";
+
+    /// <summary>The calibration this routine moves by — the touch height is not a number in the routine.</summary>
+    public string CalibrationText { get => _calibrationText; private set => SetField(ref _calibrationText, value); }
+
+    /// <summary>Theme brush key for <see cref="CalibrationText"/> — Ok / Warn / Danger.</summary>
+    public string CalibrationBrushKey { get => _calibrationBrushKey; private set => SetField(ref _calibrationBrushKey, value); }
 
     public string Notes { get => _notes; set => SetField(ref _notes, value); }
 
@@ -121,7 +188,28 @@ public sealed class DispenseEditorViewModel : ObservableObject
     /// <summary>The current pattern expanded into dot offsets (mm) — drives the preview.</summary>
     public IReadOnlyList<DispenseOffset> PreviewPoints() => BuildPattern().Expand();
 
+    /// <summary>Re-reads the machine calibration the routine moves by.</summary>
+    public void RefreshCalibration()
+    {
+        var c = _host.Process.GetCameraNeedleCalibration();
+        string hw = $"{c.GantryDevice} · slide {c.DispenserSlide} · valve {c.ShotIoDevice}/{c.ShotPin}";
+        if (!c.IsCalibrated)
+        {
+            CalibrationText = $"NEEDLE NOT CALIBRATED — every dispense refuses to run (Home › Calibration › Camera → Needle).   {hw}";
+            CalibrationBrushKey = "Danger";
+            return;
+        }
+        CalibrationText = string.Format(CultureInfo.CurrentCulture,
+            "touch height = focused camera Z {0:+0.000;-0.000} mm (needle dZ){1}   ·   offset ({2:F3}, {3:F3}) mm   ·   {4}",
+            c.Dz, c.Verified ? "" : " — calibration UNVERIFIED", c.VcamneedleX, c.VcamneedleY, hw);
+        CalibrationBrushKey = c.Verified ? "Ok" : "Warn";
+    }
+
     private void RaisePreview() => PreviewChanged?.Invoke();
+
+    private void Raise(string name) => OnPropertyChanged(name);
+
+    private static string F(string fmt, double v) => string.Format(CultureInfo.CurrentCulture, fmt, v);
 
     private DispensePattern BuildPattern() => new()
     {
@@ -138,29 +226,31 @@ public sealed class DispenseEditorViewModel : ObservableObject
     private DispenseRoutine ToRoutine() => new()
     {
         Name = _name.Trim(),
-        GantryDevice = _gantryDevice,
-        DispenserSlide = _dispenserSlide,
         Pattern = BuildPattern(),
         Shot = new DispenseShot
         {
-            DwellMs = _dwellMs,
-            OutputDebounceMs = _outputDebounceMs,
-            LiftoffMm = _liftoffMm,
-            ApproachMm = _approachMm,
-            SlowZVelocity = _slowZVelocity,
-            TouchZAdjustMm = _touchZAdjustMm,
-            ShotIoDevice = _shotIoDevice,
-            ShotPin = _shotPin,
+            Adjust = _adjust,
+            VTravel = _vTravel,
+            Confirm = _confirm,
+            VApproach = _vApproach,
+            SafetyMm = _safetyMm,
+            VFinal = _vFinal,
+            GapMm = _gapMm,
+            ZTrimMm = _zTrimMm,
+            BeforeMs = _beforeMs,
+            ShotMs = _shotMs,
+            AfterMs = _afterMs,
+            LiftMm = _liftMm,
+            VLiftoff = _vLiftoff,
+            VerifyBack = _verifyBack,
+            VerifyMs = _verifyMs,
         },
-        ReturnToView = _returnToView,
         Notes = string.IsNullOrWhiteSpace(_notes) ? null : _notes,
     };
 
     private void LoadInto(DispenseRoutine r)
     {
         Name = r.Name;
-        GantryDevice = r.GantryDevice;
-        DispenserSlide = r.DispenserSlide;
         var p = r.Pattern;
         PatternKind = p.Kind;
         Columns = p.Columns;
@@ -171,15 +261,21 @@ public sealed class DispenseEditorViewModel : ObservableObject
         LengthMm = p.LengthMm;
         AngleDeg = p.AngleDeg;
         var s = r.Shot;
-        DwellMs = s.DwellMs;
-        OutputDebounceMs = s.OutputDebounceMs;
-        LiftoffMm = s.LiftoffMm;
-        ApproachMm = s.ApproachMm;
-        SlowZVelocity = s.SlowZVelocity;
-        TouchZAdjustMm = s.TouchZAdjustMm;
-        ShotIoDevice = s.ShotIoDevice;
-        ShotPin = s.ShotPin;
-        ReturnToView = r.ReturnToView;
+        Adjust = s.Adjust;
+        VTravel = s.VTravel;
+        Confirm = s.Confirm;
+        VApproach = s.VApproach;
+        SafetyMm = s.SafetyMm;
+        VFinal = s.VFinal;
+        GapMm = s.GapMm;
+        ZTrimMm = s.ZTrimMm;
+        BeforeMs = s.BeforeMs;
+        ShotMs = s.ShotMs;
+        AfterMs = s.AfterMs;
+        LiftMm = s.LiftMm;
+        VLiftoff = s.VLiftoff;
+        VerifyBack = s.VerifyBack;
+        VerifyMs = s.VerifyMs;
         Notes = r.Notes ?? "";
         RaisePreview();
     }
@@ -225,6 +321,7 @@ public sealed class DispenseEditorViewModel : ObservableObject
         var names = _host.Process.ListDispenseRoutines();
         Routines.Clear();
         foreach (var n in names) Routines.Add(n);
+        RefreshCalibration();
     }
 
     private string UniqueName(string baseName)

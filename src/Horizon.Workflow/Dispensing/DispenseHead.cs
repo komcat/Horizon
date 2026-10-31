@@ -4,11 +4,10 @@ using Horizon.Engine;
 namespace Horizon.Workflow.Dispensing;
 
 /// <summary>
-/// Shared low-level dispenser-head primitives used by both the camera→needle calibration
-/// and the dispensing routines: lower / raise the head, auto-descend to a known touch
-/// height, fire the epoxy shot output, and slow lift-off — plus the fail-safe that
-/// de-energizes the shot and retracts on abort. Centralizing these keeps the bench-tuned
-/// shot behavior in one place, so changing it changes every caller at once.
+/// Shared low-level dispenser-head primitives used by the camera→needle calibration, the
+/// dispensing routines and <c>needle.approach</c>: lower / raise the head, pulse the glue
+/// valve, a slow relative Z move — plus the fail-safe that de-energizes the shot and
+/// retracts on abort. Gantry moves at a set velocity live in <see cref="NeedleGantry"/>.
 /// </summary>
 internal sealed class DispenseHead
 {
@@ -40,77 +39,26 @@ internal sealed class DispenseHead
     }
 
     /// <summary>
-    /// The automated touch height: <c>focusZ - focusToNeedleZmm</c>, then shifted by
-    /// <paramref name="touchZAdjustMm"/> in the toward-surface direction (+ deeper, − higher).
-    /// <paramref name="downSign"/> is the focus→surface direction, derived from the stored
-    /// relationship so a tiny adjust can't flip it.
+    /// Opens the glue valve for <paramref name="shotMs"/> ms — the shot size; there is no pressure
+    /// control in this loop, the external regulator sets the flow. One call rather than
+    /// on / delay / off so the valve closes <b>even when a Stop interrupts the wait</b>: a Stop that
+    /// left the shot output energised would keep pumping.
     /// </summary>
-    public static double ComputeTouchZ(double focusZ, double focusToNeedleZmm, double touchZAdjustMm, out double downSign)
+    public async Task<Result> PulseShotAsync(string shotIoDevice, string shotPin, int shotMs, CancellationToken ct)
     {
-        downSign = Math.Sign(-focusToNeedleZmm);
-        if (downSign == 0) downSign = -1;
-        return (focusZ - focusToNeedleZmm) + downSign * touchZAdjustMm;
-    }
-
-    /// <summary>
-    /// Fast-move to <paramref name="approachMm"/> above the known touch height, then crawl
-    /// the rest at <paramref name="slowZVel"/>. Returns the gantry pose at touch.
-    /// </summary>
-    public async Task<Result<MotionPosition>> AutoTouchAsync(
-        string gantry, double focusZ, double focusToNeedleZmm,
-        double approachMm, double slowZVel, double touchZAdjustMm, CancellationToken ct)
-    {
-        double touchZ = ComputeTouchZ(focusZ, focusToNeedleZmm, touchZAdjustMm, out double downSign);
-        double approach = Math.Abs(approachMm);
-        double approachZ = touchZ - downSign * approach;   // ApproachMm short of touch, on the focus side
-
-        _log(LogLevel.Info,
-            $"{_tag}: auto-approach to touch Z={touchZ:F4} (fast to {approachZ:F4}, slow {approach:F1} mm @ {slowZVel:F2} mm/s).");
-
-        var fast = await _engine.Motion.MoveAbsoluteAsync(gantry, "Z", approachZ, ct).ConfigureAwait(false);
-        if (!fast.IsSuccess) return Result<MotionPosition>.Fail(fast.Error, $"Approach move: {fast.Message}");
-
-        var slow = await SlowZMoveAsync(gantry, downSign * approach, slowZVel, ct).ConfigureAwait(false);
-        if (!slow.IsSuccess) return Result<MotionPosition>.Fail(slow.Error, slow.Message);
-
-        var pos = await _engine.Motion.GetPositionAsync(gantry).ConfigureAwait(false);
-        if (!pos.IsSuccess) return Result<MotionPosition>.Fail(pos.Error, $"Read touch position: {pos.Message}");
-        return Result<MotionPosition>.Ok(pos.Value);
-    }
-
-    /// <summary>
-    /// Fires one epoxy shot: output ON → debounce → dwell (epoxy window) → OFF → debounce.
-    /// A finally guarantees the output de-energizes even on cancel / error mid-dwell (using
-    /// <see cref="CancellationToken.None"/> on the OFF so an aborting token can't skip it).
-    /// </summary>
-    public async Task<Result> FireShotAsync(
-        string shotIoDevice, string shotPin, int debounceMs, int dwellMs, CancellationToken ct)
-    {
-        _log(LogLevel.Info, $"{_tag}: shot ON {shotIoDevice}/{shotPin} (debounce {debounceMs} ms, dwell {dwellMs} ms).");
+        _log(LogLevel.Info, $"{_tag}: shot {shotIoDevice}/{shotPin} {shotMs} ms.");
         var on = await _engine.IO.SetOutputByNameAsync(shotIoDevice, shotPin, true, ct).ConfigureAwait(false);
         if (!on.IsSuccess) return Result.Fail(on.Error, $"Dispenser shot ON ({shotIoDevice}/{shotPin}): {on.Message}");
         try
         {
-            if (debounceMs > 0) await Task.Delay(debounceMs, ct).ConfigureAwait(false);
-            if (dwellMs > 0) await Task.Delay(dwellMs, ct).ConfigureAwait(false);
+            if (shotMs > 0) await Task.Delay(shotMs, ct).ConfigureAwait(false);
         }
         finally
         {
             var off = await _engine.IO.SetOutputByNameAsync(shotIoDevice, shotPin, false, CancellationToken.None).ConfigureAwait(false);
-            _log(off.IsSuccess ? LogLevel.Info : LogLevel.Warning,
-                $"{_tag}: shot OFF {shotIoDevice}/{shotPin}{(off.IsSuccess ? "." : $" FAILED: {off.Message}")}");
+            if (!off.IsSuccess) _log(LogLevel.Error, $"{_tag}: shot OFF {shotIoDevice}/{shotPin} FAILED: {off.Message}");
         }
-        if (debounceMs > 0) await Task.Delay(debounceMs, ct).ConfigureAwait(false);
         return Result.Ok();
-    }
-
-    /// <summary>Slow lift-off from <paramref name="currentZ"/> toward focus (away from the surface).</summary>
-    public Task<Result> LiftOffAsync(
-        string gantry, double focusZ, double currentZ, double liftoffMm, double slowZVel, CancellationToken ct)
-    {
-        double upSign = Math.Sign(focusZ - currentZ);
-        if (upSign == 0) upSign = 1;
-        return SlowZMoveAsync(gantry, upSign * Math.Abs(liftoffMm), slowZVel, ct);
     }
 
     /// <summary>Relative Z move at a slow velocity, restoring the prior axis velocity afterward.</summary>

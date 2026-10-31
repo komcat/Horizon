@@ -5,200 +5,337 @@ using Horizon.Workflow.Dispensing;
 namespace Horizon.Workflow.Calibration;
 
 /// <summary>
-/// Camera→needle calibration — a "dispense-and-look" routine that measures the
-/// XY offset between the camera optical axis and the needle tip, plus the
-/// focus-to-needle-tip Z. Modelled on <c>UCorrectionRoutine</c>: an algorithm
-/// object driven by a Layer 3 panel, blocking on <see cref="IOperatorPrompt"/>
-/// confirms while the operator jogs / MoveClicks against the live camera.
-///
-/// <para>The result is computed from two <b>absolute</b> gantry positions — the XY
-/// where the dot was dispensed and the XY where the operator centred the camera on
-/// that dot — so the apply-offset / move-back bookkeeping cancels out and there is
-/// no sign or accumulation to get wrong:</para>
+/// Camera→needle calibration — FireDog's <c>needle_calibration.lua</c> (itself bobcat's
+/// "Calibrate Camera-to-Needle Offset") as a Layer 2 routine. Put a dot on a coupon, look at the
+/// dot, subtract:
 /// <code>
-///   vcamneedle = G_dispense.xy - G_view.xy      // move that puts the needle under a camera target
-///   focusToNeedleZ = z_focus - z_touch
+///   dx, dy = needle-touch pose − camera pose centred on the imprint   (add to a camera pose)
+///   dz     = needle-touch Z − focused camera Z                         (add to a focused camera Z)
 /// </code>
+/// <para><b>Pass 1 measures</b>: the operator jogs the needle down onto the coupon.
+/// <b>Pass 2+ verifies</b>: the machine drives the needle to where the calibration says it touches,
+/// stops <see cref="CameraNeedleCalibrationData.VerifyGapMm"/> short, and the operator closes the
+/// gap. How far they had to jog is the Z residual; where the dot lands is the XY residual. Verified
+/// means XY AND Z inside tolerance — a dispense drives to <c>cam Z + dz</c> with nobody on the jog,
+/// so dz is the number that most needs checking.</para>
+///
+/// <para>The motion of one pass (the needle-motion drawing): traverse needle over the spot at the
+/// camera's Z → slide down → approach to the safety height → final to the verify gap (verify only)
+/// → touch (operator) and shot → Z lifts <c>LiftMm</c> → slide up → camera back over the dot.
+/// Every pass is saved through <c>savePass</c>; the offset is carried in locals between passes.
+/// Operator interaction goes through <see cref="IOperatorPrompt.ConfirmAsync"/> (yes/no) and
+/// <see cref="IOperatorPrompt.JogPopupAsync"/> (jog, then Continue).</para>
 /// </summary>
 internal sealed class CameraNeedleCalibrationRoutine
 {
+    private const string Tag = "Needle calibration";
+
     private readonly IHorizonEngine _engine;
     private readonly IOperatorPrompt? _prompt;
     private readonly Action<LogLevel, string> _log;
+    private readonly Func<string, string, CancellationToken, Task<Result>> _moveToNamed;
+    private readonly Action<CameraNeedleResult> _savePass;
     private readonly DispenseHead _head;
 
     public CameraNeedleCalibrationRoutine(
-        IHorizonEngine engine, IOperatorPrompt? prompt, Action<LogLevel, string> log)
+        IHorizonEngine engine, IOperatorPrompt? prompt, Action<LogLevel, string> log,
+        Func<string, string, CancellationToken, Task<Result>> moveToNamed,
+        Action<CameraNeedleResult> savePass)
     {
         _engine = engine;
         _prompt = prompt;
         _log = log;
-        _head = new DispenseHead(engine, log, "Camera-needle");
+        _moveToNamed = moveToNamed;
+        _savePass = savePass;
+        _head = new DispenseHead(engine, log, Tag);
     }
 
-    public async Task<Result<CameraNeedleResult>> RunAsync(CameraNeedleOptions o, CancellationToken ct = default)
+    /// <summary>The offset carried between passes (read once at the start, never re-read).</summary>
+    private sealed class Arm
+    {
+        public double Dx, Dy, Dz;
+        public bool Aim;    // dx/dy good enough to aim the needle at the spot (a seed counts)
+        public bool AimZ;   // dz good enough to park above the previous touch
+    }
+
+    public async Task<Result<CameraNeedleResult>> RunAsync(CameraNeedleCalibrationData cfg, CancellationToken ct = default)
     {
         if (_prompt == null)
-            return Fail("No operator-prompt handler registered.", ErrorCode.NotSupported);
+            return Result<CameraNeedleResult>.Fail(ErrorCode.NotSupported, "No operator-prompt handler registered.");
+        if (string.IsNullOrWhiteSpace(cfg.GantryDevice))
+            return Result<CameraNeedleResult>.Fail(ErrorCode.InvalidParameter, "No gantry set — name the device carrying the camera and needle.");
 
-        var g = o.GantryDevice;
+        var gantry = new NeedleGantry(_engine.Motion, cfg.GantryDevice, _log, Tag);
+        var snap = await gantry.SnapshotAsync().ConfigureAwait(false);
+        if (!snap.IsSuccess) return Result<CameraNeedleResult>.Fail(snap.Error, snap.Message);
+
         try
         {
-            // 1) Move to the taught cal position (skipped on the very first run).
-            if (o.CalPosition is { } cp)
-            {
-                var mv = await _engine.Motion
-                    .MoveToPositionAsync(g, new MotionPosition(cp.X, cp.Y, cp.Z, 0, 0, 0), ct)
-                    .ConfigureAwait(false);
-                if (!mv.IsSuccess) return Fail($"Move to cal position: {mv.Message}", mv.Error);
-            }
-
-            // 2) Operator focuses the camera Z on the flat surface -> capture P_focus.
-            if (!await _prompt.ConfirmAsync("Camera focus",
-                    "Jog Z to focus the camera on the flat calibration surface, then Confirm.", ct)
-                    .ConfigureAwait(false))
-                return Declined();
-            var focus = await _engine.Motion.GetPositionAsync(g).ConfigureAwait(false);
-            if (!focus.IsSuccess) return Fail($"Read focus position: {focus.Message}", focus.Error);
-            var pFocus = focus.Value;
-
-            // 3) Pre-apply the current offset so the dot lands in-frame on re-runs (0 first run).
-            //    Purely ergonomic — the measurement below uses absolute positions.
-            var pre = await ApplyRelativeXyAsync(g, o.VcamneedleX, o.VcamneedleY, ct).ConfigureAwait(false);
-            if (!pre.IsSuccess) return Fail($"Pre-apply offset: {pre.Message}", pre.Error);
-
-            // 4) Deposit a dot -> capture G_dispense (xy + z_touch).
-            var disp = await DispenseAsync(o, pFocus.Z, ct).ConfigureAwait(false);
-            if (!disp.IsSuccess) return Fail(disp.Message, disp.Error);
-            var gDispense = disp.Value;
-
-            // 5) Return to focus height (Z only) and move the offset back, so the camera frames the dot.
-            var zback = await _engine.Motion.MoveAbsoluteAsync(g, "Z", pFocus.Z, ct).ConfigureAwait(false);
-            if (!zback.IsSuccess) return Fail($"Return to focus Z: {zback.Message}", zback.Error);
-            var back = await ApplyRelativeXyAsync(g, -o.VcamneedleX, -o.VcamneedleY, ct).ConfigureAwait(false);
-            if (!back.IsSuccess) return Fail($"Move offset back: {back.Message}", back.Error);
-
-            // 6) Operator centres the dot on the crosshair -> capture G_view.
-            if (!await _prompt.ConfirmAsync("Center the dot",
-                    "Jog / MoveClick the gantry until the epoxy dot sits on the center crosshair, then Confirm.", ct)
-                    .ConfigureAwait(false))
-                return Declined();
-            var view = await _engine.Motion.GetPositionAsync(g).ConfigureAwait(false);
-            if (!view.IsSuccess) return Fail($"Read centred position: {view.Message}", view.Error);
-            var gView = view.Value;
-
-            // 7) Compute directly from the two absolute positions.
-            double vx = gDispense.X - gView.X;
-            double vy = gDispense.Y - gView.Y;
-            double focusToNeedleZ = pFocus.Z - gDispense.Z;
-
-            _log(LogLevel.Info,
-                $"Camera-needle: vcamneedle=({vx:F4}, {vy:F4}) mm, focus->needle Z={focusToNeedleZ:F4} mm.");
-            return Result<CameraNeedleResult>.Ok(
-                new CameraNeedleResult(vx, vy, focusToNeedleZ, new CalPoint(pFocus.X, pFocus.Y, pFocus.Z)));
+            return await RunPassesAsync(cfg, gantry, ct).ConfigureAwait(false);
+        }
+        catch (NeedleProcedureException a)
+        {
+            _log(LogLevel.Warning, $"{Tag}: {a.Message}");
+            return Result<CameraNeedleResult>.Fail(a.Code, a.Message);
         }
         catch (OperationCanceledException)
         {
-            await _head.FailSafeAsync(o.ShotIoDevice, o.ShotPin, o.DispenserSlide).ConfigureAwait(false);
-            return Fail("Calibration cancelled.", ErrorCode.OperationFailed);
+            // STOP = no more gantry motion. Close the valve and bring the slide up.
+            await _head.FailSafeAsync(cfg.ShotIoDevice, cfg.ShotPin, cfg.DispenserSlide).ConfigureAwait(false);
+            return Result<CameraNeedleResult>.Fail(ErrorCode.ProcessCancelled, "Needle calibration stopped.");
+        }
+        finally
+        {
+            await gantry.RestoreAsync().ConfigureAwait(false);
         }
     }
 
-    /// <summary>
-    /// Deposits one epoxy dot and returns the gantry position where it was dispensed
-    /// (its XY = dot location, its Z = needle-touch height). Isolated so the
-    /// extend / touch / shot / dwell / lift-off ordering is easy to tune on the bench.
-    /// The head extends, the needle reaches the surface, then the shot output fires:
-    /// ON → debounce → dwell (epoxy window) → OFF → debounce → slow lift-off.
-    /// </summary>
-    private async Task<Result<MotionPosition>> DispenseAsync(
-        CameraNeedleOptions o, double focusZ, CancellationToken ct)
+    private async Task<Result<CameraNeedleResult>> RunPassesAsync(
+        CameraNeedleCalibrationData cfg, NeedleGantry g, CancellationToken ct)
     {
-        var g = o.GantryDevice;
+        int passes = Math.Clamp(cfg.Passes, 1, 5);
+        await ClearFirstAsync(cfg.ClearMoves, ct).ConfigureAwait(false);
 
-        // Lower the dispenser head (sensor-confirmed).
-        var ext = await _head.ExtendAsync(o.DispenserSlide, ct).ConfigureAwait(false);
-        if (!ext.IsSuccess) return Result<MotionPosition>.Fail(ext.Error, ext.Message);
+        // The offset as it stands right now. A seed (not calibrated, non-zero dx/dy) is enough to
+        // AIM with even though it is not enough to dispense through — which is what it is for.
+        var arm = new Arm { Dx = cfg.VcamneedleX, Dy = cfg.VcamneedleY, Dz = cfg.Dz };
+        arm.Aim = cfg.IsCalibrated || Math.Abs(arm.Dx) > 1e-9 || Math.Abs(arm.Dy) > 1e-9;
+        arm.AimZ = cfg.IsCalibrated || Math.Abs(arm.Dz) > 1e-9;
+        _log(LogLevel.Info, arm.Aim
+            ? $"{Tag}: starting from ({arm.Dx:F4}, {arm.Dy:F4}, {arm.Dz:F4}) mm{(cfg.IsCalibrated ? "" : " (seed)")}."
+            : $"{Tag}: nothing to aim with — you will jog the needle over the coupon by hand and hunt for the imprint.");
 
-        // Reach the needle-touch height. First-time (no prior Z relationship): the operator
-        // jogs Z down to find it. On re-runs the touch height is known relative to focus, so
-        // we OFFER an auto-descent (fast to ApproachMm above touch, then crawl at SlowZVelocity);
-        // the operator can decline and jog manually instead.
-        Result<MotionPosition> reach;
-        if (Math.Abs(o.FocusToNeedleZmm) > 1e-6)
+        CameraNeedleResult? last = null;
+        for (int pass = 1; pass <= passes; pass++)
         {
-            double touchZ = DispenseHead.ComputeTouchZ(focusZ, o.FocusToNeedleZmm, o.TouchZAdjustMm, out _);
-            bool auto = await _prompt!.ConfirmAsync("Auto needle touch?",
-                    $"Auto-descend to the known touch height (Z≈{touchZ:F3} mm)? " +
-                    "Confirm = auto-descend, Cancel = jog manually.", ct).ConfigureAwait(false);
-            if (auto)
+            last = await RunPassAsync(pass, passes, cfg, arm, g, ct).ConfigureAwait(false);
+            _savePass(last);   // every pass: a pass-2 abort must not throw away a good pass 1
+            if (last.Verified)
             {
-                reach = await _head.AutoTouchAsync(
-                    g, focusZ, o.FocusToNeedleZmm, o.ApproachMm, o.SlowZVelocity, o.TouchZAdjustMm, ct).ConfigureAwait(false);
+                _log(LogLevel.Info, $"{Tag}: pass {pass} agreed to within {last.ResidualMm:F4} mm XY, {last.ZResidualMm:+0.0000;-0.0000} mm Z — done.");
+                break;
             }
-            else
-            {
-                // A real routine-cancel also returns false here — distinguish it from a
-                // "no, I'll do it manually" by the token, and let cancel abort.
-                ct.ThrowIfCancellationRequested();
-                reach = await ManualTouchAsync(o, ct).ConfigureAwait(false);
-            }
+        }
+
+        var r = last!;
+        if (passes == 1)
+        {
+            _log(LogLevel.Warning,
+                $"{Tag}: offset ({arm.Dx:F4}, {arm.Dy:F4}, {arm.Dz:F4}) mm saved UNVERIFIED (passes = 1) — set passes ≥ 2 to re-measure and check it.");
+            return Result<CameraNeedleResult>.Ok(r);
+        }
+        if (!r.Verified)
+        {
+            // Saved anyway (better than what was there) — but a measurement that will not repeat
+            // points at the marking, the touch, or a needle deflecting on contact.
+            return Result<CameraNeedleResult>.Fail(ErrorCode.OperationFailed,
+                $"Needle calibration did not repeat: the last verify pass was off by {r.ResidualMm:F4} mm XY " +
+                $"(tolerance {cfg.TolMm:F4}) and {r.ZResidualMm:+0.0000;-0.0000} mm Z (tolerance {cfg.ZTolMm:F4}). The offset " +
+                $"({arm.Dx:F4}, {arm.Dy:F4}, {arm.Dz:F4}) mm was saved anyway — check the imprint quality, the touch, " +
+                "and that the needle is not deflecting on contact before dispensing through it.");
+        }
+        _log(LogLevel.Info,
+            $"{Tag}: calibrated ({arm.Dx:F4}, {arm.Dy:F4}, {arm.Dz:F4}) mm on {cfg.GantryDevice}, verified to {r.ResidualMm:F4} mm XY, {r.ZResidualMm:+0.0000;-0.0000} mm Z.");
+        return Result<CameraNeedleResult>.Ok(r);
+    }
+
+    /// <summary>Out of the camera's way first (the hexapods), before the coupon prompt.</summary>
+    private async Task ClearFirstAsync(IReadOnlyList<NeedleClearMove> moves, CancellationToken ct)
+    {
+        foreach (var m in moves)
+        {
+            if (string.IsNullOrWhiteSpace(m.Device) || string.IsNullOrWhiteSpace(m.Position)) continue;
+            _log(LogLevel.Info, $"{Tag}: clearing {m.Device} → '{m.Position}' first.");
+            Must(await _moveToNamed(m.Device, m.Position, ct).ConfigureAwait(false), $"Clear first: {m.Device} → '{m.Position}'");
+        }
+    }
+
+    private async Task<CameraNeedleResult> RunPassAsync(
+        int pass, int passes, CameraNeedleCalibrationData cfg, Arm arm, NeedleGantry g, CancellationToken ct)
+    {
+        bool verify = pass > 1;
+
+        // ---- 1. A clean spot on the coupon ----
+        await AskAsync(pass == 1 ? "Coupon" : $"Pass {pass} of {passes} — verify",
+            pass == 1
+                ? "Put a flat, matte coupon under the camera — something an epoxy dot will show up on. Confirm when it is in place."
+                : "Move the coupon to a CLEAN spot (or slide a fresh one in) — a second imprint on the first has nothing to measure. Then Confirm.",
+            ct).ConfigureAwait(false);
+        await JogAsync(g, "Camera on the coupon",
+            "Centre the camera on a clean part of the coupon and FOCUS it with Z — dZ is measured down from this focal plane. Then Continue.",
+            "XYZ", 0.1, ct).ConfigureAwait(false);
+
+        // ---- 2. The camera reference ----
+        var cam = await ReadAsync(g).ConfigureAwait(false);
+        _log(LogLevel.Info, $"{Tag}: pass {pass}: camera at ({cam.X:F4}, {cam.Y:F4}, {cam.Z:F4}).");
+
+        // ---- 3. Traverse: the needle over that spot, at the CAMERA's Z (well clear, slide up) ----
+        if (arm.Aim)
+            Must(await g.MoveXyzAsync(cam.X + arm.Dx, cam.Y + arm.Dy, cam.Z, cfg.VTraverse, ct).ConfigureAwait(false),
+                "Traverse the needle over the spot");
+
+        await AskAsync("Extend dispenser",
+            $"About to extend '{cfg.DispenserSlide}'. Check the needle has room to come down, then Confirm.", ct).ConfigureAwait(false);
+
+        var tip = await NeedleDownAsync(pass, verify, cfg, arm, cam, g, ct).ConfigureAwait(false);
+
+        // ---- 7. Traverse: the camera back over the dot ----
+        // With an offset to aim by, the dot is where the camera stood when the pass started.
+        // With nothing to aim by, climb back to the camera's Z and hunt from here.
+        if (arm.Aim)
+        {
+            Must(await g.MoveXyzAsync(cam.X, cam.Y, cam.Z, cfg.VTraverse, ct).ConfigureAwait(false), "Camera back over the dot");
         }
         else
         {
-            reach = await ManualTouchAsync(o, ct).ConfigureAwait(false);
+            Must(await g.MoveZAsync(cam.Z, cfg.VTraverse, ct).ConfigureAwait(false), "Climb back to the camera's Z");
+            await JogAsync(g, "Find the imprint",
+                "The imprint is roughly one needle-to-lens distance from here, in the direction the lens sits from the needle. " +
+                "Jog until the dot is in the picture, then Continue.", "XY", 0.1, ct).ConfigureAwait(false);
         }
-        if (!reach.IsSuccess) return reach;
-        var gDispense = reach.Value;
 
-        // Fire the shot (ON -> debounce -> dwell -> OFF -> debounce; OFF guaranteed).
-        var shot = await _head.FireShotAsync(o.ShotIoDevice, o.ShotPin, o.OutputDebounceMs, o.DwellMs, ct).ConfigureAwait(false);
-        if (!shot.IsSuccess) return Result<MotionPosition>.Fail(shot.Error, shot.Message);
+        await JogAsync(g, "Centre on the imprint",
+            (arm.Aim ? "The imprint should be near the crosshair — off by the current calibration's error. " : "") +
+            "Jog / MoveClick until the crosshair sits on the CENTRE of the imprint, then Continue.",
+            "XY", 0.01, ct).ConfigureAwait(false);
+        var dot = await ReadAsync(g).ConfigureAwait(false);
 
-        // Slow lift-off, away from the surface.
-        var lift = await _head.LiftOffAsync(g, focusZ, gDispense.Z, o.LiftoffMm, o.SlowZVelocity, ct).ConfigureAwait(false);
-        if (!lift.IsSuccess) return Result<MotionPosition>.Fail(lift.Error, lift.Message);
+        // ---- 8. Subtract ----
+        double ndx = tip.X - dot.X, ndy = tip.Y - dot.Y, ndz = tip.Z - cam.Z;
+        double residual = 0, zres = 0;
+        if (verify)
+        {
+            residual = Math.Sqrt((ndx - arm.Dx) * (ndx - arm.Dx) + (ndy - arm.Dy) * (ndy - arm.Dy));
+            zres = (ndz - arm.Dz) * (arm.Dz >= 0 ? 1.0 : -1.0);   // + = touched lower than predicted
+            _log(LogLevel.Info,
+                $"{Tag}: pass {pass}: ({ndx:F4}, {ndy:F4}, {ndz:F4}) mm — XY residual {residual:F4} mm, Z residual {zres:+0.0000;-0.0000} mm.");
+        }
+        else
+        {
+            _log(LogLevel.Info, arm.Aim
+                ? $"{Tag}: pass {pass}: ({ndx:F4}, {ndy:F4}, {ndz:F4}) mm — moved the XY answer by {Math.Sqrt((ndx - arm.Dx) * (ndx - arm.Dx) + (ndy - arm.Dy) * (ndy - arm.Dy)):F4} mm."
+                : $"{Tag}: pass {pass}: ({ndx:F4}, {ndy:F4}, {ndz:F4}) mm — first measurement.");
+        }
 
-        // Raise the dispenser head (sensor-confirmed).
-        var ret = await _head.RetractAsync(o.DispenserSlide, ct).ConfigureAwait(false);
-        if (!ret.IsSuccess) return Result<MotionPosition>.Fail(ret.Error, ret.Message);
+        arm.Dx = ndx; arm.Dy = ndy; arm.Dz = ndz;
+        arm.Aim = arm.AimZ = true;
+        bool verified = verify && residual <= cfg.TolMm && Math.Abs(zres) <= cfg.ZTolMm;
 
-        return Result<MotionPosition>.Ok(gDispense);
+        return new CameraNeedleResult(ndx, ndy, -ndz,
+            new CalPoint(cam.X, cam.Y, cam.Z), tip, new CalPoint(dot.X, dot.Y, dot.Z),
+            pass, verify, residual, zres, verified);
     }
 
     /// <summary>
-    /// First-time touch: the operator jogs Z down until the needle touches and confirms.
-    /// Returns the gantry position at touch.
+    /// Stages 2–6, with the needle DOWN: slide down, touch (operator), shot, lift, slide up. Any
+    /// failure but a STOP lifts the needle off and retracts the slide before the error goes on,
+    /// instead of leaving it standing on the coupon.
     /// </summary>
-    private async Task<Result<MotionPosition>> ManualTouchAsync(CameraNeedleOptions o, CancellationToken ct)
+    private async Task<CalPoint> NeedleDownAsync(
+        int pass, bool verify, CameraNeedleCalibrationData cfg, Arm arm, MotionPosition cam, NeedleGantry g, CancellationToken ct)
     {
-        if (!await _prompt!.ConfirmAsync("Needle touch",
-                "Jog Z down until the needle just touches the surface, then Confirm.", ct).ConfigureAwait(false))
-            return Result<MotionPosition>.Fail(ErrorCode.OperationFailed, "Operator declined at needle touch.");
-        var pos = await _engine.Motion.GetPositionAsync(o.GantryDevice).ConfigureAwait(false);
-        if (!pos.IsSuccess) return Result<MotionPosition>.Fail(pos.Error, $"Read dispense position: {pos.Message}");
-        return Result<MotionPosition>.Ok(pos.Value);
+        try
+        {
+            Must(await _head.ExtendAsync(cfg.DispenserSlide, ct).ConfigureAwait(false), "Extend the dispenser");
+            if (cfg.SettleMs > 0) await Task.Delay(cfg.SettleMs, ct).ConfigureAwait(false);
+
+            // Nothing aimed the needle: it hangs a lever arm away from the spot. Coarse XY by eye.
+            if (!arm.Aim)
+                await JogAsync(g, "Needle over the coupon",
+                    "Get the needle over a clean part of the coupon — jog XY, or just slide the coupon under it. " +
+                    "Watch the needle, not the screen. Continue when it is over it.", "XY", 0.1, ct).ConfigureAwait(false);
+
+            double dir = arm.Dz >= 0 ? 1.0 : -1.0;
+            double predicted = cam.Z + arm.Dz;   // where the calibration says it touches
+            if (verify)
+            {
+                double target = predicted - dir * cfg.VerifyGapMm;
+                double safety = target - dir * cfg.ClearMm;
+                Must(await g.MoveZAsync(safety, cfg.VApproach, ct).ConfigureAwait(false), "Approach to the safety height");
+                Must(await g.MoveZAsync(target, cfg.VFinal, ct).ConfigureAwait(false), "Final approach to the verify gap");
+                _log(LogLevel.Info, $"{Tag}: pass {pass}: stopped {cfg.VerifyGapMm:F3} mm short of the predicted touch Z {predicted:F4}.");
+                await JogAsync(g, "VERIFY — close the gap",
+                    $"The needle stopped {cfg.VerifyGapMm:F3} mm above where the calibration says it touches. Jog Z DOWN until it " +
+                    "just touches — barely, not pressing. If it is ALREADY pressing, jog UP until it just touches. Then Continue.",
+                    "Z", 0.01, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                // The previous touch height may belong to a needle that has since been CHANGED —
+                // park a wider first-clear above it and hand the whole last stretch to the operator.
+                if (arm.AimZ)
+                {
+                    Must(await g.MoveZAsync(predicted - dir * cfg.FirstClearMm, cfg.VApproach, ct).ConfigureAwait(false),
+                        "Park above the previous touch height");
+                    _log(LogLevel.Info, $"{Tag}: pass {pass}: parked {cfg.FirstClearMm:F3} mm short of the previous touch height.");
+                }
+                await JogAsync(g, "Touch the coupon",
+                    "Jog Z DOWN until the needle just touches the coupon — barely, not pressing. Coarse steps first, " +
+                    "10 µm for the last few tenths. Then Continue.", "Z", 0.1, ct).ConfigureAwait(false);
+            }
+            var tipPos = await ReadAsync(g).ConfigureAwait(false);
+            var tip = new CalPoint(tipPos.X, tipPos.Y, tipPos.Z);
+
+            // ---- 5. The imprint ----
+            await AskAsync("Fire the shot", $"Fire a {cfg.ShotMs} ms shot to make the imprint?", ct).ConfigureAwait(false);
+            Must(await _head.PulseShotAsync(cfg.ShotIoDevice, cfg.ShotPin, cfg.ShotMs, ct).ConfigureAwait(false), "Shot");
+
+            // ---- 6. Lift off, THEN the slide — the needle comes straight up off the dot ----
+            Must(await g.MoveZAsync(NeedleGantry.LiftToward(tip.Z, cam.Z, cfg.LiftMm), cfg.VLiftoff, ct).ConfigureAwait(false), "Lift off");
+            Must(await _head.RetractAsync(cfg.DispenserSlide, ct).ConfigureAwait(false), "Retract the dispenser");
+            return tip;
+        }
+        catch (NeedleProcedureException)
+        {
+            await LiftOffAfterFailureAsync(cfg, cam.Z, g).ConfigureAwait(false);
+            throw;
+        }
     }
 
-    /// <summary>Applies a relative XY move; skips an axis whose delta is ~0.</summary>
-    private async Task<Result> ApplyRelativeXyAsync(string device, double dx, double dy, CancellationToken ct)
+    /// <summary>Best-effort: valve closed, Z lifted toward the camera's Z, slide up.</summary>
+    private async Task LiftOffAfterFailureAsync(CameraNeedleCalibrationData cfg, double camZ, NeedleGantry g)
     {
-        if (Math.Abs(dx) > 1e-6)
+        await _head.ShotOffAsync(cfg.ShotIoDevice, cfg.ShotPin).ConfigureAwait(false);
+        var at = await g.ReadAsync().ConfigureAwait(false);
+        if (at.IsSuccess)
         {
-            var rx = await _engine.Motion.MoveRelativeAsync(device, "X", dx, ct).ConfigureAwait(false);
-            if (!rx.IsSuccess) return rx;
+            var lift = await g.MoveZAsync(NeedleGantry.LiftToward(at.Value.Z, camZ, cfg.LiftMm), cfg.VLiftoff, CancellationToken.None)
+                .ConfigureAwait(false);
+            if (!lift.IsSuccess) _log(LogLevel.Warning, $"{Tag}: lift-off after the failure failed: {lift.Message}");
         }
-        if (Math.Abs(dy) > 1e-6)
-        {
-            var ry = await _engine.Motion.MoveRelativeAsync(device, "Y", dy, ct).ConfigureAwait(false);
-            if (!ry.IsSuccess) return ry;
-        }
-        return Result.Ok();
+        await _head.RetractAsync(cfg.DispenserSlide, CancellationToken.None).ConfigureAwait(false);
     }
 
-    private static Result<CameraNeedleResult> Fail(string message, ErrorCode code)
-        => Result<CameraNeedleResult>.Fail(code, message);
+    // --- operator + motion helpers (failures become an Abort) ---
 
-    private static Result<CameraNeedleResult> Declined()
-        => Result<CameraNeedleResult>.Fail(ErrorCode.OperationFailed, "Operator declined the calibration.");
+    private async Task AskAsync(string title, string message, CancellationToken ct)
+    {
+        if (!await _prompt!.ConfirmAsync(title, message, ct).ConfigureAwait(false))
+        {
+            ct.ThrowIfCancellationRequested();
+            throw new NeedleProcedureException("Cancelled by the operator.", ErrorCode.ProcessCancelled);
+        }
+    }
+
+    private async Task JogAsync(NeedleGantry g, string title, string message, string axes, double stepMm, CancellationToken ct)
+    {
+        var request = new JogPopupRequest(title, message, new[] { g.Device }, axes, stepMm, 3600);
+        if (!await _prompt!.JogPopupAsync(request, ct).ConfigureAwait(false))
+        {
+            ct.ThrowIfCancellationRequested();
+            throw new NeedleProcedureException("Cancelled by the operator.", ErrorCode.ProcessCancelled);
+        }
+    }
+
+    private static async Task<MotionPosition> ReadAsync(NeedleGantry g)
+    {
+        var r = await g.ReadAsync().ConfigureAwait(false);
+        if (!r.IsSuccess) throw new NeedleProcedureException(r.Message, r.Error);
+        return r.Value;
+    }
+
+    private static void Must(Result r, string what)
+    {
+        if (!r.IsSuccess) throw new NeedleProcedureException($"{what}: {r.Message}", r.Error);
+    }
 }
