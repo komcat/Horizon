@@ -234,7 +234,8 @@
                 </Border>
                 <!-- All numeric/text columns star-share the width (so the grid fills the
                      container, no empty filler); MinWidth keeps each header readable. The
-                     trailing action column is fixed-width with a green per-row edit button. -->
+                     trailing action columns are fixed-width: a blue per-row Go (move there)
+                     and a green ".." (edit velocity / camera exposure). -->
                 <DataGrid x:Name="InspectorGrid" AutoGenerateColumns="False" IsReadOnly="True"
                           ItemsSource="{Binding Rows}"
                           HeadersVisibility="Column" GridLinesVisibility="All"
@@ -284,44 +285,23 @@
                         <DataGridTextColumn Header="Position" Binding="{Binding Position}" Width="2*" MinWidth="64" />
                         <DataGridTextColumn Header="Device" Binding="{Binding Device}" Width="1.6*" MinWidth="72" />
                         <DataGridTextColumn Header="Vel" Binding="{Binding Velocity}" Width="*" MinWidth="44" />
-                        <DataGridTextColumn Header="X" Binding="{Binding X}" Width="*" MinWidth="40" />
-                        <DataGridTextColumn Header="Y" Binding="{Binding Y}" Width="*" MinWidth="40" />
-                        <DataGridTextColumn Header="Z" Binding="{Binding Z}" Width="*" MinWidth="40" />
-                        <DataGridTextColumn Header="U" Binding="{Binding U}" Width="*" MinWidth="40" />
-                        <DataGridTextColumn Header="V" Binding="{Binding V}" Width="*" MinWidth="40" />
-                        <DataGridTextColumn Header="W" Binding="{Binding W}" Width="*" MinWidth="40" />
                         <DataGridTextColumn Header="Camera" Binding="{Binding Camera}" Width="1.6*" MinWidth="64" />
                         <DataGridTextColumn Header="Exp µs" Binding="{Binding Exposure}" Width="*" MinWidth="52" />
-                        <!-- Update — re-teach this point from the live pose. Only on the
-                             active row, so it always means "save where we actually are". -->
+                        <!-- Go — move this row's device to its taught point (puts the cursor there). -->
                         <DataGridTemplateColumn Header="" Width="Auto" CanUserSort="False">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Button Content="Update" Height="20" Margin="2" Padding="6,0"
+                                    <Button Content="Go" Click="OnGoRow" Height="20" Margin="2" Padding="8,0"
                                             Background="#1565C0" Foreground="White" FontWeight="Bold"
                                             BorderThickness="0" Cursor="Hand"
-                                            ToolTip="Re-teach this position from where the device is now"
-                                            Command="{Binding DataContext.UpdateCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}">
-                                        <Button.Style>
-                                            <Style TargetType="Button">
-                                                <!-- Set in the style, not locally: a local value would
-                                                     out-rank the trigger and never show. -->
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                        <Setter Property="Visibility" Value="Visible" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Button.Style>
-                                    </Button>
+                                            ToolTip="Move this device to this position" />
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
                         <DataGridTemplateColumn Header="" Width="Auto" CanUserSort="False">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Button Content=".." Click="OnEditRow" ToolTip="Edit velocity / axis values"
+                                    <Button Content=".." Click="OnEditRow" ToolTip="Edit velocity / camera exposure"
                                             Width="30" Height="20" Margin="2" Padding="0"
                                             Background="#2E7D32" Foreground="White" FontWeight="Bold"
                                             BorderThickness="0" Cursor="Hand" />

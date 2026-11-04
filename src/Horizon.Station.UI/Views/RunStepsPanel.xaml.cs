@@ -736,7 +736,12 @@ public partial class RunStepsPanel : UserControl, IMotionInspectHost, IRunStepCo
         }
     }
 
-    /// <summary>Opens the non-modal per-position editor; on Apply the position is saved to the product via Layer 2.</summary>
+    /// <summary>
+    /// Opens the non-modal recall-settings editor (velocity, camera, exposure — the axis
+    /// values are not edited here); on Save the position is written to the product via
+    /// Layer 2 with its taught pose unchanged. Refused for an untaught point: there is
+    /// no pose to keep, and saving would teach it at zero.
+    /// </summary>
     private void OpenPositionEditor(string device, string position, NamedPosition? np)
     {
         if (_host == null)
@@ -746,17 +751,24 @@ public partial class RunStepsPanel : UserControl, IMotionInspectHost, IRunStepCo
         if (info == null)
             return;
 
+        if (np == null)
+        {
+            Log(LogLevel.Warning, $"'{position}' is not taught on {device} — teach it before editing its velocity / exposure.");
+            return;
+        }
+
         var ctx = new PositionEditContext
         {
             Position = position,
             Device = info.Name,
             ControllerType = info.ControllerType,
             Axes = info.Axes,
-            Velocity = np?.Velocity ?? 0,
-            Pose = np?.Coordinates ?? MotionPosition.Zero,
+            Velocity = np.Velocity,
+            Pose = np.Coordinates,
             Cameras = _host.Engine.Camera.CameraIds,
-            Camera = np?.Camera,
-            ExposureUs = np?.ExposureUs,
+            Camera = np.Camera,
+            ExposureUs = np.ExposureUs,
+            ShowAxes = false,
         };
 
         new PositionEditorWindow(ctx, ApplyPositionEditAsync)

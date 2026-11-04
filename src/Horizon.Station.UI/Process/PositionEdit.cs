@@ -24,6 +24,12 @@ public sealed class PositionEditContext
 
     /// <summary>Current target exposure in microseconds, or null if none.</summary>
     public double? ExposureUs { get; init; }
+
+    /// <summary>
+    /// False = edit only the recall settings (velocity, camera, exposure); the axis
+    /// fields are hidden and <see cref="Pose"/> is handed back unchanged.
+    /// </summary>
+    public bool ShowAxes { get; init; } = true;
 }
 
 /// <summary>Result the editor hands back on Apply — the new recall settings for a position.</summary>

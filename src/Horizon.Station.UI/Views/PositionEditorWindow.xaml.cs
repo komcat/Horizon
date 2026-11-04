@@ -13,7 +13,8 @@ namespace Horizon.Station.UI.Views;
 /// shows X/Y/Z; a PI hexapod adds U/V/W). Saving does NOT command motion: it
 /// hands the new settings back via the supplied callback (which persists them via
 /// Layer 2) and closes; Cancel discards. A blank exposure means "leave the camera
-/// untouched".
+/// untouched". With <see cref="PositionEditContext.ShowAxes"/> off (the Run-page
+/// motion inspector) only velocity / camera / exposure are shown and the pose is kept.
 /// </summary>
 public partial class PositionEditorWindow : Window
 {
@@ -35,8 +36,9 @@ public partial class PositionEditorWindow : Window
         DeviceText.Text = $"{ctx.Device}  ({ctx.ControllerType})";
 
         _velocityBox = AddNumberField("Velocity", ctx.Velocity);
-        foreach (var axis in ctx.Axes)
-            _axisBoxes[axis] = AddNumberField(axis, AxisValue(ctx.Pose, axis));
+        if (ctx.ShowAxes)
+            foreach (var axis in ctx.Axes)
+                _axisBoxes[axis] = AddNumberField(axis, AxisValue(ctx.Pose, axis));
 
         _cameraBox = AddComboField("Camera", ctx.Cameras, ctx.Camera);
         _exposureBox = AddTextField("Exposure µs",

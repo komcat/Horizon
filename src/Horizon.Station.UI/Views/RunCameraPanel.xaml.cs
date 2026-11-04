@@ -108,7 +108,7 @@ public partial class RunCameraPanel : UserControl
     /// <summary>
     /// Shows the motion inspector (over the camera column) for the step whose program
     /// the session was built from. The panel is bound to the session, so the grid, the
-    /// step cursor and its Back/Forward/Update commands all come from one object.
+    /// step cursor and its Back/Forward/Go actions all come from one object.
     /// </summary>
     public void ShowInspector(MotionInspectSession session)
     {
@@ -120,11 +120,18 @@ public partial class RunCameraPanel : UserControl
     private void OnCloseInspector(object sender, RoutedEventArgs e)
         => InspectorPanel.Visibility = Visibility.Collapsed;
 
-    /// <summary>Per-row ".." button — opens that position's editor (logic owned by the process panel).</summary>
+    /// <summary>Per-row ".." button — opens that position's velocity / exposure editor (logic owned by the process panel).</summary>
     private void OnEditRow(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { DataContext: MotionInspectRow row })
             row.Edit?.Invoke();
+    }
+
+    /// <summary>Per-row Go button — moves that row's device to its taught point (the session reports the outcome).</summary>
+    private async void OnGoRow(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: MotionInspectRow { Go: { } go } })
+            await go();
     }
 
     /// <summary>Starts all cameras grabbing and begins routing frames. Called when the Run page is shown.</summary>
