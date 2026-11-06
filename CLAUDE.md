@@ -335,8 +335,8 @@ SiPhOG, DUT Data, find-first-light, Testing Ground, `ScanPanelStore`, its settin
   a `.moon` script reports its own via `machine.progress(pct, msg)`),
   `faam_scan_panel.json` (Run-page **Scanning** panel under the alignment + SiPhOG panels — `Views/ScanningPanel`; it replaced the Raster Climb / Auto W panels, which are **deprecated — do not use or build on** `RasterClimbPanel` / `AutoWPanel` / `RasterClimbEngine` / `AutoWEngine` (`app.* hillclimb` / `autow` now fail with a deprecation message)
   + `ScanPanelStore`: two hex-right pose slots — small Save1/Save2 buttons store the current pose, Move1/Move2
-  below move the hexapod there — and four (2×2) buttons that run an assigned script preset or bare `.moon`
-  script; captions / poses / scripts edited by right-click or on Machine › Settings),
+  below move the hexapod there — and six (2×3) buttons that run an assigned script preset or bare `.moon`
+  script (the fifth, "W opt", defaults to `FAU_WOptimize` when first added); captions / poses / scripts edited by right-click or on Machine › Settings),
   `faam_script_presets.json` (`ScriptPresetStore`, Machine › Settings › Script presets: name + `.moon`
   script + argument text + **No exit threshold** flag (adds `exit = false`; the Run-page button turns orange,
   default blue) — one script, several configurations, e.g. the `FAU_PowerClimb` coarse / fine /

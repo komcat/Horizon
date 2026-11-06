@@ -55,8 +55,8 @@ public sealed class ScanPanelSettings
 
 /// <summary>
 /// The Run-page Scanning panel's customisation — two hex-right position slots (Save1 / Save2
-/// store the current pose, Move1 / Move2 move the hexapod there) and four script buttons (Scan1..Scan4,
-/// 2×2: a click runs the assigned script preset or <c>.moon</c> script). Captions, saved poses and script
+/// store the current pose, Move1 / Move2 move the hexapod there) and six script buttons (Scan1..Scan6,
+/// 2×3; the fifth defaults to <c>FAU_WOptimize</c>: a click runs the assigned script preset or <c>.moon</c> script). Captions, saved poses and script
 /// assignments are edited by right-click on the Run page or on Machine › Settings, and stored
 /// machine-global in <c>faam_scan_panel.json</c>. Script names resolve in the active product.
 /// </summary>
@@ -68,8 +68,11 @@ public static class ScanPanelStore
     /// <summary>Number of position buttons.</summary>
     public const int PositionSlotCount = 2;
 
-    /// <summary>Number of script buttons (a 2×2 grid on the Run page).</summary>
-    public const int ScriptSlotCount = 4;
+    /// <summary>Number of script buttons (a 2-column × 3-row grid on the Run page).</summary>
+    public const int ScriptSlotCount = 6;
+
+    /// <summary>Script slot that defaults to the W optimizer when it is first added (file had fewer slots).</summary>
+    private const int WOptimizeSlot = 4;
 
     private const string FileName = "faam_scan_panel";
 
@@ -103,7 +106,14 @@ public static class ScanPanelStore
         s.Positions ??= new List<ScanPositionSlot>();
         s.Scripts ??= new List<ScanScriptSlot>();
         while (s.Positions.Count < PositionSlotCount) s.Positions.Add(new ScanPositionSlot());
-        while (s.Scripts.Count < ScriptSlotCount) s.Scripts.Add(new ScanScriptSlot());
+        while (s.Scripts.Count < ScriptSlotCount)
+        {
+            // A newly added W-optimizer slot comes pre-assigned to the bare FAU_WOptimize script
+            // (no arguments = the script's defaults); every other new slot starts empty.
+            s.Scripts.Add(s.Scripts.Count == WOptimizeSlot
+                ? new ScanScriptSlot { Label = "W opt", Script = "FAU_WOptimize" }
+                : new ScanScriptSlot());
+        }
         if (s.Positions.Count > PositionSlotCount) s.Positions.RemoveRange(PositionSlotCount, s.Positions.Count - PositionSlotCount);
         if (s.Scripts.Count > ScriptSlotCount) s.Scripts.RemoveRange(ScriptSlotCount, s.Scripts.Count - ScriptSlotCount);
 

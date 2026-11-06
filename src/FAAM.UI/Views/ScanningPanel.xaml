@@ -93,7 +93,7 @@
                 <!-- Script presets / .moon scripts: click = run; right-click = choose preset or script / rename / clear. -->
                 <StackPanel Grid.Column="2">
                     <TextBlock Text="Scan scripts  (right-click to choose preset / script / rename)" Style="{StaticResource ScLabel}" />
-                    <UniformGrid Columns="2" Rows="2">
+                    <UniformGrid Columns="2" Rows="3">
                         <Button x:Name="Script0Button" Tag="0" Style="{StaticResource ScScriptButton}" Margin="0,0,3,3"
                                 Click="OnScriptClick" MouseRightButtonUp="OnScriptRightClick">
                             <StackPanel>
@@ -108,18 +108,33 @@
                                 <TextBlock x:Name="Script1Detail" Style="{StaticResource ScDetail}" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="Script2Button" Tag="2" Style="{StaticResource ScScriptButton}" Margin="0,3,3,0"
+                        <Button x:Name="Script2Button" Tag="2" Style="{StaticResource ScScriptButton}" Margin="0,3,3,3"
                                 Click="OnScriptClick" MouseRightButtonUp="OnScriptRightClick">
                             <StackPanel>
                                 <TextBlock x:Name="Script2Caption" Style="{StaticResource ScCaption}" />
                                 <TextBlock x:Name="Script2Detail" Style="{StaticResource ScDetail}" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="Script3Button" Tag="3" Style="{StaticResource ScScriptButton}" Margin="3,3,0,0"
+                        <Button x:Name="Script3Button" Tag="3" Style="{StaticResource ScScriptButton}" Margin="3,3,0,3"
                                 Click="OnScriptClick" MouseRightButtonUp="OnScriptRightClick">
                             <StackPanel>
                                 <TextBlock x:Name="Script3Caption" Style="{StaticResource ScCaption}" />
                                 <TextBlock x:Name="Script3Detail" Style="{StaticResource ScDetail}" />
+                            </StackPanel>
+                        </Button>
+                        <!-- Script4 defaults to FAU_WOptimize (ScanPanelStore); Script5 is a spare. -->
+                        <Button x:Name="Script4Button" Tag="4" Style="{StaticResource ScScriptButton}" Margin="0,3,3,0"
+                                Click="OnScriptClick" MouseRightButtonUp="OnScriptRightClick">
+                            <StackPanel>
+                                <TextBlock x:Name="Script4Caption" Style="{StaticResource ScCaption}" />
+                                <TextBlock x:Name="Script4Detail" Style="{StaticResource ScDetail}" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="Script5Button" Tag="5" Style="{StaticResource ScScriptButton}" Margin="3,3,0,0"
+                                Click="OnScriptClick" MouseRightButtonUp="OnScriptRightClick">
+                            <StackPanel>
+                                <TextBlock x:Name="Script5Caption" Style="{StaticResource ScCaption}" />
+                                <TextBlock x:Name="Script5Detail" Style="{StaticResource ScDetail}" />
                             </StackPanel>
                         </Button>
                     </UniformGrid>

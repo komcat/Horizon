@@ -9,8 +9,8 @@ namespace FAAM.UI.Views;
 /// <summary>
 /// Run-page Scanning panel (under Raster Climb + Auto W, above the log). Two hex-right
 /// position slots — a small Save button (top row) stores the current six-axis pose, a Move
-/// button (second row) moves the hexapod there (right-click: rename / clear) — and four
-/// script buttons (2×2) that run an assigned script preset (<see cref="ScriptPresetStore"/>:
+/// button (second row) moves the hexapod there (right-click: rename / clear) — and six
+/// script buttons (2×3; the fifth defaults to FAU_WOptimize) that run an assigned script preset (<see cref="ScriptPresetStore"/>:
 /// a script + its arguments; orange when the preset has no exit threshold) or a bare
 /// <c>.moon</c> script from the active product (right-click picks the preset or script /
 /// renames / clears). The customisation lives in <see cref="ScanPanelStore"/>
@@ -41,9 +41,9 @@ public partial class ScanningPanel : UserControl
         _posButtons = new[] { Pos0Button, Pos1Button };
         _posCaptions = new[] { Pos0Caption, Pos1Caption };
         _posDetails = new[] { Pos0Detail, Pos1Detail };
-        _scriptButtons = new[] { Script0Button, Script1Button, Script2Button, Script3Button };
-        _scriptCaptions = new[] { Script0Caption, Script1Caption, Script2Caption, Script3Caption };
-        _scriptDetails = new[] { Script0Detail, Script1Detail, Script2Detail, Script3Detail };
+        _scriptButtons = new[] { Script0Button, Script1Button, Script2Button, Script3Button, Script4Button, Script5Button };
+        _scriptCaptions = new[] { Script0Caption, Script1Caption, Script2Caption, Script3Caption, Script4Caption, Script5Caption };
+        _scriptDetails = new[] { Script0Detail, Script1Detail, Script2Detail, Script3Detail, Script4Detail, Script5Detail };
         // Presets matter too: a preset's "no exit threshold" sets its button colour.
         Unloaded += (_, _) =>
         {

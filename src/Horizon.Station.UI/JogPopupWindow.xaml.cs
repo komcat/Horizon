@@ -39,6 +39,32 @@ public partial class JogPopupWindow : Window
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += OnTick;
         _timer.Start();
+
+        Loaded += (_, _) => FitToScreen();
+    }
+
+    /// <summary>Unscaled content width; the XAML draws everything at <see cref="Scale"/>×.</summary>
+    private const double BaseWidth = 320;
+
+    /// <summary>Preferred zoom of the whole window (2× for visibility at the machine).</summary>
+    private const double Scale = 2.0;
+
+    /// <summary>
+    /// Keeps the 2× window on screen: if it is taller than the work area, the zoom is reduced
+    /// just enough to fit (never below 1×), then the window is pulled back inside the work area.
+    /// </summary>
+    private void FitToScreen()
+    {
+        var area = SystemParameters.WorkArea;
+        if (ActualHeight > area.Height && ActualHeight > 0)
+        {
+            var s = Math.Max(1.0, Scale * area.Height / ActualHeight * 0.98);
+            Zoom.ScaleX = Zoom.ScaleY = s;
+            Width = BaseWidth * s;
+            UpdateLayout();
+        }
+        Left = Math.Clamp(Left, area.Left, Math.Max(area.Left, area.Right - ActualWidth));
+        Top = Math.Clamp(Top, area.Top, Math.Max(area.Top, area.Bottom - ActualHeight));
     }
 
     private void OnTick(object? sender, EventArgs e)

@@ -4,14 +4,19 @@
         xmlns:ui="clr-namespace:Horizon.Station.UI"
         xmlns:v="clr-namespace:Horizon.Station.UI.Views"
         Title="{x:Static ui:StationApp.Title}"
-        Width="320" SizeToContent="Height"
+        Width="640" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         WindowStyle="None"
         ShowInTaskbar="False"
         Topmost="True"
         Background="{StaticResource Panel}">
+    <!-- Drawn at 2× (buttons, text, readout, margins — everything) for visibility at the
+         machine; the code-behind shrinks the scale only if 2× would not fit the screen. -->
     <Border BorderBrush="{StaticResource Accent}" BorderThickness="1">
+        <Border.LayoutTransform>
+            <ScaleTransform x:Name="Zoom" ScaleX="2" ScaleY="2" />
+        </Border.LayoutTransform>
         <StackPanel Margin="16,14">
             <TextBlock x:Name="PromptTitle" Foreground="{StaticResource Accent}" FontSize="15" FontWeight="SemiBold"
                        TextWrapping="Wrap" Margin="0,0,0,6" />
