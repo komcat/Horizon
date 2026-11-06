@@ -191,8 +191,12 @@
             </ItemsControl>
         </Border>
 
+        <!-- Tabs: Positions (list + map) | ACS profile (ACS devices only, read-only). -->
+        <TabControl Grid.Row="4" Margin="0,12,0,0" SelectedIndex="{Binding SelectedTab}"
+                    Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}">
+        <TabItem Header="Positions">
         <!-- Positions: the list (left) | splitter | the position map canvas (right). -->
-        <Grid Grid.Row="4" Margin="0,12,0,0">
+        <Grid Margin="0,8,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="ListColumn" Width="720" MinWidth="320" />
                 <ColumnDefinition Width="Auto" />
@@ -299,5 +303,101 @@
 
             <local:PositionMapView Grid.Column="2" DataContext="{Binding Map}" />
         </Grid>
+        </TabItem>
+
+        <!-- ACS motion profile per axis — read from the controller (VEL / ACC / DEC / JERK / KDEC), view only. -->
+        <TabItem Header="ACS profile" Visibility="{Binding IsAcs, Converter={StaticResource BoolToVis}}">
+            <Grid Margin="0,8,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Adaptive-profile ratios: every velocity set writes ACC/DEC/JERK/KDEC from these.
+                     Saved per device (acs_profile_ratios.json); Save also re-applies at the current VEL. -->
+                <Border Grid.Row="0" Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                        Padding="10,8" Margin="0,0,0,10" HorizontalAlignment="Left">
+                    <StackPanel>
+                        <TextBlock Text="Adaptive profile ratios — applied on every velocity set" Foreground="{StaticResource Accent}"
+                                   FontWeight="SemiBold" Margin="0,0,0,8" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="ACC = DEC =" Foreground="{StaticResource Text}" VerticalAlignment="Center" />
+                            <TextBox Width="60" Margin="6,0,4,0" VerticalAlignment="Center" FontFamily="Consolas"
+                                     Text="{Binding AccRatio}" ToolTip="ACC and DEC as a multiple of VEL" />
+                            <TextBlock Text="× VEL" Foreground="{StaticResource Text}" VerticalAlignment="Center" Margin="0,0,24,0" />
+
+                            <TextBlock Text="JERK =" Foreground="{StaticResource Text}" VerticalAlignment="Center" />
+                            <TextBox Width="60" Margin="6,0,4,0" VerticalAlignment="Center" FontFamily="Consolas"
+                                     Text="{Binding JerkRatio}" ToolTip="JERK as a multiple of ACC" />
+                            <TextBlock Text="× ACC" Foreground="{StaticResource Text}" VerticalAlignment="Center" Margin="0,0,24,0" />
+
+                            <TextBlock Text="KDEC =" Foreground="{StaticResource Text}" VerticalAlignment="Center" />
+                            <TextBox Width="60" Margin="6,0,4,0" VerticalAlignment="Center" FontFamily="Consolas"
+                                     Text="{Binding KdecRatio}" ToolTip="Kill deceleration as a multiple of ACC" />
+                            <TextBlock Text="× ACC" Foreground="{StaticResource Text}" VerticalAlignment="Center" Margin="0,0,24,0" />
+
+                            <Button Content="Save" Height="26" Padding="16,0" Margin="0,0,6,0" FontWeight="SemiBold"
+                                    Command="{Binding SaveRatiosCommand}"
+                                    ToolTip="Save the ratios for this device (kept across restarts) and re-apply them now at each axis's current velocity" />
+                            <Button Content="Defaults" Height="26" Padding="10,0"
+                                    Command="{Binding DefaultRatiosCommand}"
+                                    ToolTip="Fill in the built-in ratios (10 / 10 / 2) — press Save to apply" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="2,0,0,8">
+                    <TextBlock Text="Motion profile" Foreground="{StaticResource Subtle}" FontWeight="SemiBold"
+                               VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <Button Content="Refresh" Height="26" Padding="14,0" Margin="0,0,12,0"
+                            Command="{Binding RefreshProfileCommand}"
+                            ToolTip="Read VEL / ACC / DEC / JERK / KDEC of every axis from the controller" />
+                    <TextBlock Text="{Binding ProfileStatus}" Foreground="{StaticResource Subtle}" FontStyle="Italic"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Grid.Row="2" Foreground="{StaticResource Subtle}" FontSize="11.5" Margin="2,0,0,6"
+                           Text="Values as the controller holds them now (units: mm/s, mm/s², mm/s², mm/s³, mm/s²)." />
+                <DataGrid Grid.Row="3" ItemsSource="{Binding AcsProfile}" HorizontalAlignment="Left" VerticalAlignment="Top"
+                          AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
+                          CanUserReorderColumns="False" CanUserSortColumns="False" SelectionMode="Single"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeight="30"
+                          Background="{StaticResource Bg}" RowBackground="{StaticResource Bg}"
+                          Foreground="{StaticResource Text}" BorderBrush="{StaticResource Edge}"
+                          HorizontalGridLinesBrush="{StaticResource Edge}">
+                    <DataGrid.Resources>
+                        <Style x:Key="ProfileCell" TargetType="TextBlock">
+                            <Setter Property="FontFamily" Value="Consolas" />
+                            <Setter Property="HorizontalAlignment" Value="Right" />
+                            <Setter Property="VerticalAlignment" Value="Center" />
+                            <Setter Property="Margin" Value="8,0" />
+                        </Style>
+                    </DataGrid.Resources>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Axis" Width="70" Binding="{Binding Axis}">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                    <Setter Property="Margin" Value="8,0" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="VEL (mm/s)" Width="120" Binding="{Binding Velocity, StringFormat={}{0:G6}}"
+                                            ElementStyle="{StaticResource ProfileCell}" />
+                        <DataGridTextColumn Header="ACC (mm/s²)" Width="120" Binding="{Binding Acceleration, StringFormat={}{0:G6}}"
+                                            ElementStyle="{StaticResource ProfileCell}" />
+                        <DataGridTextColumn Header="DEC (mm/s²)" Width="120" Binding="{Binding Deceleration, StringFormat={}{0:G6}}"
+                                            ElementStyle="{StaticResource ProfileCell}" />
+                        <DataGridTextColumn Header="JERK (mm/s³)" Width="120" Binding="{Binding Jerk, StringFormat={}{0:G6}}"
+                                            ElementStyle="{StaticResource ProfileCell}" />
+                        <DataGridTextColumn Header="KDEC (mm/s²)" Width="120" Binding="{Binding KillDeceleration, StringFormat={}{0:G6}}"
+                                            ElementStyle="{StaticResource ProfileCell}" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </TabItem>
+        </TabControl>
     </Grid>
 </UserControl>

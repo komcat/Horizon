@@ -46,6 +46,24 @@ public interface IMotionController
     double GetSystemVelocity() => 0;
 
     /// <summary>
+    /// Reads one axis's motion profile (velocity, acceleration, deceleration, jerk, kill
+    /// deceleration). Null when unsupported or unreadable. Default: not supported (ACS only).
+    /// </summary>
+    AxisProfile? GetAxisProfile(string axis) => null;
+
+    /// <summary>
+    /// Adaptive-profile ratios used by <see cref="SetVelocity"/> (ACC/DEC/JERK/KDEC derived from
+    /// VEL). Null when the controller has no adaptive profile. Default: none (ACS only).
+    /// </summary>
+    ProfileRatios? GetProfileRatios() => null;
+
+    /// <summary>
+    /// Replaces the adaptive-profile ratios (no controller I/O — they apply from the next
+    /// <see cref="SetVelocity"/>). False when invalid or unsupported.
+    /// </summary>
+    bool SetProfileRatios(ProfileRatios ratios) => false;
+
+    /// <summary>
     /// Enables (servo on) or disables (servo off) one axis. Default: not supported
     /// (PI controllers keep servo control internal to the hexapod).
     /// </summary>

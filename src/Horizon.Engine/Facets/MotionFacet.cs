@@ -28,15 +28,18 @@ internal sealed class MotionFacet : IMotionFacet, IAsyncDisposable
     private readonly Dictionary<string, SemaphoreSlim> _locks = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, MotionDeviceState> _state = new(StringComparer.OrdinalIgnoreCase);
     private readonly PollLoop _poll;
+    private readonly MotionProfileRatioStore _ratioStore;
 
     public MotionFacet(
         UnifiedMotionManager manager,
         Action<HardwareStatusChanged> emitStatus,
-        Action<LogLevel, string> log)
+        Action<LogLevel, string> log,
+        string configDirectory)
     {
         _manager = manager;
         _emitStatus = emitStatus;
         _log = log;
+        _ratioStore = new MotionProfileRatioStore(configDirectory, log);
 
         foreach (var name in _manager.GetAllDeviceNames())
         {
@@ -46,6 +49,15 @@ internal sealed class MotionFacet : IMotionFacet, IAsyncDisposable
             _devices[name] = new MotionDeviceInfo(name, type, axes);
             _locks[name] = new SemaphoreSlim(1, 1);
             _state[name] = MotionDeviceState.Unknown;
+
+            // ACS adaptive profile: hand the saved ratios to the controller (no I/O — they
+            // apply from the first velocity set).
+            if (ctrl?.GetProfileRatios() != null)
+            {
+                var r = _ratioStore.Get(name);
+                ctrl.SetProfileRatios(new ProfileRatios(r.AccPerVelocity, r.JerkPerAcc, r.KdecPerAcc));
+                _log(LogLevel.Info, $"Motion '{name}' adaptive profile: {r}.");
+            }
         }
 
         _poll = new PollLoop("Motion", PollInterval, PollTickAsync);
@@ -200,6 +212,78 @@ internal sealed class MotionFacet : IMotionFacet, IAsyncDisposable
         return ok
             ? Result.Ok()
             : Result.Fail(ErrorCode.MotionAxisError, $"{(enabled ? "Enable" : "Disable")} failed: {device}.{axis}.");
+    }
+
+    public async Task<Result<IReadOnlyList<AxisMotionProfile>>> GetMotionProfileAsync(string device)
+    {
+        var ctrl = _manager.GetController(device);
+        if (ctrl == null || !_devices.TryGetValue(device, out var info))
+            return Result<IReadOnlyList<AxisMotionProfile>>.Fail(ErrorCode.MotionDeviceNotFound, $"Motion device '{device}' not found.");
+        if (!IsAcs(device))
+            return Result<IReadOnlyList<AxisMotionProfile>>.Fail(ErrorCode.NotSupported, $"'{device}' has no readable motion profile (ACS only).");
+
+        return await WithLock(device, CancellationToken.None, () =>
+        {
+            var list = new List<AxisMotionProfile>(info.Axes.Count);
+            foreach (var axis in info.Axes)
+            {
+                var p = ctrl.GetAxisProfile(axis);
+                if (p == null)
+                    return Result<IReadOnlyList<AxisMotionProfile>>.Fail(ErrorCode.MotionCommunicationError,
+                        $"Motion profile of {device}.{axis} unreadable.");
+                list.Add(new AxisMotionProfile(axis, p.Velocity, p.Acceleration, p.Deceleration, p.Jerk, p.KillDeceleration));
+            }
+            return Result<IReadOnlyList<AxisMotionProfile>>.Ok(list);
+        }).ConfigureAwait(false);
+    }
+
+    public MotionProfileRatios? GetProfileRatios(string device)
+        => _manager.GetController(device)?.GetProfileRatios() is { } r
+            ? new MotionProfileRatios(r.AccPerVelocity, r.JerkPerAcc, r.KdecPerAcc)
+            : null;
+
+    public async Task<Result> SetProfileRatiosAsync(string device, MotionProfileRatios ratios)
+    {
+        var ctrl = _manager.GetController(device);
+        if (ctrl == null || !_devices.TryGetValue(device, out var info))
+            return Result.Fail(ErrorCode.MotionDeviceNotFound, $"Motion device '{device}' not found.");
+        if (ctrl.GetProfileRatios() == null)
+            return Result.Fail(ErrorCode.NotSupported, $"'{device}' has no adaptive motion profile (ACS only).");
+        if (ratios == null)
+            return Result.Fail(ErrorCode.InvalidParameter, "No ratios given.");
+        var why = ratios.Validate();
+        if (why != null)
+            return Result.Fail(ErrorCode.InvalidParameter, why);
+
+        // Persist first: if the file can't be written nothing changes.
+        try
+        {
+            _ratioStore.Save(device, ratios);
+        }
+        catch (Exception ex)
+        {
+            return Result.Fail(ErrorCode.OperationFailed, $"Saving the ratios failed: {ex.Message}");
+        }
+
+        return await WithLock(device, CancellationToken.None, () =>
+        {
+            ctrl.SetProfileRatios(new ProfileRatios(ratios.AccPerVelocity, ratios.JerkPerAcc, ratios.KdecPerAcc));
+            _log(LogLevel.Info, $"Motion '{device}' adaptive profile set: {ratios}.");
+            if (!ctrl.IsConnected)
+                return Result.Ok();
+
+            // Re-derive ACC/DEC/JERK/KDEC now from each axis's current VEL, so the change shows at once.
+            var failed = new List<string>();
+            foreach (var axis in info.Axes)
+            {
+                var vel = ctrl.GetVelocity(axis);
+                if (!(vel > 0) || !ctrl.SetVelocity(axis, vel)) failed.Add(axis);
+            }
+            return failed.Count == 0
+                ? Result.Ok()
+                : Result.Fail(ErrorCode.MotionAxisError,
+                    $"Ratios saved; re-applying to {device} axis {string.Join(", ", failed)} failed — they apply from the next velocity set.");
+        }).ConfigureAwait(false);
     }
 
     public async Task<Result<bool>> IsBufferRunningAsync(string device, int buffer)

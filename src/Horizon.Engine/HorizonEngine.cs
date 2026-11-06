@@ -161,7 +161,7 @@ public sealed class HorizonEngine : IHorizonEngine
         {
             Log(LogLevel.Error, $"Motion config load failed: {ex.Message}");
         }
-        _motionFacet = new MotionFacet(_motionManager, RaiseStatusChanged, Log);
+        _motionFacet = new MotionFacet(_motionManager, RaiseStatusChanged, Log, _configDirectory);
 
         // --- Pneumatic domain (depends on IO) ---
         var pneumaticManager = new PneumaticManager();

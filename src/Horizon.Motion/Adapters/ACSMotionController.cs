@@ -206,11 +206,59 @@ public sealed class ACSMotionController : IMotionController
         return all;
     }
 
+    // Adaptive motion profile: every velocity change re-derives the rest of the axis profile
+    // so acceleration, jerk and kill-deceleration scale with the commanded speed.
+    //   ACC = DEC = AccPerVelocity × VEL
+    //   JERK      = JerkPerAcc     × ACC
+    //   KDEC      = KdecPerAcc     × ACC
+    // The ratios start at ProfileRatios.Default; the engine replaces them with the saved ones.
+    private volatile ProfileRatios _ratios = ProfileRatios.Default;
+
+    public ProfileRatios? GetProfileRatios() => _ratios;
+
+    public bool SetProfileRatios(ProfileRatios ratios)
+    {
+        if (ratios == null || !ratios.IsValid()) return false;
+        _ratios = ratios;
+        return true;
+    }
+
+    /// <summary>
+    /// Sets VEL and, with it, the adaptive ACC / DEC / JERK / KDEC of the axis (current
+    /// <see cref="ProfileRatios"/>). Values apply from the next motion, as VEL does. Refuses a
+    /// non-positive or non-finite speed. False if any write fails (the failure is logged; the
+    /// parameters written before it stay as written).
+    /// </summary>
     public bool SetVelocity(string axis, double speed)
     {
         if (!_connected || !_axisMap.TryGetValue(axis, out var acsAxis)) return false;
-        try { _api.SetVelocity(acsAxis, speed); return true; }
-        catch { return false; }
+        if (!double.IsFinite(speed) || speed <= 0)
+        {
+            Serilog.Log.Warning("[Motion] ACS '{Device}' SetVelocity {Axis} refused: {Speed} is not a positive speed",
+                DeviceName, axis, speed);
+            return false;
+        }
+
+        var r = _ratios;
+        var acc = r.AccPerVelocity * speed;
+        var jerk = r.JerkPerAcc * acc;
+        var kdec = r.KdecPerAcc * acc;
+        try
+        {
+            _api.SetVelocity(acsAxis, speed);
+            _api.SetAcceleration(acsAxis, acc);
+            _api.SetDeceleration(acsAxis, acc);
+            _api.SetJerk(acsAxis, jerk);
+            _api.SetKillDeceleration(acsAxis, kdec);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex,
+                "[Motion] ACS '{Device}' set profile of axis {Axis} (VEL {Vel} ACC/DEC {Acc} JERK {Jerk} KDEC {Kdec}) threw",
+                DeviceName, axis, speed, acc, jerk, kdec);
+            return false;
+        }
     }
 
     public double GetVelocity(string axis)
@@ -218,6 +266,26 @@ public sealed class ACSMotionController : IMotionController
         if (!_connected || !_axisMap.TryGetValue(axis, out var acsAxis)) return 0;
         try { return _api.GetVelocity(acsAxis); }
         catch { return 0; }
+    }
+
+    // Reads VEL / ACC / DEC / JERK / KDEC of one axis — the controller's motion profile.
+    public AxisProfile? GetAxisProfile(string axis)
+    {
+        if (!_connected || !_axisMap.TryGetValue(axis, out var acsAxis)) return null;
+        try
+        {
+            return new AxisProfile(
+                _api.GetVelocity(acsAxis),
+                _api.GetAcceleration(acsAxis),
+                _api.GetDeceleration(acsAxis),
+                _api.GetJerk(acsAxis),
+                _api.GetKillDeceleration(acsAxis));
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "[Motion] ACS '{Device}' read profile of axis {Axis} threw", DeviceName, axis);
+            return null;
+        }
     }
 
     public bool SetAxisEnabled(string axis, bool enabled)

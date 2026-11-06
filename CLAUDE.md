@@ -76,6 +76,11 @@ defines its own program/recipe/position formats.
   finishes slow, then restores the velocity snapshot. `motion.slowApproach` /
   `SlowApproach` is **deprecated — do not use or build on it**.
   `MotionVelocityLimits` caps velocity by controller type (PI 0.01–10, ACS 0.1–50 mm/s).
+  On ACS every velocity set is **adaptive** (`ACSMotionController.SetVelocity`, Layer 1 adapter):
+  ACC = DEC = a × VEL, JERK = b × ACC, KDEC = c × ACC are written with it — default 10 / 10 / 2, per
+  device in machine-global `acs_profile_ratios.json` (`MotionProfileRatioStore`, loaded by the engine;
+  `IMotionFacet.GetProfileRatios` / `SetProfileRatiosAsync`, which saves and re-applies at the current VEL).
+  Machine › Motion › **ACS profile** tab edits the ratios and shows the live VEL/ACC/DEC/JERK/KDEC.
 - `Execution/DeckRunner` + `DeckStore` — a **deck** is a chain of programs with
   transition conditions between them.
 - `Recipe/` — a recreated `.hrcp`-style scripting interpreter (lexer → parser →

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows;
+using Horizon.Engine;
 using Horizon.Station.UI.Process;
 using Horizon.Station.UI.Views;
 using Horizon.Workflow;
@@ -53,6 +54,14 @@ public sealed class MotionSectionViewModel : ObservableObject
     private string? _shownProduct;
     private NamedPositionViewModel? _selectedPosition;
     private bool _canMove;
+    private int _selectedTab;
+    private string _profileStatus = "—";
+    private bool _profileReading;
+    private string? _profileReadFor;   // device whose profile was last read (auto-read once per device / connect)
+    private double _accRatio = MotionProfileRatios.Default.AccPerVelocity;
+    private double _jerkRatio = MotionProfileRatios.Default.JerkPerAcc;
+    private double _kdecRatio = MotionProfileRatios.Default.KdecPerAcc;
+    private bool _ratiosSaving;
 
     public MotionSectionViewModel(EngineHost host)
     {
@@ -76,8 +85,38 @@ public sealed class MotionSectionViewModel : ObservableObject
         StopBufferCommand = new AsyncRelayCommand(StopBufferAsync, () => _isAcs && _connected);
         MoveZCommand = new AsyncRelayCommand(MoveZAsync, () => _isAcs && _connected && HasZ);
         ReferenceCommand = new AsyncRelayCommand(ReferenceAsync, () => _isPi && _connected && !_referencing);
+        RefreshProfileCommand = new AsyncRelayCommand(ReadProfileAsync, () => _isAcs && _connected && !_profileReading);
+        SaveRatiosCommand = new AsyncRelayCommand(SaveRatiosAsync, () => _isAcs && !_ratiosSaving);
+        DefaultRatiosCommand = new RelayCommand(DefaultRatios, () => _isAcs && !_ratiosSaving);
         RebuildAxes();
     }
+
+    /// <summary>Adaptive profile: ACC = DEC = this × VEL (edited; saved with <see cref="SaveRatiosCommand"/>).</summary>
+    public double AccRatio { get => _accRatio; set => SetField(ref _accRatio, value); }
+
+    /// <summary>Adaptive profile: JERK = this × ACC.</summary>
+    public double JerkRatio { get => _jerkRatio; set => SetField(ref _jerkRatio, value); }
+
+    /// <summary>Adaptive profile: KDEC = this × ACC.</summary>
+    public double KdecRatio { get => _kdecRatio; set => SetField(ref _kdecRatio, value); }
+
+    /// <summary>Saves the ratios (acs_profile_ratios.json) and re-applies them at the current velocity.</summary>
+    public AsyncRelayCommand SaveRatiosCommand { get; }
+
+    /// <summary>Fills the editor with the built-in ratios (10 / 10 / 2) — not saved until Save.</summary>
+    public RelayCommand DefaultRatiosCommand { get; }
+
+    /// <summary>Selected tab under the axis strip: 0 = Positions, 1 = ACS profile (ACS devices only).</summary>
+    public int SelectedTab { get => _selectedTab; set => SetField(ref _selectedTab, value); }
+
+    /// <summary>The selected ACS device's per-axis motion profile (VEL / ACC / DEC / JERK / KDEC), view only.</summary>
+    public ObservableCollection<AxisMotionProfile> AcsProfile { get; } = new();
+
+    /// <summary>When / whether the profile was last read.</summary>
+    public string ProfileStatus { get => _profileStatus; private set => SetField(ref _profileStatus, value); }
+
+    /// <summary>Re-reads the ACS motion profile of every axis from the controller.</summary>
+    public AsyncRelayCommand RefreshProfileCommand { get; }
 
     /// <summary>Label shown in the Machine-page section rail.</summary>
     public string Title => "Motion";
@@ -267,6 +306,11 @@ public sealed class MotionSectionViewModel : ObservableObject
         IsAcs = info != null && info.ControllerType.Equals("ACS", StringComparison.OrdinalIgnoreCase);
         IsPi = info != null && info.ControllerType.Equals("PI", StringComparison.OrdinalIgnoreCase);
         IsReferenced = null;
+        AcsProfile.Clear();
+        _profileReadFor = null;
+        ProfileStatus = "—";
+        if (!_isAcs) SelectedTab = 0;   // the ACS profile tab is hidden for other controllers
+        LoadRatios();
         if (device == null || info == null)
         {
             OnPropertyChanged(nameof(HasZ));
@@ -360,6 +404,10 @@ public sealed class MotionSectionViewModel : ObservableObject
         if (_isAcs && Connected) PollBuffer(device);
         else BufferRunning = null;
 
+        // Read the ACS profile once per device selection / connect; Refresh re-reads it.
+        if (!Connected) _profileReadFor = null;
+        else if (_isAcs && _profileReadFor != device && !_profileReading) _ = ReadProfileAsync();
+
         IsReferenced = Connected ? state.IsReferenced : null;
     }
 
@@ -429,8 +477,121 @@ public sealed class MotionSectionViewModel : ObservableObject
         }
     }
 
+    /// <summary>Reads VEL / ACC / DEC / JERK / KDEC of every axis of the selected ACS device (read only).</summary>
+    private async Task ReadProfileAsync()
+    {
+        var device = _selectedDevice;
+        if (device == null || !_isAcs) return;
+        _profileReadFor = device;
+        _profileReading = true;
+        RefreshProfileCommand.RaiseCanExecuteChanged();
+        ProfileStatus = "Reading…";
+        try
+        {
+            var r = await _host.Engine.Motion.GetMotionProfileAsync(device).ConfigureAwait(true);
+            if (device != _selectedDevice) return;   // operator switched devices meanwhile
+            AcsProfile.Clear();
+            if (r.IsSuccess)
+            {
+                foreach (var p in r.Value) AcsProfile.Add(p);
+                ProfileStatus = $"Read {DateTime.Now:HH:mm:ss}";
+            }
+            else
+            {
+                ProfileStatus = r.Message;
+            }
+        }
+        catch (Exception ex)
+        {
+            ProfileStatus = $"Read failed — {ex.Message}";
+        }
+        finally
+        {
+            _profileReading = false;
+            RefreshProfileCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    /// <summary>Shows the selected device's ratios in effect (defaults for non-ACS, where the editor is hidden).</summary>
+    private void LoadRatios()
+    {
+        var r = (_selectedDevice == null ? null : _host.Engine.Motion.GetProfileRatios(_selectedDevice))
+                ?? MotionProfileRatios.Default;
+        AccRatio = r.AccPerVelocity;
+        JerkRatio = r.JerkPerAcc;
+        KdecRatio = r.KdecPerAcc;
+    }
+
+    private void DefaultRatios()
+    {
+        var d = MotionProfileRatios.Default;
+        AccRatio = d.AccPerVelocity;
+        JerkRatio = d.JerkPerAcc;
+        KdecRatio = d.KdecPerAcc;
+        ProfileStatus = "Defaults filled in — press Save to apply.";
+    }
+
+    /// <summary>
+    /// Validates, saves and applies the edited ratios; when connected the engine re-derives every
+    /// axis's ACC/DEC/JERK/KDEC from its current VEL, then the table is re-read. Refused mid-run.
+    /// </summary>
+    private async Task SaveRatiosAsync()
+    {
+        var device = _selectedDevice;
+        if (device == null || !_isAcs) return;
+        if (_host.Process.IsRunning)
+        {
+            ProfileStatus = "A program is running — save the ratios when it has finished.";
+            return;
+        }
+        var ratios = new MotionProfileRatios(_accRatio, _jerkRatio, _kdecRatio);
+        var why = ratios.Validate();
+        if (why != null)
+        {
+            ProfileStatus = why;
+            return;
+        }
+
+        _ratiosSaving = true;
+        SaveRatiosCommand.RaiseCanExecuteChanged();
+        DefaultRatiosCommand.RaiseCanExecuteChanged();
+        ProfileStatus = "Saving ratios…";
+        try
+        {
+            var r = await _host.Engine.Motion.SetProfileRatiosAsync(device, ratios).ConfigureAwait(true);
+            if (device != _selectedDevice) return;
+            if (!r.IsSuccess)
+            {
+                ProfileStatus = r.Message;
+                return;
+            }
+            if (_connected)
+            {
+                await ReadProfileAsync().ConfigureAwait(true);
+                ProfileStatus = $"Ratios saved and applied ({ProfileStatus}).";
+            }
+            else
+            {
+                ProfileStatus = "Ratios saved — they apply from the next velocity set.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ProfileStatus = $"Save failed — {ex.Message}";
+        }
+        finally
+        {
+            _ratiosSaving = false;
+            SaveRatiosCommand.RaiseCanExecuteChanged();
+            DefaultRatiosCommand.RaiseCanExecuteChanged();
+        }
+    }
+
     private void RaiseAcsCommands()
     {
+        SaveRatiosCommand.RaiseCanExecuteChanged();
+        DefaultRatiosCommand.RaiseCanExecuteChanged();
+        RefreshProfileCommand.RaiseCanExecuteChanged();
         ReferenceCommand.RaiseCanExecuteChanged();
         EnableAllCommand.RaiseCanExecuteChanged();
         DisableAllCommand.RaiseCanExecuteChanged();

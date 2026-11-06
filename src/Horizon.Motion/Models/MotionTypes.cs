@@ -12,6 +12,28 @@ public record PositionStruct
     public List<string> ExitWaypoints { get; init; } = new();
 }
 
+/// <summary>One axis's motion profile as the controller holds it (ACS: VEL, ACC, DEC, JERK, KDEC).</summary>
+public sealed record AxisProfile(
+    double Velocity, double Acceleration, double Deceleration, double Jerk, double KillDeceleration);
+
+/// <summary>
+/// Adaptive-profile ratios (ACS): every velocity set derives ACC = DEC = <see cref="AccPerVelocity"/> × VEL,
+/// JERK = <see cref="JerkPerAcc"/> × ACC and KDEC = <see cref="KdecPerAcc"/> × ACC.
+/// </summary>
+public sealed record ProfileRatios(double AccPerVelocity, double JerkPerAcc, double KdecPerAcc)
+{
+    /// <summary>Largest accepted ratio — a sanity bound against a typo, not a physical limit.</summary>
+    public const double MaxRatio = 1000.0;
+
+    public static readonly ProfileRatios Default = new(10.0, 10.0, 2.0);
+
+    /// <summary>Every ratio finite, &gt; 0 and ≤ <see cref="MaxRatio"/>.</summary>
+    public bool IsValid()
+        => Ok(AccPerVelocity) && Ok(JerkPerAcc) && Ok(KdecPerAcc);
+
+    private static bool Ok(double r) => double.IsFinite(r) && r > 0 && r <= MaxRatio;
+}
+
 public record MotionDevice
 {
     public int Id { get; init; }

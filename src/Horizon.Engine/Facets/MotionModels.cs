@@ -40,5 +40,40 @@ public sealed record PivotPoint(double R, double S, double T)
     public override string ToString() => $"R={R:0.####} S={S:0.####} T={T:0.####}";
 }
 
+/// <summary>
+/// One axis's motion profile read from an ACS controller — VEL, ACC, DEC, JERK and KDEC, in
+/// controller units (mm/s, mm/s², mm/s², mm/s³, mm/s²).
+/// </summary>
+public sealed record AxisMotionProfile(
+    string Axis, double Velocity, double Acceleration, double Deceleration, double Jerk, double KillDeceleration);
+
+/// <summary>
+/// ACS adaptive-profile ratios: every velocity set also writes ACC = DEC = <see cref="AccPerVelocity"/> × VEL,
+/// JERK = <see cref="JerkPerAcc"/> × ACC and KDEC = <see cref="KdecPerAcc"/> × ACC.
+/// Saved per device in <c>acs_profile_ratios.json</c>.
+/// </summary>
+public sealed record MotionProfileRatios(double AccPerVelocity, double JerkPerAcc, double KdecPerAcc)
+{
+    /// <summary>Largest accepted ratio — a sanity bound against a typo.</summary>
+    public const double MaxRatio = 1000.0;
+
+    /// <summary>The built-in ratios: ACC/DEC = 10 × VEL, JERK = 10 × ACC, KDEC = 2 × ACC.</summary>
+    public static readonly MotionProfileRatios Default = new(10.0, 10.0, 2.0);
+
+    /// <summary>Null when every ratio is finite, &gt; 0 and ≤ <see cref="MaxRatio"/>; else why not.</summary>
+    public string? Validate()
+    {
+        if (!Ok(AccPerVelocity)) return $"ACC/DEC ratio must be > 0 and ≤ {MaxRatio:0}.";
+        if (!Ok(JerkPerAcc)) return $"JERK ratio must be > 0 and ≤ {MaxRatio:0}.";
+        if (!Ok(KdecPerAcc)) return $"KDEC ratio must be > 0 and ≤ {MaxRatio:0}.";
+        return null;
+    }
+
+    private static bool Ok(double r) => double.IsFinite(r) && r > 0 && r <= MaxRatio;
+
+    public override string ToString()
+        => $"ACC/DEC = {AccPerVelocity:G6}×VEL, JERK = {JerkPerAcc:G6}×ACC, KDEC = {KdecPerAcc:G6}×ACC";
+}
+
 /// <summary>Raised on <see cref="IMotionFacet.StateChanged"/> when a device's polled state changes.</summary>
 public sealed record MotionStateChanged(string Device, MotionDeviceState State);

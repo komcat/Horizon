@@ -77,6 +77,25 @@ public interface IMotionFacet
     /// </summary>
     Task<Result<string>> SendTerminalCommandAsync(string device, string command);
 
+    /// <summary>
+    /// Reads every axis's motion profile (VEL / ACC / DEC / JERK / KDEC) from an ACS controller.
+    /// Read-only. Fails with <see cref="ErrorCode.NotSupported"/> on other controllers.
+    /// </summary>
+    Task<Result<IReadOnlyList<AxisMotionProfile>>> GetMotionProfileAsync(string device);
+
+    /// <summary>
+    /// The ACS adaptive-profile ratios in effect (every velocity set also writes ACC/DEC/JERK/KDEC
+    /// from them); null for controllers without an adaptive profile. No I/O.
+    /// </summary>
+    MotionProfileRatios? GetProfileRatios(string device);
+
+    /// <summary>
+    /// Validates, saves (machine-global <c>acs_profile_ratios.json</c>) and applies new adaptive-profile
+    /// ratios; when connected, re-derives every axis's ACC/DEC/JERK/KDEC from its current VEL at once.
+    /// Fails with <see cref="ErrorCode.NotSupported"/> on non-ACS devices.
+    /// </summary>
+    Task<Result> SetProfileRatiosAsync(string device, MotionProfileRatios ratios);
+
     /// <summary>Reads whether an on-controller program buffer is executing.</summary>
     Task<Result<bool>> IsBufferRunningAsync(string device, int buffer);
 
