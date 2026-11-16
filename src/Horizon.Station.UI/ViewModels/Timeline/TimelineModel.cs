@@ -1,185 +1,282 @@
 using System.Collections.ObjectModel;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 
 namespace Horizon.Station.UI.ViewModels.Timeline;
 
-/// <summary>
-/// Hardware domain a lane belongs to — drives grouping in the left column and which
-/// palette ops may drop onto the lane. <see cref="Signal"/> carries the device-less
-/// read-out block; <see cref="Control"/> carries the other device-less flow ops
-/// (wait / log / comment).
-/// </summary>
-public enum LaneDomain { Motion, Io, Pneumatic, PowerSupply, Smu, Tec, Lighting, Vision, Signal, Control }
+/// <summary>What a canvas node is: the fixed Start marker, one command block, or a parallel envelope.</summary>
+public enum CanvasNodeKind { Start, Block, Parallel }
 
 /// <summary>
-/// Which conditional branch a stage's cells fall in, for the timeline tint:
+/// Which conditional branch a node falls in, for the canvas tint:
 /// <see cref="Then"/> (between an If and its Else/End If) shows light pink,
 /// <see cref="Else"/> (between Else and End If) light yellow, <see cref="None"/> untinted.
 /// </summary>
 public enum ConditionRegion { None, Then, Else }
 
 /// <summary>
-/// One device row in the timeline grid. A lane is fixed (built from the engine
-/// facets); its <see cref="Cells"/> hold the blocks scheduled on this device, one
-/// cell per stage (index-aligned with the editor's stage list).
+/// Branch keys of a parallel envelope. A branch is keyed by the "lane" its blocks run on —
+/// the device, or one of the two device-less lanes — exactly as the old lane grid did, so a
+/// device never runs two commands at once inside one envelope.
 /// </summary>
-public sealed class LaneViewModel : ObservableObject
+public static class LaneIds
 {
-    public LaneViewModel(string id, string display, LaneDomain domain, string domainLabel, bool isGroupStart)
+    /// <summary>Lane id for the device-less read-out (signal.read) block.</summary>
+    public const string Signal = "signal";
+
+    /// <summary>Lane id for device-less flow ops.</summary>
+    public const string Control = "control";
+
+    /// <summary>The lane a block belongs to: its device, else Signal (category "Signal") or Control.</summary>
+    public static string For(ProcessBlockViewModel block)
     {
-        Id = id;
-        Display = display;
-        Domain = domain;
-        DomainLabel = domainLabel;
-        IsGroupStart = isGroupStart;
+        if (block.Spec.DeviceKind != DeviceKind.None && !string.IsNullOrEmpty(block.SelectedDevice))
+            return block.SelectedDevice!;
+        return block.Spec.Category.Equals("Signal", StringComparison.OrdinalIgnoreCase) ? Signal : Control;
     }
 
-    /// <summary>Device id (the lane's <c>WorkflowStep.Device</c>), or <c>control</c> for the flow lane.</summary>
-    public string Id { get; }
-
-    /// <summary>Row label — the device name, or "Flow / Control".</summary>
-    public string Display { get; }
-
-    public LaneDomain Domain { get; }
-
-    /// <summary>Domain caption shown once at the first lane of each group.</summary>
-    public string DomainLabel { get; }
-
-    /// <summary>True for the first lane of its domain — the view shows the group caption.</summary>
-    public bool IsGroupStart { get; }
-
-    private bool _isVisible = true;
-
-    /// <summary>
-    /// Whether this lane (and its column of cells) is shown. The editor hides lanes
-    /// that carry no blocks unless "Show all lanes" is on — so a loaded program shows
-    /// only the devices it actually uses. Bound by the header and every cell column.
-    /// </summary>
-    public bool IsVisible { get => _isVisible; set => SetField(ref _isVisible, value); }
-
-    /// <summary>One cell per stage, index-aligned with the editor's <c>Stages</c>.</summary>
-    public ObservableCollection<CellViewModel> Cells { get; } = new();
-
-    /// <summary>
-    /// Whether a palette op may be dropped on this lane. Device ops match by their
-    /// <see cref="DeviceKind"/>; the two device-less lanes split on category — the
-    /// read-out block (category "Signal") goes to the Signal lane, every other
-    /// device-less op to the Control lane.
-    /// </summary>
-    public bool Accepts(OpSpec spec) => Domain switch
-    {
-        LaneDomain.Motion => spec.DeviceKind == DeviceKind.Motion,
-        LaneDomain.Io => spec.DeviceKind == DeviceKind.Io,
-        LaneDomain.Pneumatic => spec.DeviceKind == DeviceKind.Pneumatic,
-        LaneDomain.Vision => spec.DeviceKind == DeviceKind.Camera,
-        LaneDomain.Lighting => spec.DeviceKind == DeviceKind.Lighting,
-        LaneDomain.PowerSupply => spec.DeviceKind == DeviceKind.PowerSupply,
-        LaneDomain.Signal => spec.DeviceKind == DeviceKind.None && IsSignalOp(spec),
-        LaneDomain.Control => spec.DeviceKind == DeviceKind.None && !IsSignalOp(spec),
-        _ => false,
-    };
-
-    /// <summary>True for the read-out op(s) that belong on the Signal lane.</summary>
-    internal static bool IsSignalOp(OpSpec spec)
-        => spec.Category.Equals("Signal", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Caption shown over a branch column.</summary>
+    public static string Display(string laneId)
+        => laneId.Equals(Signal, StringComparison.OrdinalIgnoreCase) ? "Signal"
+         : laneId.Equals(Control, StringComparison.OrdinalIgnoreCase) ? "Flow / Control"
+         : laneId;
 }
 
 /// <summary>
-/// One (lane × stage) slot. Holds the blocks scheduled on this lane in this stage —
-/// usually one, but a lane may run a short sub-sequence within a stage.
+/// One concurrent branch of a parallel envelope: an ordered sub-sequence (top to bottom) that
+/// runs alongside the envelope's other branches. Compiles to a <c>WorkflowBranch</c>.
 /// </summary>
-public sealed class CellViewModel : ObservableObject
+public sealed class ParallelBranchViewModel
 {
-    public CellViewModel(LaneViewModel lane)
+    public ParallelBranchViewModel(string laneId)
     {
-        Lane = lane;
-        Blocks.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsEmpty));
+        LaneId = laneId;
+        Display = LaneIds.Display(laneId);
     }
 
-    public LaneViewModel Lane { get; }
+    /// <summary>The saved <c>WorkflowBranch.Lane</c> — kept verbatim across load / save.</summary>
+    public string LaneId { get; }
+
+    public string Display { get; }
 
     public ObservableCollection<ProcessBlockViewModel> Blocks { get; } = new();
-
-    public bool IsEmpty => Blocks.Count == 0;
-
-    private bool _isDropTarget;
-
-    /// <summary>True while a drag hovers this cell and the lane accepts it — drives the drop highlight.</summary>
-    public bool IsDropTarget { get => _isDropTarget; set => SetField(ref _isDropTarget, value); }
-
-    private ConditionRegion _region;
-
-    /// <summary>
-    /// Which If/Else branch this cell's stage is in — set by the editor from the Control
-    /// lane's if/else/endif nesting. Drives the light pink / yellow stage tint.
-    /// </summary>
-    public ConditionRegion Region { get => _region; set => SetField(ref _region, value); }
 }
 
-/// <summary>A timeline column — a parallel group ended by a barrier. Purely ordering.</summary>
-public sealed class StageViewModel : ObservableObject
+/// <summary>
+/// One node on the free canvas. Execution order is the chain of <see cref="Next"/> links
+/// starting at the Start node; the position (<see cref="X"/> + <see cref="Row"/>) is layout
+/// only and is never written to the program file.
+/// </summary>
+public sealed class CanvasNodeViewModel : ObservableObject
 {
-    private string _title = string.Empty;
+    public const string StartUid = "start";
+
+    private CanvasNodeViewModel(CanvasNodeKind kind, string uid, ProcessBlockViewModel? block)
+    {
+        Kind = kind;
+        Uid = uid;
+        Block = block;
+        _width = kind == CanvasNodeKind.Start ? 96 : 180;
+        _height = kind switch { CanvasNodeKind.Start => 34, CanvasNodeKind.Block => 58, _ => 110 };
+        Branches.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasNoBranches));
+    }
+
+    public static CanvasNodeViewModel Start() => new(CanvasNodeKind.Start, StartUid, null);
+
+    public static CanvasNodeViewModel ForBlock(ProcessBlockViewModel block) => new(CanvasNodeKind.Block, block.Id, block);
+
+    /// <summary><paramref name="uid"/> is the saved <c>flow.parallel</c> step id; null mints a new one.</summary>
+    public static CanvasNodeViewModel ForParallel(string? uid = null)
+        => new(CanvasNodeKind.Parallel, string.IsNullOrEmpty(uid) ? "stg-" + Guid.NewGuid().ToString("N") : uid, null);
+
+    public CanvasNodeKind Kind { get; }
 
     /// <summary>
-    /// Stable id for this stage — used as the compiled <c>flow.parallel</c> step's id
-    /// when the stage runs more than one lane, so the parallel group is trackable
-    /// across save/load. Seeded from the saved step id on load.
+    /// Stable id — the block id, the parallel step id, or <see cref="StartUid"/>. Keys the
+    /// saved canvas layout, and (for an envelope) is the compiled <c>flow.parallel</c> step id.
     /// </summary>
-    public string Uid { get; set; } = "stg-" + Guid.NewGuid().ToString("N");
+    public string Uid { get; }
 
-    public string Title { get => _title; set => SetField(ref _title, value); }
+    /// <summary>The command of a Block node; null for Start and Parallel.</summary>
+    public ProcessBlockViewModel? Block { get; }
 
-    /// <summary>
-    /// This stage's cells, one per lane, index-aligned with the editor's <c>Lanes</c> —
-    /// the SAME <see cref="CellViewModel"/> objects held in <c>LaneViewModel.Cells</c>,
-    /// exposed stage-major so the vertical timeline can render one row per stage. The
-    /// lane-major <c>LaneViewModel.Cells</c> stays the source of truth for drag/drop and
-    /// compile; this is just a second view of the same objects.
-    /// </summary>
-    public ObservableCollection<CellViewModel> Cells { get; } = new();
+    /// <summary>The branches of a Parallel envelope; empty for the other kinds.</summary>
+    public ObservableCollection<ParallelBranchViewModel> Branches { get; } = new();
+
+    public bool HasNoBranches => Branches.Count == 0;
+
+    /// <summary>Next node in execution order (the outgoing arrow), or null.</summary>
+    public CanvasNodeViewModel? Next { get; set; }
+
+    /// <summary>The node whose arrow points here, or null.</summary>
+    public CanvasNodeViewModel? Prev { get; set; }
+
+    private double _x;
+    private double _y;
+    private double _width;
+    private double _height;
+    private int _row;
+
+    public double X { get => _x; set => SetField(ref _x, value); }
+
+    /// <summary>Derived from <see cref="Row"/> by the editor's layout pass (free only while dragging).</summary>
+    public double Y { get => _y; set => SetField(ref _y, value); }
+
+    /// <summary>Measured size, pushed in by the view.</summary>
+    public double Width { get => _width; set => SetField(ref _width, value); }
+    public double Height { get => _height; set => SetField(ref _height, value); }
+
+    /// <summary>The stage row this node sits in (0 = the Start row).</summary>
+    public int Row { get => _row; set => SetField(ref _row, value); }
+
+    public Rect Bounds => new(X, Y, Width, Height);
 
     private bool _isSelected;
+    private bool _isOrphan;
+    private bool _isDropTarget;
+    private ConditionRegion _region;
+    private string _runStatus = "—";
+    private string _ordinal = string.Empty;
 
-    /// <summary>True when this stage is picked as the "run only this stage" selection — its header highlights.</summary>
+    public bool IsSelected { get => _isSelected; set => SetField(ref _isSelected, value); }
+
+    /// <summary>True when no chain of arrows from Start reaches this node — it would not run.</summary>
+    public bool IsOrphan { get => _isOrphan; set => SetField(ref _isOrphan, value); }
+
+    /// <summary>True while a drag hovers this envelope — drives the drop highlight.</summary>
+    public bool IsDropTarget { get => _isDropTarget; set => SetField(ref _isDropTarget, value); }
+
+    public ConditionRegion Region { get => _region; set => SetField(ref _region, value); }
+
+    /// <summary>Run verdict of a Parallel envelope as a whole (its blocks carry their own).</summary>
+    public string RunStatus { get => _runStatus; set => SetField(ref _runStatus, value); }
+
+    /// <summary>1-based position in the execution chain ("" for Start and unconnected nodes).</summary>
+    public string Ordinal { get => _ordinal; set => SetField(ref _ordinal, value); }
+
+    /// <summary>Every command this node carries.</summary>
+    public IEnumerable<ProcessBlockViewModel> AllBlocks()
+        => Block != null ? new[] { Block } : Branches.SelectMany(b => b.Blocks);
+}
+
+/// <summary>An arrow between two nodes; the geometry is re-routed whenever either end moves.</summary>
+public sealed class LinkViewModel : ObservableObject
+{
+    public LinkViewModel(CanvasNodeViewModel from, CanvasNodeViewModel to)
+    {
+        From = from;
+        To = to;
+    }
+
+    public CanvasNodeViewModel From { get; }
+    public CanvasNodeViewModel To { get; }
+
+    private Geometry? _data;
+    private Geometry? _head;
+    private bool _isSelected;
+
+    public Geometry? Data { get => _data; set => SetField(ref _data, value); }
+    public Geometry? Head { get => _head; set => SetField(ref _head, value); }
     public bool IsSelected { get => _isSelected; set => SetField(ref _isSelected, value); }
 }
 
-/// <summary>Builds the fixed lane set from the engine facets, grouped by domain.</summary>
-public static class LaneBuilder
+/// <summary>One stage row of the background grid: a number and a dashed line under it.</summary>
+public sealed class GridRowViewModel : ObservableObject
 {
-    public static List<LaneViewModel> Build(EngineHost host)
+    private string _label = string.Empty;
+    private double _top;
+    private double _height;
+
+    public string Label { get => _label; set => SetField(ref _label, value); }
+    public double Top { get => _top; set => SetField(ref _top, value); }
+    public double Height { get => _height; set => SetField(ref _height, value); }
+}
+
+/// <summary>
+/// Routes an arrow between two nodes. Every node has two out ports (bottom, right) and two
+/// in ports (top, left); the arrow snaps to the pair that gives the shortest forward curve.
+/// </summary>
+public static class LinkRouter
+{
+    private static readonly Vector Down = new(0, 1);
+    private static readonly Vector Right = new(1, 0);
+
+    /// <summary>The out port of <paramref name="node"/>: its right-middle, or its bottom-middle.</summary>
+    public static (Point Point, Vector Normal) OutPort(CanvasNodeViewModel node, bool right)
+        => right
+            ? (new Point(node.X + node.Width, node.Y + node.Height / 2), Right)
+            : (new Point(node.X + node.Width / 2, node.Y + node.Height), Down);
+
+    public static (Geometry Data, Geometry Head) Route(CanvasNodeViewModel from, CanvasNodeViewModel to)
     {
-        var lanes = new List<LaneViewModel>();
-
-        void AddGroup(LaneDomain domain, string label, IReadOnlyList<string> devices)
+        var outs = new[] { OutPort(from, right: false), OutPort(from, right: true) };
+        var ins = new[]
         {
-            for (int i = 0; i < devices.Count; i++)
-                lanes.Add(new LaneViewModel(devices[i], devices[i], domain, label, isGroupStart: i == 0));
-        }
+            (Point: new Point(to.X + to.Width / 2, to.Y), Normal: Down),    // top, entered going down
+            (Point: new Point(to.X, to.Y + to.Height / 2), Normal: Right),  // left, entered going right
+        };
 
-        AddGroup(LaneDomain.Motion, "Motion", host.Engine.Motion.DeviceNames);
-        AddGroup(LaneDomain.Io, "IO", host.Engine.IO.DeviceNames);
-        AddGroup(LaneDomain.Pneumatic, "Pneumatic", host.Engine.Pneumatic.SlideNames);
-        AddGroup(LaneDomain.PowerSupply, "PSU", host.Engine.PowerSupply.DeviceNames);
-        // Visible-but-empty scaffolding lanes — no catalog ops target them yet (Phase 2).
-        AddGroup(LaneDomain.Smu, "SMU", host.Engine.Smu.DeviceNames);
-        AddGroup(LaneDomain.Tec, "TEC", host.Engine.Tec.DeviceNames);
-        AddGroup(LaneDomain.Lighting, "Lighting", host.Engine.Lighting.DeviceNames);
-        AddGroup(LaneDomain.Vision, "Vision", host.Engine.Camera.CameraIds);
+        var best = (Out: outs[0], In: ins[0]);
+        double bestScore = double.MaxValue;
+        foreach (var o in outs)
+            foreach (var i in ins)
+            {
+                var d = i.Point - o.Point;
+                // A port that would have to curl back on itself is a poor choice.
+                double score = d.Length + (d * o.Normal < 8 ? 400 : 0) + (d * i.Normal < 8 ? 400 : 0);
+                if (score < bestScore) { bestScore = score; best = (o, i); }
+            }
 
-        // The signal lane is always present (signals span devices + product sources) —
-        // it carries the device-less read-out block.
-        lanes.Add(new LaneViewModel(SignalLaneId, "Signal", LaneDomain.Signal, "Signal", isGroupStart: true));
-
-        // The flow lane is always present, even with no hardware — it carries the
-        // device-less control ops (wait / log / comment).
-        lanes.Add(new LaneViewModel(ControlLaneId, "Flow / Control", LaneDomain.Control, "Control", isGroupStart: true));
-        return lanes;
+        return Build(best.Out.Point, best.Out.Normal, best.In.Point, best.In.Normal);
     }
 
-    /// <summary>Lane id for the device-less read-out (signal.read) block.</summary>
-    public const string SignalLaneId = "signal";
+    /// <summary>The curve drawn while a new arrow is being dragged out of a port.</summary>
+    public static Geometry Rubber(Point from, Vector normal, Point to)
+    {
+        double reach = Math.Clamp((to - from).Length * 0.45, 20, 140);
+        var fig = new PathFigure { StartPoint = from, IsFilled = false };
+        fig.Segments.Add(new BezierSegment(from + normal * reach, to, to, true));
+        var g = new PathGeometry(new[] { fig });
+        g.Freeze();
+        return g;
+    }
 
-    /// <summary>Lane id for device-less flow ops.</summary>
-    public const string ControlLaneId = "control";
+    private static (Geometry, Geometry) Build(Point p1, Vector n1, Point p2, Vector n2)
+    {
+        const double headLength = 9, headHalfWidth = 4.5;
+        var end = p2 - n2 * (headLength - 1);
+        double reach = Math.Clamp((p2 - p1).Length * 0.45, 28, 140);
+
+        var fig = new PathFigure { StartPoint = p1, IsFilled = false };
+        fig.Segments.Add(new BezierSegment(p1 + n1 * reach, end - n2 * reach, end, true));
+        var data = new PathGeometry(new[] { fig });
+        data.Freeze();
+
+        var perp = new Vector(-n2.Y, n2.X);
+        var tail = p2 - n2 * headLength;
+        var headFig = new PathFigure { StartPoint = p2, IsClosed = true, IsFilled = true };
+        headFig.Segments.Add(new LineSegment(tail + perp * headHalfWidth, true));
+        headFig.Segments.Add(new LineSegment(tail - perp * headHalfWidth, true));
+        var head = new PathGeometry(new[] { headFig });
+        head.Freeze();
+        return (data, head);
+    }
+}
+
+/// <summary>Picks the canvas node template by <see cref="CanvasNodeViewModel.Kind"/>.</summary>
+public sealed class CanvasNodeTemplateSelector : DataTemplateSelector
+{
+    public DataTemplate? Start { get; set; }
+    public DataTemplate? Block { get; set; }
+    public DataTemplate? Parallel { get; set; }
+
+    public override DataTemplate? SelectTemplate(object item, DependencyObject container)
+        => (item as CanvasNodeViewModel)?.Kind switch
+        {
+            CanvasNodeKind.Start => Start,
+            CanvasNodeKind.Parallel => Parallel,
+            CanvasNodeKind.Block => Block,
+            _ => base.SelectTemplate(item, container),
+        };
 }

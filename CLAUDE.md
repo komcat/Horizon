@@ -330,11 +330,19 @@ SiPhOG, DUT Data, find-first-light, Testing Ground, `ScanPanelStore`, its settin
   same line keys plus the tagged sample `Points`). All return a method-agnostic
   `VisionDetectResult` so one result grid and one `vision.runProfile` step serve
   every method. See `docs/vision-profile-design.md`.
-- **Engineer = the Gantt timeline editor** (`Views/TimelineEditorView`,
-  `ViewModels/Timeline/`): device **lanes** down the left (from the engine facets),
-  ordered **stages** across the top; same-stage-different-lane = parallel. It compiles
-  to a `WorkflowProgram` (multi-lane stage → `flow.parallel`) and round-trips back,
-  reusing `OpCatalog`/`ProcessBlockViewModel` param editing. Each block has a stable
+- **Engineer = the free-canvas sequence editor** (`Views/TimelineEditorView`,
+  `ViewModels/Timeline/`; it replaced the lane × stage Gantt grid): every program has a
+  **Start** node, blocks are dragged anywhere (free X, snapping to a numbered **stage row** —
+  dashed lines, layout only, a row grows to fit its content) and joined by **arrows** from an out
+  port (bottom / right) to the next block's in port (top / left). The chain of arrows from Start
+  is the execution order — one arrow in, one out, no loops. A **parallel envelope** is one node
+  whose branches (one per device / Signal / Control lane) run concurrently. It compiles
+  to the same flat `WorkflowProgram` (envelope with 2+ branches → `flow.parallel`) and round-trips
+  back — the `.hwf` format is unchanged and Start is never written. Node positions are a view
+  preference in `program_canvas_layout.json` (`ProgramCanvasLayoutStore`, per product + program,
+  keyed by block UID); a program with none is laid out top to bottom. Nodes not reachable from
+  Start are faded, are skipped by Run and **block Save / Commit**. Param editing
+  reuses `OpCatalog`/`ProcessBlockViewModel`. Each block has a stable
   UID; a dirty marker + a **History** window (revisions/diff + a UID query tab) sit on
   the SQLite history store. *This replaced the old flat `EngineerView` /
   `ProcessEditorViewModel`, which are now unreferenced dead code (pending deletion).*

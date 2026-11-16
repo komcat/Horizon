@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Windows;
 using System.Windows.Threading;
 using Horizon.Engine;
 using Horizon.Workflow;
@@ -7,20 +8,36 @@ using Horizon.Workflow;
 namespace Horizon.Station.UI.ViewModels.Timeline;
 
 /// <summary>
-/// The Engineer page — a horizontal timeline (Gantt) sequence editor. Device lanes
-/// run down the left; ordered <b>stages</b> run across the top. Blocks dropped into
-/// the same stage on different lanes run <b>concurrently</b>; the stage is a barrier
-/// (the next stage starts only when all of this one's blocks finish). Compiles to a
-/// Layer 2 <see cref="WorkflowProgram"/> via the <c>flow.parallel</c> op and runs it
-/// through <see cref="IProcessService"/>. See <c>docs/timeline-sequence-editor-design.md</c>.
+/// The Engineer page — a free-canvas sequence editor. Every program has a <b>Start</b> node;
+/// command blocks are dragged anywhere on the canvas and joined by arrows, and the chain of
+/// arrows from Start is the execution order (strictly sequential: one arrow in, one arrow
+/// out). A <b>parallel envelope</b> is one node holding several branches that run
+/// concurrently. Compiles to the same flat Layer 2 <see cref="WorkflowProgram"/> as before
+/// (an envelope with two or more branches → one <c>flow.parallel</c> step), so the program
+/// file format is unchanged; node positions live in <see cref="ProgramCanvasLayoutStore"/>.
+/// The numbered stage rows are a layout grid only. See
+/// <c>docs/timeline-sequence-editor-design.md</c>.
 /// </summary>
 public sealed class TimelineEditorViewModel : ObservableObject
 {
     private const int MaxLogLines = 500;
 
+    // Canvas grid: a left gutter for the row numbers, rows at least MinRowHeight tall
+    // (a row grows to fit its tallest node), a few spare rows below the last used one.
+    public const double RowGutter = 48;
+    private const double DefaultX = 70;
+    private const double MinRowHeight = 84;
+    private const double RowPad = 12;
+    private const int MinRows = 10;
+    private const int SpareRows = 4;
+    private const int MaxRow = 5000;
+
+    private const double MinZoom = 0.5;
+    private const double MaxZoom = 1.5;
+    private const double ZoomStep = 0.1;
+
     private readonly EngineHost _host;
     private readonly Dispatcher _dispatcher;
-    private readonly Dictionary<string, LaneViewModel> _laneById;
 
     private string _programName = "New Program";
     private string _commitNote = string.Empty;
@@ -28,71 +45,67 @@ public sealed class TimelineEditorViewModel : ObservableObject
     private string? _selectedProgram;
     private ProcessBlockViewModel? _selectedBlock;
     private OpHelpViewModel? _selectedHelp;
-    private CellViewModel? _selectedCell;
+    private LinkViewModel? _selectedLink;
 
-    // Stage selection: a set (for copy / range), plus the anchor a shift-click extends
-    // from. Each member's StageViewModel.IsSelected drives its header highlight.
-    private readonly List<StageViewModel> _selectedStages = new();
-    private StageViewModel? _anchorStage;
+    // Node selection: a set (for copy / range / delete), plus the anchor a shift-click extends from.
+    private readonly List<CanvasNodeViewModel> _selectedNodes = new();
+    private CanvasNodeViewModel? _anchorNode;
 
-    // Stage clipboard — per stage, the blocks on each lane captured as id-less steps
-    // (a fresh block id is minted on paste so copies stay independently trackable).
-    private List<List<LaneClip>>? _stageClipboard;
+    // Clipboard — the copied nodes as id-less steps (a fresh id is minted on paste so
+    // copies stay independently trackable).
+    private List<WorkflowStep>? _clipboard;
 
     private bool _isRunning;
-    private bool _showAllLanes;
-    private double _laneWidth = DefaultLaneWidth;
+    private bool _isConnecting;
+    private double _zoom = 1.0;
+    private double _canvasWidth = 900;
+    private double _canvasHeight = 600;
     private string _status = "—";
-
-    // Lane-column zoom: width in px, clamped to [MinLaneWidth, MaxLaneWidth], stepped by ZoomStep.
-    private const double DefaultLaneWidth = 110;
-    private const double MinLaneWidth = 60;
-    private const double MaxLaneWidth = 220;
-    private const double ZoomStep = 15;
     private bool _isDirty;
     private bool _suppressDirty;   // true while loading / resetting, so it doesn't count as an edit
     private bool _subscribed;
     private CancellationTokenSource? _runCts;
 
     // Run-highlight routing, rebuilt on each run by BuildProgram().
-    private readonly List<int> _topLevelStage = new();                 // top-level step index → stage index
-    private readonly Dictionary<int, ProcessBlockViewModel> _inlineBlock = new(); // top-level step index → block (inline stages)
-    private int _runningStage = -1;
+    private readonly List<CanvasNodeViewModel?> _topLevelNode = new();             // top-level step index → envelope (null = inline block)
+    private readonly Dictionary<int, ProcessBlockViewModel> _inlineBlock = new();  // top-level step index → block
+    private CanvasNodeViewModel? _runningNode;
 
     public TimelineEditorViewModel(EngineHost host)
     {
         _host = host;
         _dispatcher = Dispatcher.CurrentDispatcher;
 
-        Lanes = new ObservableCollection<LaneViewModel>(LaneBuilder.Build(host));
-        _laneById = Lanes.ToDictionary(l => l.Id, StringComparer.OrdinalIgnoreCase);
+        StartNode = CanvasNodeViewModel.Start();
 
         BuildPalette();
 
         NewProgramCommand = new RelayCommand(NewProgram);
         SaveProgramCommand = new RelayCommand(SaveProgram);
         CommitProgramCommand = new RelayCommand(CommitProgram);
-        AddStageCommand = new RelayCommand(() => { AddStage(); MarkDirty(); RecomputeConditionRegions(); });
-        RemoveBlockCommand = new RelayCommand(RemoveSelectedBlock, () => _selectedBlock != null);
-        CopyStagesCommand = new RelayCommand(CopySelectedStages, () => _selectedStages.Count > 0);
-        PasteStagesCommand = new RelayCommand(PasteStages, () => _stageClipboard is { Count: > 0 });
-        RunCommand = new AsyncRelayCommand(() => RunAsync(null), () => !_isRunning);
-        RunStageCommand = new AsyncRelayCommand(RunSelectedStageAsync, () => !_isRunning && _selectedStages.Count == 1);
+        AddParallelCommand = new RelayCommand(AddParallel);
+        TidyCommand = new RelayCommand(Tidy);
+        RemoveBlockCommand = new RelayCommand(DeleteSelection, () => _selectedBlock != null);
+        RunCommand = new AsyncRelayCommand(() => RunAsync(null, null), () => !_isRunning);
+        RunSelectedCommand = new AsyncRelayCommand(RunSelectedAsync, () => !_isRunning && HasRunnableSelection());
         StopCommand = new RelayCommand(() => _runCts?.Cancel(), () => _isRunning);
-        ZoomInCommand = new RelayCommand(() => LaneWidth += ZoomStep, () => _laneWidth < MaxLaneWidth);
-        ZoomOutCommand = new RelayCommand(() => LaneWidth -= ZoomStep, () => _laneWidth > MinLaneWidth);
+        ZoomInCommand = new RelayCommand(() => Zoom += ZoomStep, () => _zoom < MaxZoom - 1e-6);
+        ZoomOutCommand = new RelayCommand(() => Zoom -= ZoomStep, () => _zoom > MinZoom + 1e-6);
 
-        AddStage();   // start with one empty stage to author into
-        UpdateLaneVisibility();
+        ResetCanvas();
     }
 
     // --- bound state ---
 
     public ObservableCollection<PaletteCategoryViewModel> Palette { get; } = new();
-    public ObservableCollection<LaneViewModel> Lanes { get; }
-    public ObservableCollection<StageViewModel> Stages { get; } = new();
+    public ObservableCollection<CanvasNodeViewModel> Nodes { get; } = new();
+    public ObservableCollection<LinkViewModel> Links { get; } = new();
+    public ObservableCollection<GridRowViewModel> Rows { get; } = new();
     public ObservableCollection<string> Programs { get; } = new();
     public ObservableCollection<string> Log { get; } = new();
+
+    /// <summary>The program's Start node — always present, never saved, never deleted.</summary>
+    public CanvasNodeViewModel StartNode { get; }
 
     // --- left-hand program list (search + hide/show, per-product hidden set) ---
 
@@ -128,57 +141,28 @@ public sealed class TimelineEditorViewModel : ObservableObject
 
     private readonly List<PaletteCategoryViewModel> _paletteAll = new();   // unfiltered palette
 
-    /// <summary>
-    /// When false (default), only lanes that carry a block are shown — a loaded program
-    /// shows just the devices it uses. Flip on to reveal every device lane so an op can
-    /// be added to a device the program doesn't touch yet.
-    /// </summary>
-    public bool ShowAllLanes
+    /// <summary>Canvas zoom factor — driven by the zoom buttons and Ctrl + wheel.</summary>
+    public double Zoom
     {
-        get => _showAllLanes;
-        set { if (SetField(ref _showAllLanes, value)) UpdateLaneVisibility(); }
-    }
-
-    /// <summary>Lane column width in px — driven by the zoom buttons; bound by header + cells.</summary>
-    public double LaneWidth
-    {
-        get => _laneWidth;
-        private set
+        get => _zoom;
+        set
         {
-            var clamped = Math.Clamp(value, MinLaneWidth, MaxLaneWidth);
-            if (!SetField(ref _laneWidth, clamped)) return;
-            OnPropertyChanged(nameof(LaneFontSize));
-            OnPropertyChanged(nameof(BlockNameFontSize));
-            OnPropertyChanged(nameof(BlockValueFontSize));
+            var clamped = Math.Clamp(Math.Round(value, 2), MinZoom, MaxZoom);
+            if (!SetField(ref _zoom, clamped)) return;
             ZoomInCommand.RaiseCanExecuteChanged();
             ZoomOutCommand.RaiseCanExecuteChanged();
         }
     }
 
-    // Gentle font scale tracking the zoom — clamped tight so wide columns don't clip the
-    // fixed-height rows, but text still grows/shrinks "a bit" with the column width.
-    private double FontScale => Math.Clamp(_laneWidth / DefaultLaneWidth, 0.8, 1.2);
+    /// <summary>Canvas extent (unzoomed px) — grows with the nodes and the row grid.</summary>
+    public double CanvasWidth { get => _canvasWidth; private set => SetField(ref _canvasWidth, value); }
+    public double CanvasHeight { get => _canvasHeight; private set => SetField(ref _canvasHeight, value); }
 
-    /// <summary>Lane-header device name font size, scaled with the column zoom.</summary>
-    public double LaneFontSize => 13 * FontScale;
+    /// <summary>True while an arrow is being dragged out of a port — lights every in port.</summary>
+    public bool IsConnecting { get => _isConnecting; set => SetField(ref _isConnecting, value); }
 
-    /// <summary>In-cell block op-name font size, scaled with the column zoom.</summary>
-    public double BlockNameFontSize => 9 * FontScale;
-
-    /// <summary>In-cell block param-summary font size, scaled with the column zoom.</summary>
-    public double BlockValueFontSize => 11 * FontScale;
-
-    /// <summary>
-    /// Shows a lane when "Show all lanes" is on, or it carries at least one block.
-    /// A program with no blocks at all (e.g. a fresh New Program) shows every lane,
-    /// so there's always somewhere to drop the first op.
-    /// </summary>
-    private void UpdateLaneVisibility()
-    {
-        var anyBlocks = Lanes.Any(l => l.Cells.Any(c => c.Blocks.Count > 0));
-        foreach (var lane in Lanes)
-            lane.IsVisible = _showAllLanes || !anyBlocks || lane.Cells.Any(c => c.Blocks.Count > 0);
-    }
+    /// <summary>The node under the mouse drag; the layout pass leaves its Y alone.</summary>
+    public CanvasNodeViewModel? DraggingNode { get; set; }
 
     public string ProgramName { get => _programName; set { if (SetField(ref _programName, value)) MarkDirty(); } }
 
@@ -226,17 +210,18 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public ProcessBlockViewModel? SelectedBlock
     {
         get => _selectedBlock;
-        set
+        private set
         {
             var old = _selectedBlock;
             if (!SetField(ref _selectedBlock, value)) return;
             if (old != null) old.IsSelected = false;
-            if (value != null) { value.IsSelected = true; SelectedCell = FindCell(value); SelectedHelp = null; }
+            if (value != null) { value.IsSelected = true; SelectedHelp = null; }
             OnPropertyChanged(nameof(HasSelectedBlock));
             OnPropertyChanged(nameof(HasNoSelectedBlock));
             OnPropertyChanged(nameof(ShowPaletteHelp));
             OnPropertyChanged(nameof(ShowEmptyHint));
             RemoveBlockCommand.RaiseCanExecuteChanged();
+            RunSelectedCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -262,40 +247,18 @@ public sealed class TimelineEditorViewModel : ObservableObject
     /// <summary>True when the right panel should show the "nothing selected" hint.</summary>
     public bool ShowEmptyHint => _selectedBlock == null && _selectedHelp == null;
 
-    /// <summary>Shows the given command's help in the right panel (clears any block selection).</summary>
+    /// <summary>
+    /// Shows the given command's help in the right panel. The node selection is kept — it is
+    /// the anchor a following double-click inserts after.
+    /// </summary>
     public void ShowHelp(OpSpec spec)
     {
         SelectedBlock = null;
         SelectedHelp = new OpHelpViewModel(spec);
     }
 
-    /// <summary>Selects a cell (for palette-click placement) and clears the block selection.</summary>
-    public void SelectCell(CellViewModel cell)
-    {
-        SelectedBlock = null;
-        SelectedCell = cell;
-    }
-
-    /// <summary>Removes the given stage column.</summary>
-    public void RemoveStage(StageViewModel stage)
-    {
-        var idx = Stages.IndexOf(stage);
-        if (idx >= 0) RemoveStageAt(idx);
-    }
-
-    private CellViewModel? FindCell(ProcessBlockViewModel block)
-    {
-        foreach (var lane in Lanes)
-            foreach (var cell in lane.Cells)
-                if (cell.Blocks.Contains(block)) return cell;
-        return null;
-    }
-
     public bool HasSelectedBlock => _selectedBlock != null;
     public bool HasNoSelectedBlock => _selectedBlock == null;
-
-    /// <summary>The cell a palette click adds to (set when a block or empty cell is clicked).</summary>
-    public CellViewModel? SelectedCell { get => _selectedCell; set => SetField(ref _selectedCell, value); }
 
     public bool IsRunning
     {
@@ -304,7 +267,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         {
             if (!SetField(ref _isRunning, value)) return;
             RunCommand.RaiseCanExecuteChanged();
-            RunStageCommand.RaiseCanExecuteChanged();
+            RunSelectedCommand.RaiseCanExecuteChanged();
             StopCommand.RaiseCanExecuteChanged();
         }
     }
@@ -314,69 +277,14 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public RelayCommand NewProgramCommand { get; }
     public RelayCommand SaveProgramCommand { get; }
     public RelayCommand CommitProgramCommand { get; }
-    public RelayCommand AddStageCommand { get; }
+    public RelayCommand AddParallelCommand { get; }
+    public RelayCommand TidyCommand { get; }
     public RelayCommand RemoveBlockCommand { get; }
-    public RelayCommand CopyStagesCommand { get; }
-    public RelayCommand PasteStagesCommand { get; }
     public AsyncRelayCommand RunCommand { get; }
-    public AsyncRelayCommand RunStageCommand { get; }
+    public AsyncRelayCommand RunSelectedCommand { get; }
     public RelayCommand StopCommand { get; }
     public RelayCommand ZoomInCommand { get; }
     public RelayCommand ZoomOutCommand { get; }
-
-    /// <summary>True when at least one stage is selected (header highlight).</summary>
-    public bool HasSelectedStage => _selectedStages.Count > 0;
-
-    private void SetStageSelected(StageViewModel stage, bool on)
-    {
-        stage.IsSelected = on;
-        if (on) { if (!_selectedStages.Contains(stage)) _selectedStages.Add(stage); }
-        else _selectedStages.Remove(stage);
-    }
-
-    private void ClearStageSelection()
-    {
-        foreach (var s in _selectedStages) s.IsSelected = false;
-        _selectedStages.Clear();
-    }
-
-    private void StageSelectionChanged()
-    {
-        RunStageCommand.RaiseCanExecuteChanged();
-        CopyStagesCommand.RaiseCanExecuteChanged();
-        OnPropertyChanged(nameof(HasSelectedStage));
-    }
-
-    /// <summary>
-    /// Plain stage-header click. Selects only this stage (and sets it as the range
-    /// anchor); clicking the sole-selected stage again clears the selection. "Run
-    /// Stage" runs whenever exactly one stage is selected.
-    /// </summary>
-    public void SelectStage(StageViewModel stage)
-    {
-        var sole = _selectedStages.Count == 1 && ReferenceEquals(_selectedStages[0], stage);
-        ClearStageSelection();
-        if (sole) _anchorStage = null;                                  // toggled off
-        else { SetStageSelected(stage, true); _anchorStage = stage; }
-        StageSelectionChanged();
-    }
-
-    /// <summary>
-    /// Shift-click on a stage header — selects the contiguous run of stages from the
-    /// anchor (the last plain-clicked stage) to <paramref name="stage"/>. With no
-    /// anchor it behaves like a plain click, seeding one.
-    /// </summary>
-    public void SelectStageRange(StageViewModel stage)
-    {
-        if (_anchorStage == null || !Stages.Contains(_anchorStage)) { SelectStage(stage); return; }
-        var a = Stages.IndexOf(_anchorStage);
-        var b = Stages.IndexOf(stage);
-        if (a < 0 || b < 0) return;
-        ClearStageSelection();
-        for (int i = Math.Min(a, b); i <= Math.Max(a, b); i++)
-            SetStageSelected(Stages[i], true);                          // anchor kept for further shift-clicks
-        StageSelectionChanged();
-    }
 
     // --- page lifecycle ---
 
@@ -406,7 +314,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         {
             var cat = new PaletteCategoryViewModel(category);
             foreach (var spec in OpCatalog.All.Where(s => s.Category == category))
-                cat.Items.Add(new PaletteItemViewModel(spec, AddToSelectedCell));
+                cat.Items.Add(new PaletteItemViewModel(spec, AddOp));
             _paletteAll.Add(cat);
         }
         ApplyCommandFilter();
@@ -434,251 +342,661 @@ public sealed class TimelineEditorViewModel : ObservableObject
         }
     }
 
-    /// <summary>Palette click — add the op to the selected cell (drag-drop targets a specific cell instead).</summary>
-    private void AddToSelectedCell(OpSpec spec)
+    // --- the chain (execution order) ---
+
+    /// <summary>Points <paramref name="from"/>'s arrow at <paramref name="to"/> (null = no arrow),
+    /// dropping whichever arrows that displaces — a node has one arrow in and one out.</summary>
+    private static void Link(CanvasNodeViewModel from, CanvasNodeViewModel? to)
     {
-        if (_selectedCell == null)
-        {
-            Status = "Pick a lane cell first (click it), then choose a command — or drag the command onto a cell.";
-            return;
-        }
-        DropOp(spec, _selectedCell.Lane, Stages.IndexOf(StageOf(_selectedCell)));
+        if (from.Next != null) from.Next.Prev = null;
+        if (to?.Prev != null) to.Prev.Next = null;
+        from.Next = to;
+        if (to != null) to.Prev = from;
     }
 
-    // --- stages / cells ---
-
-    /// <summary>Appends a stage column (and a cell on every lane). Returns its index.
-    /// <paramref name="uid"/> seeds the stage's stable id when reloading a saved stage.</summary>
-    public int AddStage(string? uid = null)
+    /// <summary>Splices <paramref name="node"/> into the chain right after <paramref name="anchor"/>.</summary>
+    private static void InsertAfter(CanvasNodeViewModel anchor, CanvasNodeViewModel node)
     {
-        var idx = Stages.Count;
-        var stage = new StageViewModel { Title = $"Stage {idx + 1}" };
-        if (!string.IsNullOrEmpty(uid)) stage.Uid = uid;
-        Stages.Add(stage);
-        foreach (var lane in Lanes)
-        {
-            var cell = new CellViewModel(lane);
-            lane.Cells.Add(cell);
-            stage.Cells.Add(cell);   // same object, exposed stage-major for the vertical view
-        }
-        return idx;
+        var next = anchor.Next;
+        Link(anchor, node);
+        if (next != null) Link(node, next);
     }
 
-    /// <summary>Removes a stage column and its cells, keeping at least one stage.</summary>
-    public void RemoveStageAt(int index)
+    /// <summary>Takes a node out of the chain and joins its neighbours, so the order of the rest is kept.</summary>
+    private static void Detach(CanvasNodeViewModel node)
     {
-        if (index < 0 || index >= Stages.Count || Stages.Count <= 1) return;
-        Stages.RemoveAt(index);
-        foreach (var lane in Lanes)
-            if (index < lane.Cells.Count) lane.Cells.RemoveAt(index);
-        RenumberStages();
+        var prev = node.Prev;
+        var next = node.Next;
+        if (prev != null) prev.Next = null;
+        if (next != null) next.Prev = null;
+        node.Prev = null;
+        node.Next = null;
+        if (prev != null && next != null) Link(prev, next);
+    }
+
+    /// <summary>The nodes reachable from Start, in execution order (Start itself excluded).</summary>
+    private List<CanvasNodeViewModel> Chain()
+    {
+        var list = new List<CanvasNodeViewModel>();
+        var seen = new HashSet<CanvasNodeViewModel> { StartNode };
+        for (var n = StartNode.Next; n != null && seen.Add(n); n = n.Next)
+            list.Add(n);
+        return list;
+    }
+
+    private CanvasNodeViewModel Tail()
+    {
+        var chain = Chain();
+        return chain.Count > 0 ? chain[^1] : StartNode;
+    }
+
+    /// <summary>True when following arrows from <paramref name="from"/> reaches <paramref name="target"/>.</summary>
+    private static bool Reaches(CanvasNodeViewModel from, CanvasNodeViewModel target)
+    {
+        var seen = new HashSet<CanvasNodeViewModel>();
+        for (var n = from; n != null && seen.Add(n); n = n.Next)
+            if (ReferenceEquals(n, target)) return true;
+        return false;
+    }
+
+    /// <summary>Draws an arrow from <paramref name="from"/> to <paramref name="to"/> (drag between ports).</summary>
+    public void Connect(CanvasNodeViewModel from, CanvasNodeViewModel to)
+    {
+        if (ReferenceEquals(from, to)) return;
+        if (to.Kind == CanvasNodeKind.Start) { Status = "Nothing runs before Start."; return; }
+        if (Reaches(to, from)) { Status = "That arrow would make a loop — the sequence runs one way only."; return; }
+
+        Link(from, to);
         MarkDirty();
-        RecomputeConditionRegions();
-        UpdateLaneVisibility();
-        if (_selectedBlock != null && !BlockIsPlaced(_selectedBlock))
-            SelectedBlock = null;
-        if (_selectedStages.RemoveAll(s => !Stages.Contains(s)) > 0)
-            StageSelectionChanged();
-        if (_anchorStage != null && !Stages.Contains(_anchorStage))
-            _anchorStage = null;
+        RefreshChain();
+        Status = "Linked.";
     }
 
-    /// <summary>Inserts a new empty stage column at <paramref name="index"/> (and an empty
-    /// cell at that position on every lane). <paramref name="uid"/> seeds the stage's stable id.</summary>
-    public void InsertStage(int index, string? uid = null)
+    /// <summary>Removes a node's outgoing arrow.</summary>
+    public void Disconnect(CanvasNodeViewModel node)
     {
-        index = Math.Clamp(index, 0, Stages.Count);
-        var stage = new StageViewModel();
-        if (!string.IsNullOrEmpty(uid)) stage.Uid = uid;
-        Stages.Insert(index, stage);
-        foreach (var lane in Lanes)
-        {
-            var cell = new CellViewModel(lane);
-            lane.Cells.Insert(index, cell);
-            stage.Cells.Add(cell);   // new stage's own cells (same objects as the lanes')
-        }
-        RenumberStages();
-        RecomputeConditionRegions();
-    }
-
-    /// <summary>Inserts an empty stage immediately to the left or right of <paramref name="stage"/>.</summary>
-    public void InsertStageRelative(StageViewModel stage, bool toRight)
-    {
-        var idx = Stages.IndexOf(stage);
-        if (idx < 0) return;
-        InsertStage(toRight ? idx + 1 : idx);
+        if (node.Next == null) return;
+        Link(node, null);
         MarkDirty();
-    }
-
-    // --- stage copy / paste ---
-
-    /// <summary>One lane's blocks within a copied stage, captured as id-less steps.</summary>
-    private sealed record LaneClip(string LaneId, List<WorkflowStep> Steps);
-
-    /// <summary>Ensures <paramref name="stage"/> is part of the selection, then copies — used
-    /// by the context menu so a right-click outside the current selection copies that stage.</summary>
-    public void CopyStagesFor(StageViewModel stage)
-    {
-        if (!_selectedStages.Contains(stage)) SelectStage(stage);
-        CopySelectedStages();
-    }
-
-    /// <summary>Copies the selected stages (their blocks, in stage order) to the stage clipboard.</summary>
-    public void CopySelectedStages()
-    {
-        if (_selectedStages.Count == 0) return;
-
-        var clip = new List<List<LaneClip>>();
-        foreach (var stage in Stages.Where(_selectedStages.Contains))   // capture in left-to-right order
-        {
-            var idx = Stages.IndexOf(stage);
-            var lanes = new List<LaneClip>();
-            foreach (var lane in Lanes)
-            {
-                if (idx >= lane.Cells.Count) continue;
-                var blocks = lane.Cells[idx].Blocks;
-                if (blocks.Count == 0) continue;
-                // Drop the id so paste mints a fresh one per block (independently trackable).
-                lanes.Add(new LaneClip(lane.Id, blocks.Select(b => b.ToStep() with { Id = string.Empty }).ToList()));
-            }
-            clip.Add(lanes);
-        }
-
-        _stageClipboard = clip;
-        PasteStagesCommand.RaiseCanExecuteChanged();
-        Status = $"Copied {clip.Count} stage(s).";
+        RefreshChain();
+        Status = "Arrow removed — the blocks after it no longer run until they are linked again.";
     }
 
     /// <summary>
-    /// Pastes the clipboard stages after the last selected stage (or at the end when
-    /// nothing is selected), then selects the newly pasted stages. Each block is rebuilt
-    /// with a fresh id; a block whose lane no longer exists is skipped.
+    /// Re-derives everything that follows from the arrows: step numbers, which nodes are
+    /// unconnected, the If / Else tint, the link list and the row layout. Called after any
+    /// structural edit.
     /// </summary>
-    public void PasteStages()
+    private void RefreshChain()
     {
-        if (_stageClipboard is not { Count: > 0 } clipboard) return;
+        var chain = Chain();
+        var inChain = new HashSet<CanvasNodeViewModel>(chain) { StartNode };
 
-        var insertAt = _selectedStages.Count > 0
-            ? _selectedStages.Max(Stages.IndexOf) + 1
-            : Stages.Count;
-
-        ClearStageSelection();
-        var pasted = new List<StageViewModel>();
-        foreach (var stageClip in clipboard)
+        for (int i = 0; i < chain.Count; i++)
+            chain[i].Ordinal = (i + 1).ToString(CultureInfo.InvariantCulture);
+        foreach (var node in Nodes)
         {
-            InsertStage(insertAt);
-            var stage = Stages[insertAt];
-            foreach (var laneClip in stageClip)
-            {
-                if (!_laneById.TryGetValue(laneClip.LaneId, out var lane)) continue;   // lane gone — skip
-                foreach (var step in laneClip.Steps)
-                {
-                    var spec = OpCatalog.Find(step.Op) ?? OpCatalog.ForUnknown(step.Op);
-                    var block = ProcessBlockViewModel.FromStep(_host, spec, step);   // empty id → fresh id
-                    Track(block);
-                    lane.Cells[insertAt].Blocks.Add(block);
-                }
-            }
-            pasted.Add(stage);
-            insertAt++;
+            node.IsOrphan = !inChain.Contains(node);
+            if (node.IsOrphan || node.Kind == CanvasNodeKind.Start) node.Ordinal = string.Empty;
         }
 
-        foreach (var s in pasted) SetStageSelected(s, true);
-        _anchorStage = pasted.FirstOrDefault();
-        StageSelectionChanged();
-        MarkDirty();
-        RecomputeConditionRegions();
-        UpdateLaneVisibility();
-        Status = $"Pasted {pasted.Count} stage(s).";
+        RecomputeConditionRegions(chain);
+
+        _selectedLink = null;
+        Links.Clear();
+        foreach (var node in Nodes)
+            if (node.Next != null && Nodes.Contains(node.Next))
+                Links.Add(new LinkViewModel(node, node.Next));
+
+        Relayout();
+        RunSelectedCommand.RaiseCanExecuteChanged();
     }
 
-    private void RenumberStages()
+    /// <summary>
+    /// Re-tints the chain by walking the if/else/endif markers and tracking branch nesting:
+    /// a block between If and Else is "Then" (pink), between Else and End If is "Else"
+    /// (yellow); the markers themselves and blocks outside any conditional are untinted.
+    /// Nesting uses a stack; only the innermost branch tints.
+    /// </summary>
+    private void RecomputeConditionRegions(List<CanvasNodeViewModel> chain)
     {
-        for (int i = 0; i < Stages.Count; i++)
-            Stages[i].Title = $"Stage {i + 1}";
-    }
+        static bool IsOpener(string op)
+            => op is "flow.if" or "flow.ifsignal" or "flow.ifposition";
 
-    private void ClearAllStages()
-    {
-        ClearStageSelection();
-        _anchorStage = null;
-        StageSelectionChanged();
-        Stages.Clear();
-        foreach (var lane in Lanes)
-            lane.Cells.Clear();
-    }
+        foreach (var node in Nodes) node.Region = ConditionRegion.None;
 
-    /// <summary>Drops a palette op onto a lane's cell in the given stage.</summary>
-    public void DropOp(OpSpec spec, LaneViewModel lane, int stageIndex)
-    {
-        if (!lane.Accepts(spec))
+        var stack = new Stack<ConditionRegion>();
+        foreach (var node in chain)
         {
-            Status = $"'{spec.Display}' can't run on the {lane.DomainLabel} lane.";
+            var op = node.Block?.OpKey.ToLowerInvariant() ?? string.Empty;
+            bool isBoundary = IsOpener(op) || op == "flow.else" || op == "flow.endif";
+            node.Region = isBoundary || stack.Count == 0 ? ConditionRegion.None : stack.Peek();
+
+            if (IsOpener(op)) stack.Push(ConditionRegion.Then);
+            else if (op == "flow.else" && stack.Count > 0) { stack.Pop(); stack.Push(ConditionRegion.Else); }
+            else if (op == "flow.endif" && stack.Count > 0) stack.Pop();
+        }
+    }
+
+    // --- layout: stage rows + arrows ---
+
+    /// <summary>
+    /// Lays the canvas out from each node's <see cref="CanvasNodeViewModel.Row"/>: a row is as
+    /// tall as its tallest node (so a parallel envelope stretches its row), nodes sit at the
+    /// top of their row, and the arrows are re-routed.
+    /// </summary>
+    public void Relayout()
+    {
+        int maxRow = 0;
+        foreach (var node in Nodes) maxRow = Math.Max(maxRow, node.Row);
+        int count = Math.Max(MinRows, maxRow + 1 + SpareRows);
+
+        var heights = new double[count];
+        Array.Fill(heights, MinRowHeight);
+        foreach (var node in Nodes)
+            heights[node.Row] = Math.Max(heights[node.Row], node.Height + 2 * RowPad);
+
+        while (Rows.Count < count) Rows.Add(new GridRowViewModel());
+        while (Rows.Count > count) Rows.RemoveAt(Rows.Count - 1);
+
+        double top = 0;
+        for (int i = 0; i < count; i++)
+        {
+            Rows[i].Label = i == 0 ? string.Empty : i.ToString(CultureInfo.InvariantCulture);
+            Rows[i].Top = top;
+            Rows[i].Height = heights[i];
+            top += heights[i];
+        }
+
+        double right = 0;
+        foreach (var node in Nodes)
+        {
+            if (!ReferenceEquals(node, DraggingNode))
+                node.Y = Rows[node.Row].Top + RowPad;
+            right = Math.Max(right, node.X + node.Width);
+        }
+
+        CanvasHeight = top + 20;
+        CanvasWidth = Math.Max(900, right + 320);
+        UpdateLinks();
+    }
+
+    /// <summary>Re-routes every arrow from the nodes' current positions (called while dragging).</summary>
+    public void UpdateLinks()
+    {
+        foreach (var link in Links)
+            (link.Data, link.Head) = LinkRouter.Route(link.From, link.To);
+    }
+
+    /// <summary>The stage row at canvas height <paramref name="y"/> (the last row when below the grid).</summary>
+    private int RowAt(double y)
+    {
+        for (int i = 0; i < Rows.Count; i++)
+            if (y < Rows[i].Top + Rows[i].Height) return i;
+        return Math.Max(0, Rows.Count - 1);
+    }
+
+    /// <summary>The topmost node under a canvas point, ignoring <paramref name="except"/>.</summary>
+    public CanvasNodeViewModel? NodeAt(Point p, CanvasNodeViewModel? except = null)
+    {
+        for (int i = Nodes.Count - 1; i >= 0; i--)
+            if (!ReferenceEquals(Nodes[i], except) && Nodes[i].Bounds.Contains(p))
+                return Nodes[i];
+        return null;
+    }
+
+    /// <summary>The parallel envelope under a canvas point, ignoring <paramref name="except"/>.</summary>
+    public CanvasNodeViewModel? ParallelAt(Point p, CanvasNodeViewModel? except = null)
+    {
+        for (int i = Nodes.Count - 1; i >= 0; i--)
+            if (Nodes[i].Kind == CanvasNodeKind.Parallel && !ReferenceEquals(Nodes[i], except) && Nodes[i].Bounds.Contains(p))
+                return Nodes[i];
+        return null;
+    }
+
+    private CanvasNodeViewModel? _dropTarget;
+
+    /// <summary>Lights the envelope a drag would drop into (null clears).</summary>
+    public void SetDropTarget(CanvasNodeViewModel? node)
+    {
+        if (ReferenceEquals(_dropTarget, node)) return;
+        if (_dropTarget != null) _dropTarget.IsDropTarget = false;
+        _dropTarget = node;
+        if (node != null) node.IsDropTarget = true;
+    }
+
+    /// <summary>
+    /// A node drag ended: a command block released over a parallel envelope moves into it;
+    /// otherwise the node snaps to the stage row under its centre and keeps its X.
+    /// </summary>
+    public void EndDrag(CanvasNodeViewModel node)
+    {
+        DraggingNode = null;
+        SetDropTarget(null);
+        var centre = new Point(node.X + node.Width / 2, node.Y + node.Height / 2);
+
+        if (node.Kind == CanvasNodeKind.Block && node.Block != null && ParallelAt(centre, node) is { } envelope)
+        {
+            var block = node.Block;
+            Detach(node);
+            Nodes.Remove(node);
+            _selectedNodes.Remove(node);
+            AddBlockToParallel(envelope, block);
+            SelectInnerBlock(block);
+            MarkDirty();
+            RefreshChain();
+            Status = $"Moved '{block.Display}' into the parallel group.";
             return;
         }
-        if (stageIndex < 0 || stageIndex >= Stages.Count) return;
 
+        node.X = Math.Max(RowGutter, node.X);
+        node.Row = RowAt(centre.Y);
+        Relayout();
+        PersistLayout(onlyIfSaved: true);
+    }
+
+    /// <summary>Re-arranges every node: the chain top to bottom, one per row; unconnected nodes in a second column.</summary>
+    private void Tidy()
+    {
+        StartNode.X = DefaultX;
+        StartNode.Row = 0;
+        int row = 1;
+        foreach (var node in Chain())
+        {
+            node.X = DefaultX;
+            node.Row = row++;
+        }
+        row = 1;
+        foreach (var node in Nodes.Where(n => n.IsOrphan))
+        {
+            node.X = DefaultX + 420;
+            node.Row = row++;
+        }
+        Relayout();
+        PersistLayout(onlyIfSaved: true);
+        Status = "Canvas tidied.";
+    }
+
+    /// <summary>Gives <paramref name="node"/> the row under <paramref name="anchor"/>, pushing later rows down if it is taken.</summary>
+    private void PlaceAfter(CanvasNodeViewModel anchor, CanvasNodeViewModel node)
+    {
+        int row = Math.Min(anchor.Row + 1, MaxRow);
+        if (Nodes.Any(n => !ReferenceEquals(n, node) && n.Row == row))
+            foreach (var n in Nodes)
+                if (!ReferenceEquals(n, node) && n.Row >= row && n.Row < MaxRow) n.Row++;
+        node.X = anchor.X;
+        node.Row = row;
+    }
+
+    private void PersistLayout(bool onlyIfSaved)
+    {
+        if (onlyIfSaved && _selectedProgram == null) return;   // never-saved program — nothing to key on yet
+        var product = _host.Process.ActiveProduct;
+        var name = ProgramName.Trim();
+        if (string.IsNullOrWhiteSpace(product) || name.Length == 0) return;
+
+        var spots = new Dictionary<string, CanvasSpot>(StringComparer.OrdinalIgnoreCase);
+        foreach (var node in Nodes)
+            spots[node.Uid] = new CanvasSpot { X = Math.Round(node.X, 1), Row = node.Row };
+        try
+        {
+            ProgramCanvasLayoutStore.Save(product, name, spots);
+        }
+        catch (Exception ex)
+        {
+            // Layout is a view preference — a failed write must not block editing or saving.
+            Status = $"Could not save the canvas layout: {ex.Message}";
+        }
+    }
+
+    // --- selection ---
+
+    private void SetNodeSelection(IEnumerable<CanvasNodeViewModel> nodes)
+    {
+        foreach (var n in _selectedNodes) n.IsSelected = false;
+        _selectedNodes.Clear();
+        foreach (var n in nodes)
+        {
+            n.IsSelected = true;
+            _selectedNodes.Add(n);
+        }
+        RunSelectedCommand.RaiseCanExecuteChanged();
+    }
+
+    private void SetSelectedLink(LinkViewModel? link)
+    {
+        if (_selectedLink != null) _selectedLink.IsSelected = false;
+        _selectedLink = link;
+        if (link != null) link.IsSelected = true;
+    }
+
+    /// <summary>
+    /// Node click. Plain: selects just this node. <paramref name="range"/> (Shift): selects
+    /// every node along the chain from the last plain-clicked node to this one.
+    /// </summary>
+    public void SelectNode(CanvasNodeViewModel node, bool range)
+    {
+        SetSelectedLink(null);
+        if (range && _anchorNode != null && !ReferenceEquals(_anchorNode, node))
+        {
+            var order = new List<CanvasNodeViewModel> { StartNode };
+            order.AddRange(Chain());
+            int a = order.IndexOf(_anchorNode), b = order.IndexOf(node);
+            if (a >= 0 && b >= 0)
+            {
+                SetNodeSelection(order.Skip(Math.Min(a, b)).Take(Math.Abs(a - b) + 1));
+                SelectedBlock = null;
+                return;
+            }
+        }
+
+        _anchorNode = node;
+        SetNodeSelection(new[] { node });
+        SelectedBlock = node.Block;
+    }
+
+    /// <summary>Selects a block inside a parallel envelope (its parameters show on the right).</summary>
+    public void SelectInnerBlock(ProcessBlockViewModel block)
+    {
+        SetSelectedLink(null);
+        SetNodeSelection(Array.Empty<CanvasNodeViewModel>());
+        _anchorNode = OwnerOf(block);
+        SelectedBlock = block;
+    }
+
+    /// <summary>Selects an arrow (Delete then removes it).</summary>
+    public void SelectLink(LinkViewModel link)
+    {
+        SetNodeSelection(Array.Empty<CanvasNodeViewModel>());
+        SelectedBlock = null;
+        SetSelectedLink(link);
+        Status = "Arrow selected — press Delete to remove it.";
+    }
+
+    public void ClearSelection()
+    {
+        SetSelectedLink(null);
+        SetNodeSelection(Array.Empty<CanvasNodeViewModel>());
+        _anchorNode = null;
+        SelectedBlock = null;
+    }
+
+    /// <summary>Selects a block wherever it lives — its own node, or inside an envelope.</summary>
+    private void SelectBlock(ProcessBlockViewModel block)
+    {
+        var owner = OwnerOf(block);
+        if (owner == null) return;
+        if (owner.Kind == CanvasNodeKind.Block) SelectNode(owner, range: false);
+        else SelectInnerBlock(block);
+    }
+
+    private CanvasNodeViewModel? OwnerOf(ProcessBlockViewModel block)
+        => Nodes.FirstOrDefault(n => n.AllBlocks().Contains(block));
+
+    /// <summary>The envelope the current selection points at: a selected envelope, or the one holding the selected block.</summary>
+    private CanvasNodeViewModel? SelectedParallel()
+    {
+        if (_selectedNodes.Count == 1 && _selectedNodes[0].Kind == CanvasNodeKind.Parallel) return _selectedNodes[0];
+        if (_selectedBlock != null && OwnerOf(_selectedBlock) is { Kind: CanvasNodeKind.Parallel } owner) return owner;
+        return null;
+    }
+
+    /// <summary>The node new blocks go after: the last selected node in chain order, else the end of the chain.</summary>
+    private CanvasNodeViewModel InsertAnchor()
+    {
+        var order = new List<CanvasNodeViewModel> { StartNode };
+        order.AddRange(Chain());
+        var anchor = order.LastOrDefault(_selectedNodes.Contains);
+        if (anchor == null && _anchorNode != null && order.Contains(_anchorNode)) anchor = _anchorNode;
+        return anchor ?? order[^1];
+    }
+
+    // --- adding / removing ---
+
+    private ProcessBlockViewModel NewBlock(OpSpec spec)
+    {
         var block = new ProcessBlockViewModel(_host, spec, ProcessBlockViewModel.NewId());
-        if (spec.DeviceKind != DeviceKind.None && lane.Cells.Count > stageIndex)
-            block.SelectedDevice = lane.Id;   // pin to this lane's device (device ops only)
-
-        lane.Cells[stageIndex].Blocks.Add(block);
         Track(block);
-        MarkDirty();
-        RecomputeConditionRegions();
-        UpdateLaneVisibility();
-        SelectedCell = lane.Cells[stageIndex];
-        SelectedBlock = block;
-        Status = $"Added '{spec.Display}' to {lane.Display}, stage {stageIndex + 1}.";
+        return block;
     }
 
     /// <summary>
-    /// Moves an already-placed block to another lane's cell in the given stage (drag
-    /// within the grid). Rejected if the target lane can't run the block's op. A move
-    /// onto a different device lane re-pins the block to that lane's device, mirroring
-    /// <see cref="DropOp"/>. A drop back onto the block's own cell is a no-op.
+    /// Palette double-click. With a parallel envelope selected the command joins it; otherwise
+    /// it becomes a new block spliced in right after the selected node (or at the end).
     /// </summary>
-    public void MoveBlock(ProcessBlockViewModel block, LaneViewModel lane, int stageIndex)
+    private void AddOp(OpSpec spec)
     {
-        if (!lane.Accepts(block.Spec))
+        if (SelectedParallel() is { } envelope)
         {
-            Status = $"'{block.Display}' can't run on the {lane.DomainLabel} lane.";
+            AddToParallel(envelope, spec);
             return;
         }
-        if (stageIndex < 0 || stageIndex >= Stages.Count) return;
 
-        var target = lane.Cells[stageIndex];
-        var source = FindCell(block);
-        if (source == null || ReferenceEquals(source, target)) return;   // not placed, or same cell
+        var anchor = InsertAnchor();
+        var node = CanvasNodeViewModel.ForBlock(NewBlock(spec));
+        Nodes.Add(node);
+        PlaceAfter(anchor, node);
+        InsertAfter(anchor, node);
+        MarkDirty();
+        RefreshChain();
+        SelectNode(node, range: false);
+        Status = $"Added '{spec.Display}' as step {node.Ordinal}.";
+    }
 
-        source.Blocks.Remove(block);
-        target.Blocks.Add(block);
-        if (block.Spec.DeviceKind != DeviceKind.None)
-            block.SelectedDevice = lane.Id;   // pin to the destination lane's device (device ops only)
+    /// <summary>Palette drag released on the open canvas: a new block there, linked to the end of the chain.</summary>
+    public void DropOpAt(OpSpec spec, double x, double y)
+    {
+        var tail = Tail();
+        var node = CanvasNodeViewModel.ForBlock(NewBlock(spec));
+        node.X = Math.Max(RowGutter, x);
+        node.Row = RowAt(y);
+        Nodes.Add(node);
+        Link(tail, node);
+        MarkDirty();
+        RefreshChain();
+        SelectNode(node, range: false);
+        Status = $"Added '{spec.Display}' as step {node.Ordinal}.";
+    }
+
+    /// <summary>Adds a new command to a parallel envelope, on the branch for its device.</summary>
+    public void AddToParallel(CanvasNodeViewModel envelope, OpSpec spec)
+    {
+        var block = NewBlock(spec);
+        AddBlockToParallel(envelope, block);
+        MarkDirty();
+        RefreshChain();
+        SelectInnerBlock(block);
+        Status = $"Added '{spec.Display}' to the parallel group.";
+    }
+
+    /// <summary>
+    /// Puts a block on the envelope's branch for its lane (device, Signal or Control), making
+    /// the branch if needed — commands for one device queue up in one branch instead of
+    /// fighting over the device.
+    /// </summary>
+    private static void AddBlockToParallel(CanvasNodeViewModel envelope, ProcessBlockViewModel block)
+    {
+        var laneId = LaneIds.For(block);
+        var branch = envelope.Branches.FirstOrDefault(b => b.LaneId.Equals(laneId, StringComparison.OrdinalIgnoreCase));
+        if (branch == null)
+        {
+            branch = new ParallelBranchViewModel(laneId);
+            envelope.Branches.Add(branch);
+        }
+        branch.Blocks.Add(block);
+    }
+
+    private static void RemoveFromParallel(CanvasNodeViewModel envelope, ProcessBlockViewModel block)
+    {
+        foreach (var branch in envelope.Branches.ToList())
+            if (branch.Blocks.Remove(block) && branch.Blocks.Count == 0)
+                envelope.Branches.Remove(branch);
+    }
+
+    /// <summary>Adds an empty parallel envelope after the selected node (or at the end).</summary>
+    private void AddParallel()
+    {
+        var anchor = InsertAnchor();
+        var node = CanvasNodeViewModel.ForParallel();
+        Nodes.Add(node);
+        PlaceAfter(anchor, node);
+        InsertAfter(anchor, node);
+        MarkDirty();
+        RefreshChain();
+        SelectNode(node, range: false);
+        Status = "Parallel group added — drag commands or blocks into it; each device gets its own branch.";
+    }
+
+    /// <summary>
+    /// Takes a block out of its parallel envelope and makes it a free node at
+    /// (<paramref name="x"/>, <paramref name="y"/>) — unconnected until an arrow is drawn to it.
+    /// </summary>
+    public CanvasNodeViewModel? PopOut(ProcessBlockViewModel block, double x, double y)
+    {
+        if (OwnerOf(block) is not { Kind: CanvasNodeKind.Parallel } envelope) return null;
+        RemoveFromParallel(envelope, block);
+
+        var node = CanvasNodeViewModel.ForBlock(block);
+        node.X = Math.Max(RowGutter, x);
+        node.Y = Math.Max(0, y);
+        node.Row = RowAt(y);
+        Nodes.Add(node);
+        MarkDirty();
+        RefreshChain();
+        SelectNode(node, range: false);
+        Status = $"'{block.Display}' taken out of the parallel group — link it into the sequence.";
+        return node;
+    }
+
+    /// <summary>Context-menu form of <see cref="PopOut"/>: the block lands just right of its envelope.</summary>
+    public void MoveOut(ProcessBlockViewModel block)
+    {
+        if (OwnerOf(block) is not { } envelope) return;
+        PopOut(block, envelope.X + envelope.Width + 40, envelope.Y);
+    }
+
+    /// <summary>Deletes one node (not Start); the nodes around it are joined so the order is kept.</summary>
+    public void RemoveNode(CanvasNodeViewModel node)
+    {
+        if (node.Kind == CanvasNodeKind.Start) return;
+        Detach(node);
+        Nodes.Remove(node);
+        _selectedNodes.Remove(node);
+        node.IsSelected = false;
+        if (ReferenceEquals(_anchorNode, node)) _anchorNode = null;
+        if (_selectedBlock != null && OwnerOf(_selectedBlock) == null) SelectedBlock = null;
+        MarkDirty();
+        RefreshChain();
+    }
+
+    /// <summary>Delete key / "Delete block": the selected arrow, else the selected block inside an envelope, else the selected nodes.</summary>
+    public void DeleteSelection()
+    {
+        if (_selectedLink is { } link)
+        {
+            Disconnect(link.From);
+            return;
+        }
+
+        if (_selectedBlock != null && OwnerOf(_selectedBlock) is { Kind: CanvasNodeKind.Parallel } envelope)
+        {
+            RemoveFromParallel(envelope, _selectedBlock);
+            SelectedBlock = null;
+            MarkDirty();
+            RefreshChain();
+            return;
+        }
+
+        var doomed = _selectedNodes.Where(n => n.Kind != CanvasNodeKind.Start).ToList();
+        if (doomed.Count == 0) return;
+        foreach (var node in doomed)
+        {
+            Detach(node);
+            Nodes.Remove(node);
+        }
+        ClearSelection();
+        MarkDirty();
+        RefreshChain();
+        Status = $"Deleted {doomed.Count} node(s).";
+    }
+
+    // --- copy / paste ---
+
+    private static WorkflowStep StripIds(WorkflowStep step) => step with
+    {
+        Id = string.Empty,
+        Branches = step.Branches
+            .Select(b => b with { Steps = b.Steps.Select(s => s with { Id = string.Empty }).ToList() })
+            .ToList(),
+    };
+
+    private static WorkflowStep NodeToStep(CanvasNodeViewModel node)
+        => node.Block != null
+            ? node.Block.ToStep()
+            : new WorkflowStep
+            {
+                Id = node.Uid,
+                Op = "flow.parallel",
+                Branches = node.Branches
+                    .Where(b => b.Blocks.Count > 0)
+                    .Select(b => new WorkflowBranch { Lane = b.LaneId, Steps = b.Blocks.Select(x => x.ToStep()).ToList() })
+                    .ToList(),
+            };
+
+    /// <summary>Copies the selection (nodes in chain order, or the one selected block inside an envelope).</summary>
+    public void CopySelection()
+    {
+        var clip = new List<WorkflowStep>();
+        if (_selectedNodes.Count == 0 && _selectedBlock != null)
+        {
+            clip.Add(StripIds(_selectedBlock.ToStep()));
+        }
+        else
+        {
+            var chain = Chain();
+            var picked = _selectedNodes.Where(n => n.Kind != CanvasNodeKind.Start)
+                .OrderBy(n => { int i = chain.IndexOf(n); return i < 0 ? int.MaxValue : i; })
+                .ThenBy(n => n.Row);
+            foreach (var node in picked)
+            {
+                var step = NodeToStep(node);
+                if (node.Kind == CanvasNodeKind.Parallel && step.Branches.Count == 0) continue;   // empty envelope
+                clip.Add(StripIds(step));
+            }
+        }
+        if (clip.Count == 0) return;
+
+        _clipboard = clip;
+        Status = $"Copied {clip.Count} node(s).";
+    }
+
+    /// <summary>
+    /// Pastes the clipboard after the selected node (or at the end of the chain), in order,
+    /// then selects the pasted nodes. Every block is rebuilt with a fresh id.
+    /// </summary>
+    public void Paste()
+    {
+        if (_clipboard is not { Count: > 0 } clipboard) return;
+
+        var anchor = InsertAnchor();
+        var pasted = new List<CanvasNodeViewModel>();
+        foreach (var step in clipboard)
+        {
+            var node = NodeFromStep(step);
+            Nodes.Add(node);
+            PlaceAfter(anchor, node);
+            InsertAfter(anchor, node);
+            pasted.Add(node);
+            anchor = node;
+        }
 
         MarkDirty();
-        RecomputeConditionRegions();
-        UpdateLaneVisibility();
-        SelectedCell = target;
-        SelectedBlock = block;
-        Status = $"Moved '{block.Display}' to {lane.Display}, stage {stageIndex + 1}.";
-    }
-
-    private void RemoveSelectedBlock()
-    {
-        if (_selectedBlock == null) return;
-        foreach (var lane in Lanes)
-            foreach (var cell in lane.Cells)
-                if (cell.Blocks.Remove(_selectedBlock)) { SelectedBlock = null; MarkDirty(); RecomputeConditionRegions(); UpdateLaneVisibility(); return; }
-    }
-
-    private bool BlockIsPlaced(ProcessBlockViewModel block)
-        => Lanes.Any(l => l.Cells.Any(c => c.Blocks.Contains(block)));
-
-    private StageViewModel StageOf(CellViewModel cell)
-    {
-        var idx = cell.Lane.Cells.IndexOf(cell);
-        return idx >= 0 && idx < Stages.Count ? Stages[idx] : Stages[^1];
+        RefreshChain();
+        SetSelectedLink(null);
+        SetNodeSelection(pasted);
+        _anchorNode = pasted[0];
+        SelectedBlock = pasted.Count == 1 ? pasted[0].Block : null;
+        Status = $"Pasted {pasted.Count} node(s).";
     }
 
     // --- programs ---
@@ -747,6 +1065,21 @@ public sealed class TimelineEditorViewModel : ObservableObject
             item.IsCurrent = string.Equals(item.Name, _selectedProgram, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>Empties the canvas down to the Start node.</summary>
+    private void ResetCanvas()
+    {
+        ClearSelection();
+        SetDropTarget(null);
+        DraggingNode = null;
+        Nodes.Clear();
+        StartNode.Next = null;
+        StartNode.Prev = null;
+        StartNode.X = DefaultX;
+        StartNode.Row = 0;
+        Nodes.Add(StartNode);
+        RefreshChain();
+    }
+
     private void NewProgram()
     {
         _suppressDirty = true;
@@ -754,15 +1087,11 @@ public sealed class TimelineEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedProgram));
         MarkCurrentProgram();
         ProgramName = "New Program";
-        ClearAllStages();
-        AddStage();
-        SelectedBlock = null;
-        SelectedCell = null;
-        UpdateLaneVisibility();
+        ResetCanvas();
         _suppressDirty = false;
         IsDirty = false;
         RefreshVersionText();
-        Status = "New program.";
+        Status = "New program — drag a command onto the canvas, or double-click one to add it after Start.";
     }
 
     /// <summary>
@@ -797,39 +1126,60 @@ public sealed class TimelineEditorViewModel : ObservableObject
         _suppressDirty = false;
         IsDirty = false;
         RefreshVersionText();
-        Status = $"Loaded '{name}' — {Stages.Count} stage(s).";
+        Status = $"Loaded '{name}' — {Chain().Count} step(s).";
     }
 
-    /// <summary>Rebuilds the timeline from a program: one stage per top-level step (a
-    /// <c>flow.parallel</c> step fans into per-lane branches).</summary>
+    /// <summary>
+    /// Rebuilds the canvas from a program: one node per top-level step, chained in file order
+    /// from Start (a <c>flow.parallel</c> step becomes an envelope with its branches). Nodes
+    /// take their saved canvas spot; one with none sits in the row under the node before it.
+    /// </summary>
     private void LoadFrom(WorkflowProgram program)
     {
-        ClearAllStages();
-        SelectedBlock = null;
-        SelectedCell = null;
+        ResetCanvas();
 
+        var saved = ProgramCanvasLayoutStore.Load(_host.Process.ActiveProduct, program.Name);
+        if (saved.TryGetValue(StartNode.Uid, out var startSpot)) ApplySpot(StartNode, startSpot);
+
+        var prev = StartNode;
         foreach (var step in program.Steps)
         {
-            var isParallel = step.Op.Equals("flow.parallel", StringComparison.OrdinalIgnoreCase) && step.Branches.Count > 0;
-            var s = AddStage(isParallel ? step.Id : null);   // keep the parallel group's stable id
-            if (isParallel)
-            {
-                foreach (var branch in step.Branches)
-                {
-                    var lane = FindLane(branch.Lane);
-                    foreach (var bstep in branch.Steps)
-                        lane.Cells[s].Blocks.Add(MakeBlock(bstep));
-                }
-            }
+            var node = NodeFromStep(step);
+            if (saved.TryGetValue(node.Uid, out var spot)) ApplySpot(node, spot);
             else
             {
-                var lane = FindLaneForStep(step);
-                lane.Cells[s].Blocks.Add(MakeBlock(step));
+                node.X = prev.X;
+                node.Row = Math.Min(prev.Row + 1, MaxRow);
             }
+            Nodes.Add(node);
+            Link(prev, node);
+            prev = node;
         }
-        if (Stages.Count == 0) AddStage();
-        RecomputeConditionRegions();
-        UpdateLaneVisibility();
+        RefreshChain();
+    }
+
+    private static void ApplySpot(CanvasNodeViewModel node, CanvasSpot spot)
+    {
+        node.X = double.IsFinite(spot.X) ? Math.Clamp(spot.X, RowGutter, 20000) : DefaultX;
+        node.Row = Math.Clamp(spot.Row, 0, MaxRow);
+    }
+
+    /// <summary>A canvas node for a step: an envelope for a <c>flow.parallel</c> with branches, else a block.</summary>
+    private CanvasNodeViewModel NodeFromStep(WorkflowStep step)
+    {
+        var isParallel = step.Op.Equals("flow.parallel", StringComparison.OrdinalIgnoreCase) && step.Branches.Count > 0;
+        if (!isParallel) return CanvasNodeViewModel.ForBlock(MakeBlock(step));
+
+        var envelope = CanvasNodeViewModel.ForParallel(step.Id);   // keep the parallel group's stable id
+        foreach (var branch in step.Branches)
+        {
+            if (branch.Steps.Count == 0) continue;
+            var lane = new ParallelBranchViewModel(string.IsNullOrEmpty(branch.Lane) ? LaneIds.Control : branch.Lane);
+            foreach (var bstep in branch.Steps)
+                lane.Blocks.Add(MakeBlock(bstep));
+            envelope.Branches.Add(lane);
+        }
+        return envelope;
     }
 
     private ProcessBlockViewModel MakeBlock(WorkflowStep step)
@@ -840,65 +1190,8 @@ public sealed class TimelineEditorViewModel : ObservableObject
         return block;
     }
 
-    /// <summary>
-    /// Re-tints every stage by walking the Control lane's if/else/endif markers and
-    /// tracking branch nesting: a content stage between If and Else is "Then" (pink),
-    /// between Else and End If is "Else" (yellow); marker stages and stages outside any
-    /// conditional are untinted. Called after any structural edit. Cheap, so it just
-    /// rewrites every cell's region. Nesting uses a stack; only the innermost branch tints.
-    /// </summary>
-    private void RecomputeConditionRegions()
-    {
-        if (!_laneById.TryGetValue(LaneBuilder.ControlLaneId, out var control)) return;
+    private IEnumerable<ProcessBlockViewModel> AllBlocks() => Nodes.SelectMany(n => n.AllBlocks());
 
-        static bool IsOpener(string op)
-            => op is "flow.if" or "flow.ifsignal" or "flow.ifposition";
-
-        var stack = new Stack<ConditionRegion>();
-        for (int s = 0; s < Stages.Count; s++)
-        {
-            var ops = s < control.Cells.Count
-                ? control.Cells[s].Blocks.Select(b => b.OpKey.ToLowerInvariant()).ToList()
-                : new List<string>();
-
-            bool isBoundary = ops.Any(o => IsOpener(o) || o == "flow.else" || o == "flow.endif");
-            var region = isBoundary || stack.Count == 0 ? ConditionRegion.None : stack.Peek();
-
-            foreach (var lane in Lanes)
-                if (s < lane.Cells.Count)
-                    lane.Cells[s].Region = region;
-
-            // Apply this stage's marker transitions in order, for the stages that follow.
-            foreach (var o in ops)
-            {
-                if (IsOpener(o)) stack.Push(ConditionRegion.Then);
-                else if (o == "flow.else" && stack.Count > 0) { stack.Pop(); stack.Push(ConditionRegion.Else); }
-                else if (o == "flow.endif" && stack.Count > 0) stack.Pop();
-            }
-        }
-    }
-
-    private LaneViewModel FindLane(string id)
-        => _laneById.TryGetValue(id, out var lane) ? lane : _laneById[LaneBuilder.ControlLaneId];
-
-    private LaneViewModel FindLaneForStep(WorkflowStep step)
-    {
-        if (!string.IsNullOrEmpty(step.Device) && _laneById.TryGetValue(step.Device, out var lane))
-            return lane;
-        // Device-less: the read-out op routes to the Signal lane (by category), every
-        // other device-less op to the Control lane.
-        var spec = OpCatalog.Find(step.Op);
-        return spec != null && LaneViewModel.IsSignalOp(spec)
-            ? _laneById[LaneBuilder.SignalLaneId]
-            : _laneById[LaneBuilder.ControlLaneId];
-    }
-
-    /// <summary>
-    /// Pre-flight validation — returns the first block that would no-op or error
-    /// (and a reason), or null. Currently flags a Move Relative with a zero / empty
-    /// distance; an expression value (<c>{..}</c>) is allowed since it resolves at
-    /// run time. The caller selects the offending block so the operator can fix it.
-    /// </summary>
     /// <summary>
     /// Clamps every motion block's velocity field to its device's controller range
     /// (writing the capped value back so the operator sees it). 0 / blank / expression
@@ -906,19 +1199,17 @@ public sealed class TimelineEditorViewModel : ObservableObject
     /// </summary>
     private void ClampVelocities()
     {
-        foreach (var lane in Lanes)
-            foreach (var cell in lane.Cells)
-                foreach (var block in cell.Blocks)
-                {
-                    var vp = block.Params.FirstOrDefault(p => string.Equals(p.Key, "velocity", StringComparison.OrdinalIgnoreCase));
-                    if (vp == null || string.IsNullOrWhiteSpace(vp.StringValue) || vp.StringValue.Contains('{')) continue;
-                    if (!double.TryParse(vp.StringValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) || v <= 0) continue;
+        foreach (var block in AllBlocks())
+        {
+            var vp = block.Params.FirstOrDefault(p => string.Equals(p.Key, "velocity", StringComparison.OrdinalIgnoreCase));
+            if (vp == null || string.IsNullOrWhiteSpace(vp.StringValue) || vp.StringValue.Contains('{')) continue;
+            if (!double.TryParse(vp.StringValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) || v <= 0) continue;
 
-                    var type = _host.Engine.Motion.GetDevice(block.SelectedDevice ?? string.Empty)?.ControllerType;
-                    var clamped = MotionVelocityLimits.Clamp(v, type);
-                    if (Math.Abs(clamped - v) > 1e-9)
-                        vp.StringValue = clamped.ToString(CultureInfo.InvariantCulture);
-                }
+            var type = _host.Engine.Motion.GetDevice(block.SelectedDevice ?? string.Empty)?.ControllerType;
+            var clamped = MotionVelocityLimits.Clamp(v, type);
+            if (Math.Abs(clamped - v) > 1e-9)
+                vp.StringValue = clamped.ToString(CultureInfo.InvariantCulture);
+        }
     }
 
     /// <summary>
@@ -939,20 +1230,18 @@ public sealed class TimelineEditorViewModel : ObservableObject
     private int ClampWaitPopups()
     {
         int bumped = 0;
-        foreach (var lane in Lanes)
-            foreach (var cell in lane.Cells)
-                foreach (var block in cell.Blocks)
-                {
-                    if (!block.OpKey.Equals("flow.waitPopup", StringComparison.OrdinalIgnoreCase)) continue;
-                    var mp = block.Params.FirstOrDefault(p => string.Equals(p.Key, "ms", StringComparison.OrdinalIgnoreCase));
-                    if (mp == null || string.IsNullOrWhiteSpace(mp.StringValue) || mp.StringValue.Contains('{')) continue;
-                    if (!double.TryParse(mp.StringValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var ms)) continue;
-                    if (ms > 0 && ms < MinWaitPopupMs)
-                    {
-                        mp.StringValue = MinWaitPopupMs.ToString(CultureInfo.InvariantCulture);
-                        bumped++;
-                    }
-                }
+        foreach (var block in AllBlocks())
+        {
+            if (!block.OpKey.Equals("flow.waitPopup", StringComparison.OrdinalIgnoreCase)) continue;
+            var mp = block.Params.FirstOrDefault(p => string.Equals(p.Key, "ms", StringComparison.OrdinalIgnoreCase));
+            if (mp == null || string.IsNullOrWhiteSpace(mp.StringValue) || mp.StringValue.Contains('{')) continue;
+            if (!double.TryParse(mp.StringValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var ms)) continue;
+            if (ms > 0 && ms < MinWaitPopupMs)
+            {
+                mp.StringValue = MinWaitPopupMs.ToString(CultureInfo.InvariantCulture);
+                bumped++;
+            }
+        }
         return bumped;
     }
 
@@ -960,23 +1249,27 @@ public sealed class TimelineEditorViewModel : ObservableObject
     private static string WaitPopupBumpNote(int bumped)
         => bumped > 0 ? $" ({bumped} short Wait Popup(s) bumped to {MinWaitPopupMs} ms)" : string.Empty;
 
+    /// <summary>
+    /// Pre-flight validation — returns the first block that would no-op or error
+    /// (and a reason), or null. Currently flags a Move Relative with a zero / empty
+    /// distance; an expression value (<c>{..}</c>) is allowed since it resolves at
+    /// run time. The caller selects the offending block so the operator can fix it.
+    /// </summary>
     private ProcessBlockViewModel? FirstInvalidBlock(out string reason)
     {
-        foreach (var lane in Lanes)
-            foreach (var cell in lane.Cells)
-                foreach (var b in cell.Blocks)
-                {
-                    if (!b.OpKey.Equals("motion.moveRelative", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    var d = b.Params.FirstOrDefault(p => p.Key == "distance")?.StringValue ?? string.Empty;
-                    if (d.Contains('{')) continue;   // expression — resolved at run time
-                    if (string.IsNullOrWhiteSpace(d) ||
-                        (double.TryParse(d, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && v == 0))
-                    {
-                        reason = "Move Relative needs a non-zero distance.";
-                        return b;
-                    }
-                }
+        foreach (var b in AllBlocks())
+        {
+            if (!b.OpKey.Equals("motion.moveRelative", StringComparison.OrdinalIgnoreCase))
+                continue;
+            var d = b.Params.FirstOrDefault(p => p.Key == "distance")?.StringValue ?? string.Empty;
+            if (d.Contains('{')) continue;   // expression — resolved at run time
+            if (string.IsNullOrWhiteSpace(d) ||
+                (double.TryParse(d, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && v == 0))
+            {
+                reason = "Move Relative needs a non-zero distance.";
+                return b;
+            }
+        }
         reason = string.Empty;
         return null;
     }
@@ -1015,16 +1308,26 @@ public sealed class TimelineEditorViewModel : ObservableObject
         AfterPersisted(program.Name);
     }
 
-    /// <summary>Validates + compiles the timeline to a program, or null (with <see cref="Status"/> set) on failure.</summary>
+    /// <summary>Validates + compiles the canvas to a program, or null (with <see cref="Status"/> set) on failure.</summary>
     private WorkflowProgram? BuildValidatedProgram(out int bumped)
     {
         bumped = 0;
         if (string.IsNullOrWhiteSpace(ProgramName)) { Status = "Program name is required."; return null; }
 
+        // Only the chain from Start is written to the file — an unconnected node would be
+        // lost on the next load, so saving is refused until it is linked in or deleted.
+        var orphans = Nodes.Where(n => n.IsOrphan).ToList();
+        if (orphans.Count > 0)
+        {
+            SelectNode(orphans[0], range: false);
+            Status = $"Can't save — {orphans.Count} node(s) are not connected to Start (shown faded). Link them into the sequence or delete them.";
+            return null;
+        }
+
         ClampVelocities();
         bumped = ClampWaitPopups();
         var invalid = FirstInvalidBlock(out var why);
-        if (invalid != null) { SelectedBlock = invalid; Status = $"Can't save — {why}"; return null; }
+        if (invalid != null) { SelectBlock(invalid); Status = $"Can't save — {why}"; return null; }
 
         return BuildProgram();
     }
@@ -1038,88 +1341,110 @@ public sealed class TimelineEditorViewModel : ObservableObject
         MarkCurrentProgram();
         IsDirty = false;
         RefreshVersionText();   // a commit bumps the version; a plain save leaves it
+        PersistLayout(onlyIfSaved: false);
     }
 
     /// <summary>
-    /// Compiles the timeline to a flat <see cref="WorkflowProgram"/>: each stage with
-    /// one active lane emits its blocks inline (sequential); a stage with two+ active
-    /// lanes emits one <c>flow.parallel</c> step, one branch per lane. Also rebuilds
-    /// the run-highlight routing tables.
+    /// Compiles the canvas to a flat <see cref="WorkflowProgram"/> by walking the arrows
+    /// from Start: a block emits its step; an envelope with one branch emits that branch's
+    /// blocks inline (sequential); an envelope with two+ branches emits one
+    /// <c>flow.parallel</c> step, one branch per lane. With <paramref name="onlyBlock"/> or
+    /// <paramref name="onlyNode"/> just that block / node is compiled ("Run Selected").
+    /// Also rebuilds the run-highlight routing tables.
     /// </summary>
-    private WorkflowProgram BuildProgram(int? onlyStage = null)
+    private WorkflowProgram BuildProgram(CanvasNodeViewModel? onlyNode = null, ProcessBlockViewModel? onlyBlock = null)
     {
-        _topLevelStage.Clear();
+        _topLevelNode.Clear();
         _inlineBlock.Clear();
 
         var steps = new List<WorkflowStep>();
-        for (int s = 0; s < Stages.Count; s++)
+        void Inline(ProcessBlockViewModel block)
         {
-            if (onlyStage.HasValue && s != onlyStage.Value) continue;   // run-only-this-stage filter
+            _inlineBlock[steps.Count] = block;
+            _topLevelNode.Add(null);
+            steps.Add(block.ToStep());
+        }
 
-            var active = Lanes.Where(l => s < l.Cells.Count && l.Cells[s].Blocks.Count > 0).ToList();
+        if (onlyBlock != null)
+        {
+            Inline(onlyBlock);
+            return new WorkflowProgram { Name = ProgramName.Trim(), Steps = steps };
+        }
+
+        var chain = Chain();
+        var nodes = onlyNode != null ? new List<CanvasNodeViewModel> { onlyNode } : chain;
+        foreach (var node in nodes)
+        {
+            if (node.Block != null) { Inline(node.Block); continue; }
+            if (node.Kind != CanvasNodeKind.Parallel) continue;
+
+            var active = node.Branches.Where(b => b.Blocks.Count > 0).ToList();
             if (active.Count == 0) continue;
-
             if (active.Count == 1)
             {
-                foreach (var block in active[0].Cells[s].Blocks)
-                {
-                    _inlineBlock[steps.Count] = block;
-                    _topLevelStage.Add(s);
-                    steps.Add(block.ToStep());
-                }
+                foreach (var block in active[0].Blocks) Inline(block);
+                continue;
             }
-            else
+
+            int ordinal = chain.IndexOf(node) + 1;
+            _topLevelNode.Add(node);
+            steps.Add(new WorkflowStep
             {
-                var branches = active.Select(l => new WorkflowBranch
+                Id = node.Uid,   // stable parallel-group id (trackable across saves)
+                Name = $"Stage {ordinal} (parallel)",
+                Op = "flow.parallel",
+                Branches = active.Select(b => new WorkflowBranch
                 {
-                    Lane = l.Id,
-                    Steps = l.Cells[s].Blocks.Select(b => b.ToStep()).ToList(),
-                }).ToList();
-                _topLevelStage.Add(s);
-                steps.Add(new WorkflowStep
-                {
-                    Id = Stages[s].Uid,   // stable parallel-group id (trackable across saves)
-                    Name = $"Stage {s + 1} (parallel)",
-                    Op = "flow.parallel",
-                    Branches = branches,
-                });
-            }
+                    Lane = b.LaneId,
+                    Steps = b.Blocks.Select(x => x.ToStep()).ToList(),
+                }).ToList(),
+            });
         }
         return new WorkflowProgram { Name = ProgramName.Trim(), Steps = steps };
     }
 
     // --- run ---
 
-    /// <summary>Runs only the highlighted stage, or no-ops unless exactly one is selected.</summary>
-    private async Task RunSelectedStageAsync()
+    private bool HasRunnableSelection()
+        => _selectedBlock != null || (_selectedNodes.Count == 1 && _selectedNodes[0].Kind != CanvasNodeKind.Start);
+
+    /// <summary>Runs only the selected block, or the one selected node (a parallel envelope runs all its branches).</summary>
+    private async Task RunSelectedAsync()
     {
-        if (_selectedStages.Count != 1) return;
-        await RunAsync(Stages.IndexOf(_selectedStages[0]));
+        if (_selectedNodes.Count == 1 && _selectedNodes[0].Kind != CanvasNodeKind.Start)
+            await RunAsync(_selectedNodes[0], null);
+        else if (_selectedBlock != null)
+            await RunAsync(null, _selectedBlock);
     }
 
-    /// <summary>Runs the program, or only stage <paramref name="onlyStage"/> when set.</summary>
-    private async Task RunAsync(int? onlyStage)
+    /// <summary>Runs the program, or only <paramref name="onlyNode"/> / <paramref name="onlyBlock"/> when set.</summary>
+    private async Task RunAsync(CanvasNodeViewModel? onlyNode, ProcessBlockViewModel? onlyBlock)
     {
         if (IsRunning) return;
+        bool partial = onlyNode != null || onlyBlock != null;
 
         ClampVelocities();
         var bumped = ClampWaitPopups();
         var invalid = FirstInvalidBlock(out var why);
-        if (invalid != null) { SelectedBlock = invalid; Status = $"Can't run — {why}"; return; }
+        if (invalid != null) { SelectBlock(invalid); Status = $"Can't run — {why}"; return; }
 
         ResetRunStatus();
         Log.Clear();
-        _runningStage = -1;
+        _runningNode = null;
 
         // Note any sub-second Wait Popups we bumped (after the clear, so it survives).
         if (bumped > 0)
             Log.Add($"{DateTimeOffset.Now:HH:mm:ss}  {bumped} Wait Popup(s) under {MinWaitPopupMs} ms bumped to {MinWaitPopupMs} ms so the countdown is visible.");
 
-        var label = onlyStage.HasValue ? $"stage {onlyStage.Value + 1}" : $"'{ProgramName.Trim()}'";
-        var program = BuildProgram(onlyStage);
+        int orphans = Nodes.Count(n => n.IsOrphan);
+        if (!partial && orphans > 0)
+            Log.Add($"{DateTimeOffset.Now:HH:mm:ss}  {orphans} node(s) are not connected to Start and will not run.");
+
+        var label = partial ? "the selection" : $"'{ProgramName.Trim()}'";
+        var program = BuildProgram(onlyNode, onlyBlock);
         if (program.Steps.Count == 0)
         {
-            Status = onlyStage.HasValue ? "Selected stage has no blocks to run." : "Nothing to run — add a block first.";
+            Status = partial ? "The selection has no blocks to run." : "Nothing to run — add a block after Start first.";
             return;
         }
 
@@ -1147,10 +1472,8 @@ public sealed class TimelineEditorViewModel : ObservableObject
 
     private void ResetRunStatus()
     {
-        foreach (var lane in Lanes)
-            foreach (var cell in lane.Cells)
-                foreach (var block in cell.Blocks)
-                    block.RunStatus = "—";
+        foreach (var node in Nodes) node.RunStatus = "—";
+        foreach (var block in AllBlocks()) block.RunStatus = "—";
     }
 
     // --- engine events (background threads → marshal to UI) ---
@@ -1167,42 +1490,41 @@ public sealed class TimelineEditorViewModel : ObservableObject
             if (ev.Lane == null)
             {
                 // Top-level step: either an inline block, or a flow.parallel marker.
-                if (ev.Index >= 0 && ev.Index < _topLevelStage.Count)
-                    _runningStage = _topLevelStage[ev.Index];
-
                 if (_inlineBlock.TryGetValue(ev.Index, out var block))
+                {
                     block.RunStatus = status;
-                else
-                    MarkStage(_runningStage, status);   // a parallel stage's overall marker
+                    return;
+                }
+                if (ev.Index >= 0 && ev.Index < _topLevelNode.Count)
+                    _runningNode = _topLevelNode[ev.Index];
+                MarkParallel(_runningNode, status);   // a parallel envelope's overall marker
             }
             else
             {
-                // A branch step inside the current parallel stage.
-                if (_runningStage < 0) return;
-                if (!_laneById.TryGetValue(ev.Lane, out var lane)) return;
-                if (_runningStage >= lane.Cells.Count) return;
-                var blocks = lane.Cells[_runningStage].Blocks;
-                if (ev.Index >= 0 && ev.Index < blocks.Count)
-                    blocks[ev.Index].RunStatus = status;
+                // A branch step inside the current parallel envelope.
+                var branch = _runningNode?.Branches
+                    .FirstOrDefault(b => b.LaneId.Equals(ev.Lane, StringComparison.OrdinalIgnoreCase));
+                if (branch == null) return;
+                if (ev.Index >= 0 && ev.Index < branch.Blocks.Count)
+                    branch.Blocks[ev.Index].RunStatus = status;
             }
         }
     }
 
     /// <summary>
-    /// Marks a parallel stage's blocks. On start (<paramref name="status"/> ==
-    /// "Running") every block lights up; on the stage's terminal marker only blocks
+    /// Marks a parallel envelope and its blocks. On start (<paramref name="status"/> ==
+    /// "Running") every block lights up; on the envelope's terminal marker only blocks
     /// still "Running" take the verdict, so per-branch Passed/Failed set by the
     /// branch events is preserved.
     /// </summary>
-    private void MarkStage(int stage, string status)
+    private static void MarkParallel(CanvasNodeViewModel? node, string status)
     {
-        if (stage < 0) return;
+        if (node == null) return;
+        node.RunStatus = status;
         var terminal = status != "Running";
-        foreach (var lane in Lanes)
-            if (stage < lane.Cells.Count)
-                foreach (var block in lane.Cells[stage].Blocks)
-                    if (!terminal || block.RunStatus == "Running")
-                        block.RunStatus = status;
+        foreach (var block in node.AllBlocks())
+            if (!terminal || block.RunStatus == "Running")
+                block.RunStatus = status;
     }
 
     private void OnLog(LogEntry entry)

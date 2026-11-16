@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Horizon.Station.UI.ViewModels;
 using Horizon.Station.UI.ViewModels.Timeline;
@@ -8,11 +9,11 @@ using Horizon.Station.UI.ViewModels.Timeline;
 namespace Horizon.Station.UI.Views;
 
 /// <summary>
-/// The Engineer page — a vertical timeline (Gantt) editor. Device lanes run across
-/// the top; ordered stages down the left as rows. Drop palette commands onto a lane's
-/// stage cell; commands in the same stage on different lanes run concurrently (a
-/// barrier ends each stage). Builds / runs Layer 2 programs via the
-/// <see cref="TimelineEditorViewModel"/> (compiled through <c>flow.parallel</c>).
+/// The Engineer page — a free-canvas sequence editor. Blocks are dragged anywhere on the
+/// canvas (free in X, snapping to a numbered stage row on release) and joined by arrows
+/// drawn from a block's out port to the next block; the chain of arrows from START is the
+/// execution order. A parallel envelope is one node whose branches run concurrently.
+/// Builds / runs Layer 2 programs via the <see cref="TimelineEditorViewModel"/>.
 /// </summary>
 public partial class TimelineEditorView : UserControl
 {
@@ -57,7 +58,7 @@ public partial class TimelineEditorView : UserControl
         _vm.LoadProgramByName(name);
     }
 
-    // --- palette drag: double-click adds to the selected cell, or drag onto a cell ---
+    // --- palette drag: double-click adds after the selected block, or drag onto the canvas ---
 
     private Point _paletteDragStart;
     private PaletteItemViewModel? _paletteDragItem;
@@ -76,7 +77,7 @@ public partial class TimelineEditorView : UserControl
 
         if (e.ClickCount >= 2)
         {
-            item.AddCommand.Execute(null);   // adds to the selected cell
+            item.AddCommand.Execute(null);   // adds after the selected block (or into the selected parallel group)
             _paletteDragItem = null;
             return;
         }
@@ -92,184 +93,304 @@ public partial class TimelineEditorView : UserControl
             return;
 
         var p = e.GetPosition(null);
-        if (System.Math.Abs(p.X - _paletteDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
-            System.Math.Abs(p.Y - _paletteDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+        if (Math.Abs(p.X - _paletteDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(p.Y - _paletteDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
             return;
 
         var spec = _paletteDragItem.Spec;
         _paletteDragItem = null;
         DragDrop.DoDragDrop((DependencyObject)sender, spec, DragDropEffects.Copy);
-        ClearDropTarget();   // drag finished (dropped or cancelled) — drop the highlight
+        _vm.SetDropTarget(null);   // drag finished (dropped or cancelled) — drop the highlight
     }
 
-    // --- block drag: move an already-placed block to another cell ---
+    // --- palette drop on the canvas: onto a parallel envelope joins it, elsewhere makes a new block ---
 
-    private Point _blockDragStart;
-    private ProcessBlockViewModel? _blockDragItem;
-
-    private void OnBlockMouseMove(object sender, MouseEventArgs e)
+    /// <summary>The canvas node an event came from (walks up to the node template's root).</summary>
+    private static CanvasNodeViewModel? NodeOf(object? source)
     {
-        if (_blockDragItem == null || e.LeftButton != MouseButtonState.Pressed)
-            return;
-
-        var p = e.GetPosition(null);
-        if (System.Math.Abs(p.X - _blockDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
-            System.Math.Abs(p.Y - _blockDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
-            return;
-
-        var block = _blockDragItem;
-        _blockDragItem = null;
-        DragDrop.DoDragDrop((DependencyObject)sender, block, DragDropEffects.Move);
-        ClearDropTarget();   // drag finished (dropped or cancelled) — drop the highlight
+        for (var d = source as DependencyObject; d != null; d = d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            if (d is FrameworkElement { DataContext: CanvasNodeViewModel node })
+                return node;
+        return null;
     }
 
-    // --- cell drag-drop: palette op = copy (OpSpec); placed block = move (ProcessBlockViewModel) ---
-
-    /// <summary>The cell currently lit as the drop target, so we can clear it when the drag moves on.</summary>
-    private CellViewModel? _dropTargetCell;
-
-    private void SetDropTarget(CellViewModel? cell)
+    private void OnCanvasDragOver(object sender, DragEventArgs e)
     {
-        if (ReferenceEquals(_dropTargetCell, cell)) return;
-        if (_dropTargetCell != null) _dropTargetCell.IsDropTarget = false;
-        _dropTargetCell = cell;
-        if (cell != null) cell.IsDropTarget = true;
-    }
-
-    private void ClearDropTarget() => SetDropTarget(null);
-
-    private void OnCellDragOver(object sender, DragEventArgs e)
-    {
-        var effects = DragDropEffects.None;
-        CellViewModel? target = null;
-        if (sender is FrameworkElement { DataContext: CellViewModel cell })
+        if (e.Data.GetData(typeof(OpSpec)) is OpSpec)
         {
-            if (e.Data.GetData(typeof(OpSpec)) is OpSpec spec && cell.Lane.Accepts(spec))
-            {
-                effects = DragDropEffects.Copy;
-                target = cell;
-            }
-            else if (e.Data.GetData(typeof(ProcessBlockViewModel)) is ProcessBlockViewModel block
-                     && cell.Lane.Accepts(block.Spec))
-            {
-                effects = DragDropEffects.Move;
-                target = cell;
-            }
+            e.Effects = DragDropEffects.Copy;
+            _vm.SetDropTarget(_vm.ParallelAt(e.GetPosition(CanvasRoot)));
         }
-        e.Effects = effects;
-        SetDropTarget(target);   // highlight only the cell a compatible block can drop into
-        e.Handled = true;
-    }
-
-    private void OnCellDragLeave(object sender, DragEventArgs e)
-    {
-        // Clear the highlight when the drag leaves the lit cell (e.g. into the gap
-        // between cells); moving onto another cell re-lights it via OnCellDragOver.
-        if (sender is FrameworkElement { DataContext: CellViewModel cell } && ReferenceEquals(cell, _dropTargetCell))
-            ClearDropTarget();
-    }
-
-    private void OnCellDrop(object sender, DragEventArgs e)
-    {
-        ClearDropTarget();
-        if (sender is not FrameworkElement { DataContext: CellViewModel cell }) return;
-
-        if (e.Data.GetData(typeof(OpSpec)) is OpSpec spec)
-            _vm.DropOp(spec, cell.Lane, cell.Lane.Cells.IndexOf(cell));
-        else if (e.Data.GetData(typeof(ProcessBlockViewModel)) is ProcessBlockViewModel block)
-            _vm.MoveBlock(block, cell.Lane, cell.Lane.Cells.IndexOf(cell));
         else
-            return;
+        {
+            e.Effects = DragDropEffects.None;
+        }
         e.Handled = true;
     }
 
-    // --- selection ---
+    private void OnCanvasDragLeave(object sender, DragEventArgs e) => _vm.SetDropTarget(null);
 
-    private void OnCellClick(object sender, MouseButtonEventArgs e)
+    private void OnCanvasDrop(object sender, DragEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: CellViewModel cell })
-            _vm.SelectCell(cell);
+        _vm.SetDropTarget(null);
+        if (e.Data.GetData(typeof(OpSpec)) is not OpSpec spec) return;
+
+        var p = e.GetPosition(CanvasRoot);
+        if (_vm.ParallelAt(p) is { } envelope)
+            _vm.AddToParallel(envelope, spec);
+        else
+            _vm.DropOpAt(spec, p.X - 90, p.Y);   // centre the new block under the pointer
+        Focus();
+        e.Handled = true;
     }
 
-    private void OnBlockClick(object sender, MouseButtonEventArgs e)
+    // --- canvas gestures: drag a node, draw an arrow, pull a block out of an envelope, pan ---
+
+    private enum Gesture { None, DragNode, Link, InnerArmed, Pan }
+
+    private Gesture _gesture;
+    private CanvasNodeViewModel? _gNode;        // node being dragged, or the arrow's source
+    private ProcessBlockViewModel? _gBlock;     // block armed for pulling out of its envelope
+    private Point _gStart;                      // canvas point where the gesture began
+    private Vector _gOffset;                    // pointer − node origin, for DragNode
+    private bool _gMoved;
+    private bool _gRightPort;                   // arrow leaves the right port (else the bottom one)
+    private Point _panStart;                    // pointer in the scroll viewer, for Pan
+    private Point _panOrigin;                   // scroll offsets when the pan began
+
+    private static bool PastDragThreshold(Point a, Point b)
+        => Math.Abs(a.X - b.X) >= SystemParameters.MinimumHorizontalDragDistance
+        || Math.Abs(a.Y - b.Y) >= SystemParameters.MinimumVerticalDragDistance;
+
+    private void Begin(Gesture gesture, Point start)
+    {
+        _gesture = gesture;
+        _gStart = start;
+        _gMoved = false;
+        CanvasRoot.CaptureMouse();
+    }
+
+    /// <summary>Ends the gesture in progress, finishing a node drag (snap to row) but dropping an unfinished arrow.</summary>
+    private void EndGesture()
+    {
+        var gesture = _gesture;
+        var node = _gNode;
+        var moved = _gMoved;
+        _gesture = Gesture.None;
+        _gNode = null;
+        _gBlock = null;
+
+        RubberBand.Visibility = Visibility.Collapsed;
+        RubberBand.Data = null;
+        _vm.IsConnecting = false;
+        if (gesture == Gesture.DragNode && node != null && moved)
+            _vm.EndDrag(node);
+        else
+            _vm.DraggingNode = null;
+        if (CanvasRoot.IsMouseCaptured) CanvasRoot.ReleaseMouseCapture();
+    }
+
+    private void OnNodeMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: CanvasNodeViewModel node }) return;
+        Focus();
+        _vm.SelectNode(node, (Keyboard.Modifiers & ModifierKeys.Shift) != 0);
+
+        var p = e.GetPosition(CanvasRoot);
+        _gNode = node;
+        _gOffset = p - new Point(node.X, node.Y);
+        Begin(Gesture.DragNode, p);
+        e.Handled = true;
+    }
+
+    private void OnOutPortMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: CanvasNodeViewModel node } port) return;
+        Focus();
+        _gNode = node;
+        _gRightPort = port.Tag as string == "R";
+        _vm.IsConnecting = true;
+        RubberBand.Visibility = Visibility.Visible;
+        Begin(Gesture.Link, e.GetPosition(CanvasRoot));
+        e.Handled = true;
+    }
+
+    private void OnInnerBlockMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: ProcessBlockViewModel block }) return;
+        Focus();
+        _vm.SelectInnerBlock(block);
+        _gBlock = block;   // armed; a drag past the threshold pulls it out of the envelope
+        Begin(Gesture.InnerArmed, e.GetPosition(CanvasRoot));
+        e.Handled = true;
+    }
+
+    private void OnLinkMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: LinkViewModel link }) return;
+        Focus();
+        _vm.SelectLink(link);
+        e.Handled = true;
+    }
+
+    /// <summary>Press on the empty canvas: clear the selection and pan with the drag.</summary>
+    private void OnCanvasMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        Focus();
+        _vm.ClearSelection();
+        _panStart = e.GetPosition(CanvasScroll);
+        _panOrigin = new Point(CanvasScroll.HorizontalOffset, CanvasScroll.VerticalOffset);
+        Begin(Gesture.Pan, e.GetPosition(CanvasRoot));
+        e.Handled = true;
+    }
+
+    private void OnCanvasMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_gesture == Gesture.None) return;
+        if (e.LeftButton != MouseButtonState.Pressed) { EndGesture(); return; }
+        var p = e.GetPosition(CanvasRoot);
+
+        switch (_gesture)
+        {
+            case Gesture.DragNode when _gNode != null:
+                if (!_gMoved && !PastDragThreshold(p, _gStart)) return;
+                _gMoved = true;
+                _vm.DraggingNode = _gNode;
+                _gNode.X = Math.Max(TimelineEditorViewModel.RowGutter, p.X - _gOffset.X);
+                _gNode.Y = Math.Max(0, p.Y - _gOffset.Y);
+                _vm.UpdateLinks();
+                // A command block hovering a parallel envelope would move into it.
+                _vm.SetDropTarget(_gNode.Kind == CanvasNodeKind.Block
+                    ? _vm.ParallelAt(new Point(_gNode.X + _gNode.Width / 2, _gNode.Y + _gNode.Height / 2), _gNode)
+                    : null);
+                break;
+
+            case Gesture.Link when _gNode != null:
+                var (from, normal) = LinkRouter.OutPort(_gNode, _gRightPort);
+                RubberBand.Data = LinkRouter.Rubber(from, normal, p);
+                break;
+
+            case Gesture.InnerArmed when _gBlock != null:
+                if (!PastDragThreshold(p, _gStart)) return;
+                // Pull the block out as a free node and carry on dragging that node.
+                var node = _vm.PopOut(_gBlock, p.X - 90, p.Y - 20);
+                _gBlock = null;
+                if (node == null) { EndGesture(); return; }
+                _gNode = node;
+                _gOffset = new Vector(90, 20);
+                _gesture = Gesture.DragNode;
+                _gMoved = true;
+                _vm.DraggingNode = node;
+                break;
+
+            case Gesture.Pan:
+                var s = e.GetPosition(CanvasScroll);
+                CanvasScroll.ScrollToHorizontalOffset(_panOrigin.X - (s.X - _panStart.X));
+                CanvasScroll.ScrollToVerticalOffset(_panOrigin.Y - (s.Y - _panStart.Y));
+                break;
+        }
+    }
+
+    private void OnCanvasMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_gesture == Gesture.None) return;
+
+        if (_gesture == Gesture.Link && _gNode != null)
+        {
+            var from = _gNode;
+            var target = _vm.NodeAt(e.GetPosition(CanvasRoot), from);
+            EndGesture();
+            if (target != null) _vm.Connect(from, target);
+        }
+        else
+        {
+            EndGesture();
+        }
+        e.Handled = true;
+    }
+
+    private void OnCanvasLostCapture(object sender, MouseEventArgs e)
+    {
+        if (_gesture != Gesture.None) EndGesture();
+    }
+
+    /// <summary>Ctrl + wheel zooms the canvas; a plain wheel scrolls it as usual.</summary>
+    private void OnCanvasWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (Keyboard.Modifiers != ModifierKeys.Control) return;
+        _vm.Zoom += e.Delta > 0 ? 0.1 : -0.1;
+        e.Handled = true;
+    }
+
+    // --- node layout: the view reports each node's measured size, then the rows are re-laid ---
+
+    private bool _relayoutQueued;
+
+    private void OnNodeSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: CanvasNodeViewModel node } el) return;
+        node.Width = el.ActualWidth;
+        node.Height = el.ActualHeight;
+        if (_relayoutQueued) return;
+        _relayoutQueued = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            _relayoutQueued = false;
+            _vm.Relayout();
+        }));
+    }
+
+    // --- node context menus ---
+
+    private void OnRemoveNode(object sender, RoutedEventArgs e)
+    {
+        if (NodeOf(sender) is { } node) _vm.RemoveNode(node);
+    }
+
+    private void OnDisconnectNode(object sender, RoutedEventArgs e)
+    {
+        if (NodeOf(sender) is { } node) _vm.Disconnect(node);
+    }
+
+    private void OnCopyNode(object sender, RoutedEventArgs e)
+    {
+        if (NodeOf(sender) is not { } node) return;
+        if (!node.IsSelected) _vm.SelectNode(node, range: false);   // right-click outside the selection copies that node
+        _vm.CopySelection();
+    }
+
+    private void OnPasteAfterNode(object sender, RoutedEventArgs e)
+    {
+        if (NodeOf(sender) is not { } node) return;
+        _vm.SelectNode(node, range: false);
+        _vm.Paste();
+    }
+
+    private void OnMoveOutBlock(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { DataContext: ProcessBlockViewModel block })
-        {
-            _vm.SelectedBlock = block;
-            _blockDragStart = e.GetPosition(null);
-            _blockDragItem = block;   // armed; a drag past the threshold moves it to another cell
-            e.Handled = true;   // don't also trigger the cell click
-        }
+            _vm.MoveOut(block);
     }
 
-    private void OnRemoveStage(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: StageViewModel stage })
-            _vm.RemoveStage(stage);
-    }
-
-    private void OnStageHeaderClick(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not FrameworkElement { DataContext: StageViewModel stage }) return;
-
-        // Shift extends the selection from the anchor to here; a plain click selects one.
-        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
-            _vm.SelectStageRange(stage);
-        else
-            _vm.SelectStage(stage);
-
-        Focus();   // pull keyboard focus here so Ctrl+C / Ctrl+V reach OnPreviewKeyDown
-    }
-
-    // --- stage context menu (insert / copy / paste) ---
-
-    private void OnInsertStageLeft(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: StageViewModel stage })
-            _vm.InsertStageRelative(stage, toRight: false);
-    }
-
-    private void OnInsertStageRight(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: StageViewModel stage })
-            _vm.InsertStageRelative(stage, toRight: true);
-    }
-
-    private void OnCopyStages(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: StageViewModel stage })
-            _vm.CopyStagesFor(stage);
-    }
-
-    private void OnPasteStages(object sender, RoutedEventArgs e) => _vm.PasteStages();
-
-    // --- stage keyboard shortcuts: Ctrl+C copies the selection, Ctrl+V pastes ---
+    // --- keyboard: Delete removes the selection, Ctrl+C / Ctrl+V copy / paste, Esc drops an unfinished arrow ---
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // Don't hijack copy/paste while the operator is editing a parameter field.
+        // Don't hijack keys while the operator is editing a parameter field.
         if (e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase) return;
+
+        if (e.Key == Key.Escape && _gesture != Gesture.None) { EndGesture(); e.Handled = true; return; }
+        if (e.Key == Key.Delete && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            if (e.OriginalSource is ComboBox or ComboBoxItem or ListBoxItem) return;
+            _vm.DeleteSelection();
+            e.Handled = true;
+            return;
+        }
+
         if (Keyboard.Modifiers != ModifierKeys.Control) return;
-
-        if (e.Key == Key.C) { _vm.CopySelectedStages(); e.Handled = true; }
-        else if (e.Key == Key.V) { _vm.PasteStages(); e.Handled = true; }
-    }
-
-    // Keep the frozen lane-header row and stage-label column aligned with the body's
-    // scroll position (the body owns both scrollbars; these two are slaved to it).
-    private void OnBodyScrollChanged(object sender, ScrollChangedEventArgs e)
-    {
-        if (HeaderScroll != null) HeaderScroll.ScrollToHorizontalOffset(e.HorizontalOffset);
-        if (LabelScroll != null) LabelScroll.ScrollToVerticalOffset(e.VerticalOffset);
-    }
-
-    // A wheel over the frozen stage-label column drives the body's vertical scroll
-    // (which then re-syncs the label column), so the two panes can't drift apart.
-    private void OnFrozenPaneWheel(object sender, MouseWheelEventArgs e)
-    {
-        if (BodyScroll == null) return;
-        BodyScroll.ScrollToVerticalOffset(BodyScroll.VerticalOffset - e.Delta);
-        e.Handled = true;
+        if (e.Key == Key.C) { _vm.CopySelection(); e.Handled = true; }
+        else if (e.Key == Key.V) { _vm.Paste(); e.Handled = true; }
     }
 
     private void OnHistory(object sender, RoutedEventArgs e)
@@ -287,11 +408,11 @@ public partial class TimelineEditorView : UserControl
     /// Program list row click — opens that program (asking first if the editor has unsaved
     /// changes). Clicks on the row's hide/show eye button are left to the button.
     /// </summary>
-    private void OnProgramItemClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    private void OnProgramItemClick(object sender, MouseButtonEventArgs e)
     {
         if (sender is not ListBoxItem { DataContext: ProgramListItem item }) return;
         for (var d = e.OriginalSource as DependencyObject; d != null && d != sender;
-             d = System.Windows.Media.VisualTreeHelper.GetParent(d))
+             d = VisualTreeHelper.GetParent(d))
             if (d is System.Windows.Controls.Primitives.ButtonBase) return;   // the eye toggle
 
         if (item.IsCurrent && !_vm.IsDirty) return;

@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Horizon.Station.UI.ViewModels"
+             xmlns:tl="clr-namespace:Horizon.Station.UI.ViewModels.Timeline"
              Focusable="True" PreviewKeyDown="OnPreviewKeyDown">
     <UserControl.Resources>
         <SolidColorBrush x:Key="SelectedBlock" Color="#00C8FF" />
@@ -12,44 +13,138 @@
         <SolidColorBrush x:Key="ThenRegion" Color="#33E91E63" />
         <SolidColorBrush x:Key="ElseRegion" Color="#33FFC400" />
 
-        <!-- Stage column header — click to pick it as the "run only this stage" selection. -->
-        <Style x:Key="StageHeader" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource Panel}" />
-            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
-            <Setter Property="BorderThickness" Value="1,0,0,1" />
-            <Setter Property="Cursor" Value="Hand" />
+        <!-- Port dots: where arrows leave (out) and arrive (in). Invisible until the
+             pointer is over the node, or (in ports) while an arrow is being dragged. -->
+        <SolidColorBrush x:Key="InPort" Color="#2F9E8F" />
+        <SolidColorBrush x:Key="OutPort" Color="#F2994A" />
+        <Style x:Key="PortDot" TargetType="Ellipse">
+            <Setter Property="Width" Value="12" />
+            <Setter Property="Height" Value="12" />
+            <Setter Property="Stroke" Value="{StaticResource Bg}" />
+            <Setter Property="StrokeThickness" Value="1.5" />
+            <Setter Property="Opacity" Value="0" />
             <Style.Triggers>
-                <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                    <Setter Property="Background" Value="{StaticResource DropHighlight}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Grid}}" Value="True">
+                    <Setter Property="Opacity" Value="1" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
-
-        <!-- A lane × stage cell — highlights while a compatible block is dragged over it. -->
-        <Style x:Key="DropCell" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource Bg}" />
-            <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
-            <!-- Right+bottom border, matching the lane-header cells (0,0,1,1) so the
-                 vertical dividers line up with the header columns. The leftmost line is
-                 supplied by the frozen stage-label column's right border. -->
-            <Setter Property="BorderThickness" Value="0,0,1,1" />
+        <Style x:Key="InPortDot" TargetType="Ellipse" BasedOn="{StaticResource PortDot}">
+            <Setter Property="Fill" Value="{StaticResource InPort}" />
+            <Setter Property="IsHitTestVisible" Value="False" />
             <Style.Triggers>
-                <!-- Conditional-branch tint (drop highlight below wins when dragging). -->
+                <DataTrigger Binding="{Binding DataContext.IsConnecting, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                    <Setter Property="Opacity" Value="1" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="OutPortDot" TargetType="Ellipse" BasedOn="{StaticResource PortDot}">
+            <Setter Property="Fill" Value="{StaticResource OutPort}" />
+            <Setter Property="Cursor" Value="Cross" />
+            <Setter Property="ToolTip" Value="Drag to the next block to draw the arrow" />
+        </Style>
+
+        <!-- A command block node on the canvas — border colours by run status / selection,
+             background by If / Else branch, faded when no arrow from Start reaches it. -->
+        <Style x:Key="NodeBox" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Panel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Subtle}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="Cursor" Value="SizeAll" />
+            <Style.Triggers>
                 <DataTrigger Binding="{Binding Region}" Value="Then">
                     <Setter Property="Background" Value="{StaticResource ThenRegion}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Region}" Value="Else">
                     <Setter Property="Background" Value="{StaticResource ElseRegion}" />
                 </DataTrigger>
-                <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
-                    <Setter Property="Background" Value="{StaticResource DropHighlight}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+                <DataTrigger Binding="{Binding Block.RunStatus}" Value="Running">
+                    <Setter Property="BorderBrush" Value="{StaticResource Warn}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Block.RunStatus}" Value="Passed">
+                    <Setter Property="BorderBrush" Value="{StaticResource Ok}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Block.RunStatus}" Value="Failed">
+                    <Setter Property="BorderBrush" Value="{StaticResource Danger}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource SelectedBlock}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Block.Enabled}" Value="False">
+                    <Setter Property="Opacity" Value="0.5" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsOrphan}" Value="True">
+                    <Setter Property="Opacity" Value="0.5" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
 
-        <!-- Palette command tile — drag onto a lane cell, or double-click to add to the selected cell. -->
+        <!-- A parallel envelope — one node whose branches run at the same time. -->
+        <Style x:Key="ParallelBox" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Bg}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+            <Setter Property="BorderThickness" Value="1.5" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="8,6,8,8" />
+            <Setter Property="MinWidth" Value="200" />
+            <Setter Property="Cursor" Value="SizeAll" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding RunStatus}" Value="Running">
+                    <Setter Property="BorderBrush" Value="{StaticResource Warn}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding RunStatus}" Value="Passed">
+                    <Setter Property="BorderBrush" Value="{StaticResource Ok}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding RunStatus}" Value="Failed">
+                    <Setter Property="BorderBrush" Value="{StaticResource Danger}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource SelectedBlock}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource DropHighlight}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsOrphan}" Value="True">
+                    <Setter Property="Opacity" Value="0.5" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Arrow between two nodes. -->
+        <Style x:Key="LinkStroke" TargetType="Path">
+            <Setter Property="Stroke" Value="{StaticResource Text}" />
+            <Setter Property="StrokeThickness" Value="1.4" />
+            <Setter Property="Opacity" Value="0.75" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter Property="Stroke" Value="{StaticResource SelectedBlock}" />
+                    <Setter Property="StrokeThickness" Value="2.6" />
+                    <Setter Property="Opacity" Value="1" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="LinkHead" TargetType="Path">
+            <Setter Property="Fill" Value="{StaticResource Text}" />
+            <Setter Property="Opacity" Value="0.75" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter Property="Fill" Value="{StaticResource SelectedBlock}" />
+                    <Setter Property="Opacity" Value="1" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Palette command tile — drag onto the canvas, or double-click to add after the selected block. -->
         <Style x:Key="PaletteItem" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource Bg}" />
             <Setter Property="BorderBrush" Value="{StaticResource Edge}" />
@@ -65,7 +160,7 @@
             </Style.Triggers>
         </Style>
 
-        <!-- A scheduled block inside a lane cell — border colours by run status / selection. -->
+        <!-- A block inside a parallel envelope — border colours by run status / selection. -->
         <Style x:Key="BlockBox" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource Panel}" />
             <Setter Property="BorderBrush" Value="{StaticResource Subtle}" />
@@ -142,6 +237,146 @@
                                   Number="{StaticResource NumberParam}"
                                   Bool="{StaticResource BoolParam}"
                                   Combo="{StaticResource ComboParam}" />
+        <!-- ===== canvas node templates ===== -->
+        <DataTemplate x:Key="StartNode">
+            <Grid Background="Transparent" SizeChanged="OnNodeSizeChanged" MouseLeftButtonDown="OnNodeMouseDown">
+                <Border Width="96" Height="34" CornerRadius="17" Background="{StaticResource Accent}" Cursor="SizeAll"
+                        ToolTip="Every program starts here — drag from the orange dot to the first block">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="BorderThickness" Value="0" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                    <Setter Property="BorderBrush" Value="{StaticResource SelectedBlock}" />
+                                    <Setter Property="BorderThickness" Value="2" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock Text="START" FontWeight="Bold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}" />
+                </Border>
+                <Ellipse Style="{StaticResource OutPortDot}" Tag="B" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                         Margin="0,0,0,-6" MouseLeftButtonDown="OnOutPortMouseDown" />
+                <Ellipse Style="{StaticResource OutPortDot}" Tag="R" HorizontalAlignment="Right" VerticalAlignment="Center"
+                         Margin="0,0,-6,0" MouseLeftButtonDown="OnOutPortMouseDown" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="BlockNode">
+            <Grid Background="Transparent" SizeChanged="OnNodeSizeChanged" MouseLeftButtonDown="OnNodeMouseDown">
+                <Grid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Remove outgoing arrow" Click="OnDisconnectNode" />
+                        <Separator />
+                        <MenuItem Header="Copy" Click="OnCopyNode" />
+                        <MenuItem Header="Paste after" Click="OnPasteAfterNode" />
+                        <Separator />
+                        <MenuItem Header="Delete block" Click="OnRemoveNode" />
+                    </ContextMenu>
+                </Grid.ContextMenu>
+                <Border Style="{StaticResource NodeBox}" Width="180" MinHeight="48" ToolTip="{Binding Block.Summary}">
+                    <StackPanel>
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Left" Text="{Binding Ordinal}" Foreground="{StaticResource Accent}"
+                                       FontSize="9.5" FontWeight="Bold" Margin="0,0,5,0" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding Block.SelectedDevice}" Foreground="{StaticResource Subtle}"
+                                       FontSize="9.5" Margin="6,0,0,0" MaxWidth="80" TextTrimming="CharacterEllipsis"
+                                       Visibility="{Binding Block.ShowDevice, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock Text="{Binding Block.Display}" Foreground="{StaticResource Subtle}" FontSize="9.5"
+                                       TextTrimming="CharacterEllipsis" />
+                        </DockPanel>
+                        <TextBlock Text="{Binding Block.ParamSummary}" Foreground="{StaticResource Text}" FontSize="12"
+                                   FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                    </StackPanel>
+                </Border>
+                <Ellipse Style="{StaticResource InPortDot}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,-6,0,0" />
+                <Ellipse Style="{StaticResource InPortDot}" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-6,0,0,0" />
+                <Ellipse Style="{StaticResource OutPortDot}" Tag="B" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                         Margin="0,0,0,-6" MouseLeftButtonDown="OnOutPortMouseDown" />
+                <Ellipse Style="{StaticResource OutPortDot}" Tag="R" HorizontalAlignment="Right" VerticalAlignment="Center"
+                         Margin="0,0,-6,0" MouseLeftButtonDown="OnOutPortMouseDown" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ParallelNode">
+            <Grid Background="Transparent" SizeChanged="OnNodeSizeChanged" MouseLeftButtonDown="OnNodeMouseDown">
+                <Grid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Remove outgoing arrow" Click="OnDisconnectNode" />
+                        <Separator />
+                        <MenuItem Header="Copy" Click="OnCopyNode" />
+                        <MenuItem Header="Paste after" Click="OnPasteAfterNode" />
+                        <Separator />
+                        <MenuItem Header="Delete parallel group" Click="OnRemoveNode" />
+                    </ContextMenu>
+                </Grid.ContextMenu>
+                <Border Style="{StaticResource ParallelBox}"
+                        ToolTip="Parallel group — its branches run at the same time; the next block starts when all have finished">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,4">
+                            <Button DockPanel.Dock="Right" Content="✕" Width="18" Height="18" Padding="0" FontSize="10"
+                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                    ToolTip="Delete this parallel group" Click="OnRemoveNode" />
+                            <TextBlock Text="{Binding Ordinal}" Foreground="{StaticResource Accent}" FontSize="9.5" FontWeight="Bold"
+                                       Margin="0,0,5,0" VerticalAlignment="Center" />
+                            <TextBlock Text="PARALLEL" Foreground="{StaticResource Accent}" FontSize="10" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                        </DockPanel>
+                        <TextBlock Text="Drag commands or blocks here" Foreground="{StaticResource Subtle}" FontSize="11"
+                                   FontStyle="Italic" Margin="4,8,4,10" HorizontalAlignment="Center"
+                                   Visibility="{Binding HasNoBranches, Converter={StaticResource BoolToVis}}" />
+                        <ItemsControl ItemsSource="{Binding Branches}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                                            CornerRadius="3" Margin="0,0,6,0" Padding="2,2,2,4" VerticalAlignment="Top">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Display}" Foreground="{StaticResource Subtle}" FontSize="9.5"
+                                                       FontWeight="SemiBold" Margin="5,1,5,2" TextTrimming="CharacterEllipsis" MaxWidth="160" />
+                                            <ItemsControl ItemsSource="{Binding Blocks}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Style="{StaticResource BlockBox}" Width="160" Background="{StaticResource Bg}"
+                                                                MouseLeftButtonDown="OnInnerBlockMouseDown" ToolTip="{Binding Summary}">
+                                                            <Border.ContextMenu>
+                                                                <ContextMenu>
+                                                                    <MenuItem Header="Move out of the parallel group" Click="OnMoveOutBlock" />
+                                                                </ContextMenu>
+                                                            </Border.ContextMenu>
+                                                            <StackPanel>
+                                                                <TextBlock Text="{Binding Display}" Foreground="{StaticResource Subtle}"
+                                                                           FontSize="9.5" TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock Text="{Binding ParamSummary}" Foreground="{StaticResource Text}"
+                                                                           FontSize="11.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+                <Ellipse Style="{StaticResource InPortDot}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,-6,0,0" />
+                <Ellipse Style="{StaticResource InPortDot}" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-6,0,0,0" />
+                <Ellipse Style="{StaticResource OutPortDot}" Tag="B" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                         Margin="0,0,0,-6" MouseLeftButtonDown="OnOutPortMouseDown" />
+                <Ellipse Style="{StaticResource OutPortDot}" Tag="R" HorizontalAlignment="Right" VerticalAlignment="Center"
+                         Margin="0,0,-6,0" MouseLeftButtonDown="OnOutPortMouseDown" />
+            </Grid>
+        </DataTemplate>
+
+        <tl:CanvasNodeTemplateSelector x:Key="NodeSelector"
+                                       Start="{StaticResource StartNode}"
+                                       Block="{StaticResource BlockNode}"
+                                       Parallel="{StaticResource ParallelNode}" />
     </UserControl.Resources>
 
     <Grid Background="{StaticResource Bg}" Margin="12">
@@ -195,11 +430,12 @@
                         <TextBlock Text="History" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
-                <Button Width="84" Height="28" Margin="0,0,16,0" Command="{Binding AddStageCommand}" ToolTip="Add stage">
+                <Button Width="92" Height="28" Margin="0,0,16,0" Command="{Binding AddParallelCommand}"
+                        ToolTip="Add a parallel group after the selected block — the commands inside it run at the same time">
                     <StackPanel Orientation="Horizontal">
                         <Image Source="/Horizon.Station.UI;component/assets/add-stage-button.png" Width="16" Height="16" Margin="0,0,5,0"
                                RenderOptions.BitmapScalingMode="HighQuality" />
-                        <TextBlock Text="Stage" VerticalAlignment="Center" />
+                        <TextBlock Text="Parallel" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
                 <Button Width="72" Height="28" Margin="0,0,6,0" FontWeight="SemiBold" Command="{Binding RunCommand}" ToolTip="Run program">
@@ -209,12 +445,12 @@
                         <TextBlock Text="Run" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
-                <Button Width="96" Height="28" Margin="0,0,6,0" Command="{Binding RunStageCommand}"
-                        ToolTip="Run only the highlighted stage — click a stage header to select it">
+                <Button Width="116" Height="28" Margin="0,0,6,0" Command="{Binding RunSelectedCommand}"
+                        ToolTip="Run only the selected block (or the selected parallel group)">
                     <StackPanel Orientation="Horizontal">
                         <Image Source="/Horizon.Station.UI;component/assets/run-stage-button.png" Width="16" Height="16" Margin="0,0,5,0"
                                RenderOptions.BitmapScalingMode="HighQuality" />
-                        <TextBlock Text="Run Stage" VerticalAlignment="Center" />
+                        <TextBlock Text="Run Selected" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
                 <Button Width="72" Height="28" Command="{Binding StopCommand}" ToolTip="Stop">
@@ -225,15 +461,14 @@
                     </StackPanel>
                 </Button>
 
-                <!-- Lane view controls: zoom column width + show/hide unused device lanes. -->
+                <!-- Canvas view controls: zoom + tidy. -->
                 <Border Width="1" Background="{StaticResource Edge}" Margin="14,2,14,2" />
                 <Button Content="−" Width="28" Height="28" Margin="0,0,4,0" FontWeight="Bold" Command="{Binding ZoomOutCommand}"
-                        ToolTip="Narrower lane columns" />
+                        ToolTip="Zoom out (Ctrl + mouse wheel)" />
                 <Button Content="+" Width="28" Height="28" Margin="0,0,10,0" FontWeight="Bold" Command="{Binding ZoomInCommand}"
-                        ToolTip="Wider lane columns" />
-                <CheckBox Content="Show all lanes" Foreground="{StaticResource Text}" VerticalAlignment="Center"
-                          IsChecked="{Binding ShowAllLanes}"
-                          ToolTip="Off: show only device lanes the program uses. On: show every device lane (to add a new device)." />
+                        ToolTip="Zoom in (Ctrl + mouse wheel)" />
+                <Button Content="Tidy" Width="52" Height="28" Command="{Binding TidyCommand}"
+                        ToolTip="Re-arrange the canvas: the sequence top to bottom, one block per stage row" />
 
                 <TextBlock Text="●  unsaved changes" Foreground="{StaticResource Warn}" FontSize="11" FontWeight="SemiBold"
                            VerticalAlignment="Center" Margin="20,0,0,0"
@@ -243,7 +478,7 @@
             </StackPanel>
         </Border>
 
-        <!-- ===== FOUR COLUMNS: programs | palette | timeline | param panel ===== -->
+        <!-- ===== FOUR COLUMNS: programs | palette | canvas | param panel ===== -->
         <Grid Grid.Row="1" Margin="0,8,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="190" />
@@ -347,7 +582,7 @@
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Border Style="{StaticResource PaletteItem}"
-                                                            ToolTip="Drag onto a lane cell, or double-click to add to the selected cell"
+                                                            ToolTip="Drag onto the canvas (or into a parallel group), or double-click to add after the selected block"
                                                             PreviewMouseLeftButtonDown="OnPaletteMouseDown"
                                                             PreviewMouseMove="OnPaletteMouseMove">
                                                         <TextBlock Text="{Binding Display}" Foreground="{StaticResource Text}" FontSize="12" />
@@ -363,136 +598,85 @@
                 </DockPanel>
             </Border>
 
-            <!-- MIDDLE: the timeline grid (stages down as rows, lanes across the top).
-                 Frozen lane-header row + frozen stage-label column; the body owns both
-                 scrollbars and slaves the header (horizontal) and labels (vertical) via
-                 OnBodyScrollChanged. -->
+            <!-- MIDDLE: the free canvas. Numbered stage rows (dashed lines) are a layout grid —
+                 a row grows to fit what sits in it; there are no lane columns. Execution order
+                 is the chain of arrows from START. Layers, back to front: rows, arrows, the
+                 arrow being dragged, nodes. -->
             <Border Grid.Column="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
                     BorderThickness="1" CornerRadius="4" Margin="4,0,4,0">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="120" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+                <ScrollViewer x:Name="CanvasScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                              Background="{StaticResource Bg}" PreviewMouseWheel="OnCanvasWheel">
+                    <Grid x:Name="CanvasRoot" Width="{Binding CanvasWidth}" Height="{Binding CanvasHeight}"
+                          HorizontalAlignment="Left" VerticalAlignment="Top" Background="{StaticResource Bg}"
+                          AllowDrop="True" DragOver="OnCanvasDragOver" DragLeave="OnCanvasDragLeave" Drop="OnCanvasDrop"
+                          MouseLeftButtonDown="OnCanvasMouseDown" MouseMove="OnCanvasMouseMove"
+                          MouseLeftButtonUp="OnCanvasMouseUp" LostMouseCapture="OnCanvasLostCapture">
+                        <Grid.LayoutTransform>
+                            <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
+                        </Grid.LayoutTransform>
 
-                    <!-- Corner spacer -->
-                    <Border Grid.Row="0" Grid.Column="0" Background="{StaticResource Panel}"
-                            BorderBrush="{StaticResource Edge}" BorderThickness="0,0,1,1" />
-
-                    <!-- Frozen lane-header row (slaved to the body's horizontal scroll) -->
-                    <ScrollViewer Grid.Row="0" Grid.Column="1" x:Name="HeaderScroll"
-                                  HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
-                        <ItemsControl ItemsSource="{Binding Lanes}">
+                        <!-- Stage rows -->
+                        <ItemsControl ItemsSource="{Binding Rows}" IsHitTestVisible="False">
                             <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                                <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemContainerStyle>
+                                <Style TargetType="ContentPresenter">
+                                    <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                </Style>
+                            </ItemsControl.ItemContainerStyle>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Height="{Binding Height}"
+                                          Width="{Binding DataContext.CanvasWidth, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                        <TextBlock Text="{Binding Label}" Foreground="{StaticResource Subtle}" FontSize="13"
+                                                   FontWeight="SemiBold" Margin="10,8,0,0" Opacity="0.8" />
+                                        <Line X1="0" Y1="0" Y2="0" VerticalAlignment="Bottom"
+                                              X2="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Grid}}"
+                                              Stroke="{StaticResource Subtle}" StrokeThickness="1" StrokeDashArray="5 4" Opacity="0.55" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Arrows -->
+                        <ItemsControl ItemsSource="{Binding Links}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Width="{Binding DataContext.LaneWidth, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            Height="48" Background="{StaticResource Bg}"
-                                            Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}}"
-                                            BorderBrush="{StaticResource Edge}" BorderThickness="0,0,1,1" Padding="8,0">
-                                        <StackPanel VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding DomainLabel}" Foreground="{StaticResource Accent}"
-                                                       FontSize="10" FontWeight="SemiBold"
-                                                       Visibility="{Binding IsGroupStart, Converter={StaticResource BoolToVis}}" />
-                                            <TextBlock Text="{Binding Display}" Foreground="{StaticResource Text}"
-                                                       FontSize="{Binding DataContext.LaneFontSize, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                       TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                    </Border>
+                                    <Canvas>
+                                        <Path Data="{Binding Data}" Stroke="Transparent" StrokeThickness="12" Cursor="Hand"
+                                              MouseLeftButtonDown="OnLinkMouseDown"
+                                              ToolTip="Click to select, then Delete to remove this arrow" />
+                                        <Path Data="{Binding Data}" Style="{StaticResource LinkStroke}" />
+                                        <Path Data="{Binding Head}" Style="{StaticResource LinkHead}" />
+                                    </Canvas>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                    </ScrollViewer>
 
-                    <!-- Frozen stage-label column (slaved to the body's vertical scroll) -->
-                    <ScrollViewer Grid.Row="1" Grid.Column="0" x:Name="LabelScroll"
-                                  VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled"
-                                  PreviewMouseWheel="OnFrozenPaneWheel">
-                        <ItemsControl ItemsSource="{Binding Stages}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Width="120" Height="54" Style="{StaticResource StageHeader}"
-                                            BorderThickness="0,0,1,1"
-                                            MouseLeftButtonDown="OnStageHeaderClick"
-                                            ToolTip="Click to select (Shift+click for a range; Ctrl+C / Ctrl+V to copy / paste); right-click to insert">
-                                        <Border.ContextMenu>
-                                            <ContextMenu>
-                                                <MenuItem Header="Insert Stage Above" Click="OnInsertStageLeft" />
-                                                <MenuItem Header="Insert Stage Below" Click="OnInsertStageRight" />
-                                                <Separator />
-                                                <MenuItem Header="Copy Stage(s)" Click="OnCopyStages" />
-                                                <MenuItem Header="Paste Stage(s)" Click="OnPasteStages" />
-                                                <Separator />
-                                                <MenuItem Header="Remove Stage" Click="OnRemoveStage" />
-                                            </ContextMenu>
-                                        </Border.ContextMenu>
-                                        <Grid Margin="6,0">
-                                            <TextBlock Text="{Binding Title}" Foreground="{StaticResource Subtle}"
-                                                       FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                            <Button Content="✕" Width="18" Height="18" Padding="0" FontSize="10"
-                                                    HorizontalAlignment="Right" VerticalAlignment="Center"
-                                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                                    ToolTip="Remove this stage" Click="OnRemoveStage" />
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
+                        <!-- The arrow being dragged out of a port -->
+                        <Canvas IsHitTestVisible="False">
+                            <Path x:Name="RubberBand" Stroke="{StaticResource OutPort}" StrokeThickness="2"
+                                  StrokeDashArray="4 3" Visibility="Collapsed" />
+                        </Canvas>
 
-                    <!-- Cell body — one row per stage, cells across = lanes. Owns both scrollbars. -->
-                    <ScrollViewer Grid.Row="1" Grid.Column="1" x:Name="BodyScroll"
-                                  HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
-                                  ScrollChanged="OnBodyScrollChanged">
-                        <ItemsControl ItemsSource="{Binding Stages}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <ItemsControl ItemsSource="{Binding Cells}" Height="54">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border Width="{Binding DataContext.LaneWidth, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                        Height="54" Style="{StaticResource DropCell}"
-                                                        Visibility="{Binding Lane.IsVisible, Converter={StaticResource BoolToVis}}"
-                                                        AllowDrop="True" DragOver="OnCellDragOver" Drop="OnCellDrop"
-                                                        DragLeave="OnCellDragLeave"
-                                                        MouseLeftButtonDown="OnCellClick">
-                                                    <ItemsControl ItemsSource="{Binding Blocks}" VerticalAlignment="Center">
-                                                        <ItemsControl.ItemTemplate>
-                                                            <DataTemplate>
-                                                                <Border Style="{StaticResource BlockBox}"
-                                                                        MouseLeftButtonDown="OnBlockClick"
-                                                                        PreviewMouseMove="OnBlockMouseMove" Tag="{Binding}"
-                                                                        ToolTip="{Binding Summary}">
-                                                                    <StackPanel>
-                                                                        <TextBlock Text="{Binding Display}" Foreground="{StaticResource Subtle}"
-                                                                                   FontSize="{Binding DataContext.BlockNameFontSize, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                                   TextTrimming="CharacterEllipsis" />
-                                                                        <TextBlock Text="{Binding ParamSummary}" Foreground="{StaticResource Text}"
-                                                                                   FontSize="{Binding DataContext.BlockValueFontSize, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                                   FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                                                    </StackPanel>
-                                                                </Border>
-                                                            </DataTemplate>
-                                                        </ItemsControl.ItemTemplate>
-                                                    </ItemsControl>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
+                        <!-- Nodes -->
+                        <ItemsControl ItemsSource="{Binding Nodes}" ItemTemplateSelector="{StaticResource NodeSelector}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemContainerStyle>
+                                <Style TargetType="ContentPresenter">
+                                    <Setter Property="Canvas.Left" Value="{Binding X}" />
+                                    <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                                </Style>
+                            </ItemsControl.ItemContainerStyle>
                         </ItemsControl>
-                    </ScrollViewer>
-                </Grid>
+                    </Grid>
+                </ScrollViewer>
             </Border>
 
             <!-- RIGHT: parameter panel for the selected block -->
@@ -544,7 +728,7 @@
                             <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
                                     BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,8,0,0">
                                 <TextBlock Foreground="{StaticResource Subtle}" FontSize="11" TextWrapping="Wrap"
-                                           Text="Double-click this command, or drag it onto a lane cell, to add it to the sequence." />
+                                           Text="Double-click this command to add it after the selected block, or drag it onto the canvas." />
                             </Border>
                         </StackPanel>
                     </ScrollViewer>
