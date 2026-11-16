@@ -15,6 +15,13 @@ public interface IVisionFacet
     /// <summary>HALCON version string, or an error note if unavailable.</summary>
     string HalconVersion { get; }
 
+    /// <summary>
+    /// Why HALCON did not start, in HALCON's / the runtime's own words (exception type and
+    /// message, inner exceptions included) — null when <see cref="HalconAvailable"/>. HALCON is
+    /// started once, when the engine is built; this is the result of that one attempt.
+    /// </summary>
+    string? HalconInitError { get; }
+
     /// <summary>Whether a frame has been received from a camera (it must be grabbing).</summary>
     bool HasFrame(string cameraId);
 

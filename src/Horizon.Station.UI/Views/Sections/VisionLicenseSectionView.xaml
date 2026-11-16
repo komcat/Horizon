@@ -1,0 +1,108 @@
+<UserControl x:Class="Horizon.Station.UI.Views.Sections.VisionLicenseSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:Horizon.Station.UI">
+    <UserControl.Resources>
+        <Style x:Key="GroupTitle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,14,0,4" />
+        </Style>
+
+        <!-- One check: state mark · name · evidence. -->
+        <DataTemplate x:Key="CheckRow" DataType="{x:Type ui:HalconCheck}">
+            <Grid Margin="0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="26" />
+                    <ColumnDefinition Width="220" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" FontSize="14" FontWeight="Bold" VerticalAlignment="Top">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="•" />
+                            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding State}" Value="{x:Static ui:HalconCheckState.Ok}">
+                                    <Setter Property="Text" Value="✔" />
+                                    <Setter Property="Foreground" Value="{StaticResource Ok}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding State}" Value="{x:Static ui:HalconCheckState.Warn}">
+                                    <Setter Property="Text" Value="⚠" />
+                                    <Setter Property="Foreground" Value="{StaticResource Warn}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding State}" Value="{x:Static ui:HalconCheckState.Fail}">
+                                    <Setter Property="Text" Value="✖" />
+                                    <Setter Property="Foreground" Value="{StaticResource Danger}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Grid.Column="1" Text="{Binding Name}" Foreground="{StaticResource Text}" FontSize="12.5"
+                           TextWrapping="Wrap" VerticalAlignment="Top" Margin="0,1,8,0" />
+                <TextBlock Grid.Column="2" Text="{Binding Detail}" Foreground="{StaticResource Text}" FontSize="12.5"
+                           TextWrapping="Wrap" VerticalAlignment="Top" Margin="0,1,0,0" />
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}" BorderThickness="1">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="16,14">
+                <TextBlock Text="Vision license (HALCON)" Foreground="{StaticResource Text}" FontSize="18" FontWeight="SemiBold" />
+                <TextBlock Foreground="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,10"
+                           Text="Vision detection, filters and templates need HALCON: the installed SDK, a license file, and — for a dongle license — the USB dongle. This page shows which of them stopped it." />
+
+                <!-- Verdict -->
+                <Border CornerRadius="4" Padding="12,10" BorderThickness="2">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="BorderBrush" Value="{StaticResource Ok}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Failed}" Value="True">
+                                    <Setter Property="BorderBrush" Value="{StaticResource Danger}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock Text="{Binding Verdict}" Foreground="{StaticResource Text}" FontSize="14.5"
+                               FontWeight="SemiBold" TextWrapping="Wrap" />
+                </Border>
+
+                <!-- HALCON's own words -->
+                <StackPanel Visibility="{Binding HasHalconMessage, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="HALCON'S MESSAGE AT START-UP" Style="{StaticResource GroupTitle}" />
+                    <Border Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}" BorderThickness="1"
+                            CornerRadius="3" Padding="8">
+                        <TextBox Text="{Binding HalconMessage, Mode=OneWay}" IsReadOnly="True" BorderThickness="0"
+                                 Background="Transparent" Foreground="{StaticResource Text}" FontFamily="Consolas"
+                                 FontSize="12" TextWrapping="Wrap" />
+                    </Border>
+                </StackPanel>
+
+                <TextBlock Text="{Binding SdkHeading}" Style="{StaticResource GroupTitle}" />
+                <ItemsControl ItemsSource="{Binding Sdk}" ItemTemplate="{StaticResource CheckRow}" />
+
+                <TextBlock Text="{Binding LicenseHeading}" Style="{StaticResource GroupTitle}" />
+                <ItemsControl ItemsSource="{Binding License}" ItemTemplate="{StaticResource CheckRow}" />
+
+                <TextBlock Text="{Binding DongleHeading}" Style="{StaticResource GroupTitle}" />
+                <ItemsControl ItemsSource="{Binding Dongle}" ItemTemplate="{StaticResource CheckRow}" />
+
+                <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                    <Button Content="Re-check" Height="28" Padding="14,0" Command="{Binding RecheckCommand}"
+                            ToolTip="Read the environment, files and USB devices again" />
+                    <Button Content="Open license folder" Height="28" Padding="14,0" Margin="8,0,0,0"
+                            Command="{Binding OpenLicenseFolderCommand}" />
+                    <Button Content="Copy report" Height="28" Padding="14,0" Margin="8,0,0,0"
+                            Command="{Binding CopyReportCommand}"
+                            ToolTip="Copy the whole diagnosis as text, e.g. to send to support" />
+                </StackPanel>
+                <TextBlock Text="{Binding Status}" Foreground="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap"
+                           Margin="0,8,0,0" />
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>

@@ -45,6 +45,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         Tec = new TecSectionViewModel(host);
         PowerSupply = new PowerSupplySectionViewModel(host);
         Camera = new CameraSectionViewModel(host);
+        VisionLicense = new VisionLicenseSectionViewModel(host);
         Settings = new SettingsSectionViewModel(host);
         Registration = new DeviceRegistrationSectionViewModel(host);
         _currentSection = Status;
@@ -85,7 +86,7 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
         foreach (var section in new object[]
                  {
                      Status, Motion, Io, IoWatch, Pneumatic, Laser, Tec,
-                     PowerSupply, Measurement, Smu, Camera,
+                     PowerSupply, Measurement, Smu, Camera, VisionLicense,
                  })
             Sections.Add(section);
 
@@ -129,6 +130,9 @@ public sealed class MachinePageViewModel : PageViewModel, IDisposable
 
     /// <summary>The Camera section, kept typed for the sampler to refresh its grab state.</summary>
     public CameraSectionViewModel Camera { get; }
+
+    /// <summary>The Vision license section — why HALCON is / is not available: installed SDK, license file, dongle.</summary>
+    public VisionLicenseSectionViewModel VisionLicense { get; }
 
     /// <summary>The Settings section — application settings (mm/pixel, MoveClick mapping).</summary>
     public SettingsSectionViewModel Settings { get; }

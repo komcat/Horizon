@@ -25,6 +25,7 @@ internal sealed class VisionFacet : IVisionFacet, IDisposable
 
     public bool HalconAvailable { get; }
     public string HalconVersion { get; }
+    public string? HalconInitError { get; }
 
     public VisionFacet(ICameraFacet camera, Action<LogLevel, string> log)
     {
@@ -49,6 +50,11 @@ internal sealed class VisionFacet : IVisionFacet, IDisposable
         {
             HalconAvailable = false;
             HalconVersion = $"unavailable ({ex.GetType().Name})";
+            // Keep the whole chain: a missing native DLL usually hides inside a TypeInitializationException.
+            var parts = new List<string>();
+            for (Exception? e = ex; e != null && parts.Count < 6; e = e.InnerException)
+                parts.Add($"{e.GetType().Name}: {e.Message}");
+            HalconInitError = string.Join(Environment.NewLine + "  caused by ", parts);
             _log(LogLevel.Warning, $"Vision: HALCON unavailable — {ex.Message}");
         }
     }
