@@ -41,8 +41,9 @@ Everything is expressed in the **camera device's frame** (gantry XY, mm).
 
 ## Procedure (Machine › Registration)
 
-1. **Tool pose** — park the gripper anywhere, *Capture tool pose*. *Move to pose* sends
-   it back there later (also the `tool.toPose` block).
+1. **Tool pose** — park the gripper anywhere by jogging, *Capture tool pose*. The panel has no
+   *Move to pose* button: while teaching, the user positions the tool and the camera by hand.
+   (The `tool.toPose` block still returns the tool to the captured pose from a program.)
 2. **Camera on the gripper** — jog the gantry (rail or MoveClick on the feed) until the
    gripper is in view and in focus, then *Capture focus Z*.
 3. **Points** — arm *Pick points*, click 2 (opposite edges) or 4 (corners) points on the
@@ -54,9 +55,13 @@ Everything is expressed in the **camera device's frame** (gantry XY, mm).
    (`OutlineOffsetX/Ymm`, box centre − anchor) are derived and editable. The anchor is the
    step-3 average and may sit anywhere in the box; the grey box on the feed previews it.
 5. **Save** — persists everything. Picking points or corners is refused unless the hexapod
-   stands at its captured pose (they describe the tool *at that pose*; use *Move to pose*);
+   stands at its captured pose (they describe the tool *at that pose*; jog back or recapture the pose);
    editing the outline, offsets, label or bound and saving needs no such check. *Delete* /
    *Reload* and two bounded **test** moves sit alongside.
+
+The **axis map** (which tool axis and sign moves the tool along camera X / Y / Z) is not shown
+on the panel. It is still seeded from `jog_transforms.json`, saved with the registration and
+used by the moves; the collapsed block in `DeviceRegistrationSectionView.xaml` brings it back.
 
 ## The two moves
 

@@ -493,7 +493,7 @@ public sealed class DeviceRegistrationSectionViewModel : ObservableObject, IDisp
     /// <summary>
     /// Points and corners are only meaningful with the tool standing where its pose was captured
     /// (they describe the tool <i>at that pose</i>). Reads the tool live and refuses otherwise,
-    /// pointing at Move to pose. Editing the other fields and saving needs no such check.
+    /// telling the user to jog back or recapture (the panel has no Move to pose button). Editing the other fields and saving needs no such check.
     /// </summary>
     private async Task<bool> ToolIsAtPoseAsync(string what)
     {
@@ -503,7 +503,7 @@ public sealed class DeviceRegistrationSectionViewModel : ObservableObject, IDisp
         double drift = Math.Max(Math.Abs(now.Value.X - _toolPose.X),
                        Math.Max(Math.Abs(now.Value.Y - _toolPose.Y), Math.Abs(now.Value.Z - _toolPose.Z)));
         if (drift <= PoseDriftToleranceMm) return true;
-        SetStatus($"{_toolDevice} is {drift:0.0000} mm from its captured pose — press Move to pose (or recapture the pose) before {what}.", true);
+        SetStatus($"{_toolDevice} is {drift:0.0000} mm from its captured pose — jog it back there, or recapture the tool pose (step 1), before {what}.", true);
         return false;
     }
 

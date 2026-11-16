@@ -176,11 +176,11 @@
                     <!-- Step 1 -->
                     <TextBlock Text="1 · Tool pose" Style="{StaticResource StepTitle}" />
                     <TextBlock Foreground="{StaticResource Subtle}" TextWrapping="Wrap" FontSize="11.5"
-                               Text="Park the gripper anywhere (jog rail), then capture its pose." />
+                               Text="Park the gripper by jogging (jog rail), then capture its pose. Nothing here moves the tool for you." />
+                    <!-- No "Move to pose" button on purpose: while teaching, the user positions the tool
+                         and the camera by hand. MoveToPoseCommand stays on the view-model. -->
                     <StackPanel Orientation="Horizontal" Margin="0,4,0,2">
                         <Button Content="Capture tool pose" Height="26" Padding="10,0" Command="{Binding CaptureToolPoseCommand}" />
-                        <Button Content="Move to pose" Height="26" Padding="10,0" Margin="8,0,0,0" Command="{Binding MoveToPoseCommand}"
-                                ToolTip="Send the tool device back to the captured pose (all axes)" />
                     </StackPanel>
                     <TextBlock Text="{Binding ToolPoseText}" Foreground="{StaticResource Text}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" />
 
@@ -237,7 +237,10 @@
                     <TextBlock Foreground="{StaticResource Subtle}" FontSize="11.5" Margin="0,2,0,0"
                                Text="Width runs along image X, length along image Y; the grey box on the feed is the live preview." TextWrapping="Wrap" />
 
-                    <!-- Axis map + bound -->
+                    <!-- Axis map: hidden from the UI on purpose. The registration still carries it (seeded from
+                         jog_transforms.json, kept on save) and the view-model still binds it — set
+                         Visibility back to Visible to edit it here. -->
+                    <StackPanel Visibility="Collapsed">
                     <TextBlock Text="Axis map (camera ← tool)" Style="{StaticResource StepTitle}" />
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
                         <TextBlock Text="X ←" Style="{StaticResource FieldLabel}" />
@@ -259,6 +262,9 @@
                     </StackPanel>
                     <TextBlock Foreground="{StaticResource Subtle}" FontSize="11.5" Margin="0,2,0,0" TextWrapping="Wrap"
                                Text="Seeded from jog_transforms.json: which tool axis (and sign) moves the tool along camera X / Y / Z." />
+                    </StackPanel>
+
+                    <!-- Bound -->
                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                         <TextBlock Text="Max move (mm)" Style="{StaticResource FieldLabel}" />
                         <TextBox Style="{StaticResource Small}" Text="{Binding MaxMove}" />
