@@ -34,7 +34,8 @@ a Detect Object result, so the object held by the gripper keeps a marker that fo
 |---|---|---|
 | `name` | `FAU` | Marker name (also what Remove Beacon takes). |
 | `tool` | the head's tool device (hex-right) | The registered tool device holding the object. |
-| `from` | `obj` | Capture prefix of the Detect Object block: reads `{from}_found`, `{from}_x`, `{from}_y`. |
+| `at` | `camera` | Where to plant: `camera` = where the camera is now (the crosshair), no Detect Object needed; `detect` = a Detect Object result. A block saved without `at` means `detect`. |
+| `from` | `obj` | Only for `detect` — capture prefix of the Detect Object block: reads `{from}_found`, `{from}_x`, `{from}_y`. |
 | `show` | on | Draw it on the live view. |
 
 Typical sequence: camera over the gripper → **Detect Object** (prefix `obj`) → **Register Gripped

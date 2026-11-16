@@ -62,7 +62,7 @@ internal sealed class WorkflowRunner
         DeviceLinkStore deviceLinks,
         Func<string, PositionMapLayout> loadPositionMap,
         BeaconRegistry beacons,
-        Func<string, string, double, double, bool, GrippedOutlineOptions?, Task<Result<Beacon>>> registerGrippedMarker,
+        Func<string, string, double?, double?, bool, GrippedOutlineOptions?, Task<Result<Beacon>>> registerGrippedMarker,
         IOperatorPrompt? prompt,
         Func<string, WorkflowContext, Result>? setDutSerial,
         Func<DutVerdict, WorkflowContext, Result>? closeDut,

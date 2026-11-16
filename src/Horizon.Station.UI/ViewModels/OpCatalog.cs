@@ -426,7 +426,10 @@ public static class OpCatalog
             {
                 new ParamSpec("name", "Object name", ParamKind.Text, "FAU"),
                 new ParamSpec("tool", "Tool device (holds the object)", ParamKind.MotionDeviceName, StationApp.ToolDevice),
-                new ParamSpec("from", "Detect Object capture prefix", ParamKind.Text, "obj"),
+                // Where to plant: 'camera' = where the camera is now (the crosshair); 'detect' = a
+                // Detect Object result ('{from}_x' / '{from}_y'). A block without 'at' means 'detect'.
+                new ParamSpec("at", "Plant at", ParamKind.Choice, "camera", Choices: new[] { "camera", "detect" }),
+                new ParamSpec("from", "Detect Object capture prefix (for 'detect')", ParamKind.Text, "obj"),
                 new ParamSpec("show", "Show on the live view", ParamKind.Bool, "true"),
                 // Optional snapshot of the box around the crosshair, filtered to black / white; the
                 // white pixels ride with the marker, painted yellow. 'filters' is set by Outline helper….

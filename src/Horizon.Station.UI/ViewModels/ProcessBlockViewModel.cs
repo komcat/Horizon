@@ -188,7 +188,9 @@ public sealed class ProcessBlockViewModel : ObservableObject
                 "fau.powerclimb" => Truthy(Or(P("exit"), "true"))
                     ? $"{Or(P("mode"), "coarse")}{(string.IsNullOrWhiteSpace(P("exitV")) ? "" : $" > {P("exitV")} V")}"
                     : $"{Or(P("mode"), "coarse")} · no exit",
-                "object.register" => $"{Or(P("name"), "FAU")} ← {Or(P("from"), "obj")}_* on {Or(P("tool"), "(tool?)")}"
+                "object.register" => $"{Or(P("name"), "FAU")} ← "
+                    + (P("at").Trim().Equals("camera", StringComparison.OrdinalIgnoreCase) ? "camera" : $"{Or(P("from"), "obj")}_*")
+                    + $" on {Or(P("tool"), "(tool?)")}"
                     + (Truthy(P("outline")) ? $" · outline {Or(P("roiWidth"), "300")}×{Or(P("roiHeight"), "300")}" : string.Empty),
                 "beacon.plant" => Or(P("name"), "B#") + (Truthy(Or(P("show"), "true")) ? string.Empty : " · hidden"),
                 "beacon.remove" => P("which").Trim().Equals("name", StringComparison.OrdinalIgnoreCase)

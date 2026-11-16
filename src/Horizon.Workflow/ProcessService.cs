@@ -2041,9 +2041,11 @@ public sealed class ProcessService : IProcessService
     /// tool's registration. Needs the tool to be registered. Same store and rules as the beacons.
     /// </summary>
     public async Task<Result<Beacon>> RegisterGrippedMarkerAsync(
-        string name, string toolDevice, double x, double y, bool visible, GrippedOutlineOptions? outline = null)
+        string name, string toolDevice, double? x, double? y, bool visible, GrippedOutlineOptions? outline = null)
     {
-        if (!double.IsFinite(x) || !double.IsFinite(y))
+        if (x.HasValue != y.HasValue)
+            return Result<Beacon>.Fail(ErrorCode.InvalidParameter, "Register gripped object: give both X and Y, or neither (camera position).");
+        if (x is { } gx && y is { } gy && (!double.IsFinite(gx) || !double.IsFinite(gy)))
             return Result<Beacon>.Fail(ErrorCode.InvalidParameter, "Register gripped object: the X / Y to register is not a number.");
         var reg = GetToolRegistration(toolDevice);
         if (reg == null)
@@ -2060,6 +2062,10 @@ public sealed class ProcessService : IProcessService
         if (!cam.IsSuccess)
             return Result<Beacon>.Fail(cam.Error, $"Register gripped object: read {reg.CameraDevice} — {cam.Message}");
 
+        // No point given = plant where the camera is now (the crosshair).
+        double px = x ?? cam.Value.X, py = y ?? cam.Value.Y;
+        string origin = x.HasValue ? "detected point" : "camera position";
+
         // Optional snapshot around the crosshair (= the camera device's position), taken before
         // the marker is planted. Best-effort: without it the marker is still registered.
         BeaconOutline? snapshot = null;
@@ -2071,11 +2077,11 @@ public sealed class ProcessService : IProcessService
         }
 
         string key = string.IsNullOrWhiteSpace(name) ? "FAU" : name.Trim();
-        var beacon = _beacons.Plant(key, reg.CameraDevice, x, y, cam.Value.Z, visible, out var replaced, reg.ToolDevice, tool.Value, snapshot);
+        var beacon = _beacons.Plant(key, reg.CameraDevice, px, py, cam.Value.Z, visible, out var replaced, reg.ToolDevice, tool.Value, snapshot);
         if (replaced != null)
             Log(LogLevel.Warning, $"Beacon limit ({BeaconRegistry.MaxBeacons}) reached — the oldest, '{replaced}', was replaced.");
         Log(LogLevel.Info,
-            $"Gripped object '{beacon.Name}' registered to {reg.ToolDevice} at {reg.CameraDevice} X {x:F4}  Y {y:F4}" +
+            $"Gripped object '{beacon.Name}' registered to {reg.ToolDevice} at {reg.CameraDevice} X {px:F4}  Y {py:F4} ({origin})" +
             (visible ? string.Empty : " (hidden)") +
             (snapshot != null ? $", with a {snapshot.Width}×{snapshot.Height} px outline" : string.Empty) +
             $" — its marker now moves with {reg.ToolDevice}.");

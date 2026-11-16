@@ -526,10 +526,11 @@ public interface IProcessService
     /// <summary>
     /// Registers a gripped object's marker to a registered tool device: a beacon at the given
     /// camera-device X / Y (e.g. a Detect Object result) that moves with the tool from now on.
+    /// Null X / Y = where the camera is now (the crosshair).
     /// </summary>
     /// <param name="outline">When set, a black / white snapshot of the box around the crosshair is taken first and rides with the marker.</param>
     Task<Result<Beacon>> RegisterGrippedMarkerAsync(
-        string name, string toolDevice, double x, double y, bool visible, GrippedOutlineOptions? outline = null);
+        string name, string toolDevice, double? x, double? y, bool visible, GrippedOutlineOptions? outline = null);
 
     /// <summary>Filters the centred box of a frame and returns its white pixels — the Outline helper's preview.</summary>
     Task<Result<BeaconOutline>> PreviewGrippedOutlineAsync(CameraFrame frame, GrippedOutlineOptions options);

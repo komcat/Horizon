@@ -30,15 +30,25 @@ internal sealed partial class StepDispatcher
         var tool = Str(step, "tool", ctx).Trim();
         if (tool.Length == 0)
             return Result.Fail(ErrorCode.InvalidParameter, "object.register: no tool device.");
-        if (ctx.GetString($"{from}_found").Trim() != "1")
-            return Result.Fail(ErrorCode.OperationFailed,
-                $"object.register: no detection to register — '{from}_found' is not 1. Run a Detect Object block with capture prefix '{from}' first.");
 
-        var xText = ctx.GetString($"{from}_x");
-        var yText = ctx.GetString($"{from}_y");
-        if (!double.TryParse(xText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x) ||
-            !double.TryParse(yText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y))
-            return Result.Fail(ErrorCode.InvalidParameter, $"object.register: '{from}_x' / '{from}_y' are not numbers ('{xText}', '{yText}').");
+        // 'at' = camera: plant where the camera is now (the crosshair) — no Detect Object needed.
+        // 'at' = detect (also a block saved before this option existed): use a Detect Object result.
+        double? x = null, y = null;
+        bool atCamera = Str(step, "at", ctx).Trim().Equals("camera", StringComparison.OrdinalIgnoreCase);
+        if (!atCamera)
+        {
+            if (ctx.GetString($"{from}_found").Trim() != "1")
+                return Result.Fail(ErrorCode.OperationFailed,
+                    $"object.register: no detection to register — '{from}_found' is not 1. Run a Detect Object block with capture prefix '{from}' first, or set 'Plant at' to 'camera'.");
+
+            var xText = ctx.GetString($"{from}_x");
+            var yText = ctx.GetString($"{from}_y");
+            if (!double.TryParse(xText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var dx) ||
+                !double.TryParse(yText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var dy))
+                return Result.Fail(ErrorCode.InvalidParameter, $"object.register: '{from}_x' / '{from}_y' are not numbers ('{xText}', '{yText}').");
+            x = dx;
+            y = dy;
+        }
 
         bool show = !Has(step, "show") || Bool(step, "show", ctx);
 

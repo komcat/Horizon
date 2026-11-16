@@ -68,8 +68,8 @@ internal sealed partial class StepDispatcher
     private readonly Func<string, PositionMapLayout> _loadPositionMap;
     // The live-view beacons (in memory, machine-wide). Drives beacon.plant / beacon.remove.
     private readonly BeaconRegistry _beacons;
-    // (name, toolDevice, x, y, visible) — registers a gripped object's marker to its tool device. Drives object.register.
-    private readonly Func<string, string, double, double, bool, GrippedOutlineOptions?, Task<Result<Beacon>>> _registerGrippedMarker;
+    // (name, toolDevice, x, y — null = where the camera is now, visible) — registers a gripped object's marker to its tool device. Drives object.register.
+    private readonly Func<string, string, double?, double?, bool, GrippedOutlineOptions?, Task<Result<Beacon>>> _registerGrippedMarker;
     private readonly Action<LogLevel, string> _log;
 
     // The linked CTS of an in-flight hillclimb.start, so a hillclimb.stop step (which only
@@ -106,7 +106,7 @@ internal sealed partial class StepDispatcher
         DeviceLinkStore deviceLinks,
         Func<string, PositionMapLayout> loadPositionMap,
         BeaconRegistry beacons,
-        Func<string, string, double, double, bool, GrippedOutlineOptions?, Task<Result<Beacon>>> registerGrippedMarker,
+        Func<string, string, double?, double?, bool, GrippedOutlineOptions?, Task<Result<Beacon>>> registerGrippedMarker,
         Action<LogLevel, string> log)
     {
         _engine = engine;
