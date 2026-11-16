@@ -308,6 +308,30 @@ public partial class TimelineEditorView : UserControl
             try { Clipboard.SetText(block.Id); } catch { /* clipboard busy — ignore */ }
     }
 
+    /// <summary>Copies every log line (the list is capped at 500) to the clipboard.</summary>
+    private void OnCopyLog(object sender, RoutedEventArgs e)
+    {
+        if (_vm.Log.Count == 0) return;
+        try
+        {
+            Clipboard.SetText(string.Join(Environment.NewLine, _vm.Log));
+            CopyLogButton.Content = $"Copied {_vm.Log.Count}";
+        }
+        catch
+        {
+            CopyLogButton.Content = "Clipboard busy";
+        }
+
+        // Put the caption back after a moment.
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            CopyLogButton.Content = "Copy";
+        };
+        timer.Start();
+    }
+
     private void OnQueryUid(object sender, RoutedEventArgs e)
     {
         if (_vm.SelectedBlock is { } block)

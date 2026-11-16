@@ -662,8 +662,13 @@
         <Border Grid.Row="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
                 BorderThickness="1" CornerRadius="4" Margin="0,8,0,0" Height="140">
             <DockPanel Margin="8">
-                <TextBlock DockPanel.Dock="Top" Text="Log" Foreground="{StaticResource Accent}"
-                           FontWeight="SemiBold" Margin="2,0,0,4" />
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="2,0,0,4">
+                    <TextBlock Text="Log" Foreground="{StaticResource Accent}"
+                               FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button x:Name="CopyLogButton" Content="Copy" FontSize="10.5" Padding="6,0" Margin="8,0,0,0"
+                            VerticalAlignment="Center" Click="OnCopyLog"
+                            ToolTip="Copy the whole log to the clipboard" />
+                </StackPanel>
                 <ListBox x:Name="LogList" ItemsSource="{Binding Log}" Background="Transparent"
                          BorderThickness="0" FontFamily="Consolas" FontSize="12"
                          Foreground="{StaticResource Text}"
