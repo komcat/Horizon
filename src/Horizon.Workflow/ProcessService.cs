@@ -986,6 +986,7 @@ public sealed class ProcessService : IProcessService
             _deviceLinks,
             LoadPositionMap,
             _beacons,
+            RegisterGrippedMarkerAsync,
             OperatorPrompt,
             // dut.promptSerial opens the DUT record mid-run into _runDut, which the
             // finally block persists with the run's verdict.
@@ -2015,6 +2016,86 @@ public sealed class ProcessService : IProcessService
         return n;
     }
 
+    /// <summary>
+    /// Where a beacon is right now, in its camera device's frame: its planted point, or — for one
+    /// that rides on a tool — that point carried by the tool's move since (cached motion state,
+    /// no hardware I/O). Null when a riding beacon cannot be placed (tool no longer registered,
+    /// no motion state yet).
+    /// </summary>
+    public (double X, double Y)? LocateBeacon(Beacon beacon)
+    {
+        if (beacon == null) return null;
+        if (!beacon.RidesOnTool) return (beacon.X, beacon.Y);
+
+        var reg = GetToolRegistration(beacon.ToolDevice!);
+        if (reg == null || ToolRegistrationRoutine.WhyUnusable(reg) != null) return null;
+        var tool = _engine.Motion.GetState(beacon.ToolDevice!);
+        if (!tool.Valid) return null;
+        return ToolRegistrationRoutine.CarriedPoint(reg, beacon.X, beacon.Y, beacon.ToolPose!, tool.Position);
+    }
+
+    /// <summary>
+    /// Registers a gripped object's marker to its tool device (<c>object.register</c>): a beacon at
+    /// (<paramref name="x"/>, <paramref name="y"/>) — camera device axis values, e.g. a Detect
+    /// Object result — that from now on moves with <paramref name="toolDevice"/>, through that
+    /// tool's registration. Needs the tool to be registered. Same store and rules as the beacons.
+    /// </summary>
+    public async Task<Result<Beacon>> RegisterGrippedMarkerAsync(
+        string name, string toolDevice, double x, double y, bool visible, GrippedOutlineOptions? outline = null)
+    {
+        if (!double.IsFinite(x) || !double.IsFinite(y))
+            return Result<Beacon>.Fail(ErrorCode.InvalidParameter, "Register gripped object: the X / Y to register is not a number.");
+        var reg = GetToolRegistration(toolDevice);
+        if (reg == null)
+            return Result<Beacon>.Fail(ErrorCode.FileNotFound,
+                $"Register gripped object: tool '{toolDevice}' is not registered — register it on Machine › Registration first.");
+        if (ToolRegistrationRoutine.WhyUnusable(reg) is { } why)
+            return Result<Beacon>.Fail(ErrorCode.InvalidParameter, $"Register gripped object: {why}");
+
+        // Live reads: the marker is tied to exactly where the tool stands now.
+        var tool = await _engine.Motion.GetPositionAsync(reg.ToolDevice).ConfigureAwait(false);
+        if (!tool.IsSuccess)
+            return Result<Beacon>.Fail(tool.Error, $"Register gripped object: read {reg.ToolDevice} — {tool.Message}");
+        var cam = await _engine.Motion.GetPositionAsync(reg.CameraDevice).ConfigureAwait(false);
+        if (!cam.IsSuccess)
+            return Result<Beacon>.Fail(cam.Error, $"Register gripped object: read {reg.CameraDevice} — {cam.Message}");
+
+        // Optional snapshot around the crosshair (= the camera device's position), taken before
+        // the marker is planted. Best-effort: without it the marker is still registered.
+        BeaconOutline? snapshot = null;
+        if (outline != null)
+        {
+            var shot = await GrippedOutlineCapture.CaptureAsync(_engine, reg.CameraId, outline, cam.Value.X, cam.Value.Y).ConfigureAwait(false);
+            if (shot.IsSuccess) snapshot = shot.Value;
+            else Log(LogLevel.Warning, $"Register gripped object: outline snapshot skipped — {shot.Message}");
+        }
+
+        string key = string.IsNullOrWhiteSpace(name) ? "FAU" : name.Trim();
+        var beacon = _beacons.Plant(key, reg.CameraDevice, x, y, cam.Value.Z, visible, out var replaced, reg.ToolDevice, tool.Value, snapshot);
+        if (replaced != null)
+            Log(LogLevel.Warning, $"Beacon limit ({BeaconRegistry.MaxBeacons}) reached — the oldest, '{replaced}', was replaced.");
+        Log(LogLevel.Info,
+            $"Gripped object '{beacon.Name}' registered to {reg.ToolDevice} at {reg.CameraDevice} X {x:F4}  Y {y:F4}" +
+            (visible ? string.Empty : " (hidden)") +
+            (snapshot != null ? $", with a {snapshot.Width}×{snapshot.Height} px outline" : string.Empty) +
+            $" — its marker now moves with {reg.ToolDevice}.");
+        return Result<Beacon>.Ok(beacon);
+    }
+
+    /// <summary>
+    /// The Outline helper's preview: filters the centred box of <paramref name="frame"/> and
+    /// returns its white pixels as a mask (the same result <c>object.register</c> keeps at run time).
+    /// </summary>
+    public async Task<Result<BeaconOutline>> PreviewGrippedOutlineAsync(CameraFrame frame, GrippedOutlineOptions options)
+    {
+        var roi = options.RoiFor(frame.Width, frame.Height);
+        var filtered = await _engine.Vision.ApplyFilterAsync(frame, options.Filters, roi).ConfigureAwait(false);
+        if (!filtered.IsSuccess) return Result<BeaconOutline>.Fail(filtered.Error, filtered.Message);
+        return GrippedOutlineCapture.ToMask(filtered.Value, roi) is { } mask
+            ? Result<BeaconOutline>.Ok(new BeaconOutline(roi.Width, roi.Height, mask, 0, 0))
+            : Result<BeaconOutline>.Fail(ErrorCode.OperationFailed, "The filtered image is not a single-channel image of the frame.");
+    }
+
     // --- Detect Object (vision.detectObject) ---
 
     private DetectObjectRoutine DetectRoutine()
@@ -2511,6 +2592,7 @@ public sealed class ProcessService : IProcessService
             _deviceLinks,
             LoadPositionMap,
             _beacons,
+            RegisterGrippedMarkerAsync,
             OperatorPrompt,
             (s, c) => SetRunDutSerial(s, deck.Name, c),
             CloseRunDut,   // dut.close finalises + persists the DUT mid-run

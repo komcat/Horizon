@@ -422,6 +422,22 @@ public static class OpCatalogHelp
             },
         },
 
+        ["object.register"] = new()
+        {
+            Summary = "Tie the object a Detect Object block just found to the tool that holds it — its marker then moves with the gripper.",
+            Usage = "Put it after a Detect Object block that looked at the object in the gripper. It takes that block's X / Y (the variables <prefix>_x and <prefix>_y) and plants a marker there that is attached to the tool device: jog or move the gripper and the marker moves with it on the live view, using the tool's registration (Machine › Registration) to turn tool travel into camera X / Y. The tool must be registered, and the gripper must not have moved between the detection and this block.\n\nThe marker is a beacon: it shares the 10-beacon limit and colours, lives 30 minutes, and is removed with Remove Beacon (by its name, or all). Registering the same name again replaces it — do that for each new part. If the detection found nothing the step fails.",
+            ParamNotes = new[]
+            {
+                ("name", "Name shown beside the marker and used by Remove Beacon — 'FAU' by default."),
+                ("tool", "The registered tool device that holds the object (the gripper)."),
+                ("from", "The capture prefix of the Detect Object block whose result to register — 'obj' reads obj_found, obj_x and obj_y."),
+                ("show", "Ticked (default): drawn on the live view. Unticked: registered but not drawn."),
+                ("outline", "Ticked: just before planting, the block takes a snapshot of a box around the crosshair, runs it through the filters set in Outline helper… (binary threshold / canny, as in the Vision helper) and keeps the white pixels. They are painted yellow on the live view and move with the gripper, like the marker. If the snapshot cannot be taken the marker is still registered and a warning is logged."),
+                ("roiWidth", "Width of the snapshot box in image pixels, centred on the crosshair. Default 300; 16 to 2000."),
+                ("roiHeight", "Height of the snapshot box in image pixels. Default 300; 16 to 2000."),
+            },
+        },
+
         ["beacon.remove"] = new()
         {
             Summary = "Remove every beacon, or one beacon by name.",

@@ -53,6 +53,13 @@ public sealed class ProcessBlockViewModel : ObservableObject
         DetectTeachCommand = new AsyncRelayCommand(DetectTeachAsync);
         DetectClearCommand = new RelayCommand(DetectClear, () => DetectPosition() != null);
         VisionHelperCommand = new RelayCommand(OpenVisionHelper);
+        OutlineHelperCommand = new RelayCommand(OpenOutlineHelper);
+        if (IsRegisterObject && Param("filters") is { } outlineFilters)
+            outlineFilters.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(BlockParamViewModel.StringValue))
+                    OnPropertyChanged(nameof(OutlineFiltersText));
+            };
         if (IsDetectObject)
             foreach (var bp in Params.Where(p => p.Kind == ParamKind.Hidden))
                 bp.PropertyChanged += (_, e) =>
@@ -181,6 +188,8 @@ public sealed class ProcessBlockViewModel : ObservableObject
                 "fau.powerclimb" => Truthy(Or(P("exit"), "true"))
                     ? $"{Or(P("mode"), "coarse")}{(string.IsNullOrWhiteSpace(P("exitV")) ? "" : $" > {P("exitV")} V")}"
                     : $"{Or(P("mode"), "coarse")} · no exit",
+                "object.register" => $"{Or(P("name"), "FAU")} ← {Or(P("from"), "obj")}_* on {Or(P("tool"), "(tool?)")}"
+                    + (Truthy(P("outline")) ? $" · outline {Or(P("roiWidth"), "300")}×{Or(P("roiHeight"), "300")}" : string.Empty),
                 "beacon.plant" => Or(P("name"), "B#") + (Truthy(Or(P("show"), "true")) ? string.Empty : " · hidden"),
                 "beacon.remove" => P("which").Trim().Equals("name", StringComparison.OrdinalIgnoreCase)
                     ? $"remove {Or(P("name"), "(name?)")}" : "remove all",
@@ -363,6 +372,54 @@ public sealed class ProcessBlockViewModel : ObservableObject
             return;
         SetDetectPosition(null);
         Log(LogLevel.Info, "Detect Object block position cleared.");
+    }
+
+    // --- Register Gripped Object: the optional outline snapshot ---
+
+    /// <summary>True for the <c>object.register</c> block — shows its Outline helper box on the panel.</summary>
+    public bool IsRegisterObject => Spec.OpKey.Equals("object.register", StringComparison.OrdinalIgnoreCase);
+
+    public RelayCommand OutlineHelperCommand { get; }
+
+    /// <summary>The block's stored outline filter chain in one line.</summary>
+    public string OutlineFiltersText
+    {
+        get
+        {
+            var filters = GrippedOutlineOptions.ParseFilters(Param("filters")?.StringValue);
+            return filters.Count == 0 ? "no filters set" : string.Join(" → ", filters.Select(f => f.Kind.ToString()));
+        }
+    }
+
+    /// <summary>Opens the Outline helper: box size + filters with a live preview; "Save to block" writes them back here.</summary>
+    private void OpenOutlineHelper()
+    {
+        var filters = Param("filters");
+        if (filters == null) return;
+        int Size(string key) => Number(Param(key)) is { } v && v >= 1 ? (int)v : GrippedOutlineOptions.DefaultSize;
+
+        // The camera the tool was registered against — the one the block snapshots at run time.
+        var tool = Param("tool")?.StringValue ?? string.Empty;
+        var camera = _host.Process.GetToolRegistration(tool)?.CameraId;
+        if (string.IsNullOrEmpty(camera))
+            camera = _host.Engine.Camera.CameraIds.Count > 0 ? _host.Engine.Camera.CameraIds[0] : null;
+        if (string.IsNullOrEmpty(camera))
+        {
+            Warn("Outline helper", "No camera is available.");
+            return;
+        }
+
+        new GrippedOutlineHelperWindow(_host, camera, Size("roiWidth"), Size("roiHeight"), filters.StringValue, (w, h, json) =>
+        {
+            filters.StringValue = json;
+            if (Param("roiWidth") is { } pw) pw.StringValue = w.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (Param("roiHeight") is { } ph) ph.StringValue = h.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (Param("outline") is { } po) po.BoolValue = true;
+            Log(LogLevel.Info, $"Register Gripped Object outline updated: {w}×{h} px, {OutlineFiltersText} (save the program to keep it).");
+        })
+        {
+            Owner = Application.Current?.MainWindow,
+        }.Show();
     }
 
     /// <summary>Opens the Vision helper on this block's recipe; "Save to block" writes the recipe back here.</summary>

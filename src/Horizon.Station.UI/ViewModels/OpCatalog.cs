@@ -418,6 +418,23 @@ public static class OpCatalog
                 new ParamSpec("applyOffset", "Apply the object's XY offset", ParamKind.Bool, "true"),
             }),
 
+        // Ties a gripped object's marker to its tool device: takes a Detect Object result
+        // ('{from}_x' / '{from}_y', camera-device mm) and plants a beacon there that moves with the
+        // registered tool from then on. Shares the beacon store (max 10, 30 min, Remove Beacon).
+        new("object.register", "Register Gripped Object", "Tool", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("name", "Object name", ParamKind.Text, "FAU"),
+                new ParamSpec("tool", "Tool device (holds the object)", ParamKind.MotionDeviceName, StationApp.ToolDevice),
+                new ParamSpec("from", "Detect Object capture prefix", ParamKind.Text, "obj"),
+                new ParamSpec("show", "Show on the live view", ParamKind.Bool, "true"),
+                // Optional snapshot of the box around the crosshair, filtered to black / white; the
+                // white pixels ride with the marker, painted yellow. 'filters' is set by Outline helper….
+                new ParamSpec("outline", "Snapshot an outline before planting", ParamKind.Bool, "false"),
+                new ParamSpec("roiWidth", "Outline box width (px)", ParamKind.Number, "300"),
+                new ParamSpec("roiHeight", "Outline box height (px)", ParamKind.Number, "300"),
+                new ParamSpec("filters", "Outline filters", ParamKind.Hidden),
+            }),
         new("object.toCamera", "Object to Camera", "Tool", DeviceKind.None,
             new[]
             {

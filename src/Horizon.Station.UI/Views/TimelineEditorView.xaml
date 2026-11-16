@@ -597,6 +597,21 @@
                                 </StackPanel>
                             </Border>
 
+                            <!-- Register Gripped Object: the optional outline snapshot's filters. -->
+                            <Border Visibility="{Binding IsRegisterObject, Converter={StaticResource BoolToVis}}"
+                                    Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
+                                    BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,2,0,10">
+                                <StackPanel>
+                                    <TextBlock Text="Outline filters (stored in this block)" Foreground="{StaticResource Subtle}"
+                                               FontSize="11" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding OutlineFiltersText}" Foreground="{StaticResource Text}"
+                                               FontFamily="Consolas" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                    <Button Content="Outline helper…" Width="120" Height="26" HorizontalAlignment="Left"
+                                            Margin="0,6,0,0" Command="{Binding OutlineHelperCommand}"
+                                            ToolTip="Set the box around the crosshair and the filters, preview the yellow overlay on the live view, then save it to this block" />
+                                </StackPanel>
+                            </Border>
+
                             <!-- Detect Object: the block's own camera position + vision recipe. -->
                             <Border Visibility="{Binding IsDetectObject, Converter={StaticResource BoolToVis}}"
                                     Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"

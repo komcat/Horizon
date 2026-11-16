@@ -517,6 +517,23 @@ public interface IProcessService
     /// <summary>Plants a beacon where the camera centre is now (camera device axis values). Blank name = B1, B2…</summary>
     Task<Result<Beacon>> PlantBeaconAsync(string? name, bool visible = true);
 
+    /// <summary>
+    /// Where a beacon is right now (camera device frame): its planted point, or for one that rides
+    /// on a tool, that point carried by the tool's move since. Null when it cannot be placed.
+    /// </summary>
+    (double X, double Y)? LocateBeacon(Beacon beacon);
+
+    /// <summary>
+    /// Registers a gripped object's marker to a registered tool device: a beacon at the given
+    /// camera-device X / Y (e.g. a Detect Object result) that moves with the tool from now on.
+    /// </summary>
+    /// <param name="outline">When set, a black / white snapshot of the box around the crosshair is taken first and rides with the marker.</param>
+    Task<Result<Beacon>> RegisterGrippedMarkerAsync(
+        string name, string toolDevice, double x, double y, bool visible, GrippedOutlineOptions? outline = null);
+
+    /// <summary>Filters the centred box of a frame and returns its white pixels — the Outline helper's preview.</summary>
+    Task<Result<BeaconOutline>> PreviewGrippedOutlineAsync(CameraFrame frame, GrippedOutlineOptions options);
+
     /// <summary>Removes one beacon by name; false when there is none.</summary>
     bool RemoveBeacon(string name);
 

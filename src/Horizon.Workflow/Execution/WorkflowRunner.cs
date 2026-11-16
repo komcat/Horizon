@@ -62,6 +62,7 @@ internal sealed class WorkflowRunner
         DeviceLinkStore deviceLinks,
         Func<string, PositionMapLayout> loadPositionMap,
         BeaconRegistry beacons,
+        Func<string, string, double, double, bool, GrippedOutlineOptions?, Task<Result<Beacon>>> registerGrippedMarker,
         IOperatorPrompt? prompt,
         Func<string, WorkflowContext, Result>? setDutSerial,
         Func<DutVerdict, WorkflowContext, Result>? closeDut,
@@ -69,7 +70,7 @@ internal sealed class WorkflowRunner
         Action<WorkflowStepEvent> onStep,
         Action<LogLevel, string> log)
     {
-        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, runDetectObject, runDispenseRoutine, runNeedleApproach, moveCameraToTool, moveToolToCamera, moveToolToPose, moveObjectToCamera, runPartAlignment, moveCameraToPartFiducial, moveCameraToPartObject, runScript, saveSiphogSnapshot, hillClimbFeedback, utilityAppHost, siphogSheetSink, signals, deviceLinks, loadPositionMap, beacons, log);
+        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, runDetectObject, runDispenseRoutine, runNeedleApproach, moveCameraToTool, moveToolToCamera, moveToolToPose, moveObjectToCamera, runPartAlignment, moveCameraToPartFiducial, moveCameraToPartObject, runScript, saveSiphogSnapshot, hillClimbFeedback, utilityAppHost, siphogSheetSink, signals, deviceLinks, loadPositionMap, beacons, registerGrippedMarker, log);
         _engine = engine;
         _getPosition = getPosition;
         _savePosition = savePosition;

@@ -42,6 +42,26 @@ internal sealed class ToolRegistrationRoutine
     }
 
     /// <summary>
+    /// A point that rides on the tool: where (<paramref name="x"/>, <paramref name="y"/>) — camera
+    /// device frame, seen while the tool stood at <paramref name="toolPoseThen"/> — is once the
+    /// tool stands at <paramref name="toolPoseNow"/>. The same model as a gripped object's centre.
+    /// </summary>
+    public static (double X, double Y) CarriedPoint(
+        ToolRegistration reg, double x, double y, MotionPosition toolPoseThen, MotionPosition toolPoseNow)
+    {
+        var now = ToolCentreAt(reg, toolPoseNow);
+        var then = ToolCentreAt(reg, toolPoseThen);
+        return (x + (now.X - then.X), y + (now.Y - then.Y));
+    }
+
+    /// <summary>Null when the registration can carry a point; otherwise why not.</summary>
+    public static string? WhyUnusable(ToolRegistration reg)
+    {
+        var check = Validate(reg);
+        return check.IsSuccess ? null : check.Message;
+    }
+
+    /// <summary>
     /// Live tool location from the engine's cached (polled) motion states. Fails when the
     /// registration is incomplete or either device has not reported a valid state yet.
     /// </summary>

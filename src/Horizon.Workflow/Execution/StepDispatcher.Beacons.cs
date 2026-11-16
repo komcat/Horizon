@@ -18,6 +18,44 @@ internal sealed partial class StepDispatcher
         return r.IsSuccess ? Result.Ok() : Result.Fail(r.Error, r.Message);
     }
 
+    /// <summary>
+    /// <c>object.register</c> — ties a gripped object's marker to its tool device. The point comes
+    /// from a Detect Object result earlier in the program (<c>{from}_found / _x / _y</c>); from now
+    /// on the marker moves with the tool. A result that found nothing fails the step: there is
+    /// nothing to register.
+    /// </summary>
+    private async Task<Result> RegisterGrippedObjectAsync(WorkflowStep step, WorkflowContext ctx)
+    {
+        var from = Has(step, "from") ? Str(step, "from", ctx).Trim() : "obj";
+        var tool = Str(step, "tool", ctx).Trim();
+        if (tool.Length == 0)
+            return Result.Fail(ErrorCode.InvalidParameter, "object.register: no tool device.");
+        if (ctx.GetString($"{from}_found").Trim() != "1")
+            return Result.Fail(ErrorCode.OperationFailed,
+                $"object.register: no detection to register — '{from}_found' is not 1. Run a Detect Object block with capture prefix '{from}' first.");
+
+        var xText = ctx.GetString($"{from}_x");
+        var yText = ctx.GetString($"{from}_y");
+        if (!double.TryParse(xText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x) ||
+            !double.TryParse(yText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y))
+            return Result.Fail(ErrorCode.InvalidParameter, $"object.register: '{from}_x' / '{from}_y' are not numbers ('{xText}', '{yText}').");
+
+        bool show = !Has(step, "show") || Bool(step, "show", ctx);
+
+        // Optional outline snapshot: a box around the crosshair, filtered to black / white.
+        GrippedOutlineOptions? outline = null;
+        if (Bool(step, "outline", ctx))
+        {
+            int w = Has(step, "roiWidth") ? (int)Num(step, "roiWidth", ctx) : GrippedOutlineOptions.DefaultSize;
+            int h = Has(step, "roiHeight") ? (int)Num(step, "roiHeight", ctx) : GrippedOutlineOptions.DefaultSize;
+            outline = new GrippedOutlineOptions(w, h,
+                GrippedOutlineOptions.ParseFilters(step.Parameters.GetValueOrDefault("filters", string.Empty)));
+        }
+
+        var r = await _registerGrippedMarker(Str(step, "name", ctx), tool, x, y, show, outline).ConfigureAwait(false);
+        return r.IsSuccess ? Result.Ok() : Result.Fail(r.Error, r.Message);
+    }
+
     private Result RemoveBeacon(WorkflowStep step, WorkflowContext ctx)
     {
         bool byName = Str(step, "which", ctx).Trim().Equals("name", StringComparison.OrdinalIgnoreCase);

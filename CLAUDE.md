@@ -214,6 +214,12 @@ defines its own program/recipe/position formats.
   markers planted at the camera centre (gantry-main axis values) and drawn pulsing on the live views
   by `ToolOverlayView.DrawBeacons`. `BeaconRegistry` is in memory only, machine-wide: max 10 (an 11th
   replaces the oldest), 10 cycling colours, each lives 30 min unless removed — not tied to the program.
+  **`object.register`** (Register Gripped Object) plants a beacon that **rides on a tool**: a Detect
+  Object result (`{from}_x/_y`) tied to the tool's pose, carried by the tool registration's axis map
+  (`ToolRegistrationRoutine.CarriedPoint`, `IProcessService.LocateBeacon`). Optional **outline**:
+  a box around the crosshair (default 300 × 300 px) filtered to black / white (`GrippedOutlineCapture`,
+  filters set in `GrippedOutlineHelperWindow`), whose white pixels ride along painted yellow. Marker only — the taught
+  `GrippedObject` and `object.toCamera` are untouched.
 - `Registration/` — **device registration**: a tool on one motion device (the hex-right
   gripper) registered to the camera on another (gantry-main). `ToolRegistrationStore`
   (machine-global `tool_registrations.json`), `ToolRegistrationRoutine` (`Locate` from
@@ -485,7 +491,12 @@ existing files unless told to overwrite (with a `_backup-<stamp>` copy). See `do
   `MVTec.HalconDotNet-Windows` in executable projects. Neither package ships the native
   `halcon.dll`; it is loaded from the installed HALCON on `PATH`, which **must be the same
   version** — a mismatched native engine misroutes operators (e.g. `gen_rectangle1` runs as
-  `gen_circle_sector`, HALCON error #1202). HALCON is x64-only.
+  `gen_circle_sector`, HALCON error #1202). HALCON is x64-only. **Machine › Vision license**
+  (`VisionLicenseSectionViewModel` + `HalconDiagnostics`, Station.UI) diagnoses an unavailable
+  HALCON: the engine keeps the start-up error (`IVisionFacet.HalconInitError`), and the page lists
+  evidence in three groups — installed SDK (HALCONROOT, `halcon.dll` found / loaded, version match),
+  license file (`<HALCONROOT>\license\*.dat`), dongle (WIBU / Sentinel USB device + runtime, a
+  heuristic) — and names the group that failed. HALCON starts once, so a fix needs an app restart.
 
 ### Mission-critical coding standard (enforced at build)
 

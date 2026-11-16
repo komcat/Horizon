@@ -59,6 +59,26 @@ public partial class ToolOverlayView : UserControl
         Frozen(0xA8, 0xFF, 0x3E), Frozen(0xFF, 0xFF, 0xFF),
     };
 
+    // Yellow outline images of the beacons that carry one — built once per beacon, dropped with it.
+    private readonly Dictionary<Horizon.Workflow.BeaconOutline, BitmapSource> _outlineImages = new();
+
+    /// <summary>A mask (non-zero = white) as a translucent-yellow image; black stays transparent.</summary>
+    public static BitmapSource OutlineImage(Horizon.Workflow.BeaconOutline outline)
+    {
+        int w = outline.Width, h = outline.Height;
+        var px = new byte[w * h * 4];
+        int n = Math.Min(outline.Mask.Length, w * h);
+        for (int i = 0; i < n; i++)
+        {
+            if (outline.Mask[i] == 0) continue;
+            int o = i * 4;
+            px[o] = 0; px[o + 1] = 213; px[o + 2] = 255; px[o + 3] = 170;   // BGRA: translucent yellow
+        }
+        var bmp = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, w * 4);
+        bmp.Freeze();
+        return bmp;
+    }
+
     private static Brush Frozen(byte r, byte g, byte b)
     {
         var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
@@ -219,6 +239,13 @@ public partial class ToolOverlayView : UserControl
         _beaconLayer.Height = availH;
 
         var beacons = _host.Process.GetBeacons();
+
+        // Forget the outline images of beacons that are gone.
+        if (_outlineImages.Count > 0)
+        {
+            foreach (var stale in _outlineImages.Keys.Where(k => !beacons.Any(b => ReferenceEquals(b.Outline, k))).ToList())
+                _outlineImages.Remove(stale);
+        }
         if (beacons.Count == 0) return;
         double phase = Environment.TickCount64 % (long)BeaconBeatMs / BeaconBeatMs;   // 0..1 through one beat
 
@@ -227,12 +254,32 @@ public partial class ToolOverlayView : UserControl
             if (!beacon.Visible) continue;
             var cam = _host.Engine.Motion.GetState(beacon.Device);
             if (!cam.Valid) continue;
-            double dxMm = beacon.X - cam.Position.X, dyMm = beacon.Y - cam.Position.Y;
+            // A beacon that rides on a tool is placed by Layer 2 from the tool's live pose.
+            if (_host.Process.LocateBeacon(beacon) is not { } spot) continue;
+            double dxMm = spot.X - cam.Position.X, dyMm = spot.Y - cam.Position.Y;
             if (ToolOverlayMath.MmToSourcePx(dxMm, dyMm, settings) is not { } off) continue;
 
             var brush = BeaconBrushes[((beacon.ColorIndex % BeaconBrushes.Length) + BeaconBrushes.Length) % BeaconBrushes.Length];
             var centre = ToolOverlayMath.ToDisplay(off.DxPx, off.DyPx, availW, availH, scale);
             var at = ToolOverlayMath.ClampToBox(centre, availW, availH, EdgeInset, out bool clamped);
+
+            // The snapshot's white pixels, yellow, at the place the snapshot was taken — carried
+            // along exactly like the marker (same offset from it as when it was planted).
+            if (beacon.Outline is { Width: > 0, Height: > 0 } outline)
+            {
+                if (!_outlineImages.TryGetValue(outline, out var image))
+                    _outlineImages[outline] = image = OutlineImage(outline);
+                var shift = ToolOverlayMath.MmToSourcePx(outline.CentreX - beacon.X, outline.CentreY - beacon.Y, settings);
+                if (shift is { } s)
+                {
+                    double iw = outline.Width * scale, ih = outline.Height * scale;
+                    var picture = new Image { Source = image, Width = iw, Height = ih, Stretch = Stretch.Fill };
+                    RenderOptions.SetBitmapScalingMode(picture, BitmapScalingMode.NearestNeighbor);
+                    Canvas.SetLeft(picture, centre.X + s.DxPx * scale - iw / 2);
+                    Canvas.SetTop(picture, centre.Y + s.DyPx * scale - ih / 2);
+                    _beaconLayer.Children.Add(picture);
+                }
+            }
 
             // Heartbeat: a strong ring, and a second, weaker one a little later ("lub-dub").
             Ring(at, brush, phase, 1.0);
@@ -241,7 +288,8 @@ public partial class ToolOverlayView : UserControl
             Canvas.SetLeft(dot, at.X - 4); Canvas.SetTop(dot, at.Y - 4);
             _beaconLayer.Children.Add(dot);
 
-            string text = clamped ? $"{beacon.Name}  {Math.Sqrt(dxMm * dxMm + dyMm * dyMm):0.00} mm" : beacon.Name;
+            string title = beacon.RidesOnTool ? $"{beacon.Name} · {beacon.ToolDevice}" : beacon.Name;
+            string text = clamped ? $"{title}  {Math.Sqrt(dxMm * dxMm + dyMm * dyMm):0.00} mm" : title;
             var label = new Border
             {
                 Background = LabelBg, CornerRadius = new CornerRadius(2), Padding = new Thickness(4, 1, 4, 1),

@@ -7,10 +7,20 @@ namespace Horizon.Workflow;
 /// A virtual marker planted where the camera centre was: a point in the camera device's
 /// (gantry-main) axis values that the live views draw as a pulsing circle, wherever the camera
 /// has moved since. <see cref="ColorIndex"/> picks its colour from the views' fixed palette.
+///
+/// <para>A beacon may <b>ride on a tool</b> (<see cref="ToolDevice"/> set — the marker of a gripped
+/// object, <c>object.register</c>): <see cref="X"/>/<see cref="Y"/> are then where it was while the
+/// tool stood at <see cref="ToolPose"/>, and its live place is that point carried by the tool's
+/// move since, through the tool's registration (<c>IProcessService.LocateBeacon</c>).</para>
 /// </summary>
 public sealed record Beacon(
     string Name, string Device, double X, double Y, double Z, int ColorIndex, bool Visible,
-    DateTimeOffset PlantedAt, DateTimeOffset ExpiresAt);
+    DateTimeOffset PlantedAt, DateTimeOffset ExpiresAt,
+    string? ToolDevice = null, MotionPosition? ToolPose = null, BeaconOutline? Outline = null)
+{
+    /// <summary>True when the beacon moves with a tool device instead of staying on the machine.</summary>
+    public bool RidesOnTool => !string.IsNullOrEmpty(ToolDevice) && ToolPose != null;
+}
 
 /// <summary>
 /// The beacons planted by <c>beacon.plant</c> / removed by <c>beacon.remove</c>. In memory only
@@ -46,7 +56,8 @@ public sealed class BeaconRegistry
     /// <c>B1</c>, <c>B2</c>…; an existing name is moved (it keeps its colour, and its 30 minutes
     /// start again). <paramref name="replaced"/> names the oldest beacon when it had to make room.
     /// </summary>
-    public Beacon Plant(string? name, string device, double x, double y, double z, bool visible, out string? replaced)
+    public Beacon Plant(string? name, string device, double x, double y, double z, bool visible, out string? replaced,
+        string? toolDevice = null, MotionPosition? toolPose = null, BeaconOutline? outline = null)
     {
         Beacon beacon;
         replaced = null;
@@ -74,7 +85,7 @@ public sealed class BeaconRegistry
                 _nextColor = (_nextColor + 1) % MaxBeacons;
             }
 
-            beacon = new Beacon(key, device, x, y, z, color, visible, now, now + Lifetime);
+            beacon = new Beacon(key, device, x, y, z, color, visible, now, now + Lifetime, toolDevice, toolPose, outline);
             _beacons.Add(beacon);
         }
         Changed?.Invoke();
