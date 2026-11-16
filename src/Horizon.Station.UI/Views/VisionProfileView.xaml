@@ -37,7 +37,7 @@
         </Grid.RowDefinitions>
 
         <!-- Toolbar: profile load/save + position move-to. -->
-        <Border Grid.Row="0" Style="{StaticResource Section}">
+        <Border x:Name="ToolbarBorder" Grid.Row="0" Style="{StaticResource Section}">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />

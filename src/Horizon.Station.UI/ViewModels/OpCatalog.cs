@@ -12,7 +12,9 @@ public enum DeviceKind { None, Motion, Io, Pneumatic, Camera, Lighting, PowerSup
 /// options are filled by the block (positions from the chosen device, the axis
 /// list, or Set/Clear); the rest are a text box / number box / check box.
 /// </summary>
-public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName, SignalName, Operator, MotionDeviceName, DispenseRoutineName, ScriptName, LightName, LightColor, Choice }
+public enum ParamKind { Text, Number, Bool, PositionName, AxisName, SetClear, OutputPin, CameraName, SignalName, Operator, MotionDeviceName, DispenseRoutineName, ScriptName, LightName, LightColor, Choice,
+    /// <summary>Stored in the block but never shown as a field — data a block keeps for itself (e.g. Detect Object's position + recipe).</summary>
+    Hidden }
 
 /// <summary>
 /// One parameter of an op — its persisted key, a display label, the editor widget, and a default value.
@@ -307,6 +309,34 @@ public static class OpCatalog
                 new ParamSpec("profile", "Vision profile name", ParamKind.Text),
                 new ParamSpec("captureAs", "Capture prefix", ParamKind.Text, "vision"),
                 new ParamSpec("requireMatch", "Fail step if no match", ParamKind.Bool, "false"),
+            }),
+
+        // Self-contained detect: the block keeps its own camera position (posX/posY/posZ on the
+        // camera device — never a product position) and its own vision recipe ('recipe', a
+        // VisionProfile as JSON; NCC template files stay under vision\templates). Results go to
+        // '{captureAs}_found/_x/_y/_p/_score/_px/_py/_manual' — X/Y in camera-device mm, P in
+        // degrees (0 = up on the image, clockwise +). The Hidden params are edited by the
+        // Go / Teach here / Clear / Vision helper buttons on the parameter panel.
+        new("vision.detectObject", "Detect Object", "Vision", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("posX", "Block position X", ParamKind.Hidden),
+                new ParamSpec("posY", "Block position Y", ParamKind.Hidden),
+                new ParamSpec("posZ", "Block position Z", ParamKind.Hidden),
+                new ParamSpec("recipe", "Vision recipe", ParamKind.Hidden),
+                new ParamSpec("captureAs", "Capture prefix", ParamKind.Text, "obj"),
+                new ParamSpec("useX", "Use X from the detection", ParamKind.Bool, "true"),
+                new ParamSpec("useY", "Use Y from the detection", ParamKind.Bool, "true"),
+                new ParamSpec("useP", "Use P (angle) from the detection", ParamKind.Bool, "true"),
+                new ParamSpec("velocity", "Move velocity (mm/s, 0 = current)", ParamKind.Number, "0"),
+                new ParamSpec("settleMs", "Settle before the frame (ms)", ParamKind.Number, "300"),
+                new ParamSpec("requireMatch", "Fail step if nothing is found", ParamKind.Bool, "true"),
+                new ParamSpec("askOperator", "On failure, ask the operator to mark it", ParamKind.Bool, "false"),
+                new ParamSpec("moveToResult", "Move camera to the result", ParamKind.Bool, "false"),
+                new ParamSpec("maxMoveMm", "Max move to result (mm, up to 5)", ParamKind.Number, "5"),
+                new ParamSpec("offsetX", "Then offset X (mm)", ParamKind.Number, "0"),
+                new ParamSpec("offsetY", "Then offset Y (mm)", ParamKind.Number, "0"),
+                new ParamSpec("offsetZ", "Then offset Z (mm)", ParamKind.Number, "0"),
             }),
 
         // ---- Dispense ----

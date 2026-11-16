@@ -411,6 +411,28 @@ public static class OpCatalogHelp
             },
         },
 
+        ["vision.detectObject"] = new()
+        {
+            Summary = "Find an object with the camera and hand its X / Y / P to the rest of the program — the block keeps its own camera position and vision recipe.",
+            Usage = "Set it up from the box below the parameters. Jog the camera over the feature and press Teach here — the position is stored in this block only (Go returns to it, Clear forgets it). Then open Vision helper…, set the camera, exposure, lighting, filters and method (create a template for NCC), press Detect until the result is right, and Save to block.\n\nAt run time the block moves the camera to its position (when one is taught), waits the settle time, and detects. The result goes to variables named with the capture prefix — for 'obj': obj_found (1 / 0), obj_x and obj_y (camera device axis values, mm), obj_p (angle in degrees: 0 = straight up on the image, clockwise positive), obj_score, obj_px / obj_py (image pixels) and obj_manual (1 when the operator marked it). They live until the program ends; use them in later blocks as var:obj_x, expr:obj_x + 1.5, or in an If block (obj_found == 1).\n\n'Move camera to the result' then centres the camera on the detected point. A move longer than the guard is REFUSED — never shortened — and the step fails with the distance in the message. The offsets are applied after that move, on the camera device's own X / Y / Z, and are not covered by the guard.\n\nThe NCC template files stay in the product folder; a deck imported from another product needs its template taught again.",
+            ParamNotes = new[]
+            {
+                ("captureAs", "Prefix of the result variables — 'obj' gives obj_found, obj_x, obj_y, obj_p… Use a different prefix per block when a program keeps several results."),
+                ("useX", "Ticked: obj_x is the detected X. Unticked: obj_x is the camera's own X (nothing is corrected in X, and the move to the result leaves X alone). Untick it when the method cannot locate the feature along X — e.g. a horizontal edge. Also set by the tick boxes in the Vision helper."),
+                ("useY", "Same as 'Use X', for Y — untick for a vertical edge."),
+                ("useP", "Ticked: obj_p is the detected angle. Unticked: obj_p is 0."),
+                ("velocity", "Velocity (mm/s) for this block's moves; 0 = leave the device as it is. Put back to what it was when the block ends."),
+                ("settleMs", "Wait after arriving, before the frame is taken, so the image is still."),
+                ("requireMatch", "Ticked: nothing found stops the program with an error. Unticked: the block sets found = 0 and the program carries on, so an If block can decide."),
+                ("askOperator", "When detection fails, open a window with the live image where the operator clicks the required location and confirms. P is then 0 and obj_manual is 1. Cancel counts as nothing found."),
+                ("moveToResult", "Centre the camera on the result (X / Y only)."),
+                ("maxMoveMm", "Guard for the move to the result, in mm. Values above 5 are treated as 5. A longer move is refused."),
+                ("offsetX", "After the move to the result, move this much further in X (mm). Only applies when 'Move camera to the result' is on."),
+                ("offsetY", "After the move to the result, move this much further in Y (mm)."),
+                ("offsetZ", "After the move to the result, move this much in Z (mm), on the camera device's own Z direction."),
+            },
+        },
+
         // ===== TODO: other categories (Motion, IO, Pneumatic, Flow, Signal, Vision,
         // Align) — add entries here in the same shape. =====
     };

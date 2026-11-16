@@ -259,4 +259,46 @@ public sealed class OperatorPrompt : IOperatorPrompt
         window.Show();
         return tcs.Task;
     }
+
+    /// <summary>
+    /// Non-modal, always-on-top mark window — the <c>vision.detectObject</c> step blocks on the
+    /// returned task until the operator confirms a point on the live image (returned, in source
+    /// pixels) or cancels / closes the window (null → the block reports nothing found). A run
+    /// Stop closes the window and surfaces as a cancellation.
+    /// </summary>
+    public Task<MarkedLocation?> MarkLocationAsync(MarkLocationRequest request, CancellationToken ct)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null)
+            return Task.FromResult<MarkedLocation?>(null);
+
+        return dispatcher.InvokeAsync(() => ShowMarkLocation(request, ct)).Task.Unwrap();
+    }
+
+    private Task<MarkedLocation?> ShowMarkLocation(MarkLocationRequest request, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<MarkedLocation?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        HoldAttentionUntil(tcs.Task);
+        var window = new Views.MarkLocationWindow(request, _host)
+        {
+            Owner = Application.Current.MainWindow,
+        };
+
+        var registration = ct.Register(() =>
+            window.Dispatcher.BeginInvoke(() =>
+            {
+                tcs.TrySetCanceled(ct);
+                if (window.IsLoaded) window.Close();
+            }));
+
+        // Finished fires once: the marked point, or null for Cancel / closed.
+        window.Finished += mark =>
+        {
+            registration.Dispose();
+            tcs.TrySetResult(mark);
+        };
+
+        window.Show();
+        return tcs.Task;
+    }
 }

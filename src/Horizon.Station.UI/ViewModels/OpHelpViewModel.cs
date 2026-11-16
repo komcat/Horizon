@@ -28,6 +28,7 @@ public sealed class OpHelpViewModel
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         ParamLines = spec.Params
+            .Where(p => p.Kind != ParamKind.Hidden)   // block-owned data, edited by the block's own buttons
             .Select(p => new ParamHelpLine(p.Label, notes.TryGetValue(p.Key, out var n) ? n : ""))
             .ToList();
         HasParams = ParamLines.Count > 0;

@@ -103,10 +103,7 @@ internal sealed class PartAlignmentRoutine
     /// <summary>Image point (source px) at a camera pose → gantry-frame point, MoveClick semantics.</summary>
     public PartPoint ToPartPoint(MotionPosition camPose, double px, double py, int srcW, int srcH, string source)
     {
-        var s = _settings();
-        double sx = s.MoveClickXSign < 0 ? -1 : 1, sy = s.MoveClickYSign < 0 ? -1 : 1;
-        double gx = camPose.X + (px - srcW / 2.0) * s.MmPerPixel * sx;
-        double gy = camPose.Y + (py - srcH / 2.0) * s.MmPerPixel * sy;
+        var (gx, gy) = DetectObjectMath.ToGantry(_settings(), camPose, px, py, srcW, srcH);
         return new PartPoint(camPose, px, py, gx, gy, source);
     }
 

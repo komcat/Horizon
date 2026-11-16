@@ -597,6 +597,37 @@
                                 </StackPanel>
                             </Border>
 
+                            <!-- Detect Object: the block's own camera position + vision recipe. -->
+                            <Border Visibility="{Binding IsDetectObject, Converter={StaticResource BoolToVis}}"
+                                    Background="{StaticResource Bg}" BorderBrush="{StaticResource Edge}"
+                                    BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,2,0,10">
+                                <StackPanel>
+                                    <TextBlock Text="Camera position (stored in this block, not in the product's positions)"
+                                               Foreground="{StaticResource Subtle}" FontSize="11" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding DetectPositionText}" Foreground="{StaticResource Text}"
+                                               FontFamily="Consolas" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <Button Content="Go" MinWidth="44" Height="26" Padding="8,0"
+                                                Command="{Binding DetectGoCommand}"
+                                                ToolTip="Move the camera to this block's stored position" />
+                                        <Button Content="Teach here" Height="26" Padding="8,0" Margin="4,0,0,0"
+                                                Command="{Binding DetectTeachCommand}"
+                                                ToolTip="Store the camera's current X / Y / Z in this block (asks first)" />
+                                        <Button Content="Clear" Height="26" Padding="8,0" Margin="4,0,0,0"
+                                                Command="{Binding DetectClearCommand}"
+                                                ToolTip="Forget the stored position — the block then detects where the camera is" />
+                                    </StackPanel>
+
+                                    <TextBlock Text="Vision recipe (stored in this block)" Foreground="{StaticResource Subtle}"
+                                               FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0" />
+                                    <TextBlock Text="{Binding DetectRecipeText}" Foreground="{StaticResource Text}"
+                                               FontFamily="Consolas" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                    <Button Content="Vision helper…" Width="120" Height="26" HorizontalAlignment="Left"
+                                            Margin="0,6,0,0" Command="{Binding VisionHelperCommand}"
+                                            ToolTip="Set up camera, filters, method and template, test the detection, then save it to this block" />
+                                </StackPanel>
+                            </Border>
+
                             <TextBlock Text="Inbound delay (ms)" Foreground="{StaticResource Subtle}" Margin="0,4,0,2" />
                             <TextBox Margin="0,0,0,8" Text="{Binding DelayBeforeMs, UpdateSourceTrigger=PropertyChanged}" />
                             <TextBlock Text="Debounce delay (ms)" Foreground="{StaticResource Subtle}" Margin="0,0,0,2" />

@@ -148,6 +148,43 @@ public partial class VisionProfileView : UserControl
     private void UpdateSearchRoiText()
         => SearchRoiText.Text = _searchRoi is { } r ? $"x {r.X} y {r.Y}  {r.Width}×{r.Height}" : "(whole image)";
 
+    // --- embedding (the Detect Object block's Vision helper window) ---
+
+    /// <summary>
+    /// Embedded mode: hides the profile toolbar (position recall, name, New / Load / Save / History)
+    /// so a host window can use the page as a recipe editor for a recipe it owns — see
+    /// <see cref="LoadRecipe"/> / <see cref="CurrentRecipe"/> / <see cref="Detected"/>.
+    /// </summary>
+    public bool Embedded
+    {
+        get => ToolbarBorder.Visibility != Visibility.Visible;
+        set => ToolbarBorder.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Raised after every Detect: the recipe it ran, the frame it ran on, and the result
+    /// (null when the detection failed or found nothing).
+    /// </summary>
+    public event Action<VisionProfile, CameraFrame, VisionDetectResult?>? Detected;
+
+    /// <summary>Shows a recipe in the page and pushes its exposure + lighting to the hardware (as Load does).</summary>
+    public async Task LoadRecipe(VisionProfile recipe)
+    {
+        ApplyProfileToUi(recipe);
+        ClearOverlay();
+        await ApplyProfileHardwareAsync(recipe);
+    }
+
+    /// <summary>
+    /// The recipe as it stands in the page. With <paramref name="snapshotExposure"/> the camera's
+    /// live exposure is read into it first, so it records the condition it was tuned under (as Save does).
+    /// </summary>
+    public VisionProfile CurrentRecipe(bool snapshotExposure)
+    {
+        if (snapshotExposure) LoadExposureFromCamera();
+        return BuildProfile();
+    }
+
     // --- page lifecycle (called by the shell) ---
 
     public void Activate()
@@ -761,14 +798,16 @@ public partial class VisionProfileView : UserControl
             _lastFrame = f;
             await RunPreviewOnceAsync(f);
 
-            var r = await _host.Process.RunVisionProfileAsync(BuildProfile(), f);
+            var ran = BuildProfile();
+            var r = await _host.Process.RunVisionProfileAsync(ran, f);
             _results.Clear();
-            if (!r.IsSuccess) { Log($"Detect failed: {r.Message}"); return; }
+            if (!r.IsSuccess) { Log($"Detect failed: {r.Message}"); Detected?.Invoke(ran, f, null); return; }
 
             var res = r.Value;
             _overlayHasFilters = BuildFilters().Count > 0;
             if (!res.Found)
             {
+                Detected?.Invoke(ran, f, null);
                 MatchCrop1.Source = null;
                 _cropBmp = null;
                 _overlayValues = null;
@@ -793,6 +832,7 @@ public partial class VisionProfileView : UserControl
             _overlayTemplateH = _template?.Height ?? 0;
             RefreshOverlay();
             Log($"{MethodKey().ToUpperInvariant()} detected — {res.Values.Count} value(s).");
+            Detected?.Invoke(ran, f, res);
         }
         catch (Exception ex) { Log($"Detect error: {ex.Message}"); }
         finally { DetectButton.IsEnabled = true; }

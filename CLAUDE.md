@@ -200,6 +200,16 @@ defines its own program/recipe/position formats.
 - `DeviceLinkStore` — machine-global `device_links.json` storing spatial
   offsets between motion devices; written by `motion.registerDeviceLink`,
   replayed by `motion.compensateDeviceLink`.
+- `Vision/` — **Detect Object** (`vision.detectObject`, `docs/detect-object-design.md`): a
+  self-contained detect block. Its camera position (`posX/posY/posZ`, gantry-main — never a product
+  position) and its vision recipe (`recipe`, a `VisionProfile` as JSON via `DetectObjectRecipe`; NCC
+  template files stay in `vision\templates\`) live in the block's own params (`ParamKind.Hidden`,
+  edited by the panel's Go / Teach here / Clear / Vision helper… buttons). `DetectObjectRoutine`:
+  block position → exposure + lighting → detect → optional operator mark
+  (`IOperatorPrompt.MarkLocationAsync`) → optional move to the result (**refused, never clamped**,
+  over `maxMoveMm`, hard cap 5 mm) → optional offset. Results `{captureAs}_found/_x/_y/_p/…`:
+  X / Y in gantry-main mm, **P** = 0° up on the image, clockwise + (`DetectObjectMath`).
+  UI: `DetectObjectHelperWindow` (embeds `VisionProfileView`) and `MarkLocationWindow`.
 - `Registration/` — **device registration**: a tool on one motion device (the hex-right
   gripper) registered to the camera on another (gantry-main). `ToolRegistrationStore`
   (machine-global `tool_registrations.json`), `ToolRegistrationRoutine` (`Locate` from
@@ -519,6 +529,7 @@ write code that won't trip them:
 - Program history → SQLite: `docs/program-history-sqlite-design.md`.
 - Program / deck version repository (commit notes + checkout): `docs/version-repository-design.md`.
 - Vision Profile page (per-position vision recipes): `docs/vision-profile-design.md`.
+- Detect Object block (block-owned position + recipe, X / Y / P result, guarded move, operator mark): `docs/detect-object-design.md`.
 - Device registration (hex-right gripper ↔ gantry camera; `tool.cameraToTool` / `tool.toolToCamera` blocks + live overlay): `docs/device-registration-design.md`.
 - Needle calibration + dispensing (FireDog port, motion drawing, parameters): `docs/needle-dispense-design.md`.
 - Run-page utility-app launcher (phone-style springboard + L2→L3 app facet): `docs/utility-app-launcher-design.md`.

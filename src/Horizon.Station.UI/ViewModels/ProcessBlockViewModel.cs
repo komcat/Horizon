@@ -47,6 +47,23 @@ public sealed class ProcessBlockViewModel : ObservableObject
 
         EditPositionCommand = new RelayCommand(EditPosition, () => CanEditPosition());
 
+        // Detect Object keeps its camera position + vision recipe in its own (hidden) params,
+        // edited by the Go / Teach here / Clear / Vision helper buttons on the parameter panel.
+        DetectGoCommand = new AsyncRelayCommand(DetectGoAsync, () => DetectPosition() != null);
+        DetectTeachCommand = new AsyncRelayCommand(DetectTeachAsync);
+        DetectClearCommand = new RelayCommand(DetectClear, () => DetectPosition() != null);
+        VisionHelperCommand = new RelayCommand(OpenVisionHelper);
+        if (IsDetectObject)
+            foreach (var bp in Params.Where(p => p.Kind == ParamKind.Hidden))
+                bp.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName != nameof(BlockParamViewModel.StringValue)) return;
+                    OnPropertyChanged(nameof(DetectPositionText));
+                    OnPropertyChanged(nameof(DetectRecipeText));
+                    DetectGoCommand.RaiseCanExecuteChanged();
+                    DetectClearCommand.RaiseCanExecuteChanged();
+                };
+
         // Position lists are re-read from the product each time the drop-down opens, so a
         // position taught / deleted elsewhere (Machine page, a slowApproach run) shows up.
         foreach (var bp in Params.Where(p => p.Kind == ParamKind.PositionName))
@@ -164,6 +181,8 @@ public sealed class ProcessBlockViewModel : ObservableObject
                 "fau.powerclimb" => Truthy(Or(P("exit"), "true"))
                     ? $"{Or(P("mode"), "coarse")}{(string.IsNullOrWhiteSpace(P("exitV")) ? "" : $" > {P("exitV")} V")}"
                     : $"{Or(P("mode"), "coarse")} · no exit",
+                "vision.detectobject" => $"{DetectObjectRecipe.Describe(P("recipe"))} → {Or(P("captureAs"), "obj")}_*"
+                    + (Truthy(P("moveToResult")) ? " · move" : string.Empty),
                 "fau.woptimize" => $"W ±{Or(P("wStep"), "0.15")}° ≤ {Or(P("wLimitDeg"), "1.5")}°",
                 _ => Display,
             };
@@ -249,6 +268,120 @@ public sealed class ProcessBlockViewModel : ObservableObject
     /// <summary>The position-name parameter on the block's own device, if this op has one (Move to Position).</summary>
     private BlockParamViewModel? PositionParam =>
         Params.FirstOrDefault(p => p.Kind == ParamKind.PositionName && p.PositionDevice == null);
+
+    // --- Detect Object: block-owned camera position + vision recipe ---
+
+    /// <summary>True for the <c>vision.detectObject</c> block — shows its position / recipe box on the panel.</summary>
+    public bool IsDetectObject => Spec.OpKey.Equals("vision.detectObject", StringComparison.OrdinalIgnoreCase);
+
+    public AsyncRelayCommand DetectGoCommand { get; }
+    public AsyncRelayCommand DetectTeachCommand { get; }
+    public RelayCommand DetectClearCommand { get; }
+    public RelayCommand VisionHelperCommand { get; }
+
+    /// <summary>The block's stored camera position, as shown on the panel.</summary>
+    public string DetectPositionText => DetectPosition() is { } p
+        ? $"X {p.X:F4}   Y {p.Y:F4}   Z {p.Z:F4}"
+        : "(not taught — detects where the camera is)";
+
+    /// <summary>The block's stored recipe in one line (method · camera · template).</summary>
+    public string DetectRecipeText => DetectObjectRecipe.Describe(Param("recipe")?.StringValue);
+
+    /// <summary>The motion device the camera rides on (app settings' MoveClick device).</summary>
+    private string CameraDevice
+    {
+        get
+        {
+            var d = _host.Settings.Current.MoveClickDevice;
+            return string.IsNullOrWhiteSpace(d) ? "gantry-main" : d;
+        }
+    }
+
+    private BlockParamViewModel? Param(string key)
+        => Params.FirstOrDefault(p => string.Equals(p.Key, key, StringComparison.OrdinalIgnoreCase));
+
+    private static double? Number(BlockParamViewModel? p)
+        => p != null && double.TryParse(p.StringValue, System.Globalization.NumberStyles.Float,
+               System.Globalization.CultureInfo.InvariantCulture, out var d) && double.IsFinite(d) ? d : null;
+
+    /// <summary>The stored block position, or null unless all three of posX / posY / posZ are set.</summary>
+    private (double X, double Y, double Z)? DetectPosition()
+        => Number(Param("posX")) is { } x && Number(Param("posY")) is { } y && Number(Param("posZ")) is { } z
+            ? (x, y, z) : null;
+
+    private void SetDetectPosition((double X, double Y, double Z)? pos)
+    {
+        static string F(double v) => v.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture);
+        if (Param("posX") is { } px) px.StringValue = pos is { } a ? F(a.X) : string.Empty;
+        if (Param("posY") is { } py) py.StringValue = pos is { } b ? F(b.Y) : string.Empty;
+        if (Param("posZ") is { } pz) pz.StringValue = pos is { } c ? F(c.Z) : string.Empty;
+    }
+
+    /// <summary>Go: moves the camera device to the block's own position at the block's velocity (refused while anything runs).</summary>
+    private async Task DetectGoAsync()
+    {
+        if (DetectPosition() is not { } pos || !CanDriveManually("Go")) return;
+        var device = CameraDevice;
+        using var gate = _host.Activity.Begin(ActivityKind.Alignment, "Engineer: go to Detect Object position");
+        var r = await _host.Process.MoveCameraToBlockPositionAsync(pos.X, pos.Y, pos.Z, Number(Param("velocity")) ?? 0);
+        if (r.IsSuccess) Log(LogLevel.Info, $"Go: {device} moved to the block position (X={pos.X:F4}  Y={pos.Y:F4}  Z={pos.Z:F4}).");
+        else Warn("Go", $"Move {device} to the block position failed — {r.Message}");
+    }
+
+    /// <summary>Teach here: after a confirm, stores the camera device's current X/Y/Z in the block (not in the product's positions).</summary>
+    private async Task DetectTeachAsync()
+    {
+        if (!CanDriveManually("Teach here")) return;
+        var device = CameraDevice;
+        var now = await _host.Engine.Motion.GetPositionAsync(device);
+        if (!now.IsSuccess)
+        {
+            Warn("Teach here", $"Can't read {device}'s position — {now.Message}");
+            return;
+        }
+
+        var m = now.Value;
+        string here = $"X={m.X:F4}  Y={m.Y:F4}  Z={m.Z:F4}";
+        var prompt = DetectPosition() is { } old
+            ? $"Overwrite this block's position with {device}'s current position?\n\nNow: {here}\nWas: X={old.X:F4}  Y={old.Y:F4}  Z={old.Z:F4}"
+            : $"Store {device}'s current position in this block?\n\n{here}";
+        if (MessageBox.Show(prompt, "Teach here", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        SetDetectPosition((m.X, m.Y, m.Z));
+        Log(LogLevel.Info, $"Teach here: Detect Object block position = {here} (save the program to keep it).");
+    }
+
+    private void DetectClear()
+    {
+        if (DetectPosition() == null) return;
+        if (MessageBox.Show("Clear this block's stored position?\n\nThe block will then detect wherever the camera is.",
+                "Clear position", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+        SetDetectPosition(null);
+        Log(LogLevel.Info, "Detect Object block position cleared.");
+    }
+
+    /// <summary>Opens the Vision helper on this block's recipe; "Save to block" writes the recipe back here.</summary>
+    private void OpenVisionHelper()
+    {
+        var recipe = Param("recipe");
+        if (recipe == null) return;
+        var title = string.IsNullOrWhiteSpace(_name) ? "Detect Object" : _name;
+        static bool On(BlockParamViewModel? p) => p == null || string.IsNullOrWhiteSpace(p.StringValue) || p.BoolValue;
+        var use = (On(Param("useX")), On(Param("useY")), On(Param("useP")));
+        new DetectObjectHelperWindow(_host, title, recipe.StringValue, use, (json, x, y, p) =>
+        {
+            recipe.StringValue = json;
+            if (Param("useX") is { } ux) ux.BoolValue = x;
+            if (Param("useY") is { } uy) uy.BoolValue = y;
+            if (Param("useP") is { } up) up.BoolValue = p;
+            Log(LogLevel.Info, $"Detect Object recipe updated: {DetectObjectRecipe.Describe(json)} (save the program to keep it).");
+        })
+        {
+            Owner = Application.Current?.MainWindow,
+        }.Show();
+    }
 
     /// <summary>
     /// Go: moves the picker's pinned device to the named position (refused while a program,

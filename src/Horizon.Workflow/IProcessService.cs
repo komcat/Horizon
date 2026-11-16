@@ -509,6 +509,24 @@ public interface IProcessService
     PartPoint ToPartPoint(MotionPosition camPose, double px, double py, int srcW, int srcH, string source);
 
     /// <summary>
+    /// Runs a <c>vision.detectObject</c> block: block position → detect (operator mark on failure,
+    /// when asked) → optional guarded move to the result + offset. <paramref name="onResult"/> is
+    /// called with the outcome before any move to the result.
+    /// </summary>
+    Task<Result<DetectedObject>> RunDetectObjectAsync(
+        DetectObjectRequest request, Action<DetectedObject>? onResult = null, CancellationToken ct = default);
+
+    /// <summary>Converts a detector result taken at <paramref name="camPose"/> into the block's X / Y (camera device mm) and P (0° up, clockwise +).</summary>
+    DetectedObject ToDetectedObject(
+        VisionProfile profile, VisionDetectResult result, MotionPosition camPose, int srcW, int srcH);
+
+    /// <summary>Moves the camera device to a Detect Object block's own position (X/Y/Z) at <paramref name="velocity"/> mm/s (0 = as it is); the velocity is restored afterwards.</summary>
+    Task<Result> MoveCameraToBlockPositionAsync(double x, double y, double z, double velocity, CancellationToken ct = default);
+
+    /// <summary>Centres the camera on a detected object (XY). Refuses — never clamps — a move over <paramref name="maxMoveMm"/> (capped at 5 mm).</summary>
+    Task<Result> MoveCameraToDetectedObjectAsync(DetectedObject obj, double maxMoveMm, CancellationToken ct = default);
+
+    /// <summary>
     /// Re-finds E1 / E2, rebuilds the frame and re-measures every object, then stores the
     /// measurement on the profile. <paramref name="manual"/> supplies operator clicks for manual
     /// points (null = manual points fail, as from a program step).

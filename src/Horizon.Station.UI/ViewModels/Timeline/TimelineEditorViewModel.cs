@@ -203,6 +203,8 @@ public sealed class TimelineEditorViewModel : ObservableObject
     {
         nameof(ProcessBlockViewModel.RunStatus), nameof(ProcessBlockViewModel.IsSelected),
         nameof(ProcessBlockViewModel.PositionPreview), nameof(ProcessBlockViewModel.HasPositionPreview),
+        // Derived from the Detect Object block's hidden params — those edits mark dirty through ParamSummary.
+        nameof(ProcessBlockViewModel.DetectPositionText), nameof(ProcessBlockViewModel.DetectRecipeText),
     };
 
     /// <summary>Subscribes a block so any non-transient edit marks the program dirty.</summary>

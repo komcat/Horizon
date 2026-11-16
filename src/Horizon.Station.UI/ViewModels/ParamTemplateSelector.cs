@@ -15,10 +15,14 @@ public sealed class ParamTemplateSelector : DataTemplateSelector
     public DataTemplate? Bool { get; set; }
     public DataTemplate? Combo { get; set; }
 
+    /// <summary>Renders nothing — for <see cref="ParamKind.Hidden"/> params, which a block edits through its own buttons.</summary>
+    private static readonly DataTemplate Nothing = new();
+
     public override DataTemplate? SelectTemplate(object item, DependencyObject container)
         => item is BlockParamViewModel p
             ? p.Kind switch
             {
+                ParamKind.Hidden => Nothing,
                 ParamKind.Number => Number,
                 ParamKind.Bool or ParamKind.SetClear => Bool,
                 ParamKind.PositionName or ParamKind.AxisName or ParamKind.OutputPin

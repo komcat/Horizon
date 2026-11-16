@@ -966,6 +966,7 @@ public sealed class ProcessService : IProcessService
             (device, name) => _positions?.Get(device, name),
             SaveNamedPosition,
             RunVisionProfileByNameAsync,
+            RunDetectObjectAsync,
             RunDispenseRoutineAsync,
             RunNeedleApproachAsync,
             MoveCameraToToolAsync,
@@ -1985,6 +1986,32 @@ public sealed class ProcessService : IProcessService
     public PartPoint ToPartPoint(MotionPosition camPose, double px, double py, int srcW, int srcH, string source)
         => PartRoutine().ToPartPoint(camPose, px, py, srcW, srcH, source);
 
+    // --- Detect Object (vision.detectObject) ---
+
+    private DetectObjectRoutine DetectRoutine()
+        // Fresh app settings on each use, as for part alignment (mm/pixel + MoveClick signs are edited in Layer 3).
+        => new(_engine, () => new AppSettingsStore().Current,
+            p => RunDetectionAsync(p, frame: null, cameraId: p.CameraId), () => OperatorPrompt, Log);
+
+    public Task<Result<DetectedObject>> RunDetectObjectAsync(
+        DetectObjectRequest request, Action<DetectedObject>? onResult = null, CancellationToken ct = default)
+        => DetectRoutine().RunAsync(request, onResult ?? (_ => { }), ct);
+
+    public DetectedObject ToDetectedObject(
+        VisionProfile profile, VisionDetectResult result, MotionPosition camPose, int srcW, int srcH)
+        => DetectObjectMath.FromResult(profile, result, camPose, srcW, srcH, new AppSettingsStore().Current);
+
+    public Task<Result> MoveCameraToBlockPositionAsync(double x, double y, double z, double velocity, CancellationToken ct = default)
+        => DetectRoutine().MoveToBlockPositionAsync(x, y, z, velocity, ct);
+
+    public Task<Result> MoveCameraToDetectedObjectAsync(DetectedObject obj, double maxMoveMm, CancellationToken ct = default)
+    {
+        if (obj == null || !obj.Found)
+            return Task.FromResult(Result.Fail(ErrorCode.InvalidParameter, "No detected object to move to."));
+        return DetectRoutine().MoveToResultAsync(
+            new DetectObjectRequest { Label = "Detect Object", MaxMoveMm = maxMoveMm }, obj, ct);
+    }
+
     public async Task<Result<PartMeasurement>> RunPartAlignmentAsync(string name, PartManualMark? manual = null, CancellationToken ct = default)
     {
         var part = GetPartAlignment(name);
@@ -2436,6 +2463,7 @@ public sealed class ProcessService : IProcessService
             (device, name) => _positions?.Get(device, name),
             SaveNamedPosition,
             RunVisionProfileByNameAsync,
+            RunDetectObjectAsync,
             RunDispenseRoutineAsync,
             RunNeedleApproachAsync,
             MoveCameraToToolAsync,

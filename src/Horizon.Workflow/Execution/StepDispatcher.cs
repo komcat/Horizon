@@ -24,6 +24,9 @@ internal sealed partial class StepDispatcher
     private readonly Func<string, string, NamedPosition?> _getPosition;
     private readonly Func<string, string, MotionPosition, double, Result> _savePosition;
     private readonly Func<string, Task<Result<VisionDetectResult>>> _runVisionProfile;
+    // Runs a vision.detectObject block (block position → detect → optional guarded move); the
+    // callback hands back the outcome before any move to the result.
+    private readonly Func<DetectObjectRequest, Action<DetectedObject>?, CancellationToken, Task<Result<DetectedObject>>> _runDetectObject;
     // Runs a saved per-product dispense routine by name (loads it, applies the camera→needle
     // calibration, lays down the pattern). Drives dispense.runRoutine.
     private readonly Func<string, CancellationToken, Task<Result>> _runDispenseRoutine;
@@ -80,6 +83,7 @@ internal sealed partial class StepDispatcher
         Func<string, string, NamedPosition?> getPosition,
         Func<string, string, MotionPosition, double, Result> savePosition,
         Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
+        Func<DetectObjectRequest, Action<DetectedObject>?, CancellationToken, Task<Result<DetectedObject>>> runDetectObject,
         Func<string, CancellationToken, Task<Result>> runDispenseRoutine,
         Func<double, double, CancellationToken, Task<Result>> runNeedleApproach,
         Func<string, double, bool, CancellationToken, Task<Result>> moveCameraToTool,
@@ -104,6 +108,7 @@ internal sealed partial class StepDispatcher
         _getPosition = getPosition;
         _savePosition = savePosition;
         _runVisionProfile = runVisionProfile;
+        _runDetectObject = runDetectObject;
         _runDispenseRoutine = runDispenseRoutine;
         _runNeedleApproach = runNeedleApproach;
         _moveCameraToTool = moveCameraToTool;
@@ -534,6 +539,9 @@ internal sealed partial class StepDispatcher
                     ? Result.Fail(r.Error, $"vision.runProfile '{profileName}': {why}")
                     : Result.Ok();
             }
+
+            case "vision.detectobject":
+                return await DetectObjectAsync(step, ctx, ct).ConfigureAwait(false);
 
             case "dispense.runroutine":
             {

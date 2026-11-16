@@ -104,6 +104,16 @@ public interface IOperatorPrompt
         return false;
     }
 
+    /// <summary>
+    /// Asks the operator to mark a location on a camera's live image — the manual fallback of the
+    /// <c>vision.detectObject</c> step when detection fails. Returns the marked point in source
+    /// pixels, or <c>null</c> when the operator cancels. A run Stop arrives via
+    /// <paramref name="ct"/>. The default implementation has no UI and returns <c>null</c>
+    /// (nobody to ask); a Layer 3 head overrides it with a mark window.
+    /// </summary>
+    Task<MarkedLocation?> MarkLocationAsync(MarkLocationRequest request, CancellationToken ct)
+        => Task.FromResult<MarkedLocation?>(null);
+
     // Room to grow without touching IProcessService — add when a step op needs it:
     // Task<int?> ChooseAsync(string title, IReadOnlyList<string> options, CancellationToken ct);
 }

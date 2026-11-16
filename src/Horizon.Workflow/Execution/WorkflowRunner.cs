@@ -43,6 +43,7 @@ internal sealed class WorkflowRunner
         Func<string, string, NamedPosition?> getPosition,
         Func<string, string, MotionPosition, double, Result> savePosition,
         Func<string, Task<Result<VisionDetectResult>>> runVisionProfile,
+        Func<DetectObjectRequest, Action<DetectedObject>?, CancellationToken, Task<Result<DetectedObject>>> runDetectObject,
         Func<string, CancellationToken, Task<Result>> runDispenseRoutine,
         Func<double, double, CancellationToken, Task<Result>> runNeedleApproach,
         Func<string, double, bool, CancellationToken, Task<Result>> moveCameraToTool,
@@ -67,7 +68,7 @@ internal sealed class WorkflowRunner
         Action<WorkflowStepEvent> onStep,
         Action<LogLevel, string> log)
     {
-        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, runDispenseRoutine, runNeedleApproach, moveCameraToTool, moveToolToCamera, moveToolToPose, moveObjectToCamera, runPartAlignment, moveCameraToPartFiducial, moveCameraToPartObject, runScript, saveSiphogSnapshot, hillClimbFeedback, utilityAppHost, siphogSheetSink, signals, deviceLinks, loadPositionMap, log);
+        _dispatcher = new StepDispatcher(engine, moveToNamed, getPosition, savePosition, runVisionProfile, runDetectObject, runDispenseRoutine, runNeedleApproach, moveCameraToTool, moveToolToCamera, moveToolToPose, moveObjectToCamera, runPartAlignment, moveCameraToPartFiducial, moveCameraToPartObject, runScript, saveSiphogSnapshot, hillClimbFeedback, utilityAppHost, siphogSheetSink, signals, deviceLinks, loadPositionMap, log);
         _engine = engine;
         _getPosition = getPosition;
         _savePosition = savePosition;
