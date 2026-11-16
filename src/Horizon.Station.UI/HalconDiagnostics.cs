@@ -68,8 +68,8 @@ public static class HalconDiagnostics
             : new HalconCheck("HALCON runtime", HalconCheckState.Fail, "Did not start when the application launched."));
 
         sdk.Add(wrapper != null
-            ? new HalconCheck("Managed wrapper (halcondotnet)", HalconCheckState.Info, $"Version {wrapper} — this is the HALCON version the application was built for.")
-            : new HalconCheck("Managed wrapper (halcondotnet)", HalconCheckState.Warn, "Not loaded in this process."));
+            ? new HalconCheck("Managed wrapper (MVTec.HalconDotNet)", HalconCheckState.Info, $"Version {wrapper} — this is the HALCON version the application was built for.")
+            : new HalconCheck("Managed wrapper (MVTec.HalconDotNet)", HalconCheckState.Warn, "Not loaded in this process."));
 
         sdk.Add(string.IsNullOrWhiteSpace(root)
             ? new HalconCheck("HALCONROOT", HalconCheckState.Warn, "Environment variable not set — HALCON is not installed, or the application was started before the installer set it.")
@@ -117,7 +117,8 @@ public static class HalconDiagnostics
         try
         {
             return AppDomain.CurrentDomain.GetAssemblies()
-                .FirstOrDefault(a => string.Equals(a.GetName().Name, "halcondotnet", StringComparison.OrdinalIgnoreCase))
+                // The NuGet wrapper is MVTec.HalconDotNet.dll; a classic install's is halcondotnet.dll.
+                .FirstOrDefault(a => (a.GetName().Name ?? string.Empty).Contains("halcondotnet", StringComparison.OrdinalIgnoreCase))
                 ?.GetName().Version;
         }
         catch (Exception) { return null; }
