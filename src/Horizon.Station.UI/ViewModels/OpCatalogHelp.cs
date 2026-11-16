@@ -411,6 +411,28 @@ public static class OpCatalogHelp
             },
         },
 
+        ["beacon.plant"] = new()
+        {
+            Summary = "Plant a virtual marker where the camera centre is now — it stays on that spot of the machine and pulses on the live view.",
+            Usage = "The beacon remembers the camera device's X / Y (gantry-main axis values) at the moment the block runs. The live views then draw a pulsing circle there, wherever the camera moves afterwards; when the spot is outside the picture the marker sits on the nearest edge with the distance.\n\nUp to 10 beacons exist at once, each in the next colour of a fixed set of 10. Planting an 11th replaces the oldest. Planting a name that already exists moves that beacon. A beacon lives 30 minutes, or until a Remove Beacon block removes it — it is NOT removed when the program ends. Beacons are not saved: they are gone when the application closes.",
+            ParamNotes = new[]
+            {
+                ("name", "Name shown beside the marker and used by Remove Beacon. Blank = the next free B1, B2…"),
+                ("show", "Ticked (default): drawn on the live view. Unticked: the beacon exists (and counts toward the 10) but is not drawn."),
+            },
+        },
+
+        ["beacon.remove"] = new()
+        {
+            Summary = "Remove every beacon, or one beacon by name.",
+            Usage = "Removing a name that does not exist is not an error — the step logs it and the program carries on.",
+            ParamNotes = new[]
+            {
+                ("which", "'all' removes every beacon; 'name' removes only the one named below."),
+                ("name", "The beacon to remove when 'Remove' is set to 'name'."),
+            },
+        },
+
         ["vision.detectObject"] = new()
         {
             Summary = "Find an object with the camera and hand its X / Y / P to the rest of the program — the block keeps its own camera position and vision recipe.",

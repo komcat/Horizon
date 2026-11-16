@@ -66,6 +66,8 @@ internal sealed partial class StepDispatcher
     private readonly DeviceLinkStore _deviceLinks;
     // device -> that device's position map in the active product (empty when none). Drives motion.movePath.
     private readonly Func<string, PositionMapLayout> _loadPositionMap;
+    // The live-view beacons (in memory, machine-wide). Drives beacon.plant / beacon.remove.
+    private readonly BeaconRegistry _beacons;
     private readonly Action<LogLevel, string> _log;
 
     // The linked CTS of an in-flight hillclimb.start, so a hillclimb.stop step (which only
@@ -101,6 +103,7 @@ internal sealed partial class StepDispatcher
         SignalRegistry signals,
         DeviceLinkStore deviceLinks,
         Func<string, PositionMapLayout> loadPositionMap,
+        BeaconRegistry beacons,
         Action<LogLevel, string> log)
     {
         _engine = engine;
@@ -126,6 +129,7 @@ internal sealed partial class StepDispatcher
         _signals = signals;
         _deviceLinks = deviceLinks;
         _loadPositionMap = loadPositionMap;
+        _beacons = beacons;
         _log = log;
     }
 
@@ -539,6 +543,12 @@ internal sealed partial class StepDispatcher
                     ? Result.Fail(r.Error, $"vision.runProfile '{profileName}': {why}")
                     : Result.Ok();
             }
+
+            case "beacon.plant":
+                return await PlantBeaconAsync(step, ctx).ConfigureAwait(false);
+
+            case "beacon.remove":
+                return RemoveBeacon(step, ctx);
 
             case "vision.detectobject":
                 return await DetectObjectAsync(step, ctx, ct).ConfigureAwait(false);

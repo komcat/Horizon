@@ -339,6 +339,22 @@ public static class OpCatalog
                 new ParamSpec("offsetZ", "Then offset Z (mm)", ParamKind.Number, "0"),
             }),
 
+        // Beacons: a virtual marker planted where the camera centre is (camera-device axis values),
+        // drawn on the live views as a pulsing circle. In memory only; up to 10, each lives 30 min
+        // unless removed. Device-less — the camera device comes from app settings.
+        new("beacon.plant", "Plant Beacon Here", "Vision", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("name", "Beacon name (blank = B1, B2…)", ParamKind.Text),
+                new ParamSpec("show", "Show on the live view", ParamKind.Bool, "true"),
+            }),
+        new("beacon.remove", "Remove Beacon", "Vision", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("which", "Remove", ParamKind.Choice, "all", Choices: new[] { "all", "name" }),
+                new ParamSpec("name", "Beacon name (when removing by name)", ParamKind.Text),
+            }),
+
         // ---- Dispense ----
         // Runs a saved per-product dispense routine (dot / grid / line) at the current
         // camera target. The camera→needle calibration places the needle where the camera

@@ -46,6 +46,25 @@ public partial class ToolOverlayView : UserControl
     private IReadOnlyList<GrippedObject> _objects = Array.Empty<GrippedObject>();
     private IReadOnlyList<PartAlignment> _parts = Array.Empty<PartAlignment>();
     private readonly Canvas _partLayer = new() { IsHitTestVisible = false };   // parts are rebuilt per tick (few shapes)
+    private readonly Canvas _beaconLayer = new() { IsHitTestVisible = false }; // beacons are rebuilt per tick (≤ 10, they pulse)
+
+    /// <summary>One heartbeat (ms) of a beacon's pulse — about 70 beats a minute.</summary>
+    private const double BeaconBeatMs = 850;
+
+    /// <summary>The 10 beacon colours, cycled in planting order (<see cref="Horizon.Workflow.Beacon.ColorIndex"/>).</summary>
+    private static readonly Brush[] BeaconBrushes =
+    {
+        Frozen(0xFF, 0x3B, 0x30), Frozen(0x34, 0xC7, 0x59), Frozen(0x0A, 0x84, 0xFF), Frozen(0xFF, 0xD6, 0x0A),
+        Frozen(0xFF, 0x2D, 0xF0), Frozen(0x00, 0xE5, 0xFF), Frozen(0xFF, 0x9F, 0x0A), Frozen(0xBF, 0x5A, 0xF2),
+        Frozen(0xA8, 0xFF, 0x3E), Frozen(0xFF, 0xFF, 0xFF),
+    };
+
+    private static Brush Frozen(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
 
     public ToolOverlayView()
     {
@@ -70,6 +89,7 @@ public partial class ToolOverlayView : UserControl
         host.Process.GrippedObjectsChanged += OnRegistrationsChanged;   // objects ride on the same redraw
         host.Process.PartAlignmentsChanged += OnRegistrationsChanged;
         if (!Surface.Children.Contains(_partLayer)) Surface.Children.Add(_partLayer);
+        if (!Surface.Children.Contains(_beaconLayer)) Surface.Children.Add(_beaconLayer);
         ReloadRegistrations();
     }
 
@@ -109,7 +129,7 @@ public partial class ToolOverlayView : UserControl
         if (_active == active) return;
         _active = active;
         if (active) { _timer.Start(); Redraw(); }
-        else { _timer.Stop(); Surface.Children.Clear(); _glyphs.Clear(); _partLayer.Children.Clear(); Surface.Children.Add(_partLayer); }
+        else { _timer.Stop(); Surface.Children.Clear(); _glyphs.Clear(); _partLayer.Children.Clear(); _beaconLayer.Children.Clear(); Surface.Children.Add(_partLayer); Surface.Children.Add(_beaconLayer); }
     }
 
     private void OnRegistrationsChanged()
@@ -181,6 +201,71 @@ public partial class ToolOverlayView : UserControl
         }
 
         DrawParts(settings, availW, availH, scale);
+        DrawBeacons(settings, availW, availH, scale);
+    }
+
+    /// <summary>
+    /// The planted beacons (<c>beacon.plant</c>): each is a point in the camera device's axis
+    /// values, placed from that device's live pose, drawn as a dot with two rings that expand and
+    /// fade once per heartbeat. Outside the picture it is pinned to the nearest edge with its
+    /// distance. Drawn whatever <see cref="Horizon.Common.AppSettings.ShowToolOverlay"/> says —
+    /// a beacon has its own show / hide flag.
+    /// </summary>
+    private void DrawBeacons(Horizon.Common.AppSettings settings, double availW, double availH, double scale)
+    {
+        _beaconLayer.Children.Clear();
+        if (_host == null) return;
+        _beaconLayer.Width = availW;
+        _beaconLayer.Height = availH;
+
+        var beacons = _host.Process.GetBeacons();
+        if (beacons.Count == 0) return;
+        double phase = Environment.TickCount64 % (long)BeaconBeatMs / BeaconBeatMs;   // 0..1 through one beat
+
+        foreach (var beacon in beacons)
+        {
+            if (!beacon.Visible) continue;
+            var cam = _host.Engine.Motion.GetState(beacon.Device);
+            if (!cam.Valid) continue;
+            double dxMm = beacon.X - cam.Position.X, dyMm = beacon.Y - cam.Position.Y;
+            if (ToolOverlayMath.MmToSourcePx(dxMm, dyMm, settings) is not { } off) continue;
+
+            var brush = BeaconBrushes[((beacon.ColorIndex % BeaconBrushes.Length) + BeaconBrushes.Length) % BeaconBrushes.Length];
+            var centre = ToolOverlayMath.ToDisplay(off.DxPx, off.DyPx, availW, availH, scale);
+            var at = ToolOverlayMath.ClampToBox(centre, availW, availH, EdgeInset, out bool clamped);
+
+            // Heartbeat: a strong ring, and a second, weaker one a little later ("lub-dub").
+            Ring(at, brush, phase, 1.0);
+            Ring(at, brush, (phase + 0.78) % 1.0, 0.55);
+            var dot = new Ellipse { Width = 8, Height = 8, Fill = brush, Stroke = Brushes.Black, StrokeThickness = 1 };
+            Canvas.SetLeft(dot, at.X - 4); Canvas.SetTop(dot, at.Y - 4);
+            _beaconLayer.Children.Add(dot);
+
+            string text = clamped ? $"{beacon.Name}  {Math.Sqrt(dxMm * dxMm + dyMm * dyMm):0.00} mm" : beacon.Name;
+            var label = new Border
+            {
+                Background = LabelBg, CornerRadius = new CornerRadius(2), Padding = new Thickness(4, 1, 4, 1),
+                Child = new TextBlock { Text = text, Foreground = brush, FontSize = 11, FontWeight = FontWeights.SemiBold },
+            };
+            label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double lx = at.X + 10, ly = at.Y - 20;
+            if (lx + label.DesiredSize.Width > availW) lx = at.X - 10 - label.DesiredSize.Width;
+            if (ly < 0) ly = at.Y + 8;
+            Canvas.SetLeft(label, lx); Canvas.SetTop(label, ly);
+            _beaconLayer.Children.Add(label);
+        }
+
+        void Ring(Point at, Brush brush, double t, double strength)
+        {
+            double radius = 6 + 24 * t;
+            var ring = new Ellipse
+            {
+                Width = radius * 2, Height = radius * 2, Stroke = brush, StrokeThickness = 2.5,
+                Fill = Brushes.Transparent, Opacity = Math.Max(0, (1 - t) * strength),
+            };
+            Canvas.SetLeft(ring, at.X - radius); Canvas.SetTop(ring, at.Y - radius);
+            _beaconLayer.Children.Add(ring);
+        }
     }
 
     /// <summary>

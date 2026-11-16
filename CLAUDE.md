@@ -210,6 +210,10 @@ defines its own program/recipe/position formats.
   over `maxMoveMm`, hard cap 5 mm) → optional offset. Results `{captureAs}_found/_x/_y/_p/…`:
   X / Y in gantry-main mm, **P** = 0° up on the image, clockwise + (`DetectObjectMath`).
   UI: `DetectObjectHelperWindow` (embeds `VisionProfileView`) and `MarkLocationWindow`.
+- `Beacons/` — **beacons** (`beacon.plant` / `beacon.remove`, `docs/beacon-design.md`): virtual
+  markers planted at the camera centre (gantry-main axis values) and drawn pulsing on the live views
+  by `ToolOverlayView.DrawBeacons`. `BeaconRegistry` is in memory only, machine-wide: max 10 (an 11th
+  replaces the oldest), 10 cycling colours, each lives 30 min unless removed — not tied to the program.
 - `Registration/` — **device registration**: a tool on one motion device (the hex-right
   gripper) registered to the camera on another (gantry-main). `ToolRegistrationStore`
   (machine-global `tool_registrations.json`), `ToolRegistrationRoutine` (`Locate` from
@@ -529,6 +533,7 @@ write code that won't trip them:
 - Program history → SQLite: `docs/program-history-sqlite-design.md`.
 - Program / deck version repository (commit notes + checkout): `docs/version-repository-design.md`.
 - Vision Profile page (per-position vision recipes): `docs/vision-profile-design.md`.
+- Beacons (virtual markers on the live views; `beacon.plant` / `beacon.remove`): `docs/beacon-design.md`.
 - Detect Object block (block-owned position + recipe, X / Y / P result, guarded move, operator mark): `docs/detect-object-design.md`.
 - Device registration (hex-right gripper ↔ gantry camera; `tool.cameraToTool` / `tool.toolToCamera` blocks + live overlay): `docs/device-registration-design.md`.
 - Needle calibration + dispensing (FireDog port, motion drawing, parameters): `docs/needle-dispense-design.md`.

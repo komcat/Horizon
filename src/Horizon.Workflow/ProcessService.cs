@@ -36,6 +36,7 @@ public sealed class ProcessService : IProcessService
     private SiphogSnapshotStore? _siphogData;   // per-product siphog_data\ (labelled SiPhOG snapshots); null when no product is active
     private readonly ProgramHistoryDb _history = new();   // machine-global audit store (history.db)
     private readonly DeviceLinkStore _deviceLinks = new();   // machine-global, not per-product
+    private readonly BeaconRegistry _beacons = new();         // live-view beacons: in memory, machine-wide
     private readonly CameraNeedleCalibrationStore _cameraNeedle = new();   // machine-global camera->needle calibration
     private readonly ToolRegistrationStore _toolRegistrations = new();   // machine-global tool (gripper) <-> camera registrations
     private readonly AppSettingsStore _appSettings = new();   // machine-global app_settings.json (read-only here)
@@ -984,6 +985,7 @@ public sealed class ProcessService : IProcessService
             _signals,
             _deviceLinks,
             LoadPositionMap,
+            _beacons,
             OperatorPrompt,
             // dut.promptSerial opens the DUT record mid-run into _runDut, which the
             // finally block persists with the run's verdict.
@@ -1986,6 +1988,33 @@ public sealed class ProcessService : IProcessService
     public PartPoint ToPartPoint(MotionPosition camPose, double px, double py, int srcW, int srcH, string source)
         => PartRoutine().ToPartPoint(camPose, px, py, srcW, srcH, source);
 
+    // --- Beacons (beacon.plant / beacon.remove) ---
+
+    public event Action? BeaconsChanged
+    {
+        add => _beacons.Changed += value;
+        remove => _beacons.Changed -= value;
+    }
+
+    public IReadOnlyList<Beacon> GetBeacons() => _beacons.Snapshot();
+
+    public Task<Result<Beacon>> PlantBeaconAsync(string? name, bool visible = true)
+        => _beacons.PlantHereAsync(_engine, new AppSettingsStore().Current, name, visible, Log);
+
+    public bool RemoveBeacon(string name)
+    {
+        bool removed = _beacons.Remove(name);
+        if (removed) Log(LogLevel.Info, $"Beacon '{name}' removed.");
+        return removed;
+    }
+
+    public int ClearBeacons()
+    {
+        int n = _beacons.Clear();
+        if (n > 0) Log(LogLevel.Info, $"All beacons removed ({n}).");
+        return n;
+    }
+
     // --- Detect Object (vision.detectObject) ---
 
     private DetectObjectRoutine DetectRoutine()
@@ -2481,6 +2510,7 @@ public sealed class ProcessService : IProcessService
             _signals,
             _deviceLinks,
             LoadPositionMap,
+            _beacons,
             OperatorPrompt,
             (s, c) => SetRunDutSerial(s, deck.Name, c),
             CloseRunDut,   // dut.close finalises + persists the DUT mid-run

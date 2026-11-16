@@ -508,6 +508,21 @@ public interface IProcessService
     /// <summary>Converts an image point at a camera pose to a gantry-frame <see cref="PartPoint"/> (MoveClick semantics) — for manual marks.</summary>
     PartPoint ToPartPoint(MotionPosition camPose, double px, double py, int srcW, int srcH, string source);
 
+    /// <summary>Raised after a beacon is planted, replaced or removed (any thread).</summary>
+    event Action? BeaconsChanged;
+
+    /// <summary>The live beacons (virtual markers on the live views), oldest first; expired ones are dropped.</summary>
+    IReadOnlyList<Beacon> GetBeacons();
+
+    /// <summary>Plants a beacon where the camera centre is now (camera device axis values). Blank name = B1, B2…</summary>
+    Task<Result<Beacon>> PlantBeaconAsync(string? name, bool visible = true);
+
+    /// <summary>Removes one beacon by name; false when there is none.</summary>
+    bool RemoveBeacon(string name);
+
+    /// <summary>Removes every beacon; returns how many there were.</summary>
+    int ClearBeacons();
+
     /// <summary>
     /// Runs a <c>vision.detectObject</c> block: block position → detect (operator mark on failure,
     /// when asked) → optional guarded move to the result + offset. <paramref name="onResult"/> is
