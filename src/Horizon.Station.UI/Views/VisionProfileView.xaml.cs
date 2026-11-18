@@ -99,9 +99,10 @@ public partial class VisionProfileView : UserControl
         _previewTimer.Tick += (_, _) => { _previewTimer!.Stop(); SchedulePreview(); };
 
         TemplateImage.SizeChanged += (_, _) => RedrawAnchorFrame();
+        NccAngleRangeBox.TextChanged += (_, _) => UpdateTemplateStale();
     }
 
-    private string MethodKey() => MethodCombo.SelectedIndex switch { 1 => "circle", 2 => "line", 3 => "corner", 4 => "edgereg", _ => "ncc" };
+    private string MethodKey() => MethodCombo.SelectedIndex switch { 1 => "circle", 2 => "line", 3 => "corner", 4 => "edgereg", 5 => "rayline", _ => "ncc" };
 
     private void OnMethodChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -112,7 +113,8 @@ public partial class VisionProfileView : UserControl
         LinePanel.Visibility = idx == 2 ? Visibility.Visible : Visibility.Collapsed;
         CornerPanel.Visibility = idx == 3 ? Visibility.Visible : Visibility.Collapsed;
         EdgeRegPanel.Visibility = idx == 4 ? Visibility.Visible : Visibility.Collapsed;
-        MethodHeader.Text = idx switch { 1 => "CIRCLE", 2 => "LINE", 3 => "CORNER", 4 => "EDGE (REGRESSION)", _ => "TEMPLATE (NCC)" };
+        RayLinePanel.Visibility = idx == 5 ? Visibility.Visible : Visibility.Collapsed;
+        MethodHeader.Text = idx switch { 1 => "CIRCLE", 2 => "LINE", 3 => "CORNER", 4 => "EDGE (REGRESSION)", 5 => "RAY LINE", _ => "TEMPLATE (NCC)" };
 
         // The previous result's geometry no longer matches the new method — drop it.
         _overlayValues = null;
@@ -403,6 +405,7 @@ public partial class VisionProfileView : UserControl
     // A filter edit restarts the debounce timer instead of running HALCON immediately.
     private void OnFilterChanged()
     {
+        UpdateTemplateStale();
         _previewTimer?.Stop();
         _previewTimer?.Start();
     }
@@ -606,14 +609,33 @@ public partial class VisionProfileView : UserControl
                 if (Has(v, "x", "y")) AddDot(canvas, P(v["x"], v["y"]), red);
                 break;
             }
-            case "edgereg" when Has(v, "x1", "y1", "x2", "y2"):
+            case "edgereg" or "rayline" when Has(v, "x1", "y1", "x2", "y2"):
             {
                 var a = P(v["x1"], v["y1"]);
                 var b = P(v["x2"], v["y2"]);
                 // Sample points first, then the fitted line on top: green = inlier, red = rejected.
                 if (_overlayPoints is { } pts)
                     foreach (var pt in pts)
+                    {
+                        // Ray line: each ray from the side of the Search ROI it started on to where it stopped.
+                        if (_overlayMethod == "rayline" && _searchRoi is { } roi)
+                        {
+                            var from = RayFromCombo.SelectedIndex switch
+                            {
+                                1 => P(roi.X + roi.Width, pt.Y),    // from the right
+                                2 => P(pt.X, roi.Y),                // from the top
+                                3 => P(pt.X, roi.Y + roi.Height),   // from the bottom
+                                _ => P(roi.X, pt.Y),                // from the left
+                            };
+                            var to = P(pt.X, pt.Y);
+                            canvas.Children.Add(new Line
+                            {
+                                X1 = from.X, Y1 = from.Y, X2 = to.X, Y2 = to.Y,
+                                Stroke = pt.Inlier ? lime : red, StrokeThickness = 1, Opacity = 0.45,
+                            });
+                        }
                         AddDot(canvas, P(pt.X, pt.Y), pt.Inlier ? lime : red, 5);
+                    }
                 canvas.Children.Add(new Line { X1 = a.X, Y1 = a.Y, X2 = b.X, Y2 = b.Y, Stroke = orange, StrokeThickness = 1 });
                 break;
             }
@@ -695,7 +717,7 @@ public partial class VisionProfileView : UserControl
             _loadingUi = true;
             AnchorRotationSlider.Value = 0;   // fresh template → 0° reference
             _loadingUi = false;
-            ShowTemplateCrop(frame, roi);
+            if (!LoadTemplateImageFromDisk(_template.Uid)) ShowTemplateCrop(frame, roi);
             RedrawAnchorFrame();
             UpdateTemplateInfo();
             Log($"Template captured ({_template.Width}×{_template.Height}). Save the profile to keep it.");
@@ -777,7 +799,49 @@ public partial class VisionProfileView : UserControl
         TemplateOverlay.Children.Add(dot);
     }
 
+    private void OnTemplateRawToggled(object sender, RoutedEventArgs e)
+    {
+        if (_template is { } t) LoadTemplateImageFromDisk(t.Uid);
+    }
+
+    /// <summary>
+    /// Warns when the filters (or the rotation range) differ from the ones the template's model
+    /// was trained with — the model is built from the filtered ROI, so it no longer matches what
+    /// detection will see until the template is created again.
+    /// </summary>
+    private void UpdateTemplateStale()
+    {
+        if (TemplateStaleText == null) return;   // fires during InitializeComponent
+        string? why = null;
+        if (!_loadingUi && _template is { } t)
+        {
+            if (t.Filters is { } made && FilterKey(made) != FilterKey(BuildFilters()))
+                why = "The filters have changed since this template was created";
+            else if (t.AngleRange is { } range && Math.Abs(range - ParseDouble(NccAngleRangeBox, 180)) > 1e-6)
+                why = $"Angle ± has changed since this template was created (it was {range:0.##}°)";
+        }
+        TemplateStaleText.Text = why == null ? string.Empty
+            : $"⚠ {why}. The model was trained on the old setting — press Create again, or detection may fail or score low.";
+        TemplateStaleText.Visibility = why == null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>A filter chain reduced to what changes the image (unused stages and settings left out).</summary>
+    private static string FilterKey(IReadOnlyList<VisionFilter> filters)
+        => string.Join("|", filters.Where(f => f.Kind != VisionFilterKind.None).Select(f => f.Kind switch
+        {
+            VisionFilterKind.BinaryThreshold => $"bin:{f.ThresholdMin}:{f.ThresholdMax}",
+            VisionFilterKind.Gaussian => $"gauss:{(f.GaussMask >= 5 ? 5 : 3)}",
+            VisionFilterKind.CannyEdge => FormattableString.Invariant($"canny:{f.ThresholdMin}:{f.ThresholdMax}:{(f.Alpha > 0 ? f.Alpha : 1.0):0.###}"),
+            _ => f.Kind.ToString(),
+        }));
+
     private void UpdateTemplateInfo()
+    {
+        UpdateTemplateStale();
+        UpdateTemplateInfoText();
+    }
+
+    private void UpdateTemplateInfoText()
         => TemplateInfoText.Text = _template is { } t
             ? $"template {t.Uid[..Math.Min(t.Uid.Length, 12)]}…  {t.Width}×{t.Height}px  " +
               $"anchor ({t.AnchorX:0},{t.AnchorY:0})  rot {t.Rotation:0}°"
@@ -966,6 +1030,7 @@ public partial class VisionProfileView : UserControl
             "line" => 2,
             "corner" => 3,
             "edgereg" => 4,
+            "rayline" => 5,
             _ => 0,
         };
         _searchRoi = p.SearchRoi;
@@ -1020,6 +1085,23 @@ public partial class VisionProfileView : UserControl
         EdgeRegSigmaBox.Text = p.EdgeReg.Sigma.ToString("0.##", CultureInfo.InvariantCulture);
         EdgeRegAmplBox.Text = p.EdgeReg.MinAmplitude.ToString("0.##", CultureInfo.InvariantCulture);
         EdgeRegOutlierBox.Text = p.EdgeReg.MaxOutlierDist.ToString("0.##", CultureInfo.InvariantCulture);
+        RayFromCombo.SelectedIndex = p.RayLine.From switch
+        {
+            RayScanFrom.Right => 1,
+            RayScanFrom.Top => 2,
+            RayScanFrom.Bottom => 3,
+            _ => 0,
+        };
+        RayTransitionCombo.SelectedIndex = p.RayLine.Transition switch
+        {
+            RayTransition.WhiteToBlack => 1,
+            RayTransition.BlackToWhite => 2,
+            _ => 0,
+        };
+        RayCountBox.Text = p.RayLine.RayCount.ToString(CultureInfo.InvariantCulture);
+        RayMinPointsBox.Text = p.RayLine.MinPoints.ToString(CultureInfo.InvariantCulture);
+        RayMinRunBox.Text = p.RayLine.MinRun.ToString(CultureInfo.InvariantCulture);
+        RayOutlierBox.Text = p.RayLine.MaxOutlierDist.ToString("0.##", CultureInfo.InvariantCulture);
 
         MinScoreBox.Text = p.MinScore.ToString("0.00", CultureInfo.InvariantCulture);
         NccAngleRangeBox.Text = p.NccAngleRange.ToString("0.##", CultureInfo.InvariantCulture);
@@ -1027,11 +1109,16 @@ public partial class VisionProfileView : UserControl
 
         _template = p.Template;
         LoadTemplateImageFromDisk(p.Template?.Uid);
-        UpdateTemplateInfo();
         _loadingUi = false;
+        UpdateTemplateInfo();
     }
 
-    private void LoadTemplateImageFromDisk(string? templateUid)
+    /// <summary>
+    /// Shows a template's saved picture: the filtered crop the model was trained on, or the raw
+    /// one when "Show the raw picture" is ticked or the template predates the filtered copy.
+    /// False when there is no picture to show.
+    /// </summary>
+    private bool LoadTemplateImageFromDisk(string? templateUid)
     {
         _templateBmp = null;
         if (string.IsNullOrEmpty(templateUid))
@@ -1039,15 +1126,17 @@ public partial class VisionProfileView : UserControl
             TemplateImage.Source = null;
             TemplateOverlay.Children.Clear();
             NoTemplate.Visibility = Visibility.Visible;
-            return;
+            return false;
         }
 
-        var path = _host.Process.GetTemplateImagePath(templateUid);
+        bool raw = TemplateRawCheck.IsChecked == true;
+        var path = (raw ? null : _host.Process.GetTemplateImagePath(templateUid, filtered: true))
+                   ?? _host.Process.GetTemplateImagePath(templateUid);
         if (path == null)
         {
             TemplateImage.Source = null;
             NoTemplate.Visibility = Visibility.Visible;
-            return;
+            return false;
         }
         try
         {
@@ -1059,8 +1148,9 @@ public partial class VisionProfileView : UserControl
             TemplateImage.Source = img;
             NoTemplate.Visibility = Visibility.Collapsed;
             RedrawAnchorFrame();
+            return true;
         }
-        catch (Exception ex) { Log($"Template image load failed: {ex.Message}"); }
+        catch (Exception ex) { Log($"Template image load failed: {ex.Message}"); return false; }
     }
 
     // --- builders ---
@@ -1139,6 +1229,24 @@ public partial class VisionProfileView : UserControl
             ParseDouble(EdgeRegSigmaBox, 1.0),
             ParseDouble(EdgeRegAmplBox, 20),
             ParseDouble(EdgeRegOutlierBox, 3)),
+        RayLine = new RayLineParams(
+            RayFromCombo.SelectedIndex switch
+            {
+                1 => RayScanFrom.Right,
+                2 => RayScanFrom.Top,
+                3 => RayScanFrom.Bottom,
+                _ => RayScanFrom.Left,
+            },
+            ParseInt(RayCountBox, 25),
+            RayTransitionCombo.SelectedIndex switch
+            {
+                1 => RayTransition.WhiteToBlack,
+                2 => RayTransition.BlackToWhite,
+                _ => RayTransition.Any,
+            },
+            ParseInt(RayMinRunBox, 3),
+            ParseDouble(RayOutlierBox, 3),
+            ParseInt(RayMinPointsBox, 5)),
         Template = _template,
     };
 

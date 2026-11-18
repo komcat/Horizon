@@ -368,7 +368,11 @@ public partial class ToolOverlayView : UserControl
             var centre = ToolOverlayMath.ToDisplay(off.DxPx, off.DyPx, availW, availH, scale);
             placed[beacon.Name] = (centre, spot.X, spot.Y, brush);
             if (!beacon.Visible) continue;
-            var at = ToolOverlayMath.ClampToBox(centre, availW, availH, EdgeInset, out bool clamped);
+            // A beacon outside the picture is not drawn at all (no marker pinned to the edge) —
+            // a line to it still runs off the edge, which says where it is.
+            if (centre.X < 0 || centre.Y < 0 || centre.X > availW || centre.Y > availH) continue;
+            var at = centre;
+            const bool clamped = false;
 
             // The snapshot's white pixels, yellow, at the place the snapshot was taken — carried
             // along exactly like the marker (same offset from it as when it was planted).

@@ -171,6 +171,32 @@ public sealed record EdgeRegParams(
     double MinAmplitude = 20,
     double MaxOutlierDist = 3.0);
 
+/// <summary>The side of the search ROI the rays of the ray-line detector start from.</summary>
+public enum RayScanFrom { Left, Right, Top, Bottom }
+
+/// <summary>The black / white change a ray stops at, in the direction the ray travels.</summary>
+public enum RayTransition { Any, WhiteToBlack, BlackToWhite }
+
+/// <summary>
+/// Parameters for the ray-line detector — for an edge in a black / white (binary-threshold)
+/// image. Parallel rays cross the search ROI from one side; each stops at the first place the
+/// image changes colour the asked way, giving one edge point, and a line is fitted through the
+/// points with the stray ones rejected.
+/// </summary>
+/// <param name="From">The ROI side the rays start from (Left = rays travel right, and so on).</param>
+/// <param name="RayCount">How many rays, spread evenly across the ROI.</param>
+/// <param name="Transition">Which change counts, along the ray's travel.</param>
+/// <param name="MinRun">The new colour must continue this many pixels to count — skips specks.</param>
+/// <param name="MaxOutlierDist">Max distance (px) from the fitted line for a point to be kept.</param>
+/// <param name="MinPoints">Fewest kept points for the line to count as found.</param>
+public sealed record RayLineParams(
+    RayScanFrom From = RayScanFrom.Left,
+    int RayCount = 25,
+    RayTransition Transition = RayTransition.Any,
+    int MinRun = 3,
+    double MaxOutlierDist = 3.0,
+    int MinPoints = 5);
+
 /// <summary>Metadata returned when an NCC template/model is created from an ROI.</summary>
 public sealed record NccTemplateInfo(
     int Width,

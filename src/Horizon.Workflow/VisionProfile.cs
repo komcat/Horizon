@@ -44,7 +44,7 @@ public sealed record VisionProfile
     /// </summary>
     public IReadOnlyList<VisionFilter> Filters { get; init; } = Array.Empty<VisionFilter>();
 
-    /// <summary>Detection method id: <c>ncc</c>, <c>circle</c>, <c>line</c> or <c>corner</c>.</summary>
+    /// <summary>Detection method id: <c>ncc</c>, <c>circle</c>, <c>line</c>, <c>corner</c>, <c>edgereg</c> or <c>rayline</c>.</summary>
     public string DetectionMethod { get; init; } = "ncc";
 
     /// <summary>Minimum NCC score (0..1) for a match to count.</summary>
@@ -73,6 +73,9 @@ public sealed record VisionProfile
 
     /// <summary>Edge-regression parameters (used when <see cref="DetectionMethod"/> is <c>edgereg</c>).</summary>
     public EdgeRegParams EdgeReg { get; init; } = new();
+
+    /// <summary>Ray-line parameters (used when <see cref="DetectionMethod"/> is <c>rayline</c>).</summary>
+    public RayLineParams RayLine { get; init; } = new();
 
     /// <summary>The current template, or null if none has been taught yet (NCC only).</summary>
     public TemplateRef? Template { get; init; }
@@ -103,4 +106,14 @@ public sealed record TemplateRef
 
     public int Width { get; init; }
     public int Height { get; init; }
+
+    /// <summary>
+    /// The filter chain the model was trained with (the model is built from the <i>filtered</i>
+    /// ROI). Detection must run the same chain, so a front-end can warn when the profile's
+    /// filters have changed since. Null for a template made before this was recorded.
+    /// </summary>
+    public IReadOnlyList<VisionFilter>? Filters { get; init; }
+
+    /// <summary>The rotation search half-range (degrees) built into the model; null when not recorded.</summary>
+    public double? AngleRange { get; init; }
 }

@@ -147,7 +147,8 @@ public interface IProcessService
     VisionProfileHistory? GetVisionProfileHistory(string profileUid);
 
     /// <summary>Absolute path of a template's saved image, or null if it does not exist.</summary>
-    string? GetTemplateImagePath(string templateUid);
+    /// <param name="filtered">True = the filtered crop the model was trained on (null for a template made before it was saved).</param>
+    string? GetTemplateImagePath(string templateUid, bool filtered = false);
 
     /// <summary>
     /// Captures a new NCC template from <paramref name="roi"/> on <paramref name="frame"/>

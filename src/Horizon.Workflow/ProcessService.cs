@@ -476,10 +476,10 @@ public sealed class ProcessService : IProcessService
         return product == null ? null : _history.LoadVisionHistory(product, profileUid);
     }
 
-    public string? GetTemplateImagePath(string templateUid)
+    public string? GetTemplateImagePath(string templateUid, bool filtered = false)
     {
         if (_visionProfiles == null || string.IsNullOrEmpty(templateUid)) return null;
-        var path = _visionProfiles.ImagePath(templateUid);
+        var path = filtered ? _visionProfiles.FilteredImagePath(templateUid) : _visionProfiles.ImagePath(templateUid);
         return File.Exists(path) ? path : null;
     }
 
@@ -514,6 +514,7 @@ public sealed class ProcessService : IProcessService
             Uid = uid, Roi = roi,
             AnchorX = info.AnchorX, AnchorY = info.AnchorY,
             Width = info.Width, Height = info.Height,
+            Filters = profile.Filters.ToArray(), AngleRange = profile.NccAngleRange,
         };
         Log(LogLevel.Info, $"Vision template captured: {uid} ({info.Width}×{info.Height})");
         return Result<TemplateRef>.Ok(tref);
@@ -714,6 +715,11 @@ public sealed class ProcessService : IProcessService
                 return frame != null
                     ? await vision.FindEdgeRegAsync(frame, profile.Filters, profile.SearchRoi, profile.EdgeReg).ConfigureAwait(false)
                     : await vision.FindEdgeRegAsync(cameraId!, profile.Filters, profile.SearchRoi, profile.EdgeReg).ConfigureAwait(false);
+
+            case "rayline":
+                return frame != null
+                    ? await vision.FindRayLineAsync(frame, profile.Filters, profile.SearchRoi, profile.RayLine).ConfigureAwait(false)
+                    : await vision.FindRayLineAsync(cameraId!, profile.Filters, profile.SearchRoi, profile.RayLine).ConfigureAwait(false);
 
             default: // ncc
             {

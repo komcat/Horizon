@@ -118,6 +118,10 @@ internal sealed class VisionProfileStore
 
     public string ImagePath(string uid) => Path.Combine(_templatesDir, uid, ImageFile);
 
+    /// <summary>The filtered crop the NCC model was trained on (written beside <see cref="ImagePath"/>; absent for older templates).</summary>
+    public string FilteredImagePath(string uid)
+        => Path.Combine(_templatesDir, uid, Path.GetFileNameWithoutExtension(ImageFile) + "_filtered.png");
+
     public void DeleteTemplate(string uid)
     {
         if (string.IsNullOrEmpty(uid)) return;

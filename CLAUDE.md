@@ -336,7 +336,10 @@ SiPhOG, DUT Data, find-first-light, Testing Ground, `ScanPanelStore`, its settin
   die corners via the region centroid), **Edge (regression)** (stack N caliper boxes
   along the edge → `gen_measure_rectangle2`/`measure_pos` → one sub-pixel point each →
   robust IRLS line fit rejecting outliers; for ragged/low-contrast edges, returns the
-  same line keys plus the tagged sample `Points`). All return a method-agnostic
+  same line keys plus the tagged sample `Points`), **Ray line** (`rayline`, `RayLineParams`; for a
+  binary-threshold image, no HALCON operators: N parallel rays cross the Search ROI from one side,
+  each stops at its first white→black / black→white change that holds `MinRun` px, then a
+  Theil–Sen-started line fit rejects outliers; same line keys + `Points`). All return a method-agnostic
   `VisionDetectResult` so one result grid and one `vision.runProfile` step serve
   every method. See `docs/vision-profile-design.md`.
 - **Engineer = the free-canvas sequence editor** (`Views/TimelineEditorView`,

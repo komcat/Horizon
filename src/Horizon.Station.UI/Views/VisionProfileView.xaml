@@ -164,6 +164,7 @@
                             <ComboBoxItem Content="Line" />
                             <ComboBoxItem Content="Corner" />
                             <ComboBoxItem Content="Edge (regression)" />
+                            <ComboBoxItem Content="Ray line (black / white)" />
                         </ComboBox>
                     </StackPanel>
 
@@ -236,8 +237,12 @@
                                                VerticalAlignment="Center" TextAlignment="Right"
                                                Text="{Binding Value, ElementName=AnchorRotationSlider, StringFormat=0}" />
                                 </StackPanel>
+                                <CheckBox x:Name="TemplateRawCheck" Content="Show the raw picture (the model is trained on the filtered one)"
+                                          Margin="0,6,0,0" FontSize="11" Checked="OnTemplateRawToggled" Unchecked="OnTemplateRawToggled" />
                                 <TextBlock x:Name="TemplateInfoText" Foreground="{StaticResource Subtle}" FontSize="11"
                                            Margin="0,6,0,0" TextWrapping="Wrap" />
+                                <TextBlock x:Name="TemplateStaleText" Foreground="#E07B00" FontSize="11" FontWeight="SemiBold"
+                                           Margin="0,4,0,0" TextWrapping="Wrap" Visibility="Collapsed" />
                             </StackPanel>
                         </Grid>
 
@@ -371,6 +376,52 @@
                             <StackPanel Orientation="Horizontal" Margin="0,2">
                                 <TextBlock Text="Max outlier px" Style="{StaticResource Lbl}" Width="100" />
                                 <TextBox x:Name="EdgeRegOutlierBox" Width="64" Height="26" Text="3"
+                                         VerticalContentAlignment="Center" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Ray-line params -->
+                        <StackPanel x:Name="RayLinePanel" Visibility="Collapsed" VerticalAlignment="Top">
+                            <TextBlock Text="For a black / white image: add a Binary threshold filter. Rays cross the Search ROI from one side; each stops at its first black / white change, and a line is fitted through those points (stray ones rejected). Start the ROI on the side where every ray begins in the same colour."
+                                       Foreground="{StaticResource Subtle}" FontSize="11" TextWrapping="Wrap"
+                                       Margin="0,0,0,6" />
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Rays from" Style="{StaticResource Lbl}" Width="100" />
+                                <ComboBox x:Name="RayFromCombo" Width="150" Height="26"
+                                          VerticalContentAlignment="Center">
+                                    <ComboBoxItem Content="Left  (→)" IsSelected="True" />
+                                    <ComboBoxItem Content="Right  (←)" />
+                                    <ComboBoxItem Content="Top  (↓)" />
+                                    <ComboBoxItem Content="Bottom  (↑)" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Stop at" Style="{StaticResource Lbl}" Width="100" />
+                                <ComboBox x:Name="RayTransitionCombo" Width="150" Height="26"
+                                          VerticalContentAlignment="Center">
+                                    <ComboBoxItem Content="Any change" IsSelected="True" />
+                                    <ComboBoxItem Content="White → Black" />
+                                    <ComboBoxItem Content="Black → White" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Ray count" Style="{StaticResource Lbl}" Width="100" />
+                                <TextBox x:Name="RayCountBox" Width="64" Height="26" Text="25"
+                                         VerticalContentAlignment="Center"
+                                         ToolTip="How many rays the Search ROI is split into, evenly spaced (2 to 500, and never more than one per pixel row / column)" />
+                                <TextBlock Text="Min points" Style="{StaticResource Lbl}" Margin="12,0,6,0" />
+                                <TextBox x:Name="RayMinPointsBox" Width="56" Height="26" Text="5"
+                                         VerticalContentAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Skip specks px" Style="{StaticResource Lbl}" Width="100" />
+                                <TextBox x:Name="RayMinRunBox" Width="64" Height="26" Text="3"
+                                         VerticalContentAlignment="Center"
+                                         ToolTip="The new colour must continue this many pixels along the ray to count as the edge" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Text="Max outlier px" Style="{StaticResource Lbl}" Width="100" />
+                                <TextBox x:Name="RayOutlierBox" Width="64" Height="26" Text="3"
                                          VerticalContentAlignment="Center" />
                             </StackPanel>
                         </StackPanel>

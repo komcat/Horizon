@@ -54,6 +54,7 @@ public static class DetectObjectMath
 
             case "line":
             case "edgereg":
+            case "rayline":
                 // Reported counter-clockwise from +X, modulo 180° → fold to −90…+90.
                 p = WrapHalfTurn(90.0 - angle);
                 if (Value(result, "x1") is { } x1 && Value(result, "y1") is { } y1 &&

@@ -43,7 +43,8 @@ public interface IVisionFacet
     /// Creates an NCC model from the ROI of a frame (after the given pre-process
     /// filter chain) and persists it: the model to <paramref name="modelFilePath"/>
     /// (HALCON <c>write_ncc_model</c>) and the cropped template image to
-    /// <paramref name="templatePngPath"/>. The anchor defaults to the ROI centre.
+    /// <paramref name="templatePngPath"/> (raw), plus the filtered crop the model was trained on
+    /// as <c>…_filtered.png</c> beside it. The anchor defaults to the ROI centre.
     /// </summary>
     Task<Result<NccTemplateInfo>> CreateNccModelAsync(
         CameraFrame frame, RoiSpec roi, IReadOnlyList<VisionFilter> filters,
@@ -118,4 +119,19 @@ public interface IVisionFacet
     /// <summary>Cached-frame overload of edge-regression detect.</summary>
     Task<Result<VisionDetectResult>> FindEdgeRegAsync(
         string cameraId, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, EdgeRegParams p);
+
+    /// <summary>
+    /// Finds an edge in the black / white image left by the filter chain (use a binary threshold),
+    /// within <paramref name="searchRoi"/> (null = whole frame): parallel rays cross the ROI from
+    /// one side, each stops at its first black / white change, and a line is fitted through those
+    /// points with outliers rejected. Returns the same keys as edge regression (<c>x/y</c>,
+    /// <c>x1/y1/x2/y2</c>, <c>angle</c>, <c>length</c>, <c>points</c>, <c>rms</c>, <c>score</c>)
+    /// plus the tagged <see cref="VisionDetectResult.Points"/> — or not-found.
+    /// </summary>
+    Task<Result<VisionDetectResult>> FindRayLineAsync(
+        CameraFrame frame, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, RayLineParams p);
+
+    /// <summary>Cached-frame overload of ray-line detect.</summary>
+    Task<Result<VisionDetectResult>> FindRayLineAsync(
+        string cameraId, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, RayLineParams p);
 }

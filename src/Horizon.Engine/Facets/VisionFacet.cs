@@ -141,6 +141,8 @@ internal sealed class VisionFacet : IVisionFacet, IDisposable
             string baseNoExt = templatePngPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
                 ? templatePngPath[..^4] : templatePngPath;
             HOperatorSet.WriteImage(crop, "png", 0, baseNoExt);
+            // And the filtered crop — exactly what the model was trained on — beside it.
+            HOperatorSet.WriteImage(template, "png", 0, baseNoExt + "_filtered");
 
             return Result<NccTemplateInfo>.Ok(new NccTemplateInfo(
                 clamped.Width, clamped.Height, clamped.Width / 2.0, clamped.Height / 2.0));
@@ -575,6 +577,201 @@ internal sealed class VisionFacet : IVisionFacet, IDisposable
     public Task<Result<VisionDetectResult>> FindEdgeRegAsync(
         string cameraId, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, EdgeRegParams p)
         => WithCachedFrame(cameraId, f => FindEdgeRegAsync(f, filters, searchRoi, p));
+
+    public Task<Result<VisionDetectResult>> FindRayLineAsync(
+        CameraFrame frame, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, RayLineParams p)
+        => RunFrameAsync<VisionDetectResult>(frame, f =>
+        {
+            using var image = ToHImage(f);
+            using var gray = ToGray(image, f.Channels);
+            using var filtered = ApplyFilterChain(gray, filters, f.Width, f.Height);
+
+            var notFound = new VisionDetectResult(false, Array.Empty<VisionResultValue>(), null);
+            var bw = GrayBytes(filtered);   // the black / white picture the rays read
+            if (bw.Width != f.Width || bw.Height != f.Height || bw.Data.Length < (long)f.Width * f.Height)
+                return Result<VisionDetectResult>.Fail(ErrorCode.OperationFailed, "Ray line: the filtered image is not a byte image of the frame.");
+
+            var (rx, ry, rw, rh) = DetectionBounds(searchRoi, f.Width, f.Height);
+            int x0 = (int)rx, y0 = (int)ry, w = (int)rw, h = (int)rh;
+            if (w < 4 || h < 4) return Result<VisionDetectResult>.Ok(notFound);
+
+            var pts = RayEdgePoints(bw.Data, f.Width, x0, y0, w, h, p);
+            if (pts.Count < 2) return Result<VisionDetectResult>.Ok(notFound);
+
+            // Rays from the left / right find a (roughly) vertical edge: fit x = m·y + b, so a
+            // truly vertical edge is slope 0, not infinite. Rays from top / bottom: y = m·x + b.
+            bool vertical = p.From is RayScanFrom.Left or RayScanFrom.Right;
+            int n = pts.Count;
+            var u = new double[n];
+            var v = new double[n];
+            for (int i = 0; i < n; i++)
+            {
+                u[i] = vertical ? pts[i].Y : pts[i].X;
+                v[i] = vertical ? pts[i].X : pts[i].Y;
+            }
+            if (!MedianStartLineFit(u, v, p.MaxOutlierDist, out double slope, out double intercept, out bool[] inlier))
+                return Result<VisionDetectResult>.Ok(notFound);
+
+            double uMin = double.MaxValue, uMax = double.MinValue, sumSq = 0;
+            int inliers = 0;
+            double norm = Math.Sqrt(1 + slope * slope);
+            for (int i = 0; i < n; i++)
+            {
+                if (!inlier[i]) continue;
+                inliers++;
+                uMin = Math.Min(uMin, u[i]); uMax = Math.Max(uMax, u[i]);
+                double d = Math.Abs(v[i] - (slope * u[i] + intercept)) / norm;
+                sumSq += d * d;
+            }
+            if (inliers < Math.Max(2, p.MinPoints)) return Result<VisionDetectResult>.Ok(notFound);
+            double rms = Math.Sqrt(sumSq / inliers);
+
+            double x1, y1, x2, y2;
+            if (vertical) { y1 = uMin; x1 = slope * uMin + intercept; y2 = uMax; x2 = slope * uMax + intercept; }
+            else { x1 = uMin; y1 = slope * uMin + intercept; x2 = uMax; y2 = slope * uMax + intercept; }
+            double cx = (x1 + x2) / 2.0, cy = (y1 + y2) / 2.0;
+            double len = Math.Sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+            double angle = Math.Atan2(-(y2 - y1), x2 - x1) * 180.0 / Math.PI;
+            angle = ((angle % 180.0) + 180.0) % 180.0;
+
+            var values = new[]
+            {
+                new VisionResultValue("x", cx),
+                new VisionResultValue("y", cy),
+                new VisionResultValue("x1", x1),
+                new VisionResultValue("y1", y1),
+                new VisionResultValue("x2", x2),
+                new VisionResultValue("y2", y2),
+                new VisionResultValue("angle", angle),
+                new VisionResultValue("length", len),
+                new VisionResultValue("points", inliers),
+                new VisionResultValue("hits", n),                                        // rays that found an edge
+                new VisionResultValue("rays", Math.Clamp(p.RayCount, 2, Math.Min(500, vertical ? h : w))),   // rays cast
+                new VisionResultValue("rms", rms),
+                new VisionResultValue("score", inliers / (double)n),
+            };
+            var outPts = new VisionPoint[n];
+            for (int i = 0; i < n; i++) outPts[i] = new VisionPoint(pts[i].X, pts[i].Y, inlier[i]);
+            return Result<VisionDetectResult>.Ok(new VisionDetectResult(
+                true, values, CropAround(gray, cx, cy, (int)(len + 40), f.Width, f.Height), outPts));
+        });
+
+    public Task<Result<VisionDetectResult>> FindRayLineAsync(
+        string cameraId, IReadOnlyList<VisionFilter> filters, RoiSpec? searchRoi, RayLineParams p)
+        => WithCachedFrame(cameraId, f => FindRayLineAsync(f, filters, searchRoi, p));
+
+    /// <summary>
+    /// Casts the rays of the ray-line detector across the ROI (x0, y0, w, h) of a black / white
+    /// byte image (white = 128 and above) and returns one point per ray that found its change:
+    /// the boundary between the last pixel of the old colour and the first of the new one. A
+    /// change counts only when the new colour continues <see cref="RayLineParams.MinRun"/> pixels,
+    /// so a speck does not stop a ray.
+    /// </summary>
+    private static List<(double X, double Y)> RayEdgePoints(
+        byte[] px, int stride, int x0, int y0, int w, int h, RayLineParams p)
+    {
+        bool horizontal = p.From is RayScanFrom.Left or RayScanFrom.Right;   // rays travel along X
+        bool reverse = p.From is RayScanFrom.Right or RayScanFrom.Bottom;
+        int across = horizontal ? h : w;    // how far the rays are spread
+        int depth = horizontal ? w : h;     // how far each ray travels
+        int count = Math.Clamp(p.RayCount, 2, Math.Min(500, across));
+        int minRun = Math.Clamp(p.MinRun, 1, 50);
+
+        // Pixel k along ray number `line` (0 = the side the ray starts from).
+        bool White(int line, int k)
+        {
+            int along = reverse ? depth - 1 - k : k;
+            int x = horizontal ? x0 + along : x0 + line;
+            int y = horizontal ? y0 + line : y0 + along;
+            return px[(long)y * stride + x] >= 128;
+        }
+
+        var pts = new List<(double X, double Y)>(count);
+        for (int i = 0; i < count; i++)
+        {
+            int line = Math.Clamp((int)((i + 0.5) * across / count), 0, across - 1);
+            bool prev = White(line, 0);
+            for (int k = 1; k < depth; k++)
+            {
+                bool cur = White(line, k);
+                if (cur == prev) continue;
+
+                // The new colour must hold for minRun pixels (or to the end of the ray).
+                int run = 1;
+                while (run < minRun && k + run < depth && White(line, k + run) == cur) run++;
+                if (run < minRun && k + run < depth) continue;   // a speck — carry on in the old colour
+
+                bool wanted = p.Transition switch
+                {
+                    RayTransition.WhiteToBlack => prev && !cur,
+                    RayTransition.BlackToWhite => !prev && cur,
+                    _ => true,
+                };
+                if (!wanted) { prev = cur; continue; }
+
+                double edge = k - 0.5;                               // between pixel k−1 and k
+                double along = reverse ? depth - 1 - edge : edge;
+                pts.Add(horizontal ? (x0 + along, y0 + line) : (x0 + line, y0 + along));
+                break;
+            }
+        }
+        return pts;
+    }
+
+    /// <summary>
+    /// Line fit that survives a minority of wild points: starts from the median of the pairwise
+    /// slopes (Theil–Sen) and the median intercept — which outliers barely move — keeps the points
+    /// within <paramref name="maxDist"/> of that line, then refines by least squares over the kept
+    /// points (re-classifying, a few bounded passes). Fits <c>v = slope·u + intercept</c>.
+    /// </summary>
+    private static bool MedianStartLineFit(
+        double[] u, double[] v, double maxDist, out double slope, out double intercept, out bool[] inlier)
+    {
+        int n = u.Length;
+        inlier = new bool[n];
+        slope = 0; intercept = 0;
+        if (n < 2) return false;
+        double bound = Math.Max(0.5, maxDist);
+
+        var slopes = new List<double>(n * (n - 1) / 2);
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                if (Math.Abs(u[j] - u[i]) > 1e-9) slopes.Add((v[j] - v[i]) / (u[j] - u[i]));
+        if (slopes.Count == 0) return false;
+        slopes.Sort();
+        slope = slopes[slopes.Count / 2];
+
+        var offsets = new double[n];
+        for (int i = 0; i < n; i++) offsets[i] = v[i] - slope * u[i];
+        Array.Sort(offsets);
+        intercept = offsets[n / 2];
+
+        int kept = Classify(u, v, slope, intercept, bound, inlier);
+        for (int pass = 0; pass < 5 && kept >= 2; pass++)
+        {
+            if (!OrdinaryLeastSquares(u, v, inlier, out double s, out double b)) break;
+            var next = new bool[n];
+            int nextKept = Classify(u, v, s, b, bound, next);
+            if (nextKept < 2) break;   // the refinement lost the line — keep the previous one
+            bool same = true;
+            for (int i = 0; i < n; i++) if (next[i] != inlier[i]) { same = false; break; }
+            slope = s; intercept = b; inlier = next; kept = nextKept;
+            if (same) break;
+        }
+        return kept >= 2;
+
+        static int Classify(double[] u, double[] v, double s, double b, double bound, bool[] mask)
+        {
+            int c = 0;
+            double norm = Math.Sqrt(1 + s * s);
+            for (int i = 0; i < u.Length; i++)
+            {
+                mask[i] = Math.Abs(v[i] - (s * u[i] + b)) / norm <= bound;
+                if (mask[i]) c++;
+            }
+            return c;
+        }
+    }
 
     /// <summary>
     /// Iteratively re-weighted line fit: OLS over the current inliers, then re-classify points
