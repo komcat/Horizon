@@ -514,6 +514,9 @@ public interface IProcessService
     /// <summary>The live beacons (virtual markers on the live views), oldest first; expired ones are dropped.</summary>
     IReadOnlyList<Beacon> GetBeacons();
 
+    /// <summary>The construction lines between beacons (<c>beacon.line</c>) whose two beacons both still exist.</summary>
+    IReadOnlyList<BeaconLine> GetBeaconLines();
+
     /// <summary>Plants a beacon where the camera centre is now (camera device axis values). Blank name = B1, B2…</summary>
     Task<Result<Beacon>> PlantBeaconAsync(string? name, bool visible = true);
 

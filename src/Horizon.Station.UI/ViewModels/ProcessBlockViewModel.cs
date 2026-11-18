@@ -196,6 +196,8 @@ public sealed class ProcessBlockViewModel : ObservableObject
                     + $" on {Or(P("tool"), "(tool?)")}"
                     + (Truthy(P("outline")) ? $" · outline {Or(P("roiWidth"), "300")}×{Or(P("roiHeight"), "300")}" : string.Empty),
                 "beacon.plant" => Or(P("name"), "B#") + (Truthy(Or(P("show"), "true")) ? string.Empty : " · hidden"),
+                "beacon.line" => $"{Or(P("from"), "?")} → {Or(P("to"), "?")} → {Or(P("captureAs"), "line")}_*",
+                "beacon.movecamera" => $"camera → {Or(P("name"), "(name?)")}",
                 "beacon.remove" => P("which").Trim().Equals("name", StringComparison.OrdinalIgnoreCase)
                     ? $"remove {Or(P("name"), "(name?)")}" : "remove all",
                 "vision.detectobject" => $"{DetectObjectRecipe.Describe(P("recipe"))} → {Or(P("captureAs"), "obj")}_*"

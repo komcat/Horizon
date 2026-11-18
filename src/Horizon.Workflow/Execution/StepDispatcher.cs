@@ -557,6 +557,12 @@ internal sealed partial class StepDispatcher
             case "beacon.remove":
                 return RemoveBeacon(step, ctx);
 
+            case "beacon.line":
+                return DrawBeaconLine(step, ctx);
+
+            case "beacon.movecamera":
+                return await MoveCameraToBeaconAsync(step, ctx, ct).ConfigureAwait(false);
+
             case "vision.detectobject":
                 return await DetectObjectAsync(step, ctx, ct).ConfigureAwait(false);
 

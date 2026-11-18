@@ -215,8 +215,12 @@ defines its own program/recipe/position formats.
   (the outline of what was matched — `DetectedObject.Outline`: NCC template box / the two corner
   edges / line / circle — plus a ringed cross, P pointer and X / Y / P label; display only).
 - `Beacons/` — **beacons** (`beacon.plant` / `beacon.remove`, `docs/beacon-design.md`): virtual
-  markers planted at the camera centre (gantry-main axis values) and drawn pulsing on the live views
-  by `ToolOverlayView.DrawBeacons`. `BeaconRegistry` is in memory only, machine-wide: max 10 (an 11th
+  markers planted at the camera centre (gantry-main axis values) and drawn as a small + on the live views
+  by `ToolOverlayView.DrawBeacons`. **`beacon.line`** draws a dashed construction line between two beacons
+  (`BeaconLine`, kept by name in the registry, gone with either beacon) and measures it into
+  `{captureAs}_length / _angle / _cx / _cy / _x1.._y2` (angle = Detect Object's P convention);
+  **`beacon.moveCamera`** centres the camera on a beacon (X / Y only; refused, never clamped, over
+  `maxMoveMm`, default 10, hard cap 50; arrival confirmed). `BeaconRegistry` is in memory only, machine-wide: max 10 (an 11th
   replaces the oldest), 10 cycling colours, each lives 30 min unless removed — not tied to the program.
   **`object.register`** (Register Gripped Object) plants a beacon that **rides on a tool**: a Detect
   Object result (`{from}_x/_y`) tied to the tool's pose, carried by the tool registration's axis map

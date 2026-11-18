@@ -340,7 +340,7 @@ public static class OpCatalog
             }),
 
         // Beacons: a virtual marker planted where the camera centre is (camera-device axis values),
-        // drawn on the live views as a pulsing circle. In memory only; up to 10, each lives 30 min
+        // drawn on the live views as a small + mark. In memory only; up to 10, each lives 30 min
         // unless removed. Device-less — the camera device comes from app settings.
         new("beacon.plant", "Plant Beacon Here", "Vision", DeviceKind.None,
             new[]
@@ -352,7 +352,25 @@ public static class OpCatalog
             new[]
             {
                 new ParamSpec("which", "Remove", ParamKind.Choice, "all", Choices: new[] { "all", "name" }),
-                new ParamSpec("name", "Beacon name (when removing by name)", ParamKind.Text),
+                new ParamSpec("name", "Beacon or line name (when removing by name)", ParamKind.Text),
+            }),
+        // A construction line between two beacons: drawn on the live views and measured into
+        // {captureAs}_length / _angle / _cx / _cy (camera device mm; angle = Detect Object's P convention).
+        new("beacon.line", "Draw Beacon Line", "Vision", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("from", "From beacon", ParamKind.Text),
+                new ParamSpec("to", "To beacon", ParamKind.Text),
+                new ParamSpec("name", "Line name (blank = from-to)", ParamKind.Text),
+                new ParamSpec("captureAs", "Capture prefix", ParamKind.Text, "line"),
+                new ParamSpec("show", "Show on the live view", ParamKind.Bool, "true"),
+            }),
+        // Centres the camera on a beacon (X / Y only). Refused, never clamped, over the guard.
+        new("beacon.moveCamera", "Camera to Beacon", "Vision", DeviceKind.None,
+            new[]
+            {
+                new ParamSpec("name", "Beacon name", ParamKind.Text),
+                new ParamSpec("maxMoveMm", "Max move (mm, up to 50)", ParamKind.Number, "10"),
             }),
 
         // ---- Dispense ----

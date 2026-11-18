@@ -5,7 +5,7 @@ namespace Horizon.Workflow;
 
 /// <summary>
 /// A virtual marker planted where the camera centre was: a point in the camera device's
-/// (gantry-main) axis values that the live views draw as a pulsing circle, wherever the camera
+/// (gantry-main) axis values that the live views draw as a small + mark, wherever the camera
 /// has moved since. <see cref="ColorIndex"/> picks its colour from the views' fixed palette.
 ///
 /// <para>A beacon may <b>ride on a tool</b> (<see cref="ToolDevice"/> set — the marker of a gripped
@@ -23,6 +23,29 @@ public sealed record Beacon(
 }
 
 /// <summary>
+/// A construction line between two beacons (<c>beacon.line</c>), kept by the beacons' names: the
+/// live views draw it between wherever the two beacons are now, and it goes when either beacon does.
+/// </summary>
+public sealed record BeaconLine(string Name, string From, string To, bool Visible)
+{
+    /// <summary>
+    /// Length (mm), direction and centre of the segment (x1, y1) → (x2, y2), all in the camera
+    /// device's axis values. <c>AngleDeg</c> uses the Detect Object <b>P</b> convention: 0° = the
+    /// line points straight up on the image, clockwise positive, −180…+180 (so it is comparable
+    /// with a block's <c>_p</c>); the image directions come from the MoveClick axis signs.
+    /// </summary>
+    public static (double Length, double AngleDeg, double Cx, double Cy) Measure(
+        double x1, double y1, double x2, double y2, AppSettings s)
+    {
+        double dx = x2 - x1, dy = y2 - y1;
+        double ix = dx * (s.MoveClickXSign < 0 ? -1 : 1);   // image right
+        double iy = dy * (s.MoveClickYSign < 0 ? -1 : 1);   // image down
+        double angle = Math.Atan2(ix, -iy) * 180.0 / Math.PI;
+        return (Math.Sqrt(dx * dx + dy * dy), DetectObjectMath.Wrap(angle), (x1 + x2) / 2.0, (y1 + y2) / 2.0);
+    }
+}
+
+/// <summary>
 /// The beacons planted by <c>beacon.plant</c> / removed by <c>beacon.remove</c>. In memory only
 /// (never saved, gone when the application exits), machine-wide, and independent of the program
 /// that planted them: a beacon lives <see cref="Lifetime"/> unless it is removed first. At most
@@ -36,7 +59,55 @@ public sealed class BeaconRegistry
 
     private readonly object _lock = new();
     private readonly List<Beacon> _beacons = new();   // oldest first
+    private readonly List<BeaconLine> _lines = new();  // oldest first; pruned with their beacons
     private int _nextColor;
+
+    /// <summary>At most this many construction lines; one more replaces the oldest.</summary>
+    public const int MaxLines = 10;
+
+    /// <summary>
+    /// Places a beacon that rides on a tool (set by <c>ProcessService</c>, which owns the tool
+    /// registrations). Without it only fixed beacons can be placed.
+    /// </summary>
+    public Func<Beacon, (double X, double Y)?>? Locator { get; set; }
+
+    /// <summary>Where a beacon is right now (camera device axis values); null when it cannot be placed.</summary>
+    public (double X, double Y)? Locate(Beacon beacon)
+        => Locator != null ? Locator(beacon) : beacon.RidesOnTool ? null : (beacon.X, beacon.Y);
+
+    /// <summary>The live beacon by that name, or null.</summary>
+    public Beacon? Find(string? name)
+    {
+        lock (_lock)
+        {
+            Prune(DateTimeOffset.Now);
+            return _beacons.Find(b => string.Equals(b.Name, name?.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>The construction lines whose two beacons both still exist, oldest first.</summary>
+    public IReadOnlyList<BeaconLine> Lines()
+    {
+        lock (_lock)
+        {
+            Prune(DateTimeOffset.Now);
+            return _lines.Count == 0 ? Array.Empty<BeaconLine>() : _lines.ToArray();
+        }
+    }
+
+    /// <summary>Adds a line between two beacons; an existing line of the same name is replaced.</summary>
+    public BeaconLine AddLine(string name, string from, string to, bool visible)
+    {
+        var line = new BeaconLine(name, from, to, visible);
+        lock (_lock)
+        {
+            _lines.RemoveAll(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (_lines.Count >= MaxLines) _lines.RemoveAt(0);
+            _lines.Add(line);
+        }
+        Changed?.Invoke();
+        return line;
+    }
 
     /// <summary>Raised (on the caller's thread) after a beacon is planted, replaced or removed.</summary>
     public event Action? Changed;
@@ -99,6 +170,9 @@ public sealed class BeaconRegistry
         lock (_lock)
         {
             removed = _beacons.RemoveAll(b => string.Equals(b.Name, name?.Trim(), StringComparison.OrdinalIgnoreCase)) > 0;
+            // The same block also removes a construction line by its name.
+            removed |= _lines.RemoveAll(l => string.Equals(l.Name, name?.Trim(), StringComparison.OrdinalIgnoreCase)) > 0;
+            Prune(DateTimeOffset.Now);
         }
         if (removed) Changed?.Invoke();
         return removed;
@@ -112,6 +186,7 @@ public sealed class BeaconRegistry
         {
             count = _beacons.Count;
             _beacons.Clear();
+            _lines.Clear();
         }
         if (count > 0) Changed?.Invoke();
         return count;
@@ -141,7 +216,14 @@ public sealed class BeaconRegistry
         return Result<Beacon>.Ok(beacon);
     }
 
-    private void Prune(DateTimeOffset now) => _beacons.RemoveAll(b => b.ExpiresAt <= now);
+    private void Prune(DateTimeOffset now)
+    {
+        _beacons.RemoveAll(b => b.ExpiresAt <= now);
+        if (_lines.Count > 0)
+            _lines.RemoveAll(l => !Exists(l.From) || !Exists(l.To));
+
+        bool Exists(string name) => _beacons.Exists(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase));
+    }
 
     private string NextFreeName()
     {

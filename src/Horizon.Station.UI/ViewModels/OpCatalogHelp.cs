@@ -413,8 +413,8 @@ public static class OpCatalogHelp
 
         ["beacon.plant"] = new()
         {
-            Summary = "Plant a virtual marker where the camera centre is now — it stays on that spot of the machine and pulses on the live view.",
-            Usage = "The beacon remembers the camera device's X / Y (gantry-main axis values) at the moment the block runs. The live views then draw a pulsing circle there, wherever the camera moves afterwards; when the spot is outside the picture the marker sits on the nearest edge with the distance.\n\nUp to 10 beacons exist at once, each in the next colour of a fixed set of 10. Planting an 11th replaces the oldest. Planting a name that already exists moves that beacon. A beacon lives 30 minutes, or until a Remove Beacon block removes it — it is NOT removed when the program ends. Beacons are not saved: they are gone when the application closes.",
+            Summary = "Plant a virtual marker where the camera centre is now — it stays on that spot of the machine and shows as a small + on the live view.",
+            Usage = "The beacon remembers the camera device's X / Y (gantry-main axis values) at the moment the block runs. The live views then draw a small + there, wherever the camera moves afterwards; when the spot is outside the picture the marker sits on the nearest edge with the distance.\n\nUp to 10 beacons exist at once, each in the next colour of a fixed set of 10. Planting an 11th replaces the oldest. Planting a name that already exists moves that beacon. A beacon lives 30 minutes, or until a Remove Beacon block removes it — it is NOT removed when the program ends. Beacons are not saved: they are gone when the application closes.",
             ParamNotes = new[]
             {
                 ("name", "Name shown beside the marker and used by Remove Beacon. Blank = the next free B1, B2…"),
@@ -441,12 +441,37 @@ public static class OpCatalogHelp
 
         ["beacon.remove"] = new()
         {
-            Summary = "Remove every beacon, or one beacon by name.",
-            Usage = "Removing a name that does not exist is not an error — the step logs it and the program carries on.",
+            Summary = "Remove every beacon, or one beacon (or beacon line) by name.",
+            Usage = "Removing a name that does not exist is not an error — the step logs it and the program carries on. 'all' also removes every beacon line; removing a beacon removes the lines that end on it.",
             ParamNotes = new[]
             {
-                ("which", "'all' removes every beacon; 'name' removes only the one named below."),
-                ("name", "The beacon to remove when 'Remove' is set to 'name'."),
+                ("which", "'all' removes every beacon and line; 'name' removes only the one named below."),
+                ("name", "The beacon — or beacon line — to remove when 'Remove' is set to 'name'."),
+            },
+        },
+
+        ["beacon.line"] = new()
+        {
+            Summary = "Draw a construction line from one beacon to another and measure it — length, angle and centre go to variables.",
+            Usage = "Both beacons must exist when the block runs (plant them first). The line is drawn dashed on the live view between the two markers, with its length and angle at the middle, and follows the beacons if they move. It is removed when either beacon is removed or expires, by Remove Beacon with the line's name, or by Remove Beacon 'all'. Up to 10 lines; an 11th replaces the oldest.\n\nThe measurement is taken once, when the block runs, and goes to variables named with the capture prefix — for 'line': line_length (mm), line_angle (degrees), line_cx and line_cy (the centre, camera device axis values, mm), and line_x1 / line_y1 / line_x2 / line_y2 (the two ends). Use them later as var:line_cx or expr:line_length / 2.\n\nThe angle is the direction from the 'from' beacon to the 'to' beacon in the same convention as Detect Object's P: 0° = straight up on the image, clockwise positive, −180 to +180. Swapping from and to turns it by 180°.",
+            ParamNotes = new[]
+            {
+                ("from", "Name of the beacon the line starts at."),
+                ("to", "Name of the beacon the line ends at."),
+                ("name", "Name shown on the line and used by Remove Beacon. Blank = 'from-to'. Drawing a name that exists replaces that line."),
+                ("captureAs", "Prefix of the result variables — 'line' gives line_length, line_angle, line_cx, line_cy… Use a different prefix per block when a program keeps several lines."),
+                ("show", "Ticked (default): drawn on the live view. Unticked: measured only."),
+            },
+        },
+
+        ["beacon.moveCamera"] = new()
+        {
+            Summary = "Move the camera so its centre sits on a beacon.",
+            Usage = "Moves the camera device (gantry-main) in X and Y only — Z and the other axes are not touched — at the device's current velocity, then checks it really arrived. For a beacon that rides on a tool it goes to where the beacon is now.\n\nA move longer than the guard is REFUSED — never shortened — and the step fails with the distance in the message. The step also fails when there is no beacon by that name (expired or removed).",
+            ParamNotes = new[]
+            {
+                ("name", "The beacon to centre the camera on."),
+                ("maxMoveMm", "The guard: the longest move allowed, in mm. Default 10; never more than 50."),
             },
         },
 

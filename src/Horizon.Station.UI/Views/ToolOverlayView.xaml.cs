@@ -46,12 +46,13 @@ public partial class ToolOverlayView : UserControl
     private IReadOnlyList<GrippedObject> _objects = Array.Empty<GrippedObject>();
     private IReadOnlyList<PartAlignment> _parts = Array.Empty<PartAlignment>();
     private readonly Canvas _partLayer = new() { IsHitTestVisible = false };   // parts are rebuilt per tick (few shapes)
-    private readonly Canvas _beaconLayer = new() { IsHitTestVisible = false }; // beacons are rebuilt per tick (≤ 10, they pulse)
+    private readonly Canvas _beaconLayer = new() { IsHitTestVisible = false }; // beacons are rebuilt per tick (≤ 10, with their lines)
     private readonly Canvas _detectLayer = new() { IsHitTestVisible = false }; // recent Detect Object results, rebuilt per tick (≤ 8)
     private static readonly Brush DetectBrush = Frozen(0xFF, 0xE6, 0x00);      // yellow: a Detect Object result
 
-    /// <summary>One heartbeat (ms) of a beacon's pulse — about 70 beats a minute.</summary>
-    private const double BeaconBeatMs = 850;
+    // A beacon is a small + mark: the vertical arm a little longer than the horizontal one.
+    private const double BeaconArmV = 9;      // half-length of the vertical arm (display px)
+    private const double BeaconArmH = 6;      // half-length of the horizontal arm (display px)
 
     /// <summary>The 10 beacon colours, cycled in planting order (<see cref="Horizon.Workflow.Beacon.ColorIndex"/>).</summary>
     private static readonly Brush[] BeaconBrushes =
@@ -326,11 +327,13 @@ public partial class ToolOverlayView : UserControl
     }
 
     /// <summary>
-    /// The planted beacons (<c>beacon.plant</c>): each is a point in the camera device's axis
-    /// values, placed from that device's live pose, drawn as a dot with two rings that expand and
-    /// fade once per heartbeat. Outside the picture it is pinned to the nearest edge with its
-    /// distance. Drawn whatever <see cref="Horizon.Common.AppSettings.ShowToolOverlay"/> says —
-    /// a beacon has its own show / hide flag.
+    /// The planted beacons (<c>beacon.plant</c>) and the construction lines between them
+    /// (<c>beacon.line</c>). A beacon is a point in the camera device's axis values, placed from
+    /// that device's live pose and drawn as a small + (vertical arm longer than the horizontal).
+    /// Outside the picture it is pinned to the nearest edge with its distance. A line is drawn
+    /// dashed between its two beacons' true places, with its length and angle at the middle.
+    /// Drawn whatever <see cref="Horizon.Common.AppSettings.ShowToolOverlay"/> says — a beacon
+    /// has its own show / hide flag.
     /// </summary>
     private void DrawBeacons(Horizon.Common.AppSettings settings, double availW, double availH, double scale)
     {
@@ -348,11 +351,12 @@ public partial class ToolOverlayView : UserControl
                 _outlineImages.Remove(stale);
         }
         if (beacons.Count == 0) return;
-        double phase = Environment.TickCount64 % (long)BeaconBeatMs / BeaconBeatMs;   // 0..1 through one beat
+
+        // Every placeable beacon (shown or not) — the lines join them at their true places.
+        var placed = new Dictionary<string, (Point At, double X, double Y, Brush Brush)>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var beacon in beacons)
         {
-            if (!beacon.Visible) continue;
             var cam = _host.Engine.Motion.GetState(beacon.Device);
             if (!cam.Valid) continue;
             // A beacon that rides on a tool is placed by Layer 2 from the tool's live pose.
@@ -362,6 +366,8 @@ public partial class ToolOverlayView : UserControl
 
             var brush = BeaconBrushes[((beacon.ColorIndex % BeaconBrushes.Length) + BeaconBrushes.Length) % BeaconBrushes.Length];
             var centre = ToolOverlayMath.ToDisplay(off.DxPx, off.DyPx, availW, availH, scale);
+            placed[beacon.Name] = (centre, spot.X, spot.Y, brush);
+            if (!beacon.Visible) continue;
             var at = ToolOverlayMath.ClampToBox(centre, availW, availH, EdgeInset, out bool clamped);
 
             // The snapshot's white pixels, yellow, at the place the snapshot was taken — carried
@@ -382,38 +388,49 @@ public partial class ToolOverlayView : UserControl
                 }
             }
 
-            // Heartbeat: a strong ring, and a second, weaker one a little later ("lub-dub").
-            Ring(at, brush, phase, 1.0);
-            Ring(at, brush, (phase + 0.78) % 1.0, 0.55);
-            var dot = new Ellipse { Width = 8, Height = 8, Fill = brush, Stroke = Brushes.Black, StrokeThickness = 1 };
-            Canvas.SetLeft(dot, at.X - 4); Canvas.SetTop(dot, at.Y - 4);
-            _beaconLayer.Children.Add(dot);
+            // The + mark: two plain lines.
+            _beaconLayer.Children.Add(new Line { X1 = at.X, Y1 = at.Y - BeaconArmV, X2 = at.X, Y2 = at.Y + BeaconArmV, Stroke = brush, StrokeThickness = 1.5 });
+            _beaconLayer.Children.Add(new Line { X1 = at.X - BeaconArmH, Y1 = at.Y, X2 = at.X + BeaconArmH, Y2 = at.Y, Stroke = brush, StrokeThickness = 1.5 });
 
             string title = beacon.RidesOnTool ? $"{beacon.Name} · {beacon.ToolDevice}" : beacon.Name;
             string text = clamped ? $"{title}  {Math.Sqrt(dxMm * dxMm + dyMm * dyMm):0.00} mm" : title;
+            AddLabel(text, brush, at.X + 8, at.Y - 20, at.X - 8, at.Y + 8);
+        }
+
+        foreach (var line in _host.Process.GetBeaconLines())
+        {
+            if (!line.Visible) continue;
+            if (!placed.TryGetValue(line.From, out var a) || !placed.TryGetValue(line.To, out var b)) continue;
+
+            // Between the true places — the canvas clips whatever is outside the picture.
+            _beaconLayer.Children.Add(new Line
+            {
+                X1 = a.At.X, Y1 = a.At.Y, X2 = b.At.X, Y2 = b.At.Y, Stroke = a.Brush, StrokeThickness = 1.2,
+                StrokeDashArray = new DoubleCollection { 6, 4 },
+            });
+
+            double mx = (a.At.X + b.At.X) / 2.0, my = (a.At.Y + b.At.Y) / 2.0;
+            if (mx < 0 || my < 0 || mx > availW || my > availH) continue;   // middle out of view: no label
+            var m = Horizon.Workflow.BeaconLine.Measure(a.X, a.Y, b.X, b.Y, settings);
+            _beaconLayer.Children.Add(new Line { X1 = mx - 3, Y1 = my, X2 = mx + 3, Y2 = my, Stroke = a.Brush, StrokeThickness = 1.2 });
+            _beaconLayer.Children.Add(new Line { X1 = mx, Y1 = my - 3, X2 = mx, Y2 = my + 3, Stroke = a.Brush, StrokeThickness = 1.2 });
+            AddLabel($"{line.Name}  {m.Length:0.0000} mm  {m.AngleDeg:0.00}°", a.Brush, mx + 8, my + 6, mx - 8, my - 22);
+        }
+
+        // A label at (lx, ly); when it would leave the picture on the right it ends at altRight
+        // instead, and when it would leave at the top it moves to altTop.
+        void AddLabel(string text, Brush brush, double lx, double ly, double altRight, double altTop)
+        {
             var label = new Border
             {
                 Background = LabelBg, CornerRadius = new CornerRadius(2), Padding = new Thickness(4, 1, 4, 1),
                 Child = new TextBlock { Text = text, Foreground = brush, FontSize = 11, FontWeight = FontWeights.SemiBold },
             };
             label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            double lx = at.X + 10, ly = at.Y - 20;
-            if (lx + label.DesiredSize.Width > availW) lx = at.X - 10 - label.DesiredSize.Width;
-            if (ly < 0) ly = at.Y + 8;
+            if (lx + label.DesiredSize.Width > availW) lx = altRight - label.DesiredSize.Width;
+            if (ly < 0 || ly + label.DesiredSize.Height > availH) ly = altTop;
             Canvas.SetLeft(label, lx); Canvas.SetTop(label, ly);
             _beaconLayer.Children.Add(label);
-        }
-
-        void Ring(Point at, Brush brush, double t, double strength)
-        {
-            double radius = 6 + 24 * t;
-            var ring = new Ellipse
-            {
-                Width = radius * 2, Height = radius * 2, Stroke = brush, StrokeThickness = 2.5,
-                Fill = Brushes.Transparent, Opacity = Math.Max(0, (1 - t) * strength),
-            };
-            Canvas.SetLeft(ring, at.X - radius); Canvas.SetTop(ring, at.Y - radius);
-            _beaconLayer.Children.Add(ring);
         }
     }
 

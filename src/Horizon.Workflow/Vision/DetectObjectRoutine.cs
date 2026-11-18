@@ -4,8 +4,9 @@ using Horizon.Engine;
 namespace Horizon.Workflow;
 
 /// <summary>
-/// The run sequence of a <c>vision.detectObject</c> block: go to the block's own camera position,
-/// apply the recipe's exposure + lighting, detect, optionally fall back to an operator mark, then
+/// The run sequence of a <c>vision.detectObject</c> block: apply the recipe's exposure (first, so
+/// the sensor settles while the camera travels), go to the block's own camera position, set the
+/// lighting, detect, optionally fall back to an operator mark, then
 /// optionally centre the camera on the result (guarded — refused, never clamped) and step off by
 /// an offset. The camera rides on <see cref="AppSettings.MoveClickDevice"/> (gantry-main).
 /// A velocity the block sets is restored on every exit. See <c>docs/detect-object-design.md</c>.
@@ -20,6 +21,7 @@ internal sealed class DetectObjectRoutine
     private readonly IHorizonEngine _engine;
     private readonly Func<AppSettings> _settings;
     private readonly Func<VisionProfile, Task<Result<VisionDetectResult>>> _detect;
+    private readonly Func<VisionProfile, Task<bool>> _pushExposure;   // true = the camera's exposure was changed
     private readonly Func<IOperatorPrompt?> _prompt;
     private readonly Action<LogLevel, string> _log;
 
@@ -27,12 +29,14 @@ internal sealed class DetectObjectRoutine
         IHorizonEngine engine,
         Func<AppSettings> settings,
         Func<VisionProfile, Task<Result<VisionDetectResult>>> detect,
+        Func<VisionProfile, Task<bool>> pushExposure,
         Func<IOperatorPrompt?> prompt,
         Action<LogLevel, string> log)
     {
         _engine = engine;
         _settings = settings;
         _detect = detect;
+        _pushExposure = pushExposure;
         _prompt = prompt;
         _log = log;
     }
@@ -133,6 +137,15 @@ internal sealed class DetectObjectRoutine
     {
         string camera = profile.CameraId;
 
+        // 0) Exposure first — before the move — so the sensor settles while the camera travels.
+        //    Best-effort, like the Vision Profile page; the detection call re-checks it.
+        var sinceExposure = System.Diagnostics.Stopwatch.StartNew();
+        bool exposureChanged = await _pushExposure(profile).ConfigureAwait(false);
+        if (exposureChanged)
+            _log(LogLevel.Info, profile.AutoExposure
+                ? $"{req.Label}: {camera} auto-exposure ON (before the move)."
+                : $"{req.Label}: {camera} exposure {profile.ExposureUs:F0} µs (before the move).");
+
         // 1) The block's own camera position.
         if (req.HasPosition)
         {
@@ -144,7 +157,7 @@ internal sealed class DetectObjectRoutine
             if (!moved.IsSuccess) return Result<DetectedObject>.Fail(moved.Error, moved.Message);
         }
 
-        // 2) Lighting (exposure is applied by the detection call). Best-effort, like the Vision Profile page.
+        // 2) Lighting. Best-effort, like the Vision Profile page.
         if (!string.IsNullOrEmpty(profile.LightingDevice) && _engine.Lighting.DeviceNames.Contains(profile.LightingDevice))
         {
             var lit = await _engine.Lighting.SetAllAsync(profile.LightingDevice, profile.LightingIntensity).ConfigureAwait(false);
@@ -156,6 +169,13 @@ internal sealed class DetectObjectRoutine
         var lease = await _engine.Camera.StartGrabbingAsync(camera).ConfigureAwait(false);
         try
         {
+            // Whatever is left of the exposure settle time after the travel (a short move, or none).
+            if (exposureChanged)
+            {
+                long left = Math.Clamp(settings.VisionExposureSettleMs, 0, MaxSettleMs) - sinceExposure.ElapsedMilliseconds;
+                if (left > 0) await Task.Delay((int)left, ct).ConfigureAwait(false);
+            }
+
             int settle = Math.Clamp(req.SettleMs, 0, MaxSettleMs);
             if (settle > 0) await Task.Delay(settle, ct).ConfigureAwait(false);
             await WaitForFrameAsync(camera, ct).ConfigureAwait(false);

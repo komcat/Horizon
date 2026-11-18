@@ -54,6 +54,7 @@ public sealed class ProcessService : IProcessService
     public ProcessService(IHorizonEngine engine)
     {
         _engine = engine;
+        _beacons.Locator = LocateBeacon;   // riding beacons are placed through the tool registrations
         _signals = new SignalRegistry(new EngineSignalSource(engine));
         _oee = new OeeTracker(log: Log);
 
@@ -738,20 +739,7 @@ public sealed class ProcessService : IProcessService
     /// </summary>
     private async Task ApplyProfileExposureAsync(VisionProfile profile, string cameraId)
     {
-        if (!_engine.Camera.IsConnected(cameraId)) return;
-
-        var cur = _engine.Camera.GetState(cameraId).Exposure;
-        bool already = cur.AutoExposure == profile.AutoExposure &&
-            (profile.AutoExposure || Math.Abs(cur.ExposureUs - profile.ExposureUs) < 1.0);
-        if (already) return;
-
-        var exp = cur with { AutoExposure = profile.AutoExposure, ExposureUs = profile.ExposureUs };
-        var r = await _engine.Camera.ApplyExposureAsync(cameraId, exp).ConfigureAwait(false);
-        if (!r.IsSuccess)
-        {
-            Log(LogLevel.Warning, $"Vision '{profile.Name}': exposure apply failed ({r.Message}).");
-            return;
-        }
+        if (!await PushProfileExposureAsync(profile, cameraId).ConfigureAwait(false)) return;
 
         // Give the sensor time to complete the exposure change, then wait for a frame
         // captured after the settle — so detection never runs on a mid-transition frame.
@@ -760,6 +748,31 @@ public sealed class ProcessService : IProcessService
         if (settleMs > 0)
             await Task.Delay(settleMs).ConfigureAwait(false);
         await WaitForFreshFrameAsync(cameraId).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Writes the profile's saved exposure (auto flag + µs) to its camera <b>without waiting</b>
+    /// for it to settle. True when the camera's exposure was actually changed (the caller owes
+    /// the settle wait); false when it already matched, the camera is disconnected, or the
+    /// write failed (logged, not fatal).
+    /// </summary>
+    private async Task<bool> PushProfileExposureAsync(VisionProfile profile, string cameraId)
+    {
+        if (string.IsNullOrWhiteSpace(cameraId) || !_engine.Camera.IsConnected(cameraId)) return false;
+
+        var cur = _engine.Camera.GetState(cameraId).Exposure;
+        bool already = cur.AutoExposure == profile.AutoExposure &&
+            (profile.AutoExposure || Math.Abs(cur.ExposureUs - profile.ExposureUs) < 1.0);
+        if (already) return false;
+
+        var exp = cur with { AutoExposure = profile.AutoExposure, ExposureUs = profile.ExposureUs };
+        var r = await _engine.Camera.ApplyExposureAsync(cameraId, exp).ConfigureAwait(false);
+        if (!r.IsSuccess)
+        {
+            Log(LogLevel.Warning, $"Vision '{profile.Name}': exposure apply failed ({r.Message}).");
+            return false;
+        }
+        return true;
     }
 
     /// <summary>
@@ -838,7 +851,28 @@ public sealed class ProcessService : IProcessService
 
         // Save writes the working file only — it does NOT create a version. A version is
         // created explicitly via CommitProgram (git-style: working copy vs commits).
-        _programs.Save(program);
+        // The name is the file name: a '/' or '\' would be read as a folder, the rest are not
+        // allowed in a file name at all — refuse with the reason instead of throwing.
+        var name = program.Name ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(name))
+            return Result.Fail(ErrorCode.InvalidParameter, "Can't save — the program has no name.");
+        var bad = name.Where(c => Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0).Distinct().ToArray();
+        if (bad.Length > 0)
+            return Result.Fail(ErrorCode.InvalidParameter,
+                $"Can't save — the program name '{name}' contains {string.Join(" ", bad.Select(c => char.IsControl(c) ? "(control character)" : c.ToString()))}, " +
+                "which a file name can't have. Not allowed: \\ / : * ? \" < > |");
+        if (name != name.Trim() || name.EndsWith('.'))
+            return Result.Fail(ErrorCode.InvalidParameter,
+                $"Can't save — the program name '{name}' must not start or end with a space, or end with a dot.");
+
+        try
+        {
+            _programs.Save(program);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return Result.Fail(ErrorCode.OperationFailed, $"Can't save program '{name}' — {ex.Message}");
+        }
         Log(LogLevel.Info, $"Program saved (working copy): {program.Name}");
         WarnMissingPositions(program);
         return Result.Ok();
@@ -1999,6 +2033,8 @@ public sealed class ProcessService : IProcessService
 
     public IReadOnlyList<Beacon> GetBeacons() => _beacons.Snapshot();
 
+    public IReadOnlyList<BeaconLine> GetBeaconLines() => _beacons.Lines();
+
     public Task<Result<Beacon>> PlantBeaconAsync(string? name, bool visible = true)
         => _beacons.PlantHereAsync(_engine, new AppSettingsStore().Current, name, visible, Log);
 
@@ -2107,7 +2143,8 @@ public sealed class ProcessService : IProcessService
     private DetectObjectRoutine DetectRoutine()
         // Fresh app settings on each use, as for part alignment (mm/pixel + MoveClick signs are edited in Layer 3).
         => new(_engine, () => new AppSettingsStore().Current,
-            p => RunDetectionAsync(p, frame: null, cameraId: p.CameraId), () => OperatorPrompt, Log);
+            p => RunDetectionAsync(p, frame: null, cameraId: p.CameraId),
+            p => PushProfileExposureAsync(p, p.CameraId), () => OperatorPrompt, Log);
 
     public Task<Result<DetectedObject>> RunDetectObjectAsync(
         DetectObjectRequest request, Action<DetectedObject>? onResult = null, CancellationToken ct = default)
