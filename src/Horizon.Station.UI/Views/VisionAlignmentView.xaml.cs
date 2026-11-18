@@ -77,10 +77,8 @@ public partial class VisionAlignmentView : UserControl
         bool allowed = _host.Session.Has(AccessPolicy.GrippedObject);
         GrippedTab.IsEnabled = allowed;
         GrippedTab.ToolTip = allowed ? null : $"Needs {AccessPolicy.GrippedObject} level.";
-        bool partAllowed = _host.Session.Has(AccessPolicy.PartAlignment);
-        PartTab.IsEnabled = partAllowed;
-        PartTab.ToolTip = partAllowed ? null : $"Needs {AccessPolicy.PartAlignment} level.";
-        if ((!allowed && ReferenceEquals(Tabs.SelectedItem, GrippedTab)) || (!partAllowed && ReferenceEquals(Tabs.SelectedItem, PartTab)))
+        // Part Alignment is deprecated: its tab stays disabled at every level (set in the XAML).
+        if ((!allowed && ReferenceEquals(Tabs.SelectedItem, GrippedTab)) || ReferenceEquals(Tabs.SelectedItem, PartTab))
             Tabs.SelectedIndex = 0;
     }
 }

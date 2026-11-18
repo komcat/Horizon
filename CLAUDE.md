@@ -210,6 +210,10 @@ defines its own program/recipe/position formats.
   over `maxMoveMm`, hard cap 5 mm) → optional offset. Results `{captureAs}_found/_x/_y/_p/…`:
   X / Y in gantry-main mm, **P** = 0° up on the image, clockwise + (`DetectObjectMath`).
   UI: `DetectObjectHelperWindow` (embeds `VisionProfileView`) and `MarkLocationWindow`.
+  Each found result is kept 20 s as a `DetectionMark` (`IProcessService.GetDetectionMarks`, in memory,
+  max 8) and drawn thin yellow on that camera's live views by `ToolOverlayView.DrawDetections`
+  (the outline of what was matched — `DetectedObject.Outline`: NCC template box / the two corner
+  edges / line / circle — plus a ringed cross, P pointer and X / Y / P label; display only).
 - `Beacons/` — **beacons** (`beacon.plant` / `beacon.remove`, `docs/beacon-design.md`): virtual
   markers planted at the camera centre (gantry-main axis values) and drawn pulsing on the live views
   by `ToolOverlayView.DrawBeacons`. `BeaconRegistry` is in memory only, machine-wide: max 10 (an 11th
@@ -308,7 +312,8 @@ SiPhOG, DUT Data, find-first-light, Testing Ground, `ScanPanelStore`, its settin
   (the Gantt editor below), and **Vision Alignment** — a tabbed page holding **Vision
   Profile** (per-position vision recipe authoring, below), **Gripped FAU** (the
   gripped-object teach) and **Part Alignment** (fiducials E1/E2 + local objects that locate
-  the part on the fixture; `part.*` blocks) — the latter two Engineer-gated tabs; plus
+  the part on the fixture; `part.*` blocks) — **deprecated: the tab is disabled and its objects are no
+  longer drawn on the Run feed / camera pop-out; do not build on it, use `vision.detectObject`**. Gripped FAU is an Engineer-gated tab; plus
   **Repository** (version browse/checkout) and **DUT Data** (Operator-level viewer of the
   per-serial UV signal snapshots `uv1.0`/`uv1.1`/`uv2.0`/`uv2.1_final` that
   `dut.readAllSignals` files: one row per UV run, signal picker, detail grid, trend chart,

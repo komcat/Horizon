@@ -90,6 +90,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         CommitProgramCommand = new RelayCommand(CommitProgram);
         AddParallelCommand = new RelayCommand(AddParallel);
         TidyCommand = new RelayCommand(Tidy);
+        LinkModeCommand = new RelayCommand(ToggleLinkMode);
         RemoveBlockCommand = new RelayCommand(DeleteSelection, () => _selectedBlock != null);
         RunCommand = new AsyncRelayCommand(() => RunAsync(null, null, null), () => !_isRunning);
         RunSelectedCommand = new AsyncRelayCommand(RunSelectedAsync, () => !_isRunning && HasRunnableSelection());
@@ -330,6 +331,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public RelayCommand CommitProgramCommand { get; }
     public RelayCommand AddParallelCommand { get; }
     public RelayCommand TidyCommand { get; }
+    public RelayCommand LinkModeCommand { get; }
     public RelayCommand RemoveBlockCommand { get; }
     public AsyncRelayCommand RunCommand { get; }
     public AsyncRelayCommand RunSelectedCommand { get; }
@@ -466,6 +468,68 @@ public sealed class TimelineEditorViewModel : ObservableObject
         MarkDirty();
         RefreshChain();
         Status = "Linked.";
+    }
+
+    // --- arrow mode: the toolbar's Arrow button, then click the two blocks ---
+
+    private bool _isLinkMode;
+    private CanvasNodeViewModel? _linkSource;
+
+    /// <summary>True while the Arrow button is armed: the next block clicks draw an arrow instead of selecting.</summary>
+    public bool IsLinkMode { get => _isLinkMode; private set => SetField(ref _isLinkMode, value); }
+
+    /// <summary>Arms (or disarms) arrow mode. A single selected block becomes the arrow's start.</summary>
+    public void ToggleLinkMode()
+    {
+        if (_isLinkMode) { CancelLinkMode(); Status = "Arrow cancelled."; return; }
+        _linkSource = _selectedNodes.Count == 1 ? _selectedNodes[0] : null;
+        SetSelectedLink(null);
+        IsLinkMode = true;
+        IsConnecting = true;
+        Status = _linkSource == null
+            ? "Arrow: click the block the arrow starts from (Esc cancels)."
+            : "Arrow: now click the block it goes to (Esc cancels).";
+    }
+
+    public void CancelLinkMode()
+    {
+        if (!_isLinkMode) return;
+        _linkSource = null;
+        IsLinkMode = false;
+        IsConnecting = false;
+    }
+
+    /// <summary>A block click while arrow mode is armed: first click = from, second = to. False when not armed.</summary>
+    public bool LinkClick(CanvasNodeViewModel node)
+    {
+        if (!_isLinkMode) return false;
+        if (_linkSource == null)
+        {
+            _linkSource = node;
+            SetNodeSelection(new[] { node });
+            Status = "Arrow: now click the block it goes to (Esc cancels).";
+            return true;
+        }
+
+        var from = _linkSource;
+        CancelLinkMode();
+        if (ReferenceEquals(from, node)) Status = "Arrow cancelled — that is the same block.";
+        else Connect(from, node);
+        return true;
+    }
+
+    /// <summary>As <see cref="LinkClick(CanvasNodeViewModel)"/>, for a click on a block inside a parallel group (the group is the node).</summary>
+    public bool LinkClick(ProcessBlockViewModel inner)
+    {
+        if (!_isLinkMode) return false;
+        return OwnerOf(inner) is not { } owner || LinkClick(owner);
+    }
+
+    /// <summary>Removes an arrow (its right-click menu).</summary>
+    public void RemoveLink(LinkViewModel link)
+    {
+        SetSelectedLink(null);
+        Disconnect(link.From);
     }
 
     /// <summary>Removes a node's outgoing arrow.</summary>

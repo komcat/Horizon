@@ -182,7 +182,7 @@ public partial class TimelineEditorView : UserControl
 
         RubberBand.Visibility = Visibility.Collapsed;
         RubberBand.Data = null;
-        _vm.IsConnecting = false;
+        _vm.IsConnecting = _vm.IsLinkMode;
         if (gesture == Gesture.DragNode && node != null && moved)
             _vm.EndDrag(node);
         else
@@ -194,6 +194,7 @@ public partial class TimelineEditorView : UserControl
     {
         if (sender is not FrameworkElement { DataContext: CanvasNodeViewModel node }) return;
         Focus();
+        if (_vm.LinkClick(node)) { e.Handled = true; return; }   // arrow mode: the click picks from / to
         _vm.SelectNode(node, (Keyboard.Modifiers & ModifierKeys.Shift) != 0);
 
         var p = e.GetPosition(CanvasRoot);
@@ -219,6 +220,7 @@ public partial class TimelineEditorView : UserControl
     {
         if (sender is not FrameworkElement { DataContext: ProcessBlockViewModel block }) return;
         Focus();
+        if (_vm.LinkClick(block)) { e.Handled = true; return; }
         _vm.SelectInnerBlock(block);
         _gBlock = block;   // armed; a drag past the threshold pulls it out of the envelope
         Begin(Gesture.InnerArmed, e.GetPosition(CanvasRoot));
@@ -233,10 +235,24 @@ public partial class TimelineEditorView : UserControl
         e.Handled = true;
     }
 
+    /// <summary>Right-click on an arrow: select it, so the menu that opens is clearly about that arrow.</summary>
+    private void OnLinkRightMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: LinkViewModel link }) return;
+        Focus();
+        _vm.SelectLink(link);   // not handled — the context menu still opens
+    }
+
+    private void OnRemoveLink(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: LinkViewModel link }) _vm.RemoveLink(link);
+    }
+
     /// <summary>Press on the empty canvas: clear the selection and pan with the drag.</summary>
     private void OnCanvasMouseDown(object sender, MouseButtonEventArgs e)
     {
         Focus();
+        _vm.CancelLinkMode();
         _vm.ClearSelection();
         _panStart = e.GetPosition(CanvasScroll);
         _panOrigin = new Point(CanvasScroll.HorizontalOffset, CanvasScroll.VerticalOffset);
@@ -392,6 +408,7 @@ public partial class TimelineEditorView : UserControl
         if (e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase) return;
 
         if (e.Key == Key.Escape && _gesture != Gesture.None) { EndGesture(); e.Handled = true; return; }
+        if (e.Key == Key.Escape && _vm.IsLinkMode) { _vm.ToggleLinkMode(); e.Handled = true; return; }
         if (e.Key == Key.Delete && Keyboard.Modifiers == ModifierKeys.None)
         {
             if (e.OriginalSource is ComboBox or ComboBoxItem or ListBoxItem) return;

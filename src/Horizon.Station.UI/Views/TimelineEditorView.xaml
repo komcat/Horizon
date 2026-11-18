@@ -501,59 +501,26 @@
                         <TextBlock Text="Parallel" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
-                <Button Width="72" Height="28" Margin="0,0,6,0" FontWeight="SemiBold" Command="{Binding RunCommand}" ToolTip="Run program">
-                    <StackPanel Orientation="Horizontal">
-                        <Image Source="/Horizon.Station.UI;component/assets/run-button.png" Width="16" Height="16" Margin="0,0,5,0"
-                               RenderOptions.BitmapScalingMode="HighQuality" />
-                        <TextBlock Text="Run" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-                <Button Width="116" Height="28" Margin="0,0,6,0" Command="{Binding RunSelectedCommand}"
-                        ToolTip="Run only the selected block (or the selected parallel group)">
-                    <StackPanel Orientation="Horizontal">
-                        <Image Source="/Horizon.Station.UI;component/assets/run-stage-button.png" Width="16" Height="16" Margin="0,0,5,0"
-                               RenderOptions.BitmapScalingMode="HighQuality" />
-                        <TextBlock Text="Run Selected" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-                <Button Width="100" Height="28" Margin="0,0,6,0" Command="{Binding RunFromCommand}"
-                        ToolTip="Run from the selected step to the end — the steps before it are skipped">
-                    <StackPanel Orientation="Horizontal">
-                        <Image Source="/Horizon.Station.UI;component/assets/run-stage-button.png" Width="16" Height="16" Margin="0,0,5,0"
-                               RenderOptions.BitmapScalingMode="HighQuality" />
-                        <TextBlock Text="Run From" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-                <Button Width="78" Height="28" Margin="0,0,6,0" Command="{Binding PauseCommand}"
-                        ToolTip="Pause: the current block finishes, then the run waits. Press again to resume with the next block.">
-                    <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsPaused}" Value="True">
-                                    <Setter Property="Background" Value="{StaticResource Warn}" />
-                                    <Setter Property="FontWeight" Value="SemiBold" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                    <TextBlock VerticalAlignment="Center">
-                        <Run Text="❚❚" FontSize="9" /><Run Text=" " /><Run Text="{Binding PauseLabel, Mode=OneWay}" />
-                    </TextBlock>
-                </Button>
-                <Button Width="72" Height="28" Command="{Binding StopCommand}" ToolTip="Stop">
-                    <StackPanel Orientation="Horizontal">
-                        <Image Source="/Horizon.Station.UI;component/assets/stop-button.png" Width="16" Height="16" Margin="0,0,5,0"
-                               RenderOptions.BitmapScalingMode="HighQuality" />
-                        <TextBlock Text="Stop" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-
                 <!-- Canvas view controls: zoom + tidy. -->
                 <Border Width="1" Background="{StaticResource Edge}" Margin="14,2,14,2" />
                 <Button Content="−" Width="28" Height="28" Margin="0,0,4,0" FontWeight="Bold" Command="{Binding ZoomOutCommand}"
                         ToolTip="Zoom out (Ctrl + mouse wheel)" />
                 <Button Content="+" Width="28" Height="28" Margin="0,0,10,0" FontWeight="Bold" Command="{Binding ZoomInCommand}"
                         ToolTip="Zoom in (Ctrl + mouse wheel)" />
+                <Button Width="70" Height="28" Margin="0,0,6,0" Command="{Binding LinkModeCommand}"
+                        ToolTip="Draw an arrow: press, click the block it starts from, then the block it goes to. A block already selected is the start. Esc cancels.">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsLinkMode}" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource Warn}" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <TextBlock Text="↘ Arrow" VerticalAlignment="Center" />
+                </Button>
                 <Button Content="Tidy" Width="52" Height="28" Command="{Binding TidyCommand}"
                         ToolTip="Re-arrange the canvas: the sequence top to bottom, one block per stage row" />
 
@@ -702,6 +669,58 @@
                  arrow being dragged, nodes. -->
             <Border Grid.Column="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Edge}"
                     BorderThickness="1" CornerRadius="4" Margin="4,0,4,0">
+                <DockPanel>
+                <!-- Run controls, right above the canvas they act on. -->
+                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource Edge}" BorderThickness="0,0,0,1" Padding="8,6">
+                    <StackPanel Orientation="Horizontal">
+                    <Button Width="72" Height="28" Margin="0,0,6,0" FontWeight="SemiBold" Command="{Binding RunCommand}" ToolTip="Run program">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="/Horizon.Station.UI;component/assets/run-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                            <TextBlock Text="Run" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Width="116" Height="28" Margin="0,0,6,0" Command="{Binding RunSelectedCommand}"
+                            ToolTip="Run only the selected block (or the selected parallel group)">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="/Horizon.Station.UI;component/assets/run-stage-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                            <TextBlock Text="Run Selected" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Width="100" Height="28" Margin="0,0,6,0" Command="{Binding RunFromCommand}"
+                            ToolTip="Run from the selected step to the end — the steps before it are skipped">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="/Horizon.Station.UI;component/assets/run-stage-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                            <TextBlock Text="Run From" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Width="78" Height="28" Margin="0,0,6,0" Command="{Binding PauseCommand}"
+                            ToolTip="Pause: the current block finishes, then the run waits. Press again to resume with the next block.">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsPaused}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource Warn}" />
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <TextBlock VerticalAlignment="Center">
+                            <Run Text="❚❚" FontSize="9" /><Run Text=" " /><Run Text="{Binding PauseLabel, Mode=OneWay}" />
+                        </TextBlock>
+                    </Button>
+                    <Button Width="72" Height="28" Command="{Binding StopCommand}" ToolTip="Stop">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="/Horizon.Station.UI;component/assets/stop-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                            <TextBlock Text="Stop" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    </StackPanel>
+                </Border>
                 <ScrollViewer x:Name="CanvasScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
                               Background="{StaticResource Bg}" PreviewMouseWheel="OnCanvasWheel">
                     <Grid x:Name="CanvasRoot" Width="{Binding CanvasWidth}" Height="{Binding CanvasHeight}"
@@ -747,7 +766,14 @@
                                     <Canvas>
                                         <Path Data="{Binding Data}" Stroke="Transparent" StrokeThickness="12" Cursor="Hand"
                                               MouseLeftButtonDown="OnLinkMouseDown"
-                                              ToolTip="Click to select, then Delete to remove this arrow" />
+                                              MouseRightButtonDown="OnLinkRightMouseDown"
+                                              ToolTip="Right-click to remove this arrow (or click it, then Delete)">
+                                            <Path.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="Remove this arrow" Click="OnRemoveLink" />
+                                                </ContextMenu>
+                                            </Path.ContextMenu>
+                                        </Path>
                                         <Path Data="{Binding Data}" Style="{StaticResource LinkStroke}" />
                                         <Path Data="{Binding Head}" Style="{StaticResource LinkHead}" />
                                         <!-- Column break: the temporary end under the previous block, and the
@@ -795,6 +821,7 @@
                         </ItemsControl>
                     </Grid>
                 </ScrollViewer>
+                </DockPanel>
             </Border>
 
             <!-- RIGHT: parameter panel for the selected block -->

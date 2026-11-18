@@ -35,19 +35,38 @@ public static class DetectObjectMath
 
         double px = cx, py = cy, p = 0;
         double angle = Value(result, "angle") ?? 0;
+        var shapes = new List<(double X, double Y)[]>();   // what was matched, in source px
         switch ((profile.DetectionMethod ?? "ncc").ToLowerInvariant())
         {
-            case "circle":
-                break;   // a circle has no direction
+            case "circle":   // a circle has no direction
+                if (Value(result, "radius") is { } radius and > 0)
+                {
+                    const int sides = 48;
+                    var ring = new (double X, double Y)[sides + 1];
+                    for (int i = 0; i <= sides; i++)
+                    {
+                        double a = i * 2.0 * Math.PI / sides;
+                        ring[i] = (cx + radius * Math.Cos(a), cy + radius * Math.Sin(a));
+                    }
+                    shapes.Add(ring);
+                }
+                break;
 
             case "line":
             case "edgereg":
                 // Reported counter-clockwise from +X, modulo 180° → fold to −90…+90.
                 p = WrapHalfTurn(90.0 - angle);
+                if (Value(result, "x1") is { } x1 && Value(result, "y1") is { } y1 &&
+                    Value(result, "x2") is { } x2 && Value(result, "y2") is { } y2)
+                    shapes.Add(new[] { (x1, y1), (x2, y2) });
                 break;
 
             case "corner":
                 p = Wrap(90.0 - angle);   // bisector, counter-clockwise from +X over the full circle
+                // The two fitted edges, each from its far end to the corner.
+                if (Value(result, "ax") is { } ax && Value(result, "ay") is { } ay &&
+                    Value(result, "bx") is { } bx && Value(result, "by") is { } by)
+                    shapes.Add(new[] { (ax, ay), (cx, cy), (bx, by) });
                 break;
 
             default: // ncc
@@ -66,6 +85,15 @@ public static class DetectObjectMath
                     double rad = match * Math.PI / 180.0, c = Math.Cos(rad), sn = Math.Sin(rad);
                     px = cx + ox * c + oy * sn;
                     py = cy - ox * sn + oy * c;
+
+                    // The template box as it was matched: centred on the match, turned with it.
+                    if (t.Width > 0 && t.Height > 0)
+                    {
+                        double hw = t.Width / 2.0, hh = t.Height / 2.0;
+                        (double X, double Y) Corner(double dx, double dy)
+                            => (cx + dx * c + dy * sn, cy - dx * sn + dy * c);
+                        shapes.Add(new[] { Corner(-hw, -hh), Corner(hw, -hh), Corner(hw, hh), Corner(-hw, hh), Corner(-hw, -hh) });
+                    }
                 }
                 break;
             }
@@ -73,7 +101,20 @@ public static class DetectObjectMath
 
         if (!double.IsFinite(px) || !double.IsFinite(py) || !double.IsFinite(p)) return DetectedObject.NotFound;
         var (gx, gy) = ToGantry(s, camPose, px, py, srcW, srcH);
-        return new DetectedObject(true, gx, gy, p, Value(result, "score") ?? 0, px, py, Manual: false);
+        var outline = new List<IReadOnlyList<OutlinePoint>>();
+        foreach (var shape in shapes)
+        {
+            if (!shape.All(v => double.IsFinite(v.X) && double.IsFinite(v.Y))) continue;
+            outline.Add(shape.Select(v =>
+            {
+                var (ox, oy) = ToGantry(s, camPose, v.X, v.Y, srcW, srcH);
+                return new OutlinePoint(ox, oy);
+            }).ToArray());
+        }
+        return new DetectedObject(true, gx, gy, p, Value(result, "score") ?? 0, px, py, Manual: false)
+        {
+            Outline = outline.Count > 0 ? outline : null,
+        };
     }
 
     /// <summary>An operator mark → the block's result (P = 0, flagged manual).</summary>

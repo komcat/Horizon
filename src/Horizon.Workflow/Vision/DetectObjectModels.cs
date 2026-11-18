@@ -74,8 +74,19 @@ public sealed record DetectObjectRequest
 public sealed record DetectedObject(
     bool Found, double X, double Y, double P, double Score, double Px, double Py, bool Manual)
 {
+    /// <summary>
+    /// What the detector actually matched, as polylines in the camera device's axis values (mm):
+    /// the matched template box (NCC), the two fitted edges (corner), the fitted line, or the
+    /// circle. For display only — null for an operator mark. It stays where the feature was
+    /// found even when the block reports the camera's own X or Y instead.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<OutlinePoint>>? Outline { get; init; }
+
     public static DetectedObject NotFound { get; } = new(false, 0, 0, 0, 0, 0, 0, false);
 }
+
+/// <summary>One vertex of a <see cref="DetectedObject.Outline"/>, in the camera device's axis values (mm).</summary>
+public readonly record struct OutlinePoint(double X, double Y);
 
 /// <summary>Request for <see cref="IOperatorPrompt.MarkLocationAsync"/> — which camera to show and what to ask.</summary>
 public sealed record MarkLocationRequest(string CameraId, string Title, string Message);

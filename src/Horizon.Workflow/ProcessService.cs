@@ -2111,7 +2111,26 @@ public sealed class ProcessService : IProcessService
 
     public Task<Result<DetectedObject>> RunDetectObjectAsync(
         DetectObjectRequest request, Action<DetectedObject>? onResult = null, CancellationToken ct = default)
-        => DetectRoutine().RunAsync(request, onResult ?? (_ => { }), ct);
+        => DetectRoutine().RunAsync(request, obj => { NoteDetection(request, obj); onResult?.Invoke(obj); }, ct);
+
+    private readonly DetectionMarkRegistry _detections = new();   // recent Detect Object results, for the live views
+
+    public IReadOnlyList<DetectionMark> GetDetectionMarks() => _detections.Snapshot();
+
+    /// <summary>Keeps a found result as a short-lived mark for the live views (display only).</summary>
+    private void NoteDetection(DetectObjectRequest request, DetectedObject obj)
+    {
+        if (!obj.Found || !double.IsFinite(obj.X) || !double.IsFinite(obj.Y)) return;
+        var camera = DetectObjectRecipe.Parse(request.Recipe)?.CameraId;
+        if (string.IsNullOrWhiteSpace(camera)) return;
+        var settings = new AppSettingsStore().Current;
+        string device = string.IsNullOrWhiteSpace(settings.MoveClickDevice) ? "gantry-main" : settings.MoveClickDevice;
+        _detections.Add(new DetectionMark(
+            request.Label, camera, device, obj.X, obj.Y, obj.P, obj.Score, obj.Manual, DateTimeOffset.Now)
+        {
+            Outline = obj.Outline,
+        });
+    }
 
     public DetectedObject ToDetectedObject(
         VisionProfile profile, VisionDetectResult result, MotionPosition camPose, int srcW, int srcH)

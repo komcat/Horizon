@@ -47,6 +47,8 @@ public partial class ToolOverlayView : UserControl
     private IReadOnlyList<PartAlignment> _parts = Array.Empty<PartAlignment>();
     private readonly Canvas _partLayer = new() { IsHitTestVisible = false };   // parts are rebuilt per tick (few shapes)
     private readonly Canvas _beaconLayer = new() { IsHitTestVisible = false }; // beacons are rebuilt per tick (≤ 10, they pulse)
+    private readonly Canvas _detectLayer = new() { IsHitTestVisible = false }; // recent Detect Object results, rebuilt per tick (≤ 8)
+    private static readonly Brush DetectBrush = Frozen(0xFF, 0xE6, 0x00);      // yellow: a Detect Object result
 
     /// <summary>One heartbeat (ms) of a beacon's pulse — about 70 beats a minute.</summary>
     private const double BeaconBeatMs = 850;
@@ -110,6 +112,7 @@ public partial class ToolOverlayView : UserControl
         host.Process.PartAlignmentsChanged += OnRegistrationsChanged;
         if (!Surface.Children.Contains(_partLayer)) Surface.Children.Add(_partLayer);
         if (!Surface.Children.Contains(_beaconLayer)) Surface.Children.Add(_beaconLayer);
+        if (!Surface.Children.Contains(_detectLayer)) Surface.Children.Add(_detectLayer);
         ReloadRegistrations();
     }
 
@@ -149,7 +152,7 @@ public partial class ToolOverlayView : UserControl
         if (_active == active) return;
         _active = active;
         if (active) { _timer.Start(); Redraw(); }
-        else { _timer.Stop(); Surface.Children.Clear(); _glyphs.Clear(); _partLayer.Children.Clear(); _beaconLayer.Children.Clear(); Surface.Children.Add(_partLayer); Surface.Children.Add(_beaconLayer); }
+        else { _timer.Stop(); Surface.Children.Clear(); _glyphs.Clear(); _partLayer.Children.Clear(); _beaconLayer.Children.Clear(); _detectLayer.Children.Clear(); Surface.Children.Add(_partLayer); Surface.Children.Add(_beaconLayer); Surface.Children.Add(_detectLayer); }
     }
 
     private void OnRegistrationsChanged()
@@ -220,8 +223,106 @@ public partial class ToolOverlayView : UserControl
             foreach (var g in _glyphs.Values) g.Hide();
         }
 
-        DrawParts(settings, availW, availH, scale);
+        // Part Alignment is deprecated: its saved fiducials / objects are no longer drawn on the
+        // production views (Run feed, zoom inset, camera pop-out) — only on a teach page.
+        if (AlwaysShow) DrawParts(settings, availW, availH, scale);
+        else _partLayer.Children.Clear();
         DrawBeacons(settings, availW, availH, scale);
+        DrawDetections(settings, availW, availH, scale);
+    }
+
+    /// <summary>
+    /// The recent <c>vision.detectObject</c> results on this camera, in thin yellow: the outline
+    /// of what was matched (template box / the two corner edges / line / circle), a ringed cross
+    /// at the point found, a pointer along its angle P (0° = up, clockwise +) and a label. Held
+    /// in the camera device's axis values, so a mark stays on the object while the camera moves;
+    /// outside the picture it is pinned to the nearest edge with its distance. Each fades out
+    /// over the last quarter of <see cref="Horizon.Workflow.DetectionMark.Lifetime"/>. Drawn
+    /// whatever <see cref="Horizon.Common.AppSettings.ShowToolOverlay"/> says.
+    /// </summary>
+    private void DrawDetections(Horizon.Common.AppSettings settings, double availW, double availH, double scale)
+    {
+        _detectLayer.Children.Clear();
+        if (_host == null || _camera == null) return;
+        _detectLayer.Width = availW;
+        _detectLayer.Height = availH;
+
+        var marks = _host.Process.GetDetectionMarks();
+        if (marks.Count == 0) return;
+        var now = DateTimeOffset.Now;
+
+        foreach (var mark in marks)
+        {
+            if (!string.Equals(mark.CameraId, _camera, StringComparison.OrdinalIgnoreCase)) continue;
+            var cam = _host.Engine.Motion.GetState(mark.Device);
+            if (!cam.Valid) continue;
+            double dxMm = mark.X - cam.Position.X, dyMm = mark.Y - cam.Position.Y;
+            if (ToolOverlayMath.MmToSourcePx(dxMm, dyMm, settings) is not { } off) continue;
+
+            var centre = ToolOverlayMath.ToDisplay(off.DxPx, off.DyPx, availW, availH, scale);
+            var at = ToolOverlayMath.ClampToBox(centre, availW, availH, EdgeInset, out bool clamped);
+            double opacity = Math.Clamp((1 - mark.Age(now)) * 4, 0, 1);   // full, then fades over the last quarter
+
+            // What was matched, at its true place (the canvas clips whatever is out of the picture).
+            foreach (var shape in mark.Outline ?? Array.Empty<IReadOnlyList<Horizon.Workflow.OutlinePoint>>())
+            {
+                var points = new PointCollection(shape.Count);
+                foreach (var v in shape)
+                {
+                    if (ToolOverlayMath.MmToSourcePx(v.X - cam.Position.X, v.Y - cam.Position.Y, settings) is not { } o) continue;
+                    points.Add(ToolOverlayMath.ToDisplay(o.DxPx, o.DyPx, availW, availH, scale));
+                }
+                if (points.Count >= 2)
+                    Add(new Polyline { Points = points, Stroke = DetectBrush, StrokeThickness = 1.5, StrokeLineJoin = PenLineJoin.Round }, 0, 0);
+            }
+
+            const double ring = 9, arm = 15, pointer = 34;
+            Add(new Ellipse { Width = ring * 2, Height = ring * 2, Stroke = DetectBrush, StrokeThickness = 1 }, at.X - ring, at.Y - ring);
+            Stroke(at.X - arm, at.Y, at.X + arm, at.Y);
+            Stroke(at.X, at.Y - arm, at.X, at.Y + arm);
+
+            // Angle pointer — only for a real detection in the picture (an operator mark has no angle).
+            if (!clamped && !mark.Manual)
+            {
+                double rad = mark.P * Math.PI / 180.0, ux = Math.Sin(rad), uy = -Math.Cos(rad);
+                var tip = new Point(at.X + ux * pointer, at.Y + uy * pointer);
+                Stroke(at.X + ux * ring, at.Y + uy * ring, tip.X, tip.Y);
+                var back = new Point(tip.X - ux * 9, tip.Y - uy * 9);
+                Add(new Polygon
+                {
+                    Fill = DetectBrush,
+                    Points = new PointCollection { tip, new(back.X - uy * 4.5, back.Y + ux * 4.5), new(back.X + uy * 4.5, back.Y - ux * 4.5) },
+                }, 0, 0);
+            }
+
+            string text = clamped
+                ? $"{mark.Label}  {Math.Sqrt(dxMm * dxMm + dyMm * dyMm):0.00} mm"
+                : mark.Manual
+                    ? $"{mark.Label} (marked)  X {mark.X:F4}  Y {mark.Y:F4}"
+                    : $"{mark.Label}  X {mark.X:F4}  Y {mark.Y:F4}  P {mark.P:F2}°";
+            var label = new Border
+            {
+                Background = LabelBg, CornerRadius = new CornerRadius(2), Padding = new Thickness(4, 1, 4, 1),
+                Child = new TextBlock { Text = text, Foreground = DetectBrush, FontSize = 11, FontWeight = FontWeights.SemiBold },
+            };
+            label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double lx = at.X + arm + 4, ly = at.Y + arm - 2;
+            if (lx + label.DesiredSize.Width > availW) lx = at.X - arm - 4 - label.DesiredSize.Width;
+            if (ly + label.DesiredSize.Height > availH) ly = at.Y - arm - label.DesiredSize.Height;
+            Add(label, Math.Max(0, lx), Math.Max(0, ly));
+
+            void Add(UIElement element, double left, double top)
+            {
+                element.Opacity = opacity;
+                Canvas.SetLeft(element, left); Canvas.SetTop(element, top);
+                _detectLayer.Children.Add(element);
+            }
+
+            void Stroke(double x1, double y1, double x2, double y2)
+            {
+                Add(new Line { X1 = x1, Y1 = y1, X2 = x2, Y2 = y2, Stroke = DetectBrush, StrokeThickness = 1 }, 0, 0);
+            }
+        }
     }
 
     /// <summary>

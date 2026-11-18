@@ -549,6 +549,12 @@ public interface IProcessService
     Task<Result<DetectedObject>> RunDetectObjectAsync(
         DetectObjectRequest request, Action<DetectedObject>? onResult = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// The recent Detect Object results (found ones), oldest first — each stays for
+    /// <see cref="DetectionMark.Lifetime"/> so the live views can show where the object was found.
+    /// </summary>
+    IReadOnlyList<DetectionMark> GetDetectionMarks();
+
     /// <summary>Converts a detector result taken at <paramref name="camPose"/> into the block's X / Y (camera device mm) and P (0° up, clockwise +).</summary>
     DetectedObject ToDetectedObject(
         VisionProfile profile, VisionDetectResult result, MotionPosition camPose, int srcW, int srcH);

@@ -11,7 +11,10 @@
         <TabItem x:Name="GrippedTab" Header="Gripped FAU">
             <ContentControl x:Name="GrippedHost" />
         </TabItem>
-        <TabItem x:Name="PartTab" Header="Part Alignment">
+        <!-- Deprecated: the tab is kept (greyed out) so it is clear where the feature went. -->
+        <TabItem x:Name="PartTab" Header="Part Alignment (deprecated)" IsEnabled="False"
+                 ToolTipService.ShowOnDisabled="True"
+                 ToolTip="Part Alignment is deprecated and switched off. Use a Detect Object block instead.">
             <ContentControl x:Name="PartHost" />
         </TabItem>
     </TabControl>
