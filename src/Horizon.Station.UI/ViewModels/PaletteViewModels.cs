@@ -25,5 +25,9 @@ public sealed class PaletteCategoryViewModel
     }
 
     public string Category { get; }
+
+    /// <summary>The category's badge, shown beside the group caption.</summary>
+    public CategoryIcon Icon => CategoryIcons.For(Category);
+
     public ObservableCollection<PaletteItemViewModel> Items { get; } = new();
 }

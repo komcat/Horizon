@@ -341,7 +341,7 @@ SiPhOG, DUT Data, find-first-light, Testing Ground, `ScanPanelStore`, its settin
   back — the `.hwf` format is unchanged and Start is never written. Node positions are a view
   preference in `program_canvas_layout.json` (`ProgramCanvasLayoutStore`, per product + program,
   keyed by block UID); a program with none is laid out top to bottom. Nodes not reachable from
-  Start are faded, are skipped by Run and **block Save / Commit**. Param editing
+  Start are faded, are skipped by Run and **block Save / Commit**. Toolbar: **Run Selected** (one node), **Run From** (selected step to the end — earlier steps are skipped), **Pause / Resume** (`IProcessService.Pause` — the current block finishes, then the run waits). A block's context menu starts a **new column** there: the arrow becomes an E1 / E2 marker pair (three columns at most), saved with the layout. **Folding**: an If / Loop Start / Group Start block with a matching closer folds (▾ on the block) — the blocks through the closer hide behind it, still in the sequence and still run; saved with the layout. Every block and palette group carries its **category badge** (`ViewModels/CategoryIcons.cs` — one vector glyph + tile colour per `OpSpec.Category`; preview `docs/engineer-category-icons.png`; a new category needs an entry there or it shows the "Other" badge). Param editing
   reuses `OpCatalog`/`ProcessBlockViewModel`. Each block has a stable
   UID; a dirty marker + a **History** window (revisions/diff + a UID query tab) sit on
   the SQLite history store. *This replaced the old flat `EngineerView` /

@@ -77,7 +77,7 @@ public sealed class CanvasNodeViewModel : ObservableObject
         Kind = kind;
         Uid = uid;
         Block = block;
-        _width = kind == CanvasNodeKind.Start ? 96 : 180;
+        _width = kind == CanvasNodeKind.Start ? 96 : 200;
         _height = kind switch { CanvasNodeKind.Start => 34, CanvasNodeKind.Block => 58, _ => 110 };
         Branches.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasNoBranches));
     }
@@ -141,11 +141,41 @@ public sealed class CanvasNodeViewModel : ObservableObject
 
     public bool IsSelected { get => _isSelected; set => SetField(ref _isSelected, value); }
 
+    private bool _isCollapsed;
+    private bool _isHidden;
+    private bool _canCollapse;
+    private string _collapsedText = string.Empty;
+
+    /// <summary>
+    /// True on an If / Loop Start / Group Start block that is folded: every block from the
+    /// one after it through its matching closer is hidden, and this one block stands for
+    /// the whole range. Layout only — the hidden blocks stay in the sequence and still run.
+    /// </summary>
+    public bool IsCollapsed { get => _isCollapsed; set => SetField(ref _isCollapsed, value); }
+
+    /// <summary>True while a folded opener earlier in the chain hides this node.</summary>
+    public bool IsHidden { get => _isHidden; set => SetField(ref _isHidden, value); }
+
+    /// <summary>True for an opener with a matching closer further down the chain — it can be folded.</summary>
+    public bool CanCollapse { get => _canCollapse; set => SetField(ref _canCollapse, value); }
+
+    /// <summary>Caption shown on a folded opener, e.g. "5 steps folded · to End If".</summary>
+    public string CollapsedText { get => _collapsedText; set => SetField(ref _collapsedText, value); }
+
     /// <summary>True when no chain of arrows from Start reaches this node — it would not run.</summary>
     public bool IsOrphan { get => _isOrphan; set => SetField(ref _isOrphan, value); }
 
     /// <summary>True while a drag hovers this envelope — drives the drop highlight.</summary>
     public bool IsDropTarget { get => _isDropTarget; set => SetField(ref _isDropTarget, value); }
+
+    private bool _isColumnBreak;
+
+    /// <summary>
+    /// True when the sequence continues in a new column at this node: the arrow into it is
+    /// drawn as a pair of E markers (one under the previous node, one above this one)
+    /// instead of a curve across the canvas. Layout only.
+    /// </summary>
+    public bool IsColumnBreak { get => _isColumnBreak; set => SetField(ref _isColumnBreak, value); }
 
     public ConditionRegion Region { get => _region; set => SetField(ref _region, value); }
 
@@ -175,10 +205,33 @@ public sealed class LinkViewModel : ObservableObject
     private Geometry? _data;
     private Geometry? _head;
     private bool _isSelected;
+    private bool _isBreak;
+    private string _label = string.Empty;
+    private double _exitLeft, _exitTop, _entryLeft, _entryTop;
 
     public Geometry? Data { get => _data; set => SetField(ref _data, value); }
     public Geometry? Head { get => _head; set => SetField(ref _head, value); }
     public bool IsSelected { get => _isSelected; set => SetField(ref _isSelected, value); }
+
+    /// <summary>
+    /// True for the arrow leaving a folded opener: it stands for the arrow after the hidden
+    /// closer, so it cannot be removed until the range is unfolded.
+    /// </summary>
+    public bool IsVirtual { get; init; }
+
+    /// <summary>True when this arrow is a column break — drawn as two E markers, not one curve.</summary>
+    public bool IsBreak { get => _isBreak; set => SetField(ref _isBreak, value); }
+
+    /// <summary>The marker caption of a column break: E1 or E2.</summary>
+    public string Label { get => _label; set => SetField(ref _label, value); }
+
+    /// <summary>Top-left of the marker under the previous node (the temporary end).</summary>
+    public double ExitLeft { get => _exitLeft; set => SetField(ref _exitLeft, value); }
+    public double ExitTop { get => _exitTop; set => SetField(ref _exitTop, value); }
+
+    /// <summary>Top-left of the marker above the node the sequence continues at.</summary>
+    public double EntryLeft { get => _entryLeft; set => SetField(ref _entryLeft, value); }
+    public double EntryTop { get => _entryTop; set => SetField(ref _entryTop, value); }
 }
 
 /// <summary>One stage row of the background grid: a number and a dashed line under it.</summary>
@@ -229,6 +282,36 @@ public static class LinkRouter
             }
 
         return Build(best.Out.Point, best.Out.Normal, best.In.Point, best.In.Normal);
+    }
+
+    /// <summary>Diameter of a column-break marker circle.</summary>
+    public const double MarkerSize = 34;
+
+    private const double MarkerStub = 22;   // arrow length between a node and its marker
+
+    /// <summary>
+    /// Routes a column break: a short arrow from under <paramref name="from"/> down into the
+    /// exit marker, and a short arrow from the entry marker down into the top of
+    /// <paramref name="to"/>. Returns the two arrows plus the centre of each marker.
+    /// </summary>
+    public static (Geometry Data, Geometry Head, Point Exit, Point Entry) RouteBreak(CanvasNodeViewModel from, CanvasNodeViewModel to)
+    {
+        var p1 = new Point(from.X + from.Width / 2, from.Y + from.Height);
+        var p2 = new Point(p1.X, p1.Y + MarkerStub);
+        var q2 = new Point(to.X + to.Width / 2, to.Y);
+        var q1 = new Point(q2.X, q2.Y - MarkerStub);
+
+        var data = new PathGeometry();
+        var head = new PathGeometry();
+        foreach (var (a, b) in new[] { (p1, p2), (q1, q2) })
+        {
+            var (d, h) = Build(a, Down, b, Down);
+            data.AddGeometry(d);
+            head.AddGeometry(h);
+        }
+        data.Freeze();
+        head.Freeze();
+        return (data, head, new Point(p2.X, p2.Y + MarkerSize / 2), new Point(q1.X, q1.Y - MarkerSize / 2));
     }
 
     /// <summary>The curve drawn while a new arrow is being dragged out of a port.</summary>

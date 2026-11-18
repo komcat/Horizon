@@ -32,7 +32,10 @@ public sealed class TimelineEditorViewModel : ObservableObject
     private const int SpareRows = 4;
     private const int MaxRow = 5000;
 
-    private const double MinZoom = 0.5;
+    private const double ColumnGap = 110;   // free space between two columns of the sequence
+    private const int MaxColumnBreaks = 2;  // three columns at most: Start, E1, E2
+
+    private const double MinZoom = 0.3;
     private const double MaxZoom = 1.5;
     private const double ZoomStep = 0.1;
 
@@ -56,6 +59,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     private List<WorkflowStep>? _clipboard;
 
     private bool _isRunning;
+    private bool _isPaused;
     private bool _isConnecting;
     private double _zoom = 1.0;
     private double _canvasWidth = 900;
@@ -70,6 +74,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     private readonly List<CanvasNodeViewModel?> _topLevelNode = new();             // top-level step index → envelope (null = inline block)
     private readonly Dictionary<int, ProcessBlockViewModel> _inlineBlock = new();  // top-level step index → block
     private CanvasNodeViewModel? _runningNode;
+    private readonly Dictionary<int, CanvasNodeViewModel> _stepNode = new();        // top-level step index → the node it came from
 
     public TimelineEditorViewModel(EngineHost host)
     {
@@ -86,8 +91,10 @@ public sealed class TimelineEditorViewModel : ObservableObject
         AddParallelCommand = new RelayCommand(AddParallel);
         TidyCommand = new RelayCommand(Tidy);
         RemoveBlockCommand = new RelayCommand(DeleteSelection, () => _selectedBlock != null);
-        RunCommand = new AsyncRelayCommand(() => RunAsync(null, null), () => !_isRunning);
+        RunCommand = new AsyncRelayCommand(() => RunAsync(null, null, null), () => !_isRunning);
         RunSelectedCommand = new AsyncRelayCommand(RunSelectedAsync, () => !_isRunning && HasRunnableSelection());
+        RunFromCommand = new AsyncRelayCommand(RunFromSelectedAsync, () => !_isRunning && RunFromNode() != null);
+        PauseCommand = new RelayCommand(TogglePause, () => _isRunning);
         StopCommand = new RelayCommand(() => _runCts?.Cancel(), () => _isRunning);
         ZoomInCommand = new RelayCommand(() => Zoom += ZoomStep, () => _zoom < MaxZoom - 1e-6);
         ZoomOutCommand = new RelayCommand(() => Zoom -= ZoomStep, () => _zoom > MinZoom + 1e-6);
@@ -222,6 +229,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
             OnPropertyChanged(nameof(ShowEmptyHint));
             RemoveBlockCommand.RaiseCanExecuteChanged();
             RunSelectedCommand.RaiseCanExecuteChanged();
+            RunFromCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -268,7 +276,50 @@ public sealed class TimelineEditorViewModel : ObservableObject
             if (!SetField(ref _isRunning, value)) return;
             RunCommand.RaiseCanExecuteChanged();
             RunSelectedCommand.RaiseCanExecuteChanged();
+            RunFromCommand.RaiseCanExecuteChanged();
+            PauseCommand.RaiseCanExecuteChanged();
             StopCommand.RaiseCanExecuteChanged();
+            if (!value) IsPaused = false;
+        }
+    }
+
+    /// <summary>
+    /// True while the run is held: the block in progress finishes, then the runner waits
+    /// before the next one until Resume. Mirrors Layer 2's <c>PausedChanged</c>.
+    /// </summary>
+    public bool IsPaused
+    {
+        get => _isPaused;
+        private set { if (SetField(ref _isPaused, value)) OnPropertyChanged(nameof(PauseLabel)); }
+    }
+
+    /// <summary>Caption of the Pause / Resume toggle.</summary>
+    public string PauseLabel => _isPaused ? "Resume" : "Pause";
+
+    private void TogglePause()
+    {
+        if (!_isRunning) return;
+        if (_host.Process.IsPaused)
+        {
+            _host.Process.Resume();
+        }
+        else
+        {
+            _host.Process.Pause();
+            Status = "Pausing — the current block finishes, then the run waits for Resume.";
+        }
+    }
+
+    private void OnPausedChanged(bool paused)
+    {
+        if (_dispatcher.CheckAccess()) Apply();
+        else _dispatcher.BeginInvoke(() => Apply());
+
+        void Apply()
+        {
+            if (!_isRunning) return;
+            IsPaused = paused;
+            Status = paused ? "Paused — press Resume to continue with the next block." : "Running…";
         }
     }
 
@@ -282,6 +333,8 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public RelayCommand RemoveBlockCommand { get; }
     public AsyncRelayCommand RunCommand { get; }
     public AsyncRelayCommand RunSelectedCommand { get; }
+    public AsyncRelayCommand RunFromCommand { get; }
+    public RelayCommand PauseCommand { get; }
     public RelayCommand StopCommand { get; }
     public RelayCommand ZoomInCommand { get; }
     public RelayCommand ZoomOutCommand { get; }
@@ -295,6 +348,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         if (_subscribed) return;
         _host.Process.StepEvent += OnStep;
         _host.Process.LogEmitted += OnLog;
+        _host.Process.PausedChanged += OnPausedChanged;
         _subscribed = true;
     }
 
@@ -303,6 +357,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         if (!_subscribed) return;
         _host.Process.StepEvent -= OnStep;
         _host.Process.LogEmitted -= OnLog;
+        _host.Process.PausedChanged -= OnPausedChanged;
         _subscribed = false;
     }
 
@@ -402,6 +457,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     /// <summary>Draws an arrow from <paramref name="from"/> to <paramref name="to"/> (drag between ports).</summary>
     public void Connect(CanvasNodeViewModel from, CanvasNodeViewModel to)
     {
+        from = EndOf(from);   // a folded block's arrow leaves its hidden closer
         if (ReferenceEquals(from, to)) return;
         if (to.Kind == CanvasNodeKind.Start) { Status = "Nothing runs before Start."; return; }
         if (Reaches(to, from)) { Status = "That arrow would make a loop — the sequence runs one way only."; return; }
@@ -415,6 +471,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     /// <summary>Removes a node's outgoing arrow.</summary>
     public void Disconnect(CanvasNodeViewModel node)
     {
+        node = EndOf(node);   // a folded block's arrow leaves its hidden closer
         if (node.Next == null) return;
         Link(node, null);
         MarkDirty();
@@ -441,15 +498,173 @@ public sealed class TimelineEditorViewModel : ObservableObject
         }
 
         RecomputeConditionRegions(chain);
+        RecomputeCollapse(chain, inChain);
+
+        // A column break lives on the arrow into its node — it goes when that arrow goes
+        // (node unlinked, deleted, or no longer reachable from Start).
+        foreach (var node in Nodes)
+            if (node.IsColumnBreak && (!inChain.Contains(node) || node.Prev == null || node.Kind == CanvasNodeKind.Start))
+                node.IsColumnBreak = false;
+        var breakLabel = new Dictionary<CanvasNodeViewModel, string>();
+        int flagged = 0;
+        foreach (var node in chain)
+        {
+            if (!node.IsColumnBreak) continue;
+            if (++flagged > MaxColumnBreaks) { node.IsColumnBreak = false; continue; }
+            if (!node.IsHidden) breakLabel[node] = $"E{breakLabel.Count + 1}";
+        }
 
         _selectedLink = null;
         Links.Clear();
         foreach (var node in Nodes)
-            if (node.Next != null && Nodes.Contains(node.Next))
-                Links.Add(new LinkViewModel(node, node.Next));
+        {
+            if (node.IsHidden) continue;
+            // A folded opener's arrow is the one leaving its hidden closer.
+            var folded = _collapseEnd.TryGetValue(node, out var closer);
+            var target = folded ? closer!.Next : node.Next;
+            if (target == null || !Nodes.Contains(target)) continue;
+
+            var link = new LinkViewModel(node, target) { IsVirtual = folded };
+            if (breakLabel.TryGetValue(target, out var label))
+            {
+                link.IsBreak = true;
+                link.Label = label;
+            }
+            Links.Add(link);
+        }
 
         Relayout();
         RunSelectedCommand.RaiseCanExecuteChanged();
+        RunFromCommand.RaiseCanExecuteChanged();
+    }
+
+    // --- folding: If … End If, Loop Start … Loop End, Group Start … Group End ---
+
+    // Rebuilt by RecomputeCollapse() on every structural change.
+    private readonly Dictionary<CanvasNodeViewModel, CanvasNodeViewModel> _collapseEnd = new();   // folded opener → its closer
+    private readonly Dictionary<CanvasNodeViewModel, CanvasNodeViewModel> _hiddenOwner = new();   // hidden node → the folded opener standing for it
+
+    private static string OpOf(CanvasNodeViewModel node) => node.Block?.OpKey.ToLowerInvariant() ?? string.Empty;
+
+    /// <summary>The closer op that ends the range an opener op starts, or null when <paramref name="op"/> opens nothing.</summary>
+    private static string? CloserFor(string op) => op switch
+    {
+        "flow.if" or "flow.ifsignal" or "flow.ifposition" => "flow.endif",
+        "flow.loopstart" => "flow.loopend",
+        "flow.groupstart" => "flow.groupend",
+        _ => null,
+    };
+
+    /// <summary>Index of the closer matching the opener at <paramref name="i"/> (nesting-aware), or -1.</summary>
+    private static int MatchingCloser(List<CanvasNodeViewModel> chain, int i)
+    {
+        var closer = CloserFor(OpOf(chain[i]));
+        if (closer == null) return -1;
+        int depth = 0;
+        for (int j = i + 1; j < chain.Count; j++)
+        {
+            var op = OpOf(chain[j]);
+            if (CloserFor(op) == closer) depth++;
+            else if (op == closer)
+            {
+                if (depth == 0) return j;
+                depth--;
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// Works out which openers can fold and, for the folded ones, which nodes they hide.
+    /// A fold nested inside another folded range keeps its own state but is simply hidden
+    /// with the rest; an opener that lost its closer (or left the chain) unfolds.
+    /// </summary>
+    private void RecomputeCollapse(List<CanvasNodeViewModel> chain, HashSet<CanvasNodeViewModel> inChain)
+    {
+        _collapseEnd.Clear();
+        _hiddenOwner.Clear();
+        foreach (var node in Nodes)
+        {
+            node.IsHidden = false;
+            node.CanCollapse = false;
+            node.CollapsedText = string.Empty;
+            if (!inChain.Contains(node)) node.IsCollapsed = false;
+        }
+
+        for (int i = 0; i < chain.Count; i++)
+        {
+            var node = chain[i];
+            int j = MatchingCloser(chain, i);
+            node.CanCollapse = j > i;
+            if (j < 0) { node.IsCollapsed = false; continue; }
+            if (!node.IsCollapsed || node.IsHidden) continue;
+
+            _collapseEnd[node] = chain[j];
+            for (int k = i + 1; k <= j; k++)
+            {
+                chain[k].IsHidden = true;
+                _hiddenOwner[chain[k]] = node;
+            }
+            node.CollapsedText = $"{j - i} step(s) folded · to {chain[j].Block?.Display ?? "end"}";
+            node.Ordinal = $"{i + 1}–{j + 1}";
+        }
+    }
+
+    /// <summary>The last node a (possibly folded) node stands for — its hidden closer, else itself.</summary>
+    private CanvasNodeViewModel EndOf(CanvasNodeViewModel node)
+        => _collapseEnd.TryGetValue(node, out var closer) ? closer : node;
+
+    /// <summary>A node plus, when it is folded, every node it hides (in chain order).</summary>
+    private List<CanvasNodeViewModel> WithFolded(CanvasNodeViewModel node)
+    {
+        var list = new List<CanvasNodeViewModel> { node };
+        if (!_collapseEnd.TryGetValue(node, out var closer)) return list;
+        var seen = new HashSet<CanvasNodeViewModel> { node };
+        for (var n = node.Next; n != null && seen.Add(n); n = n.Next)
+        {
+            list.Add(n);
+            if (ReferenceEquals(n, closer)) break;
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// Folds / unfolds an If, Loop Start or Group Start block: the blocks through its
+    /// matching closer hide behind it. Layout only — the sequence and the program file
+    /// are unchanged, and the hidden blocks still run.
+    /// </summary>
+    public void ToggleCollapse(CanvasNodeViewModel node)
+    {
+        if (!node.IsCollapsed && !node.CanCollapse)
+        {
+            Status = CloserFor(OpOf(node)) == null
+                ? "Only If, Loop Start and Group Start blocks can be folded."
+                : "Can't fold — no matching closing block further down the sequence.";
+            return;
+        }
+
+        node.IsCollapsed = !node.IsCollapsed;
+        RefreshChain();
+        if (node.IsCollapsed)
+        {
+            SelectNode(node, range: false);   // anything selected inside is now hidden
+            Status = $"Folded — {node.CollapsedText}. The hidden steps still run.";
+        }
+        else
+        {
+            Status = "Unfolded.";
+        }
+        PersistLayout(onlyIfSaved: true);
+    }
+
+    /// <summary>Unfolds whatever hides <paramref name="node"/>, so it can be shown and selected.</summary>
+    private void Reveal(CanvasNodeViewModel node)
+    {
+        for (int guard = 0; guard < 64 && _hiddenOwner.TryGetValue(node, out var opener); guard++)
+        {
+            opener.IsCollapsed = false;
+            RefreshChain();
+        }
     }
 
     /// <summary>
@@ -491,10 +706,20 @@ public sealed class TimelineEditorViewModel : ObservableObject
         foreach (var node in Nodes) maxRow = Math.Max(maxRow, node.Row);
         int count = Math.Max(MinRows, maxRow + 1 + SpareRows);
 
+        // A row holding only folded-away nodes closes up to nothing.
         var heights = new double[count];
+        var used = new bool[count];
+        var shown = new bool[count];
         Array.Fill(heights, MinRowHeight);
         foreach (var node in Nodes)
+        {
+            used[node.Row] = true;
+            if (node.IsHidden) continue;
+            shown[node.Row] = true;
             heights[node.Row] = Math.Max(heights[node.Row], node.Height + 2 * RowPad);
+        }
+        for (int i = 0; i < count; i++)
+            if (used[i] && !shown[i]) heights[i] = 0;
 
         while (Rows.Count < count) Rows.Add(new GridRowViewModel());
         while (Rows.Count > count) Rows.RemoveAt(Rows.Count - 1);
@@ -513,7 +738,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         {
             if (!ReferenceEquals(node, DraggingNode))
                 node.Y = Rows[node.Row].Top + RowPad;
-            right = Math.Max(right, node.X + node.Width);
+            if (!node.IsHidden) right = Math.Max(right, node.X + node.Width);
         }
 
         CanvasHeight = top + 20;
@@ -525,7 +750,21 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public void UpdateLinks()
     {
         foreach (var link in Links)
-            (link.Data, link.Head) = LinkRouter.Route(link.From, link.To);
+        {
+            if (!link.IsBreak)
+            {
+                (link.Data, link.Head) = LinkRouter.Route(link.From, link.To);
+                continue;
+            }
+
+            var (data, head, exit, entry) = LinkRouter.RouteBreak(link.From, link.To);
+            link.Data = data;
+            link.Head = head;
+            link.ExitLeft = exit.X - LinkRouter.MarkerSize / 2;
+            link.ExitTop = exit.Y - LinkRouter.MarkerSize / 2;
+            link.EntryLeft = entry.X - LinkRouter.MarkerSize / 2;
+            link.EntryTop = entry.Y - LinkRouter.MarkerSize / 2;
+        }
     }
 
     /// <summary>The stage row at canvas height <paramref name="y"/> (the last row when below the grid).</summary>
@@ -540,7 +779,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public CanvasNodeViewModel? NodeAt(Point p, CanvasNodeViewModel? except = null)
     {
         for (int i = Nodes.Count - 1; i >= 0; i--)
-            if (!ReferenceEquals(Nodes[i], except) && Nodes[i].Bounds.Contains(p))
+            if (!Nodes[i].IsHidden && !ReferenceEquals(Nodes[i], except) && Nodes[i].Bounds.Contains(p))
                 return Nodes[i];
         return null;
     }
@@ -549,7 +788,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public CanvasNodeViewModel? ParallelAt(Point p, CanvasNodeViewModel? except = null)
     {
         for (int i = Nodes.Count - 1; i >= 0; i--)
-            if (Nodes[i].Kind == CanvasNodeKind.Parallel && !ReferenceEquals(Nodes[i], except) && Nodes[i].Bounds.Contains(p))
+            if (Nodes[i].Kind == CanvasNodeKind.Parallel && !Nodes[i].IsHidden && !ReferenceEquals(Nodes[i], except) && Nodes[i].Bounds.Contains(p))
                 return Nodes[i];
         return null;
     }
@@ -595,35 +834,90 @@ public sealed class TimelineEditorViewModel : ObservableObject
         PersistLayout(onlyIfSaved: true);
     }
 
-    /// <summary>Re-arranges every node: the chain top to bottom, one per row; unconnected nodes in a second column.</summary>
+    /// <summary>
+    /// Re-arranges every node: the chain top to bottom, one per row, starting a new column
+    /// (back at row 1) at each column break; unconnected nodes go in a last column.
+    /// </summary>
     private void Tidy()
     {
-        StartNode.X = DefaultX;
-        StartNode.Row = 0;
+        ArrangeColumns();
+        Status = "Canvas tidied.";
+    }
+
+    private void ArrangeColumns()
+    {
+        double x = DefaultX;
+        double widest = StartNode.Width;
         int row = 1;
+        StartNode.X = x;
+        StartNode.Row = 0;
         foreach (var node in Chain())
         {
-            node.X = DefaultX;
+            if (node.IsColumnBreak && !node.IsHidden)
+            {
+                x += widest + ColumnGap;
+                widest = 0;
+                row = 1;   // row 0 of the new column holds the entry marker
+            }
+            node.X = x;
             node.Row = row++;
+            widest = Math.Max(widest, node.Width);
         }
+
+        x += widest + ColumnGap;
         row = 1;
         foreach (var node in Nodes.Where(n => n.IsOrphan))
         {
-            node.X = DefaultX + 420;
+            node.X = x;
             node.Row = row++;
         }
         Relayout();
         PersistLayout(onlyIfSaved: true);
-        Status = "Canvas tidied.";
+    }
+
+    /// <summary>
+    /// Starts a new column at <paramref name="node"/> (or undoes it): the rest of the
+    /// sequence moves to the top of the next column, and the arrow into the node becomes an
+    /// E marker pair. Three columns at most — E1 and E2. Layout only; execution is unchanged.
+    /// </summary>
+    public void ToggleColumnBreak(CanvasNodeViewModel node)
+    {
+        if (node.IsColumnBreak)
+        {
+            node.IsColumnBreak = false;
+            RefreshChain();
+            ArrangeColumns();
+            Status = "Column break removed.";
+            return;
+        }
+
+        if (node.Kind == CanvasNodeKind.Start || node.IsOrphan || node.Prev == null || ReferenceEquals(node.Prev, StartNode))
+        {
+            Status = "A new column can start at any connected block after the first one.";
+            return;
+        }
+        if (Nodes.Count(n => n.IsColumnBreak) >= MaxColumnBreaks)
+        {
+            Status = "Three columns at most (E1 and E2) — remove a column break first.";
+            return;
+        }
+
+        node.IsColumnBreak = true;
+        RefreshChain();
+        ArrangeColumns();
+        Status = "The sequence continues in a new column from here.";
     }
 
     /// <summary>Gives <paramref name="node"/> the row under <paramref name="anchor"/>, pushing later rows down if it is taken.</summary>
     private void PlaceAfter(CanvasNodeViewModel anchor, CanvasNodeViewModel node)
     {
         int row = Math.Min(anchor.Row + 1, MaxRow);
-        if (Nodes.Any(n => !ReferenceEquals(n, node) && n.Row == row))
+        // Only nodes in the anchor's column move down — other columns keep their rows.
+        bool SameColumn(CanvasNodeViewModel n)
+            => !ReferenceEquals(n, node) && n.X < anchor.X + anchor.Width && n.X + n.Width > anchor.X;
+        if (Nodes.Any(n => SameColumn(n) && n.Row == row))
             foreach (var n in Nodes)
-                if (!ReferenceEquals(n, node) && n.Row >= row && n.Row < MaxRow) n.Row++;
+                if (SameColumn(n) && n.Row >= row && n.Row < MaxRow) n.Row++;
         node.X = anchor.X;
         node.Row = row;
     }
@@ -637,7 +931,13 @@ public sealed class TimelineEditorViewModel : ObservableObject
 
         var spots = new Dictionary<string, CanvasSpot>(StringComparer.OrdinalIgnoreCase);
         foreach (var node in Nodes)
-            spots[node.Uid] = new CanvasSpot { X = Math.Round(node.X, 1), Row = node.Row };
+            spots[node.Uid] = new CanvasSpot
+            {
+                X = Math.Round(node.X, 1),
+                Row = node.Row,
+                ColumnBreak = node.IsColumnBreak,
+                Collapsed = node.IsCollapsed,
+            };
         try
         {
             ProgramCanvasLayoutStore.Save(product, name, spots);
@@ -661,6 +961,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
             _selectedNodes.Add(n);
         }
         RunSelectedCommand.RaiseCanExecuteChanged();
+        RunFromCommand.RaiseCanExecuteChanged();
     }
 
     private void SetSelectedLink(LinkViewModel? link)
@@ -726,6 +1027,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     {
         var owner = OwnerOf(block);
         if (owner == null) return;
+        Reveal(owner);
         if (owner.Kind == CanvasNodeKind.Block) SelectNode(owner, range: false);
         else SelectInnerBlock(block);
     }
@@ -748,7 +1050,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
         order.AddRange(Chain());
         var anchor = order.LastOrDefault(_selectedNodes.Contains);
         if (anchor == null && _anchorNode != null && order.Contains(_anchorNode)) anchor = _anchorNode;
-        return anchor ?? order[^1];
+        return EndOf(anchor ?? order[^1]);   // after a folded block = after its hidden closer
     }
 
     // --- adding / removing ---
@@ -879,8 +1181,11 @@ public sealed class TimelineEditorViewModel : ObservableObject
     public void RemoveNode(CanvasNodeViewModel node)
     {
         if (node.Kind == CanvasNodeKind.Start) return;
-        Detach(node);
-        Nodes.Remove(node);
+        foreach (var n in WithFolded(node))   // a folded block goes with everything it hides
+        {
+            Detach(n);
+            Nodes.Remove(n);
+        }
         _selectedNodes.Remove(node);
         node.IsSelected = false;
         if (ReferenceEquals(_anchorNode, node)) _anchorNode = null;
@@ -894,6 +1199,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
     {
         if (_selectedLink is { } link)
         {
+            if (link.IsVirtual) { Status = "Unfold the block first — this arrow leaves a step that is folded away."; return; }
             Disconnect(link.From);
             return;
         }
@@ -907,7 +1213,7 @@ public sealed class TimelineEditorViewModel : ObservableObject
             return;
         }
 
-        var doomed = _selectedNodes.Where(n => n.Kind != CanvasNodeKind.Start).ToList();
+        var doomed = _selectedNodes.Where(n => n.Kind != CanvasNodeKind.Start).SelectMany(WithFolded).Distinct().ToList();
         if (doomed.Count == 0) return;
         foreach (var node in doomed)
         {
@@ -956,7 +1262,9 @@ public sealed class TimelineEditorViewModel : ObservableObject
             var chain = Chain();
             var picked = _selectedNodes.Where(n => n.Kind != CanvasNodeKind.Start)
                 .OrderBy(n => { int i = chain.IndexOf(n); return i < 0 ? int.MaxValue : i; })
-                .ThenBy(n => n.Row);
+                .ThenBy(n => n.Row)
+                .SelectMany(WithFolded)   // a folded block copies with everything it hides
+                .Distinct();
             foreach (var node in picked)
             {
                 var step = NodeToStep(node);
@@ -1145,7 +1453,12 @@ public sealed class TimelineEditorViewModel : ObservableObject
         foreach (var step in program.Steps)
         {
             var node = NodeFromStep(step);
-            if (saved.TryGetValue(node.Uid, out var spot)) ApplySpot(node, spot);
+            if (saved.TryGetValue(node.Uid, out var spot))
+            {
+                ApplySpot(node, spot);
+                node.IsColumnBreak = spot.ColumnBreak;   // RefreshChain keeps the first two
+                node.IsCollapsed = spot.Collapsed;       // …and unfolds anything that isn't a matched opener
+            }
             else
             {
                 node.X = prev.X;
@@ -1349,44 +1662,52 @@ public sealed class TimelineEditorViewModel : ObservableObject
     /// from Start: a block emits its step; an envelope with one branch emits that branch's
     /// blocks inline (sequential); an envelope with two+ branches emits one
     /// <c>flow.parallel</c> step, one branch per lane. With <paramref name="onlyBlock"/> or
-    /// <paramref name="onlyNode"/> just that block / node is compiled ("Run Selected").
+    /// <paramref name="onlyNode"/> just that block / node is compiled ("Run Selected");
+    /// with <paramref name="fromNode"/> the chain from that node to the end ("Run From").
     /// Also rebuilds the run-highlight routing tables.
     /// </summary>
-    private WorkflowProgram BuildProgram(CanvasNodeViewModel? onlyNode = null, ProcessBlockViewModel? onlyBlock = null)
+    private WorkflowProgram BuildProgram(CanvasNodeViewModel? onlyNode = null, ProcessBlockViewModel? onlyBlock = null,
+        CanvasNodeViewModel? fromNode = null)
     {
         _topLevelNode.Clear();
         _inlineBlock.Clear();
 
+        _stepNode.Clear();
+
         var steps = new List<WorkflowStep>();
-        void Inline(ProcessBlockViewModel block)
+        void Inline(ProcessBlockViewModel block, CanvasNodeViewModel? owner)
         {
             _inlineBlock[steps.Count] = block;
+            if (owner != null) _stepNode[steps.Count] = owner;
             _topLevelNode.Add(null);
             steps.Add(block.ToStep());
         }
 
         if (onlyBlock != null)
         {
-            Inline(onlyBlock);
+            Inline(onlyBlock, OwnerOf(onlyBlock));
             return new WorkflowProgram { Name = ProgramName.Trim(), Steps = steps };
         }
 
         var chain = Chain();
-        var nodes = onlyNode != null ? new List<CanvasNodeViewModel> { onlyNode } : chain;
+        var nodes = onlyNode != null ? WithFolded(onlyNode)   // a folded block runs its whole range
+                  : fromNode != null ? chain.Skip(Math.Max(0, chain.IndexOf(fromNode))).ToList()
+                  : chain;
         foreach (var node in nodes)
         {
-            if (node.Block != null) { Inline(node.Block); continue; }
+            if (node.Block != null) { Inline(node.Block, node); continue; }
             if (node.Kind != CanvasNodeKind.Parallel) continue;
 
             var active = node.Branches.Where(b => b.Blocks.Count > 0).ToList();
             if (active.Count == 0) continue;
             if (active.Count == 1)
             {
-                foreach (var block in active[0].Blocks) Inline(block);
+                foreach (var block in active[0].Blocks) Inline(block, node);
                 continue;
             }
 
             int ordinal = chain.IndexOf(node) + 1;
+            _stepNode[steps.Count] = node;
             _topLevelNode.Add(node);
             steps.Add(new WorkflowStep
             {
@@ -1412,13 +1733,35 @@ public sealed class TimelineEditorViewModel : ObservableObject
     private async Task RunSelectedAsync()
     {
         if (_selectedNodes.Count == 1 && _selectedNodes[0].Kind != CanvasNodeKind.Start)
-            await RunAsync(_selectedNodes[0], null);
+            await RunAsync(_selectedNodes[0], null, null);
         else if (_selectedBlock != null)
-            await RunAsync(null, _selectedBlock);
+            await RunAsync(null, _selectedBlock, null);
     }
 
-    /// <summary>Runs the program, or only <paramref name="onlyNode"/> / <paramref name="onlyBlock"/> when set.</summary>
-    private async Task RunAsync(CanvasNodeViewModel? onlyNode, ProcessBlockViewModel? onlyBlock)
+    /// <summary>
+    /// The node "Run From" would start at: the one selected node, or the envelope holding
+    /// the selected block — provided it is on the chain from Start. Null otherwise.
+    /// </summary>
+    private CanvasNodeViewModel? RunFromNode()
+    {
+        var node = _selectedNodes.Count == 1 ? _selectedNodes[0]
+                 : _selectedNodes.Count == 0 && _selectedBlock != null ? OwnerOf(_selectedBlock)
+                 : null;
+        return node == null || node.Kind == CanvasNodeKind.Start || node.IsOrphan ? null : node;
+    }
+
+    /// <summary>Runs the sequence from the selected step to the end, skipping everything before it.</summary>
+    private async Task RunFromSelectedAsync()
+    {
+        if (RunFromNode() is { } node)
+            await RunAsync(null, null, node);
+    }
+
+    /// <summary>
+    /// Runs the program — or only <paramref name="onlyNode"/> / <paramref name="onlyBlock"/>,
+    /// or the chain from <paramref name="fromNode"/> to the end, when set.
+    /// </summary>
+    private async Task RunAsync(CanvasNodeViewModel? onlyNode, ProcessBlockViewModel? onlyBlock, CanvasNodeViewModel? fromNode)
     {
         if (IsRunning) return;
         bool partial = onlyNode != null || onlyBlock != null;
@@ -1440,8 +1783,16 @@ public sealed class TimelineEditorViewModel : ObservableObject
         if (!partial && orphans > 0)
             Log.Add($"{DateTimeOffset.Now:HH:mm:ss}  {orphans} node(s) are not connected to Start and will not run.");
 
-        var label = partial ? "the selection" : $"'{ProgramName.Trim()}'";
-        var program = BuildProgram(onlyNode, onlyBlock);
+        var label = partial ? "the selection"
+                  : fromNode != null ? $"'{ProgramName.Trim()}' from step {fromNode.Ordinal}"
+                  : $"'{ProgramName.Trim()}'";
+        if (fromNode != null)
+        {
+            Log.Add($"{DateTimeOffset.Now:HH:mm:ss}  Run from step {fromNode.Ordinal}: steps 1–{Math.Max(1, Chain().IndexOf(fromNode))} are skipped — variables, positions and outputs they would have set are NOT set.");
+            if (fromNode.Region != ConditionRegion.None)
+                Log.Add($"{DateTimeOffset.Now:HH:mm:ss}  Step {fromNode.Ordinal} is inside an If / Else branch whose If is skipped — the Else / End If after it may not behave as in a full run.");
+        }
+        var program = BuildProgram(onlyNode, onlyBlock, fromNode);
         if (program.Steps.Count == 0)
         {
             Status = partial ? "The selection has no blocks to run." : "Nothing to run — add a block after Start first.";
@@ -1490,6 +1841,8 @@ public sealed class TimelineEditorViewModel : ObservableObject
             if (ev.Lane == null)
             {
                 // Top-level step: either an inline block, or a flow.parallel marker.
+                _stepNode.TryGetValue(ev.Index, out var source);
+                MarkFolded(source, status);
                 if (_inlineBlock.TryGetValue(ev.Index, out var block))
                 {
                     block.RunStatus = status;
@@ -1509,6 +1862,17 @@ public sealed class TimelineEditorViewModel : ObservableObject
                     branch.Blocks[ev.Index].RunStatus = status;
             }
         }
+    }
+
+    /// <summary>
+    /// A step folded away behind an opener reports on that opener: it shows Running while
+    /// any hidden step runs, Failed as soon as one fails, and Passed once the closer is done.
+    /// </summary>
+    private void MarkFolded(CanvasNodeViewModel? source, string status)
+    {
+        if (source == null || !_hiddenOwner.TryGetValue(source, out var opener)) return;
+        if (status == "Passed" && !ReferenceEquals(EndOf(opener), source)) return;
+        opener.RunStatus = status;
     }
 
     /// <summary>

@@ -329,6 +329,7 @@ public partial class TimelineEditorView : UserControl
     private void OnNodeSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: CanvasNodeViewModel node } el) return;
+        if (el.ActualWidth <= 0 || el.ActualHeight <= 0) return;   // folded away — keep its last real size
         node.Width = el.ActualWidth;
         node.Height = el.ActualHeight;
         if (_relayoutQueued) return;
@@ -350,6 +351,17 @@ public partial class TimelineEditorView : UserControl
     private void OnDisconnectNode(object sender, RoutedEventArgs e)
     {
         if (NodeOf(sender) is { } node) _vm.Disconnect(node);
+    }
+
+    private void OnToggleCollapse(object sender, RoutedEventArgs e)
+    {
+        if (NodeOf(sender) is { } node) _vm.ToggleCollapse(node);
+        Focus();
+    }
+
+    private void OnToggleColumnBreak(object sender, RoutedEventArgs e)
+    {
+        if (NodeOf(sender) is { } node) _vm.ToggleColumnBreak(node);
     }
 
     private void OnCopyNode(object sender, RoutedEventArgs e)

@@ -7,6 +7,12 @@ public sealed class CanvasSpot
 {
     public double X { get; set; }
     public int Row { get; set; }
+
+    /// <summary>True when the sequence continues in a new column at this node (shown as an E1 / E2 marker pair).</summary>
+    public bool ColumnBreak { get; set; }
+
+    /// <summary>True when this If / Loop / Group opener is folded — the blocks through its closer are hidden.</summary>
+    public bool Collapsed { get; set; }
 }
 
 /// <summary>

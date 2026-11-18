@@ -71,6 +71,21 @@
                     <Setter Property="BorderBrush" Value="{StaticResource Danger}" />
                     <Setter Property="BorderThickness" Value="2" />
                 </DataTrigger>
+                <DataTrigger Binding="{Binding RunStatus}" Value="Running">
+                    <Setter Property="BorderBrush" Value="{StaticResource Warn}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding RunStatus}" Value="Passed">
+                    <Setter Property="BorderBrush" Value="{StaticResource Ok}" />
+                    <Setter Property="BorderThickness" Value="1" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding RunStatus}" Value="Failed">
+                    <Setter Property="BorderBrush" Value="{StaticResource Danger}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsCollapsed}" Value="True">
+                    <Setter Property="BorderThickness" Value="1,1,4,4" />
+                </DataTrigger>
                 <DataTrigger Binding="{Binding IsSelected}" Value="True">
                     <Setter Property="BorderBrush" Value="{StaticResource SelectedBlock}" />
                     <Setter Property="BorderThickness" Value="2" />
@@ -268,27 +283,63 @@
                 <Grid.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="Remove outgoing arrow" Click="OnDisconnectNode" />
+                        <MenuItem Header="Continue in a new column from here (E marker) — on / off" Click="OnToggleColumnBreak" />
                         <Separator />
                         <MenuItem Header="Copy" Click="OnCopyNode" />
                         <MenuItem Header="Paste after" Click="OnPasteAfterNode" />
                         <Separator />
+                        <MenuItem Header="Fold / unfold (If, Loop, Group)" Click="OnToggleCollapse" />
+                        <Separator />
                         <MenuItem Header="Delete block" Click="OnRemoveNode" />
                     </ContextMenu>
                 </Grid.ContextMenu>
-                <Border Style="{StaticResource NodeBox}" Width="180" MinHeight="48" ToolTip="{Binding Block.Summary}">
-                    <StackPanel>
-                        <DockPanel>
-                            <TextBlock DockPanel.Dock="Left" Text="{Binding Ordinal}" Foreground="{StaticResource Accent}"
-                                       FontSize="9.5" FontWeight="Bold" Margin="0,0,5,0" />
-                            <TextBlock DockPanel.Dock="Right" Text="{Binding Block.SelectedDevice}" Foreground="{StaticResource Subtle}"
-                                       FontSize="9.5" Margin="6,0,0,0" MaxWidth="80" TextTrimming="CharacterEllipsis"
-                                       Visibility="{Binding Block.ShowDevice, Converter={StaticResource BoolToVis}}" />
-                            <TextBlock Text="{Binding Block.Display}" Foreground="{StaticResource Subtle}" FontSize="9.5"
-                                       TextTrimming="CharacterEllipsis" />
-                        </DockPanel>
-                        <TextBlock Text="{Binding Block.ParamSummary}" Foreground="{StaticResource Text}" FontSize="12"
-                                   FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
-                    </StackPanel>
+                <Border Style="{StaticResource NodeBox}" Width="200" MinHeight="48" ToolTip="{Binding Block.Summary}">
+                    <DockPanel>
+                        <!-- Category badge: colour + glyph say what kind of command this is. -->
+                        <Border DockPanel.Dock="Left" Margin="0,1,7,0" Width="24" Height="24" CornerRadius="5" Background="{Binding Block.CategoryIcon.Fill}"
+                                VerticalAlignment="Top" ToolTip="{Binding Block.Spec.Category}">
+                            <Viewbox Margin="3">
+                                <Canvas Width="24" Height="24">
+                                    <Path Data="{Binding Block.CategoryIcon.Glyph}" Stroke="White" StrokeThickness="1.9"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                </Canvas>
+                            </Viewbox>
+                        </Border>
+                        <!-- Fold toggle: only on an If / Loop Start / Group Start with a matching closer. -->
+                        <Button DockPanel.Dock="Right" Width="18" Height="18" Padding="0" Margin="4,0,-3,0" FontSize="10"
+                                VerticalAlignment="Top" Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                Click="OnToggleCollapse"
+                                Visibility="{Binding CanCollapse, Converter={StaticResource BoolToVis}}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                    <Setter Property="Content" Value="▾" />
+                                    <Setter Property="ToolTip" Value="Fold: hide the steps through the matching closing block" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsCollapsed}" Value="True">
+                                            <Setter Property="Content" Value="▸" />
+                                            <Setter Property="ToolTip" Value="Unfold: show the hidden steps again" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <StackPanel>
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding Ordinal}" Foreground="{StaticResource Accent}"
+                                           FontSize="9.5" FontWeight="Bold" Margin="0,0,5,0" />
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding Block.SelectedDevice}" Foreground="{StaticResource Subtle}"
+                                           FontSize="9.5" Margin="6,0,0,0" MaxWidth="70" TextTrimming="CharacterEllipsis"
+                                           Visibility="{Binding Block.ShowDevice, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Text="{Binding Block.Display}" Foreground="{StaticResource Subtle}" FontSize="9.5"
+                                           TextTrimming="CharacterEllipsis" />
+                            </DockPanel>
+                            <TextBlock Text="{Binding Block.ParamSummary}" Foreground="{StaticResource Text}" FontSize="12"
+                                       FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                            <TextBlock Text="{Binding CollapsedText}" Foreground="{StaticResource Accent}" FontSize="10"
+                                       FontStyle="Italic" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
+                                       Visibility="{Binding IsCollapsed, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                    </DockPanel>
                 </Border>
                 <Ellipse Style="{StaticResource InPortDot}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,-6,0,0" />
                 <Ellipse Style="{StaticResource InPortDot}" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-6,0,0,0" />
@@ -304,6 +355,7 @@
                 <Grid.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="Remove outgoing arrow" Click="OnDisconnectNode" />
+                        <MenuItem Header="Continue in a new column from here (E marker) — on / off" Click="OnToggleColumnBreak" />
                         <Separator />
                         <MenuItem Header="Copy" Click="OnCopyNode" />
                         <MenuItem Header="Paste after" Click="OnPasteAfterNode" />
@@ -347,12 +399,23 @@
                                                                     <MenuItem Header="Move out of the parallel group" Click="OnMoveOutBlock" />
                                                                 </ContextMenu>
                                                             </Border.ContextMenu>
-                                                            <StackPanel>
-                                                                <TextBlock Text="{Binding Display}" Foreground="{StaticResource Subtle}"
-                                                                           FontSize="9.5" TextTrimming="CharacterEllipsis" />
-                                                                <TextBlock Text="{Binding ParamSummary}" Foreground="{StaticResource Text}"
-                                                                           FontSize="11.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                                            </StackPanel>
+                                                            <DockPanel>
+                                                                <Border DockPanel.Dock="Left" Margin="0,1,6,0" Width="20" Height="20" CornerRadius="4" Background="{Binding CategoryIcon.Fill}"
+                                                                        VerticalAlignment="Top" ToolTip="{Binding Spec.Category}">
+                                                                    <Viewbox Margin="2.5">
+                                                                        <Canvas Width="24" Height="24">
+                                                                            <Path Data="{Binding CategoryIcon.Glyph}" Stroke="White" StrokeThickness="1.9"
+                                                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                                                        </Canvas>
+                                                                    </Viewbox>
+                                                                </Border>
+                                                                <StackPanel>
+                                                                    <TextBlock Text="{Binding Display}" Foreground="{StaticResource Subtle}"
+                                                                               FontSize="9.5" TextTrimming="CharacterEllipsis" />
+                                                                    <TextBlock Text="{Binding ParamSummary}" Foreground="{StaticResource Text}"
+                                                                               FontSize="11.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                                </StackPanel>
+                                                            </DockPanel>
                                                         </Border>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
@@ -452,6 +515,30 @@
                                RenderOptions.BitmapScalingMode="HighQuality" />
                         <TextBlock Text="Run Selected" VerticalAlignment="Center" />
                     </StackPanel>
+                </Button>
+                <Button Width="100" Height="28" Margin="0,0,6,0" Command="{Binding RunFromCommand}"
+                        ToolTip="Run from the selected step to the end — the steps before it are skipped">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="/Horizon.Station.UI;component/assets/run-stage-button.png" Width="16" Height="16" Margin="0,0,5,0"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                        <TextBlock Text="Run From" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button Width="78" Height="28" Margin="0,0,6,0" Command="{Binding PauseCommand}"
+                        ToolTip="Pause: the current block finishes, then the run waits. Press again to resume with the next block.">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsPaused}" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource Warn}" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <TextBlock VerticalAlignment="Center">
+                        <Run Text="❚❚" FontSize="9" /><Run Text=" " /><Run Text="{Binding PauseLabel, Mode=OneWay}" />
+                    </TextBlock>
                 </Button>
                 <Button Width="72" Height="28" Command="{Binding StopCommand}" ToolTip="Stop">
                     <StackPanel Orientation="Horizontal">
@@ -576,8 +663,19 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel Margin="0,0,0,10">
-                                        <TextBlock Text="{Binding Category}" Foreground="{StaticResource Subtle}"
-                                                   FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                            <Border Margin="0,0,6,0" Width="18" Height="18" CornerRadius="4" Background="{Binding Icon.Fill}"
+                                                    VerticalAlignment="Top" ToolTip="{Binding Category}">
+                                                <Viewbox Margin="2.5">
+                                                    <Canvas Width="24" Height="24">
+                                                        <Path Data="{Binding Icon.Glyph}" Stroke="White" StrokeThickness="1.9"
+                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                                    </Canvas>
+                                                </Viewbox>
+                                            </Border>
+                                            <TextBlock Text="{Binding Category}" Foreground="{StaticResource Subtle}"
+                                                       FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        </StackPanel>
                                         <ItemsControl ItemsSource="{Binding Items}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
@@ -627,7 +725,7 @@
                             </ItemsControl.ItemContainerStyle>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Height="{Binding Height}"
+                                    <Grid Height="{Binding Height}" ClipToBounds="True"
                                           Width="{Binding DataContext.CanvasWidth, RelativeSource={RelativeSource AncestorType=UserControl}}">
                                         <TextBlock Text="{Binding Label}" Foreground="{StaticResource Subtle}" FontSize="13"
                                                    FontWeight="SemiBold" Margin="10,8,0,0" Opacity="0.8" />
@@ -652,6 +750,20 @@
                                               ToolTip="Click to select, then Delete to remove this arrow" />
                                         <Path Data="{Binding Data}" Style="{StaticResource LinkStroke}" />
                                         <Path Data="{Binding Head}" Style="{StaticResource LinkHead}" />
+                                        <!-- Column break: the temporary end under the previous block, and the
+                                             same marker above the block the sequence continues at. -->
+                                        <Grid Canvas.Left="{Binding ExitLeft}" Canvas.Top="{Binding ExitTop}" Width="34" Height="34"
+                                              IsHitTestVisible="False" Visibility="{Binding IsBreak, Converter={StaticResource BoolToVis}}">
+                                            <Ellipse Fill="{StaticResource Panel}" Stroke="{StaticResource Text}" StrokeThickness="1.4" />
+                                            <TextBlock Text="{Binding Label}" Foreground="{StaticResource Text}" FontSize="12" FontWeight="SemiBold"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Grid>
+                                        <Grid Canvas.Left="{Binding EntryLeft}" Canvas.Top="{Binding EntryTop}" Width="34" Height="34"
+                                              IsHitTestVisible="False" Visibility="{Binding IsBreak, Converter={StaticResource BoolToVis}}">
+                                            <Ellipse Fill="{StaticResource Panel}" Stroke="{StaticResource Text}" StrokeThickness="1.4" />
+                                            <TextBlock Text="{Binding Label}" Foreground="{StaticResource Text}" FontSize="12" FontWeight="SemiBold"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Grid>
                                     </Canvas>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -672,6 +784,12 @@
                                 <Style TargetType="ContentPresenter">
                                     <Setter Property="Canvas.Left" Value="{Binding X}" />
                                     <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                                    <Style.Triggers>
+                                        <!-- Folded away behind an If / Loop / Group block. -->
+                                        <DataTrigger Binding="{Binding IsHidden}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
                                 </Style>
                             </ItemsControl.ItemContainerStyle>
                         </ItemsControl>

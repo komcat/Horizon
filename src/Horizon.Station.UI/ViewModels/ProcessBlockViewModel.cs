@@ -135,6 +135,9 @@ public sealed class ProcessBlockViewModel : ObservableObject
     public string OpKey => Spec.OpKey;
     public string Display => Spec.Display;
 
+    /// <summary>The badge of this command's category — shown on the block so its purpose reads at a glance.</summary>
+    public CategoryIcon CategoryIcon => CategoryIcons.For(Spec.Category);
+
     /// <summary>One-line command help shown atop the parameter editor (from <see cref="OpCatalogHelp"/>); null when none authored.</summary>
     public string? HelpSummary => OpCatalogHelp.For(OpKey)?.Summary;
     public bool HasHelp => !string.IsNullOrWhiteSpace(HelpSummary);
