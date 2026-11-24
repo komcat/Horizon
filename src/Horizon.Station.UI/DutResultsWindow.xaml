@@ -56,6 +56,7 @@
                         <DataGridTextColumn Header="Level" Binding="{Binding Level}" Width="90" />
                         <DataGridTextColumn Header="Machine" Binding="{Binding Station}" Width="120" />
                         <DataGridTextColumn Header="Credential" Binding="{Binding Credential}" Width="140" />
+                        <DataGridTextColumn Header="Positions" Binding="{Binding Positions}" Width="110" />
                         <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="*" />
                         <DataGridTextColumn Header="Values" Binding="{Binding Values}" Width="60" />
                     </DataGrid.Columns>

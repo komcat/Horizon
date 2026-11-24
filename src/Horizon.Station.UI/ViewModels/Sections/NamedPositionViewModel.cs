@@ -60,9 +60,17 @@ public sealed class NamedPositionViewModel : ObservableObject
         }
     }
 
+    /// <summary>True when the selected position variant holds its own value for this position.</summary>
+    public bool IsOverridden => _host.Process.IsPositionOverridden(_device, Name);
+
+    /// <summary>Where the shown values come from: the variant's name, or "base".</summary>
+    public string Source => IsOverridden ? _host.Process.ActivePositionVariant ?? "base" : "base";
+
     /// <summary>Re-reads the stored values (after a re-teach / edit).</summary>
     public void RefreshCoordinates()
     {
+        OnPropertyChanged(nameof(IsOverridden));
+        OnPropertyChanged(nameof(Source));
         var c = _host.Process.GetPosition(_device, Name)?.Coordinates;
         double Comp(string a) => c == null ? 0 : a.ToUpperInvariant() switch
         {

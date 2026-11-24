@@ -22,6 +22,12 @@ public sealed record ProductInfo
     /// <summary>Free-form description.</summary>
     public string Description { get; init; } = string.Empty;
 
+    /// <summary>
+    /// The selected position variant (a file in <c>position_variants\</c>); empty = base
+    /// positions. Remembered per product, so it survives a restart and a product switch.
+    /// </summary>
+    public string PositionVariant { get; init; } = string.Empty;
+
     /// <summary>On-disk schema version, for future migrations.</summary>
     public int SchemaVersion { get; init; } = 1;
 
@@ -131,7 +137,7 @@ internal sealed class ProductStore
         CopyFile(Path.Combine(src, "positions.json"), Path.Combine(dst, "positions.json"));
         CopyFile(Path.Combine(src, "gripped_objects.json"), Path.Combine(dst, "gripped_objects.json"));
         CopyFile(Path.Combine(src, "part_alignments.json"), Path.Combine(dst, "part_alignments.json"));
-        foreach (var sub in new[] { "vision", "processes", "decks", "recipes", "dispense" })
+        foreach (var sub in new[] { "vision", "processes", "decks", "recipes", "dispense", PositionStore.VariantDirName })
             CopyDirectory(Path.Combine(src, sub), Path.Combine(dst, sub));
 
         var s = ReadInfo(source);

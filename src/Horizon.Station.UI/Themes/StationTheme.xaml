@@ -24,6 +24,19 @@
     <SolidColorBrush x:Key="Warn"   Color="#FFB74D" />
     <SolidColorBrush x:Key="Ok"     Color="#81C784" />
     <SolidColorBrush x:Key="Running" Color="#FFF176" />
+    <!-- A position variant is in use (shell frame + identity chip). Violet: none of the machine-state
+         colours (green / amber / red) the info bar already uses. -->
+    <!-- Ten of them, one per variant in list order, cycling from the 11th (ShellWindow.RefreshVariants). -->
+    <SolidColorBrush x:Key="Variant0" Color="#8E44AD" />   <!-- violet -->
+    <SolidColorBrush x:Key="Variant1" Color="#1E88E5" />   <!-- blue -->
+    <SolidColorBrush x:Key="Variant2" Color="#D81B60" />   <!-- magenta -->
+    <SolidColorBrush x:Key="Variant3" Color="#00ACC1" />   <!-- cyan -->
+    <SolidColorBrush x:Key="Variant4" Color="#795548" />   <!-- brown -->
+    <SolidColorBrush x:Key="Variant5" Color="#3949AB" />   <!-- indigo -->
+    <SolidColorBrush x:Key="Variant6" Color="#F06292" />   <!-- pink -->
+    <SolidColorBrush x:Key="Variant7" Color="#546E7A" />   <!-- slate -->
+    <SolidColorBrush x:Key="Variant8" Color="#9E9D24" />   <!-- olive -->
+    <SolidColorBrush x:Key="Variant9" Color="#880E4F" />   <!-- maroon -->
 
     <!-- Fixed video-surface colours — theme-independent so overlays stay
          high-contrast on arbitrary camera images. -->

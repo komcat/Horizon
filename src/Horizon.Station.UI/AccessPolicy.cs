@@ -98,4 +98,13 @@ public static class AccessPolicy
     /// programs into a new one). That is authoring a variation, not running one.
     /// </summary>
     public const AccessLevel ProductCreate = AccessLevel.Engineer;
+
+    /// <summary>
+    /// Picking which position variant the station runs (header selector). Operator-level,
+    /// like a product switch: it chooses between sets an engineer already taught.
+    /// </summary>
+    public const AccessLevel PositionVariantSelect = AccessLevel.Operator;
+
+    /// <summary>Creating / deleting a position variant — authoring, like <see cref="ProductCreate"/>.</summary>
+    public const AccessLevel PositionVariantEdit = AccessLevel.Engineer;
 }

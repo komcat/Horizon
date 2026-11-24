@@ -18,8 +18,8 @@ namespace Horizon.Station.UI.Views.Sections;
 /// </summary>
 public partial class MotionSectionView : UserControl
 {
-    /// <summary>Columns defined in XAML (Map, Name) — axis columns follow them.</summary>
-    private const int FixedColumns = 2;
+    /// <summary>Columns defined in XAML (Map, Name, From) — axis columns follow them.</summary>
+    private const int FixedColumns = 3;
     private const double AxisColumnWidth = 84;
 
     private MotionSectionViewModel? _vm;

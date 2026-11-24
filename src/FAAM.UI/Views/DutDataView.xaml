@@ -94,6 +94,7 @@
                         <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="110" />
                         <DataGridTextColumn Header="Verdict" Binding="{Binding Verdict}" Width="80" />
                         <DataGridTextColumn Header="Operator" Binding="{Binding Operator}" Width="120" />
+                        <DataGridTextColumn Header="Positions" Binding="{Binding Positions}" Width="100" />
                         <DataGridTextColumn x:Name="Uv10Column" Header="uv1.0" Width="110"
                                             Binding="{Binding Uv10, StringFormat={}{0:0.0000}}" />
                         <DataGridTextColumn x:Name="Uv11Column" Header="uv1.1" Width="110"

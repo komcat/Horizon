@@ -276,6 +276,12 @@ public partial class JogPanel : UserControl
         _host = host;
         _map = new PositionMapViewModel(MapMoveAsync, updateTo: null, editable: false);
         MapView.DataContext = _map;
+        host.SelectedMotionDeviceChanged += OnSharedDeviceChanged;   // follow the Machine › Motion page
+        host.ManualVelocityChanged += (device, velocity) =>
+        {
+            // Show a velocity applied on the Motion page (display only — nothing is sent).
+            if (string.Equals(device, _device, StringComparison.OrdinalIgnoreCase)) SelectVelocityInCombo(velocity);
+        };
         BuildDevices();
         BuildLighting();         // before the camera picker, so the lights follow its first selection
         BuildCameras();          // populates the picker → fires OnCameraChanged → LoadCameraExposure
@@ -362,12 +368,31 @@ public partial class JogPanel : UserControl
         _matrix = _transforms.Get(dev);
         LoadPresets(dev);
         RefreshMap();
+        _host?.SelectMotionDevice(dev);   // the Machine › Motion page follows
 
         // Do NOT push a velocity to the controller on selection / startup — keep
         // whatever velocity the controller already has. Instead read and show the
         // controller's current velocity (read-only); the operator changes it by
         // clicking a preset.
         _ = ShowCurrentVelocityAsync(dev);
+    }
+
+    /// <summary>
+    /// The shared selection changed elsewhere (Machine › Motion page): check the matching rail
+    /// button, which selects it here. A device the rail does not list (not connected at start-up)
+    /// leaves the rail on its current device.
+    /// </summary>
+    private void OnSharedDeviceChanged(string device)
+    {
+        if (string.Equals(_device, device, StringComparison.OrdinalIgnoreCase)) return;
+        var button = DeviceList.Children.OfType<ToggleButton>()
+            .FirstOrDefault(b => b.Tag is string d && string.Equals(d, device, StringComparison.OrdinalIgnoreCase));
+        if (button == null) return;
+
+        // A new device means any jog still queued for the old one must not run on it.
+        _pendingJog = null;
+        _jogCts?.Cancel();
+        button.IsChecked = true;   // fires OnDeviceChecked (single-select)
     }
 
     /// <summary>
@@ -393,6 +418,7 @@ public partial class JogPanel : UserControl
             {
                 SetStatus($"{device} · current velocity {r.Value:g} mm/s (unchanged)");
                 SelectVelocityInCombo(r.Value);   // reflect the live velocity if it matches a preset
+                _host.ReportManualVelocity(device, r.Value);   // the Motion page's Velocity box shows it too
             }
             else
             {
@@ -420,7 +446,11 @@ public partial class JogPanel : UserControl
         _suppressVelApply = true;
         VelocityCombo.Items.Clear();
         foreach (var v in _velValues)
-            VelocityCombo.Items.Add(new ComboBoxItem { Content = $"{v:g} mm/s", Tag = v });
+        {
+            var item = new ComboBoxItem { Content = $"{v:g} mm/s", Tag = v };
+            item.PreviewMouseLeftButtonUp += OnVelocityItemClicked;
+            VelocityCombo.Items.Add(item);
+        }
         VelocityCombo.SelectedIndex = -1;
         VelocityCombo.IsEnabled = _velValues.Length > 0;
         _suppressVelApply = false;
@@ -451,6 +481,18 @@ public partial class JogPanel : UserControl
             _ = ApplyVelocityAsync(v);
     }
 
+    /// <summary>
+    /// Clicking the preset that is already shown raises no SelectionChanged, so it would apply
+    /// nothing — yet the controller may no longer be at that velocity (the Machine page, a move to a
+    /// taught position or a program changed it since). Apply it here; a click on a different preset
+    /// is left to <see cref="OnVelocityCombo"/>.
+    /// </summary>
+    private void OnVelocityItemClicked(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is ComboBoxItem { IsSelected: true, Tag: double v })
+            _ = ApplyVelocityAsync(v);
+    }
+
     /// <summary>Pushes <paramref name="v"/> mm/s to the selected device and flashes a confirmation.</summary>
     private async Task ApplyVelocityAsync(double v)
     {
@@ -461,6 +503,7 @@ public partial class JogPanel : UserControl
         {
             SetStatus($"Velocity {v:g} mm/s · {_device}");
             FlashVel($"✓ {v:g} mm/s applied");
+            _host.ReportManualVelocity(_device, v);   // the Motion page's Velocity box follows
         }
         else
         {

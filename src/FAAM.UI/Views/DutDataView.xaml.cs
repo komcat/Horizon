@@ -53,6 +53,7 @@ public partial class DutDataView : UserControl, IStationPage
         public string Source => Run.Source;
         public string Verdict => Run.Verdict.ToString();
         public string Operator => Run.Operator;
+        public string Positions => Run.Positions;
         public double? Uv10 { get; init; }
         public double? Uv11 { get; init; }
         public double? Uv20 { get; init; }
@@ -514,7 +515,7 @@ public partial class DutDataView : UserControl, IStationPage
         var sb = new StringBuilder();
         var inv = CultureInfo.InvariantCulture;
 
-        sb.Append("Serial,Started,Source,Verdict,Operator");
+        sb.Append("Serial,Started,Source,Verdict,Operator,Positions");
         foreach (var key in DutUvData.SnapshotKeys)
         {
             sb.Append(',').Append(Csv($"{key} time"));
@@ -528,7 +529,8 @@ public partial class DutDataView : UserControl, IStationPage
               .Append(run.StartedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", inv)).Append(',')
               .Append(Csv(run.Source)).Append(',')
               .Append(run.Verdict).Append(',')
-              .Append(Csv(run.Operator));
+              .Append(Csv(run.Operator)).Append(',')
+              .Append(Csv(run.Positions));
             foreach (var key in DutUvData.SnapshotKeys)
             {
                 var snap = run.Find(key);

@@ -63,6 +63,9 @@ public sealed class DutRun
     /// </summary>
     public string? MachineCredential { get; set; }
 
+    /// <summary>The product's position variant the run used; null = base positions.</summary>
+    public string? PositionVariant { get; set; }
+
     /// <summary>Values recorded by <c>dut.*</c> steps, in execution order.</summary>
     public List<DutEntry> Entries { get; init; } = new();
 }

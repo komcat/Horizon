@@ -50,6 +50,7 @@
                     <DataGridTextColumn Header="Verdict" Binding="{Binding Verdict}" Width="Auto" />
                     <DataGridTextColumn Header="Operator" Binding="{Binding Operator}" Width="*" />
                     <DataGridTextColumn Header="Station" Binding="{Binding Station}" Width="Auto" />
+                    <DataGridTextColumn Header="Positions" Binding="{Binding Positions}" Width="Auto" />
                     <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="*" />
                     <DataGridTextColumn Header="Values" Binding="{Binding Count}" Width="Auto" />
                 </DataGrid.Columns>

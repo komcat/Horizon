@@ -87,8 +87,48 @@ public interface IProcessService
     /// <summary>Resolves a named position (coordinates + velocity), or null if unknown.</summary>
     NamedPosition? GetPosition(string device, string name);
 
-    /// <summary>Removes a named position from the active product.</summary>
+    /// <summary>
+    /// Removes a named position from the active product. With a position variant selected
+    /// it removes only the variant's own value (the position reverts to base) and refuses a
+    /// position that exists only in base.
+    /// </summary>
     Result RemovePosition(string device, string name);
+
+    // --- Position variants (operate on the active product) ---
+    // Base positions are positions.json. A variant holds only the positions that differ:
+    // with one selected, every lookup (programs, recipes, scripts, Run page, Motion page)
+    // reads the variant first and falls back to base, and every teach / edit is written to
+    // the variant — base is never changed while a variant is selected.
+
+    /// <summary>The selected position variant, or null when base is selected / no product is loaded.</summary>
+    string? ActivePositionVariant { get; }
+
+    /// <summary>The active product's position variants (base is not listed).</summary>
+    IReadOnlyList<string> GetPositionVariants();
+
+    /// <summary>True when the selected variant holds its own value for this position (false on base).</summary>
+    bool IsPositionOverridden(string device, string name);
+
+    /// <summary>
+    /// Creates a variant as a copy of the selected variant's overrides (empty — following
+    /// base everywhere — when base is selected). Does not select it.
+    /// </summary>
+    Result CreatePositionVariant(string name);
+
+    /// <summary>
+    /// Selects a variant (null / empty = base) and remembers it with the product. Refused
+    /// while anything runs or a DUT run is open, and when the variant cannot be read.
+    /// </summary>
+    Result SelectPositionVariant(string? name);
+
+    /// <summary>Deletes a variant; if it was selected the product goes back to base (refused mid-run).</summary>
+    Result DeletePositionVariant(string name);
+
+    /// <summary>
+    /// Raised after the selected position variant changes; the argument is the new variant
+    /// or null for base. A product switch raises <see cref="ProductChanged"/> only.
+    /// </summary>
+    event Action<string?>? PositionVariantChanged;
 
     /// <summary>
     /// Stores a named position from explicit coordinates (manual entry).

@@ -7,7 +7,11 @@
         Height="900" Width="1400"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource Bg}">
-    <Grid Margin="8">
+    <!-- Window frame: takes the Variant colour while a position variant is in use (RefreshVariants),
+         so every page shows the machine is not on the product's base positions. Transparent on base —
+         the thickness is constant, so nothing shifts when the selection changes. -->
+    <Border x:Name="VariantFrame" BorderThickness="4" BorderBrush="Transparent">
+    <Grid Margin="4">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
@@ -129,6 +133,23 @@
                         <Run Text="Product: " Foreground="{StaticResource Subtle}" />
                         <Run x:Name="ProductRun" Foreground="{StaticResource Text}" FontWeight="SemiBold" />
                     </TextBlock>
+                    <!-- Position variant the product runs with: "base" or a variant that overrides
+                         some positions. Dictates every named-position lookup (Run, programs, Motion). -->
+                    <TextBlock x:Name="VariantLabel" Text="Positions:" Foreground="{StaticResource Subtle}" VerticalAlignment="Center"
+                               Margin="16,0,6,0" />
+                    <ComboBox x:Name="VariantCombo" MinWidth="110" Height="24" VerticalAlignment="Center"
+                              SelectionChanged="OnVariantSelected"
+                              ToolTip="Position variant in use. 'base' = the product's own positions; a variant replaces only the positions taught in it." />
+                    <Button x:Name="VariantMenuButton" Content="⋯" Width="24" Height="24" Padding="0" Margin="4,0,0,0"
+                            VerticalAlignment="Center" Click="OnVariantMenu"
+                            ToolTip="Save as a new position variant / delete the selected variant (Engineer)">
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Save as new variant…" Click="OnNewVariant" />
+                                <MenuItem x:Name="DeleteVariantItem" Header="Delete selected variant…" Click="OnDeleteVariant" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
                     <TextBlock VerticalAlignment="Center" Margin="16,0,0,0">
                         <Run Text="Operator: " Foreground="{StaticResource Subtle}" />
                         <Run x:Name="OperatorRun" Foreground="{StaticResource Text}" FontWeight="SemiBold" />
@@ -184,4 +205,5 @@
             </Border>
         </Border>
     </Grid>
+    </Border>
 </Window>

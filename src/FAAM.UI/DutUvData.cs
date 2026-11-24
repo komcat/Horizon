@@ -20,6 +20,7 @@ internal sealed record UvRun(
     string Source,
     DutVerdict Verdict,
     string Operator,
+    string Positions,
     IReadOnlyList<UvSnapshot> Snapshots)
 {
     /// <summary>The snapshot filed under <paramref name="key"/>, or null when this run has none.</summary>
@@ -68,7 +69,9 @@ internal static class DutUvData
             if (snapshots.Count == 0) continue;
 
             var op = string.IsNullOrEmpty(run.OperatorName) ? (run.OperatorId ?? "") : run.OperatorName;
-            runs.Add(new UvRun(record.Serial, run.StartedUtc, run.Source, run.Verdict, op, snapshots));
+            // The position variant the run used — "base" when none (also runs from before variants existed).
+            var positions = string.IsNullOrEmpty(run.PositionVariant) ? "base" : run.PositionVariant;
+            runs.Add(new UvRun(record.Serial, run.StartedUtc, run.Source, run.Verdict, op, positions, snapshots));
         }
         return runs;
     }

@@ -52,6 +52,7 @@ public sealed class MotionSectionViewModel : ObservableObject
     private bool _referencing;
     private CancellationTokenSource? _referenceCts;
     private string? _shownProduct;
+    private string? _shownVariant;
     private NamedPositionViewModel? _selectedPosition;
     private bool _canMove;
     private int _selectedTab;
@@ -67,8 +68,20 @@ public sealed class MotionSectionViewModel : ObservableObject
     {
         _host = host;
         Devices = host.Engine.Motion.DeviceNames;
-        _selectedDevice = Devices.Count > 0 ? Devices[0] : null;
-        Map = new PositionMapViewModel(MapMoveAsync, UpdatePositionAsync);
+        // Start on the device already picked on the jog rail (shared selection), else the first.
+        _selectedDevice = MatchDevice(host.SelectedMotionDevice) ?? (Devices.Count > 0 ? Devices[0] : null);
+        host.SelectedMotionDeviceChanged += device =>
+        {
+            if (MatchDevice(device) is { } match) SelectedDevice = match;
+        };
+        // The Velocity box follows the jog rail: this page's position moves run at the value in the
+        // box, so a stale one would undo a speed the operator just picked on the rail.
+        if (_selectedDevice != null && host.GetManualVelocity(_selectedDevice) is { } known) _velocity = known;
+        host.ManualVelocityChanged += (device, velocity) =>
+        {
+            if (string.Equals(device, _selectedDevice, StringComparison.OrdinalIgnoreCase)) Velocity = velocity;
+        };
+        Map =new PositionMapViewModel(MapMoveAsync, UpdatePositionAsync);
         Map.MembershipChanged += name =>
             Positions.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))?.NotifyOnMapChanged();
         StopCommand = new AsyncRelayCommand(StopAsync, () => _selectedDevice != null);
@@ -78,6 +91,8 @@ public sealed class MotionSectionViewModel : ObservableObject
         MoveSelectedPositionCommand = new AsyncRelayCommand(MoveSelectedPositionAsync, () => _selectedPosition != null && _canMove);
         UpdateSelectedPositionCommand = new AsyncRelayCommand(UpdateSelectedPositionAsync, () => _selectedPosition != null && _canMove);
         EditSelectedPositionCommand = new RelayCommand(() => _selectedPosition?.Edit(), () => _selectedPosition != null);
+        RevertSelectedPositionCommand = new RelayCommand(RevertSelectedPosition,
+            () => _selectedPosition?.IsOverridden == true && !_host.Process.IsRunning);
         EnableAllCommand = new AsyncRelayCommand(() => SetAllEnabledAsync(true), () => _isAcs && _connected);
         DisableAllCommand = new AsyncRelayCommand(() => SetAllEnabledAsync(false), () => _isAcs && _connected);
         RunBufferCommand = new AsyncRelayCommand(RunBufferAsync, () => _isAcs && _connected && _bufferRunning != true);
@@ -149,8 +164,18 @@ public sealed class MotionSectionViewModel : ObservableObject
     public string? SelectedDevice
     {
         get => _selectedDevice;
-        set { if (SetField(ref _selectedDevice, value)) RebuildAxes(); }
+        set
+        {
+            if (!SetField(ref _selectedDevice, value)) return;
+            RebuildAxes();
+            if (value != null && _host.GetManualVelocity(value) is { } known) Velocity = known;
+            if (value != null) _host.SelectMotionDevice(value);   // the jog rail follows
+        }
     }
+
+    /// <summary>This page's own entry for <paramref name="device"/> (name match ignoring case), or null.</summary>
+    private string? MatchDevice(string? device)
+        => device == null ? null : Devices.FirstOrDefault(d => string.Equals(d, device, StringComparison.OrdinalIgnoreCase));
 
     public bool Connected
     {
@@ -296,6 +321,12 @@ public sealed class MotionSectionViewModel : ObservableObject
     /// <summary>Opens the editor for the selected row's position.</summary>
     public RelayCommand EditSelectedPositionCommand { get; }
 
+    /// <summary>Drops the selected variant's own value for the selected row, so it follows base again (asks first).</summary>
+    public RelayCommand RevertSelectedPositionCommand { get; }
+
+    /// <summary>Heading of the position grid — names the position variant in use.</summary>
+    public string PositionsTitle => _shownVariant == null ? "Positions (base)" : $"Positions (variant {_shownVariant})";
+
     private void RebuildAxes()
     {
         foreach (var a in Axes) a.CommandFailed -= OnAxisCommandFailed;
@@ -345,6 +376,8 @@ public sealed class MotionSectionViewModel : ObservableObject
         SelectedPosition = null;
         Positions.Clear();
         _shownProduct = product;
+        _shownVariant = _host.Process.ActivePositionVariant;
+        OnPropertyChanged(nameof(PositionsTitle));
         var names = device == null ? Array.Empty<string>() : _host.Process.GetPositionNames(device);
         Map.Show(_shownProduct, device, names);
         if (device == null) return;
@@ -375,7 +408,9 @@ public sealed class MotionSectionViewModel : ObservableObject
 
         // Pick up positions taught/edited on other pages (or a product switch) without
         // recreating the list every tick — only rebuild when the product or the set of names changes.
+        // A variant switch keeps most names but changes their values, so it rebuilds too.
         if (!string.Equals(_host.Process.ActiveProduct, _shownProduct, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(_host.Process.ActivePositionVariant, _shownVariant, StringComparison.OrdinalIgnoreCase)
             || !_host.Process.GetPositionNames(device).SequenceEqual(Positions.Select(p => p.Name)))
             RebuildPositions();
 
@@ -683,6 +718,7 @@ public sealed class MotionSectionViewModel : ObservableObject
         if (device == null) return;
         var result = await _host.Engine.Motion.SetDeviceVelocityAsync(device, _velocity).ConfigureAwait(true);
         Status = result.IsSuccess ? $"Velocity set to {_velocity:G}" : result.Message;
+        if (result.IsSuccess) _host.ReportManualVelocity(device, _velocity);   // the jog rail shows it
     }
 
     /// <summary>Captures the device's current pose under <see cref="NewPositionName"/> (new or overwriting), then refreshes the list.</summary>
@@ -758,6 +794,27 @@ public sealed class MotionSectionViewModel : ObservableObject
         MoveSelectedPositionCommand.RaiseCanExecuteChanged();
         UpdateSelectedPositionCommand.RaiseCanExecuteChanged();
         EditSelectedPositionCommand.RaiseCanExecuteChanged();
+        RevertSelectedPositionCommand.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>After a confirm, removes the variant's own value for the selected row — it reads from base again.</summary>
+    private void RevertSelectedPosition()
+    {
+        var device = _selectedDevice;
+        if (device == null || _selectedPosition is not { } row) return;
+        var variant = _host.Process.ActivePositionVariant;
+        if (variant == null || !row.IsOverridden) return;
+
+        if (MessageBox.Show(
+                $"Revert '{row.Name}' on {device} to its base value?\n\n" +
+                $"The value taught in variant '{variant}' is deleted:\n{row.Coordinates}\n\n" +
+                "If base has no position by this name, the position disappears.",
+                "Revert to base", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+            return;
+
+        var r = _host.Process.RemovePosition(device, row.Name);
+        Status = r.IsSuccess ? $"'{row.Name}' follows base again." : r.Message;
+        RebuildPositions();
     }
 
     private async Task MoveSelectedPositionAsync()
@@ -801,15 +858,19 @@ public sealed class MotionSectionViewModel : ObservableObject
 
         var row = Positions.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
         var current = string.Join("  ", Axes.Select(a => $"{a.Name} {a.Position}"));
+        var where = _host.Process.ActivePositionVariant is { } variant
+            ? $"\n\nSaved into variant '{variant}' — base is not changed."
+            : "\n\nSaved into the base positions.";
         if (MessageBox.Show(
                 $"Overwrite '{name}' on {device} with the current axis position?\n\n" +
-                $"Stored:   {row?.Coordinates}\nCurrent:  {current}",
+                $"Stored:   {row?.Coordinates}\nCurrent:  {current}{where}",
                 "Update position", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
             return $"Update of '{name}' cancelled.";
 
         var velocity = _host.Process.GetPosition(device, name)?.Velocity ?? 0;
         var r = await _host.Process.TeachPositionAsync(device, name, velocity).ConfigureAwait(true);
         row?.RefreshCoordinates();
+        RaisePositionCommands();   // the row may now be a variant value — Revert to base becomes available
         Status = r.IsSuccess ? $"Updated '{name}'" : r.Message;
         return r.IsSuccess ? $"Updated '{name}' to the current axis position." : r.Message;
     }

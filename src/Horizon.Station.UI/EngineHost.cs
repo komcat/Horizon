@@ -85,6 +85,47 @@ public sealed class EngineHost : IAsyncDisposable
     /// <summary>Tells every subscriber of <see cref="StopPressed"/> that STOP was pressed. UI thread.</summary>
     public void RaiseStopPressed() => StopPressed?.Invoke();
 
+    /// <summary>
+    /// The motion device picked for manual work — one selection shared by the jog rail and the
+    /// Machine › Motion page, so choosing a device in either place selects it in the other.
+    /// Null until one is picked. UI thread only.
+    /// </summary>
+    public string? SelectedMotionDevice { get; private set; }
+
+    /// <summary>Raised on the UI thread when <see cref="SelectedMotionDevice"/> changes.</summary>
+    public event Action<string>? SelectedMotionDeviceChanged;
+
+    /// <summary>Makes <paramref name="device"/> the shared manual-motion selection (no-op when it already is). UI thread.</summary>
+    public void SelectMotionDevice(string device)
+    {
+        if (string.IsNullOrEmpty(device)
+            || string.Equals(SelectedMotionDevice, device, StringComparison.OrdinalIgnoreCase))
+            return;
+        SelectedMotionDevice = device;
+        SelectedMotionDeviceChanged?.Invoke(device);
+    }
+
+    private readonly Dictionary<string, double> _manualVelocity = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Raised on the UI thread when a manual velocity (mm/s) for a device becomes known — applied on
+    /// the jog rail or the Machine › Motion page, or read back from the controller. Both show it, so
+    /// the two velocity controls never disagree (the Motion page moves at the value in its box).
+    /// </summary>
+    public event Action<string, double>? ManualVelocityChanged;
+
+    /// <summary>The last manual velocity known for <paramref name="device"/>, or null. UI thread.</summary>
+    public double? GetManualVelocity(string device)
+        => _manualVelocity.TryGetValue(device, out var v) ? v : null;
+
+    /// <summary>Records <paramref name="velocity"/> as <paramref name="device"/>'s manual velocity and tells both controls. UI thread.</summary>
+    public void ReportManualVelocity(string device, double velocity)
+    {
+        if (string.IsNullOrEmpty(device) || double.IsNaN(velocity) || velocity <= 0) return;
+        _manualVelocity[device] = velocity;
+        ManualVelocityChanged?.Invoke(device, velocity);
+    }
+
     /// <summary>Mirrors published operator activities into the open interactive DUT run.</summary>
     private readonly DutActivityMirror _dutActivityMirror;
 

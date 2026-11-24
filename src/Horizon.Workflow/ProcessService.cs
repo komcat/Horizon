@@ -62,7 +62,7 @@ public sealed class ProcessService : IProcessService
         var dir = _products.ActiveProductDir;
         if (dir != null)
         {
-            _positions = new PositionStore(dir);
+            _positions = OpenPositions(dir, _products.ActiveProduct!);
             _programs = new ProgramStore(dir);
             _recipes = new RecipeStore(dir);
             _scripts = new ScriptStore(dir);
@@ -108,6 +108,7 @@ public sealed class ProcessService : IProcessService
     public event Action<LogEntry>? LogEmitted;
     public event Action<bool>? PausedChanged;
     public event Action<string?>? ProductChanged;
+    public event Action<string?>? PositionVariantChanged;
     public event Action<string?>? ActiveSerialChanged;
     public event Action<string>? SiphogSnapshotSaved;
 
@@ -221,7 +222,7 @@ public sealed class ProcessService : IProcessService
 
         _products.SetActive(name);
         var dir = _products.ProductDir(name);
-        _positions = new PositionStore(dir);
+        _positions = OpenPositions(dir, name);
         _programs = new ProgramStore(dir);
         _recipes = new RecipeStore(dir);
         _scripts = new ScriptStore(dir);
@@ -287,12 +288,124 @@ public sealed class ProcessService : IProcessService
     {
         if (_positions == null)
             return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
-        if (!_positions.Remove(device, name))
-            return Result.Fail(ErrorCode.FileNotFound, $"Position '{name}' not found for '{device}'.");
 
-        Log(LogLevel.Info, $"Position removed: {device}.{name}");
+        switch (_positions.Remove(device, name))
+        {
+            case PositionRemoveOutcome.NotFound:
+                return Result.Fail(ErrorCode.FileNotFound, $"Position '{name}' not found for '{device}'.");
+            case PositionRemoveOutcome.BaseOnly:
+                return Result.Fail(ErrorCode.OperationFailed,
+                    $"Position '{name}' belongs to the base positions — variant '{_positions.Variant}' does not " +
+                    "change it. Select base to remove it.");
+            case PositionRemoveOutcome.Reverted:
+                Log(LogLevel.Info, $"Position reverted to base: {device}.{name} (variant {_positions.Variant})");
+                return Result.Ok();
+            default:
+                Log(LogLevel.Info, $"Position removed: {device}.{name}{VariantSuffix()}");
+                return Result.Ok();
+        }
+    }
+
+    // --- Position variants (base = positions.json; a variant overrides only what differs) ---
+
+    public string? ActivePositionVariant => _positions?.Variant;
+
+    public IReadOnlyList<string> GetPositionVariants()
+        => _positions?.GetVariants() ?? Array.Empty<string>();
+
+    public bool IsPositionOverridden(string device, string name)
+        => _positions?.IsOverridden(device, name) ?? false;
+
+    public Result CreatePositionVariant(string name)
+    {
+        if (_positions == null)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        name = name?.Trim() ?? string.Empty;
+        if (!PositionStore.IsValidVariantName(name))
+            return Result.Fail(ErrorCode.InvalidParameter, $"Invalid variant name: '{name}'.");
+        if (_positions.VariantExists(name))
+            return Result.Fail(ErrorCode.OperationFailed, $"Position variant '{name}' already exists.");
+
+        var from = _positions.Variant;
+        _positions.CreateVariant(name);
+        Log(LogLevel.Info, from == null
+            ? $"Position variant created: {name} (no overrides yet — follows base)"
+            : $"Position variant created: {name} (copied from {from})");
         return Result.Ok();
     }
+
+    public Result SelectPositionVariant(string? name)
+    {
+        if (_positions == null || _products.ActiveProduct is not { } product)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        if (!CanSwitchProduct(out var why))
+            return Result.Fail(ErrorCode.OperationFailed, $"Cannot switch position variant: {why}");
+
+        name = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+        if (string.Equals(name, _positions.Variant, StringComparison.OrdinalIgnoreCase))
+            return Result.Ok();
+        if (!_positions.SelectVariant(name, out var error))
+            return Result.Fail(ErrorCode.FileNotFound, error);
+
+        RememberVariant(product);
+        Log(LogLevel.Info, $"Position variant selected: {_positions.Variant ?? PositionStore.BaseName}");
+        PositionVariantChanged?.Invoke(_positions.Variant);
+        return Result.Ok();
+    }
+
+    public Result DeletePositionVariant(string name)
+    {
+        if (_positions == null || _products.ActiveProduct is not { } product)
+            return Result.Fail(ErrorCode.OperationFailed, "No active product — load one first.");
+        name = name?.Trim() ?? string.Empty;
+        if (!_positions.VariantExists(name))
+            return Result.Fail(ErrorCode.FileNotFound, $"Position variant '{name}' not found.");
+
+        var wasActive = string.Equals(_positions.Variant, name, StringComparison.OrdinalIgnoreCase);
+        if (wasActive && !CanSwitchProduct(out var why))
+            return Result.Fail(ErrorCode.OperationFailed, $"Cannot delete the selected position variant: {why}");
+
+        _positions.DeleteVariant(name);
+        Log(LogLevel.Info, $"Position variant deleted: {name}");
+        if (wasActive)
+        {
+            RememberVariant(product);
+            PositionVariantChanged?.Invoke(null);
+        }
+        return Result.Ok();
+    }
+
+    /// <summary>
+    /// Opens a product's positions with the variant it last used. A variant that is gone or
+    /// unreadable is NOT silently replaced by base in the record: the product falls back to
+    /// base, says so in the log, and the header shows "base".
+    /// </summary>
+    private PositionStore OpenPositions(string dir, string product)
+    {
+        var store = new PositionStore(dir);
+        var wanted = _products.ReadInfo(product)?.PositionVariant;
+        if (!string.IsNullOrWhiteSpace(wanted) && !store.SelectVariant(wanted, out var error))
+        {
+            Log(LogLevel.Warning, $"{error} Product '{product}' is using its base positions.");
+            _positions = store;
+            RememberVariant(product);
+        }
+        return store;
+    }
+
+    /// <summary>Records the selected variant in the product's <c>product.json</c>.</summary>
+    private void RememberVariant(string product)
+    {
+        var info = _products.ReadInfo(product);
+        if (info == null) return;
+        var variant = _positions?.Variant ?? string.Empty;
+        if (!string.Equals(info.PositionVariant, variant, StringComparison.Ordinal))
+            _products.WriteInfo(info with { PositionVariant = variant });
+    }
+
+    /// <summary>" [variant X]" for position log lines while a variant is selected, else empty.</summary>
+    private string VariantSuffix()
+        => _positions?.Variant is { } v ? $" [variant {v}]" : string.Empty;
 
     public Result SetPosition(string device, string name, MotionPosition position, double velocity)
     {
@@ -302,7 +415,7 @@ public sealed class ProcessService : IProcessService
             return Result.Fail(ErrorCode.InvalidParameter, "Position name is required.");
 
         _positions.Set(device, name, position, velocity);
-        Log(LogLevel.Info, $"Position set (manual): {device}.{name} (velocity {velocity})");
+        Log(LogLevel.Info, $"Position set (manual): {device}.{name} (velocity {velocity}){VariantSuffix()}");
         return Result.Ok();
     }
 
@@ -317,7 +430,8 @@ public sealed class ProcessService : IProcessService
         _positions.SetFull(device, name, position, velocity, camera, exposureUs);
         Log(LogLevel.Info,
             $"Position set: {device}.{name} (velocity {velocity}" +
-            (string.IsNullOrWhiteSpace(camera) || exposureUs == null ? ")" : $", {camera} @ {exposureUs}µs)"));
+            (string.IsNullOrWhiteSpace(camera) || exposureUs == null ? ")" : $", {camera} @ {exposureUs}µs)") +
+            VariantSuffix());
         return Result.Ok();
     }
 
@@ -333,7 +447,7 @@ public sealed class ProcessService : IProcessService
             return Result.Fail(read.Error, $"Teach '{name}': {read.Message}");
 
         _positions.Set(device, name, read.Value, velocity);
-        Log(LogLevel.Info, $"Position taught: {device}.{name} (velocity {velocity})");
+        Log(LogLevel.Info, $"Position taught: {device}.{name} (velocity {velocity}){VariantSuffix()}");
         return Result.Ok();
     }
 
@@ -1476,6 +1590,7 @@ public sealed class ProcessService : IProcessService
     /// <summary>Copies the current operator + station onto a DUT run for traceability.</summary>
     private void StampOperator(DutRun run)
     {
+        run.PositionVariant = _positions?.Variant;
         if (_operator == null) return;
         run.OperatorId = _operator.UserId;
         run.OperatorName = _operator.DisplayName;

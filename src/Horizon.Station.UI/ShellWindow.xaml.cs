@@ -100,6 +100,7 @@ public partial class ShellWindow : Window
         // Identity chip — refresh on login/logout and on product switch.
         _host.Session.Changed += UpdateIdentity;
         _host.Process.ProductChanged += OnProductChanged;
+        _host.Process.PositionVariantChanged += OnPositionVariantChanged;
         _host.Process.ActiveSerialChanged += OnActiveSerialChanged;
         _host.Activity.Changed += OnDutActivityChanged;   // gate Start DUT while an alignment/scan holds the hexapod
 
@@ -582,6 +583,136 @@ public partial class ShellWindow : Window
 
     private void OnProductChanged(string? _) => UpdateIdentity();
 
+    // --- Position variant selector (header, beside the product) ---
+
+    private const string BaseVariantLabel = "base";
+    private bool _variantRefreshing;
+
+    private void OnPositionVariantChanged(string? _)
+    {
+        if (Dispatcher.CheckAccess()) RefreshVariants();
+        else Dispatcher.BeginInvoke(RefreshVariants);
+    }
+
+    /// <summary>Number of variant accent brushes in the theme (Variant0..Variant9).</summary>
+    private const int VariantColourCount = 10;
+
+    /// <summary>Fills the selector with base + the active product's variants and shows the one in use.</summary>
+    private void RefreshVariants()
+    {
+        _variantRefreshing = true;
+        try
+        {
+            var hasProduct = _host.Process.ActiveProduct != null;
+            var active = _host.Process.ActivePositionVariant;
+
+            VariantCombo.Items.Clear();
+            VariantCombo.Items.Add(BaseVariantLabel);
+            foreach (var v in _host.Process.GetPositionVariants()) VariantCombo.Items.Add(v);
+            VariantCombo.SelectedItem = active == null
+                ? BaseVariantLabel
+                : VariantCombo.Items.Cast<string>().FirstOrDefault(
+                      v => string.Equals(v, active, StringComparison.OrdinalIgnoreCase)) ?? BaseVariantLabel;
+
+            // A variant in use stands out — it changes where the machine goes.
+            VariantCombo.FontWeight = active == null ? FontWeights.Normal : FontWeights.Bold;
+            bool onVariant = active != null;
+            // Each variant has its own colour: its place in the list picks one of the ten theme
+            // brushes Variant0..Variant9, cycling from the 11th. Item 0 of the combo is "base".
+            int variantIndex = Math.Max(0, VariantCombo.SelectedIndex - 1);
+            var variantBrush = (System.Windows.Media.Brush)FindResource($"Variant{variantIndex % VariantColourCount}");
+            VariantFrame.BorderBrush = onVariant ? variantBrush : System.Windows.Media.Brushes.Transparent;
+            IdentityHeader.BorderBrush = onVariant ? variantBrush : (System.Windows.Media.Brush)FindResource("Edge");
+            IdentityHeader.BorderThickness = new Thickness(onVariant ? 2 : 1);
+            VariantLabel.Foreground = onVariant ? variantBrush : (System.Windows.Media.Brush)FindResource("Subtle");
+            VariantLabel.FontWeight = onVariant ? FontWeights.Bold : FontWeights.Normal;
+            VariantLabel.Text = onVariant ? "Positions (variant):" : "Positions:";
+            VariantCombo.IsEnabled = hasProduct && _host.Session.Has(AccessPolicy.PositionVariantSelect);
+            VariantMenuButton.IsEnabled = hasProduct && _host.Session.Has(AccessPolicy.PositionVariantEdit);
+            DeleteVariantItem.IsEnabled = active != null;
+        }
+        finally
+        {
+            _variantRefreshing = false;
+        }
+    }
+
+    private void OnVariantSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (_variantRefreshing || VariantCombo.SelectedItem is not string picked) return;
+        if (!_host.Session.Has(AccessPolicy.PositionVariantSelect)) { RefreshVariants(); return; }
+
+        var r = _host.Process.SelectPositionVariant(picked == BaseVariantLabel ? null : picked);
+        if (!r.IsSuccess)
+        {
+            LogVariant(LogLevel.Warning, r.Message);
+            MessageBox.Show(this, r.Message, "Position variant", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        RefreshVariants();   // shows what is really in use, also after a refusal
+    }
+
+    private void OnVariantMenu(object sender, RoutedEventArgs e)
+    {
+        if (VariantMenuButton.ContextMenu is not { } menu) return;
+        menu.PlacementTarget = VariantMenuButton;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.IsOpen = true;
+    }
+
+    /// <summary>
+    /// "Save as new variant…" — creates a variant from the one in use (base → no overrides
+    /// yet) and selects it, so the next teach goes into it.
+    /// </summary>
+    private void OnNewVariant(object sender, RoutedEventArgs e)
+    {
+        if (!_host.Session.Has(AccessPolicy.PositionVariantEdit)) return;
+        var product = _host.Process.ActiveProduct;
+        if (product == null) return;
+
+        var from = _host.Process.ActivePositionVariant;
+        var name = Views.NamePrompt.Show(this, "New position variant",
+            (from == null
+                ? $"Create a position variant of '{product}'. It starts with every position following base."
+                : $"Create a position variant of '{product}' as a copy of '{from}'.") +
+            "\n\nWhile a variant is selected, every Teach / Update is saved into it and base is not " +
+            "changed; positions it does not hold are read from base.\n\nVariant name:",
+            $"{product}_Plus");
+        if (string.IsNullOrWhiteSpace(name)) return;
+        name = name.Trim();
+
+        var created = _host.Process.CreatePositionVariant(name);
+        if (!created.IsSuccess)
+        {
+            MessageBox.Show(this, created.Message, "New position variant", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        var selected = _host.Process.SelectPositionVariant(name);
+        if (!selected.IsSuccess)
+            LogVariant(LogLevel.Warning, $"Variant '{name}' created but not selected: {selected.Message}");
+        RefreshVariants();
+    }
+
+    private void OnDeleteVariant(object sender, RoutedEventArgs e)
+    {
+        if (!_host.Session.Has(AccessPolicy.PositionVariantEdit)) return;
+        var active = _host.Process.ActivePositionVariant;
+        if (active == null) return;
+
+        if (MessageBox.Show(this,
+                $"Delete position variant '{active}'?\n\nIts own positions are lost and the product goes back " +
+                "to its base positions. This cannot be undone.",
+                "Delete position variant", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK)
+            return;
+
+        var r = _host.Process.DeletePositionVariant(active);
+        if (!r.IsSuccess)
+            MessageBox.Show(this, r.Message, "Delete position variant", MessageBoxButton.OK, MessageBoxImage.Warning);
+        RefreshVariants();
+    }
+
+    private void LogVariant(LogLevel level, string message)
+        => _host.Log.Add(new LogEntry(level, System.DateTimeOffset.Now, "Positions", message));
+
     /// <summary>Shows the active DUT serial in the header chip while a unit run is in progress.</summary>
     private void OnActiveSerialChanged(string? serial)
     {
@@ -682,6 +813,7 @@ public partial class ShellWindow : Window
         if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(UpdateIdentity); return; }
 
         ProductRun.Text = _host.Process.ActiveProductInfo?.Label ?? "—";
+        RefreshVariants();
         var op = _host.Session.Operator;
 
         // The chip carries the level as well as the name — on a shared station "who is
@@ -782,6 +914,7 @@ public partial class ShellWindow : Window
         _exiting = true;
         _host.Session.Changed -= UpdateIdentity;
         _host.Process.ProductChanged -= OnProductChanged;
+        _host.Process.PositionVariantChanged -= OnPositionVariantChanged;
         _host.Process.ActiveSerialChanged -= OnActiveSerialChanged;
         _host.Engine.Safety.SafetyTripped -= OnSafetyTripped;
         _host.Engine.Safety.SafetyCleared -= OnSafetyCleared;

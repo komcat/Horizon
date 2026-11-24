@@ -100,6 +100,15 @@ defines its own program/recipe/position formats.
   and **Import** (`ListDecksOf`/`ImportDeck` — pull a deck from another product,
   copying any missing referenced programs). The Run page re-points to the active
   product's deck on `ProductChanged`.
+- **Position variants** — `positions.json` is the product's **base**; a variant is
+  `position_variants\{variant}.json` holding only the positions that differ (`PositionStore`).
+  With a variant selected every lookup reads the variant first, then base, and every teach / edit
+  is written to the variant (base is never changed; `RemovePosition` reverts an override). The
+  selection is stored in `product.json` (`ProductInfo.PositionVariant`), switched via
+  `IProcessService.SelectPositionVariant` (refused mid-run; an unreadable variant is refused, never
+  silently replaced by base), stamped on `DutRun.PositionVariant`, and copied by `CloneProduct`.
+  UI: the shell header's **Positions** selector (select = Operator, create / delete = Engineer) and
+  the Motion page's **From** column + **Revert to base**.
 - `IOperatorPrompt` — abstraction for asking the operator a question; the UI
   supplies a WPF implementation, consoles a stdin one.
 - `Scanning/` — hexapod beam-alignment scan (coarse-to-fine hill-climb, ported

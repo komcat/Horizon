@@ -67,6 +67,7 @@ public partial class DutResultsWindow : Window
                 r.OperatorLevel ?? "—",
                 string.IsNullOrEmpty(r.StationId) ? "—" : r.StationId!,
                 r.MachineCredential ?? "—",
+                string.IsNullOrEmpty(r.PositionVariant) ? "base" : r.PositionVariant!,
                 r.Source,
                 r.Entries.Count));
         }
@@ -77,5 +78,5 @@ public partial class DutResultsWindow : Window
     private sealed record DutRunRow(
         string Started, string Ended, string Verdict,
         string Operator, string Level, string Station, string Credential,
-        string Source, int Values);
+        string Positions, string Source, int Values);
 }

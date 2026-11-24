@@ -145,6 +145,9 @@ public partial class DutRecordsView : UserControl, IStationPage
         public string Verdict => Run.Verdict.ToString();
         public string Operator => string.IsNullOrEmpty(Run.OperatorName) ? Run.OperatorId ?? "—" : $"{Run.OperatorName} ({Run.OperatorId})";
         public string Station => Run.StationId ?? "—";
+
+        /// <summary>The position variant the run used; "base" when none (also runs from before variants existed).</summary>
+        public string Positions => string.IsNullOrEmpty(Run.PositionVariant) ? "base" : Run.PositionVariant;
         public string Source => Run.Source;
         public int Count => Run.Entries.Count;
     }

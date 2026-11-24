@@ -215,7 +215,8 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Positions" Foreground="{StaticResource Subtle}"
+                    <TextBlock Grid.Column="0" Text="{Binding PositionsTitle}" Foreground="{StaticResource Subtle}"
+                               ToolTip="The position set in use (chosen in the header). With a variant selected, Update / Edit / Save are stored in the variant; base is not changed."
                                FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" />
                     <!-- Selected-row actions (disabled until a row is selected) -->
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
@@ -225,9 +226,12 @@
                         <Button Content="Update" Height="26" Padding="12,0" Margin="0,0,6,0"
                                 Command="{Binding UpdateSelectedPositionCommand}"
                                 ToolTip="Save the device's current axis position into the selected position (asks first)" />
-                        <Button Content="Edit…" Height="26" Padding="12,0"
+                        <Button Content="Edit…" Height="26" Padding="12,0" Margin="0,0,6,0"
                                 Command="{Binding EditSelectedPositionCommand}"
                                 ToolTip="Edit the selected position's axis values, velocity and camera/exposure by hand (or double-click the row)" />
+                        <Button Content="Revert to base" Height="26" Padding="10,0"
+                                Command="{Binding RevertSelectedPositionCommand}"
+                                ToolTip="Drop the selected variant's own value for this position, so it follows base again (asks first)" />
                     </StackPanel>
                     <!-- New position -->
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="12,0,0,0">
@@ -284,6 +288,26 @@
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=DataGridRow}}" Value="True">
                                                         <Setter Property="Foreground" Value="{StaticResource OnAccent}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <!-- Which set the values come from: "base", or the selected variant's name (bold). -->
+                        <DataGridTemplateColumn Header="From" Width="96" CanUserSort="False">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Source}" VerticalAlignment="Center" Margin="6,0"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip="'base' = the product's own position. A variant name = this position is taught in the selected variant and replaces base.">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsOverridden}" Value="True">
+                                                        <Setter Property="FontWeight" Value="Bold" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
